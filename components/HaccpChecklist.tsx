@@ -3537,6 +3537,24 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
   );
 };
 
+/** 늦은 조회와 저장 응답이 사용자가 쓰는 초안 또는 다른 기간을 덮지 않게 한다. */
+function useChecklistDraftControl() {
+  const active = useRef(false), generation = useRef(0), busy = useRef(false), dirty = useRef(false), changing = useRef(false);
+  React.useLayoutEffect(() => { active.current = true; return () => { active.current = false; generation.current++; }; }, []);
+  const current = (token: number) => active.current && generation.current === token;
+  const change = async (action: () => void) => {
+    if (busy.current || changing.current) return;
+    changing.current = true;
+    const token = generation.current;
+    try {
+      if (dirty.current && !await appConfirm('작성 중인 초안을 버리고 선택한 기록을 여시겠습니까?')) return;
+      if (!current(token) || busy.current) return;
+      dirty.current = false; generation.current++; action();
+    } finally { changing.current = false; }
+  };
+  return { active, generation, busy, dirty, current, change };
+}
+
 const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
   const [cycle, setCycle] = useState<PeriodCycle>('weekly');
@@ -3548,64 +3566,86 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   const [selected, setSelected] = useState<PeriodRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saveError, setSaveError] = useState('');
   const printRef = useRef<HTMLDivElement>(null);
+  const control = useChecklistDraftControl();
+  const [recordsReady, setRecordsReady] = useState(false), [recordsError, setRecordsError] = useState('');
+  const [readAttempt, setReadAttempt] = useState(0);
+  const readRef = useRef({ ready: false, blocked: false, rows: [] as PeriodRecord[] });
 
   const period = cycle === 'weekly' ? weekPeriod : monthPeriod;
   const items = cycle === 'weekly' ? weekItems : monthItems;
   const cycleName = cycle === 'weekly' ? '주간' : '월간';
 
   useEffect(() => {
+    let active = true, serverConfirmed = false;
+    readRef.current.ready = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_periodic_sanitation'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PeriodRecord)).filter(row => typeof row.period === 'string').sort((a, b) => b.period.localeCompare(a.period)));
+    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      if (!active || !control.active.current) return;
+      const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as PeriodRecord)).filter(row => typeof row.period === 'string').sort((a, b) => b.period.localeCompare(a.period));
+      if (snap.metadata?.fromCache === false) serverConfirmed = true;
+      const ready = serverConfirmed && !readRef.current.blocked;
+      readRef.current = { ready, blocked: readRef.current.blocked, rows }; setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
+    }, () => {
+      if (!active || !control.active.current) return;
+      active = false; serverConfirmed = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
+      setRecordsError('기존 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 저장해 주세요.');
     });
-  }, [companyId]);
+    return () => { active = false; unsubscribe(); };
+  }, [companyId, readAttempt]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), snap => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), snap => {
+      if (!active) return;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setWeekItems(data);
       }
     });
+    return () => { active = false; unsubscribe(); };
   }, [companyId]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), snap => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), snap => {
+      if (!active) return;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setMonthItems(data);
       }
     });
+    return () => { active = false; unsubscribe(); };
   }, [companyId]);
 
   const currentRecord = records.find(r => r.cycle === cycle && r.period === period);
 
-  // 주기/기간이 바뀌면 해당 기록으로 자동 초기화
   useEffect(() => {
-    const existing = records.find(r => r.cycle === cycle && r.period === period);
-    setSelected(existing ?? ({ ...emptyPeriodRecord(cycle, period, items) } as PeriodRecord));
-    setSaveError('');
+    control.generation.current++; control.dirty.current = false;
+    const existing = readRef.current.ready ? readRef.current.rows.find(r => r.cycle === cycle && r.period === period) : undefined;
+    setSelected(existing ?? ({ ...emptyPeriodRecord(cycle, period, items) } as PeriodRecord)); setSaveError('');
   }, [cycle, period]);
-
-  // Firestore 기록이 뒤늦게 로드됐을 때 미저장 상태면 동기화
   useEffect(() => {
     const existing = records.find(r => r.cycle === cycle && r.period === period);
-    if (existing && !selected?.id) setSelected(existing);
-  }, [records]);
+    if (readRef.current.ready && existing && !selected?.id && !control.dirty.current && !control.busy.current) setSelected(existing);
+  }, [records, recordsReady, cycle, period, selected?.id]);
 
-  const openHistory = (r: PeriodRecord) => {
-    setSelected(r);
-    setSaveError('');
-    setShowHistory(false);
-  };
+  const openHistory = (r: PeriodRecord) => { void control.change(() => {
+    setCycle(r.cycle); if (r.cycle === 'weekly') setWeekPeriod(r.period); else setMonthPeriod(r.period);
+    setSelected(r); setSaveError(''); setShowHistory(false);
+  }); };
 
   // 실제 이번 주/이번 달만 작성 가능
   const actualCurrentPeriod = cycle === 'weekly' ? currentWeekStr() : new Date().toISOString().slice(0, 7);
   const isReadOnly = period !== actualCurrentPeriod;
 
+  const editSelected = (update: React.SetStateAction<PeriodRecord | null>) => {
+    if (isReadOnly || control.busy.current) return;
+    control.dirty.current = true; setSelected(update);
+  };
   // 템플릿 항목이 추가돼 rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
   const padRows = (rows: PeriodRow[]): PeriodRow[] =>
     rows.length >= items.length
@@ -3615,7 +3655,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   const toggleResult = (idx: number, val: 'pass' | 'fail') => {
     if (isReadOnly) return;
     const userName = currentUser?.name ?? '';
-    setSelected(prev => {
+    editSelected(prev => {
       if (!prev) return prev;
       const rows = padRows(prev.rows);
       const row = rows[idx];
@@ -3629,16 +3669,19 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
 
   const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
     if (isReadOnly) return;
-    setSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+    editSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
   };
 
   const handleSave = async () => {
-    if (!selected || isReadOnly) return;
+    if (!selected || isReadOnly || control.busy.current) return;
+    if (!readRef.current.ready) { setSaveError('기존 기록 조회가 끝나야 저장할 수 있습니다. 입력을 유지한 채 다시 조회해 주세요.'); return; }
+    if (!selected.id && readRef.current.rows.some(r => r.cycle === cycle && r.period === period)) { setSaveError('같은 기간에 저장된 기록이 있습니다. 저장된 기록을 열어 확인해 주세요.'); return; }
     const missingNote = selected.rows
       .map((r, i) => r.result === 'fail' && !r.note.trim() ? (items[i]?.item ?? `항목 ${i + 1}`) : null)
       .filter(Boolean) as string[];
     if (missingNote.length > 0) { setSaveError(`부적합 항목의 비고사항을 입력해주세요: ${missingNote.join(', ')}`); return; }
     setSaveError('');
+    control.busy.current = true; const token = control.generation.current;
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
@@ -3646,36 +3689,48 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
       if (!selected.id) {
         const data: Omit<PeriodRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
         const id = await addItem('haccp_periodic_sanitation', data);
-        setSelected({ ...data, id });
+        if (!control.current(token)) return;
+        control.dirty.current = false; setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateItem('haccp_periodic_sanitation', selected.id, update as any);
-        setSelected(prev => prev ? { ...prev, ...update } : prev);
+        if (!control.current(token)) return;
+        control.dirty.current = false; setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
-    } finally { setSaving(false); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setSaving(false); } }
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (!canConfirm || control.busy.current || !readRef.current.ready) return;
     if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
+    control.busy.current = true; const token = control.generation.current;
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
       await updateItem('haccp_periodic_sanitation', selected.id, update);
+      if (!control.current(token)) return;
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
-        if (printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`);
+        if (control.current(token) && printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`);
       }
-    } finally { setConfirming(false); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setConfirming(false); } }
   };
 
   const handleDelete = async (id: string) => {
-    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteItem('haccp_periodic_sanitation', id);
-    if (selected?.id === id) setSelected(null);
+    if (control.busy.current || !control.active.current) return;
+    control.busy.current = true; const token = control.generation.current; setDeleting(true);
+    try {
+      if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
+      if (!control.current(token)) return;
+      await deleteItem('haccp_periodic_sanitation', id);
+      if (control.current(token) && selected?.id === id) { control.dirty.current = false; setSelected(null); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안은 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setDeleting(false); } }
   };
 
   const resultBadge = (result: PeriodRow['result']) => {
@@ -3687,14 +3742,17 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   const pastRecords = records.filter(r => r.cycle === cycle && !(r.cycle === cycle && r.period === period));
 
   return (
-    <div className="flex flex-col gap-4">
+    <fieldset disabled={saving || confirming || deleting} className="flex min-w-0 flex-col gap-4 border-0 p-0 m-0">
+      {!recordsReady && !recordsError && <p role="status" className="text-xs text-slate-600">기존 기록을 조회 중입니다. 입력할 수 있으며 조회가 끝난 뒤 저장할 수 있습니다.</p>}
+      {recordsError && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError}</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { readRef.current.ready = false; setRecordsReady(false); setReadAttempt(value => value + 1); }}>다시 조회</button></div>}
+      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { void control.change(() => { const existing = readRef.current.rows.find(r => r.cycle === cycle && r.period === period); if (existing) { setSelected(existing); setSaveError(''); } }); }}>저장된 기록 열기</button></div>}
       {/* 주간/월간 서브 탭 + 기간 선택 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex gap-2 mb-4">
           {(['weekly', 'monthly'] as PeriodCycle[]).map(c => (
             <button
               key={c}
-              onClick={() => { setCycle(c); setSaveError(''); }}
+              onClick={() => { if (c !== cycle) void control.change(() => { setCycle(c); setSaveError(''); }); }}
               className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
                 cycle === c ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
@@ -3706,9 +3764,9 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500">{cycleName} 기간:</span>
           {cycle === 'weekly' ? (
-            <input type="week" value={weekPeriod} onChange={e => setWeekPeriod(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input type="week" value={weekPeriod} onChange={e => { const value = e.target.value; if (value !== weekPeriod) void control.change(() => setWeekPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
           ) : (
-            <input type="month" value={monthPeriod} onChange={e => setMonthPeriod(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input type="month" value={monthPeriod} onChange={e => { const value = e.target.value; if (value !== monthPeriod) void control.change(() => setMonthPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
           )}
           {currentRecord && (
             <span className="text-xs text-emerald-600 font-bold">✓ 저장된 기록</span>
@@ -3780,7 +3838,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
                     </button>
               )}
               {!isReadOnly && (
-                <button onClick={handleSave} disabled={saving}
+                <button onClick={handleSave} disabled={saving || !recordsReady || !!recordsError || (!selected.id && !!currentRecord)}
                   className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
                 >
                   <Save size={12} /> {saving ? '저장 중...' : '저장'}
@@ -3819,7 +3877,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
                 <div className="px-1 py-1">
                   {isReadOnly
                     ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
-                    : <input value={selected.checkZone ?? ''} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                    : <input value={selected.checkZone ?? ''} onChange={e => editSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
                         placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
                   }
                 </div>
@@ -3929,7 +3987,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
               <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
               <textarea
                 value={selected.specialNotes}
-                onChange={e => !isReadOnly && setSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
+                onChange={e => !isReadOnly && editSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
                 disabled={isReadOnly}
                 rows={2}
                 className="w-full border border-slate-300 rounded px-2 py-1 text-xs disabled:opacity-60 resize-none"
@@ -3958,7 +4016,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
           </div>
         </div>
       }
-    </div>
+    </fieldset>
   );
 };
 
@@ -4100,40 +4158,61 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
   const [selected, setSelected] = useState<ClosingRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saveError, setSaveError] = useState('');
   const printRef = useRef<HTMLDivElement>(null);
+  const control = useChecklistDraftControl();
+  const [recordsReady, setRecordsReady] = useState(false), [recordsError, setRecordsError] = useState('');
+  const [readAttempt, setReadAttempt] = useState(0);
+  const readRef = useRef({ ready: false, blocked: false, rows: [] as ClosingRecord[] });
 
   useEffect(() => {
+    let active = true, serverConfirmed = false;
+    readRef.current.ready = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_closing_checklist'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
+    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      if (!active || !control.active.current) return;
+      const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
+      if (snap.metadata?.fromCache === false) serverConfirmed = true;
+      const ready = serverConfirmed && !readRef.current.blocked;
+      readRef.current = { ready, blocked: readRef.current.blocked, rows }; setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
+    }, () => {
+      if (!active || !control.active.current) return;
+      active = false; serverConfirmed = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
+      setRecordsError('기존 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 저장해 주세요.');
     });
-  }, [companyId]);
+    return () => { active = false; unsubscribe(); };
+  }, [companyId, readAttempt]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), snap => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), snap => {
+      if (!active) return;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
       }
     });
+    return () => { active = false; unsubscribe(); };
   }, [companyId]);
 
-  // 날짜가 바뀌면 해당 날짜 기록으로 자동 초기화
   useEffect(() => {
-    const existing = records.find(r => r.checkDate === checkDate);
-    setSelected(existing ?? ({ ...emptyClosingRecord(checkDate, templateItems) } as ClosingRecord));
-    setSaveError('');
+    control.generation.current++; control.dirty.current = false;
+    const existing = readRef.current.ready ? readRef.current.rows.find(r => r.checkDate === checkDate) : undefined;
+    setSelected(existing ?? ({ ...emptyClosingRecord(checkDate, templateItems) } as ClosingRecord)); setSaveError('');
   }, [checkDate]);
-
   useEffect(() => {
     const existing = records.find(r => r.checkDate === checkDate);
-    if (existing && !selected?.id) setSelected(existing);
-  }, [records]);
+    if (readRef.current.ready && existing && !selected?.id && !control.dirty.current && !control.busy.current) setSelected(existing);
+  }, [records, recordsReady, checkDate, selected?.id]);
 
   const isReadOnly = checkDate !== todayStr();
 
+  const editSelected = (update: React.SetStateAction<ClosingRecord | null>) => {
+    if (isReadOnly || control.busy.current) return;
+    control.dirty.current = true; setSelected(update);
+  };
   // 템플릿 항목이 추가돼(예: 6·7번) rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
   const padRows = (rows: PeriodRow[]): PeriodRow[] =>
     rows.length >= templateItems.length
@@ -4143,7 +4222,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
   const toggleResult = (idx: number, val: 'pass' | 'fail') => {
     if (isReadOnly) return;
     const userName = currentUser?.name ?? '';
-    setSelected(prev => {
+    editSelected(prev => {
       if (!prev) return prev;
       const rows = padRows(prev.rows);
       const row = rows[idx];
@@ -4157,16 +4236,19 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
 
   const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
     if (isReadOnly) return;
-    setSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+    editSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
   };
 
   const handleSave = async () => {
-    if (!selected || isReadOnly) return;
+    if (!selected || isReadOnly || control.busy.current) return;
+    if (!readRef.current.ready) { setSaveError('기존 기록 조회가 끝나야 저장할 수 있습니다. 입력을 유지한 채 다시 조회해 주세요.'); return; }
+    if (!selected.id && readRef.current.rows.some(r => r.checkDate === checkDate)) { setSaveError('같은 기간에 저장된 기록이 있습니다. 저장된 기록을 열어 확인해 주세요.'); return; }
     const missingNote = selected.rows
       .map((r, i) => r.result === 'fail' && !r.note.trim() ? (templateItems[i]?.item ?? `항목 ${i + 1}`) : null)
       .filter(Boolean) as string[];
     if (missingNote.length > 0) { setSaveError(`부적합 항목의 비고사항을 입력해주세요: ${missingNote.join(', ')}`); return; }
     setSaveError('');
+    control.busy.current = true; const token = control.generation.current;
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
@@ -4174,36 +4256,48 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
       if (!selected.id) {
         const data: Omit<ClosingRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
         const id = await addItem('haccp_closing_checklist', data);
-        setSelected({ ...data, id });
+        if (!control.current(token)) return;
+        control.dirty.current = false; setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateItem('haccp_closing_checklist', selected.id, update as any);
-        setSelected(prev => prev ? { ...prev, ...update } : prev);
+        if (!control.current(token)) return;
+        control.dirty.current = false; setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
-    } finally { setSaving(false); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setSaving(false); } }
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (!canConfirm || control.busy.current || !readRef.current.ready) return;
     if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
+    control.busy.current = true; const token = control.generation.current;
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
       await updateItem('haccp_closing_checklist', selected.id, update);
+      if (!control.current(token)) return;
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
-        if (printRef.current) await downloadAsPDF(printRef.current, `마감체크리스트_${selected.checkDate}.pdf`);
+        if (control.current(token) && printRef.current) await downloadAsPDF(printRef.current, `마감체크리스트_${selected.checkDate}.pdf`);
       }
-    } finally { setConfirming(false); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setConfirming(false); } }
   };
 
   const handleDelete = async (id: string) => {
-    if (!await appConfirm('이 체크리스트를 삭제하시겠습니까?')) return;
-    await deleteItem('haccp_closing_checklist', id);
-    if (selected?.id === id) setSelected(null);
+    if (control.busy.current || !control.active.current) return;
+    control.busy.current = true; const token = control.generation.current; setDeleting(true);
+    try {
+      if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
+      if (!control.current(token)) return;
+      await deleteItem('haccp_closing_checklist', id);
+      if (control.current(token) && selected?.id === id) { control.dirty.current = false; setSelected(null); }
+    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안은 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if (control.current(token)) { control.busy.current = false; setDeleting(false); } }
   };
 
   const resultBadge = (result: PeriodRow['result']) => {
@@ -4216,12 +4310,15 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
   const currentRecord = records.find(r => r.checkDate === checkDate);
 
   return (
-    <div className="flex flex-col gap-4">
+    <fieldset disabled={saving || confirming || deleting} className="flex min-w-0 flex-col gap-4 border-0 p-0 m-0">
+      {!recordsReady && !recordsError && <p role="status" className="text-xs text-slate-600">기존 기록을 조회 중입니다. 입력할 수 있으며 조회가 끝난 뒤 저장할 수 있습니다.</p>}
+      {recordsError && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError}</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { readRef.current.ready = false; setRecordsReady(false); setReadAttempt(value => value + 1); }}>다시 조회</button></div>}
+      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { void control.change(() => { const existing = readRef.current.rows.find(r => r.checkDate === checkDate); if (existing) { setSelected(existing); setSaveError(''); } }); }}>저장된 기록 열기</button></div>}
       {/* 날짜 선택 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500">점검일자:</span>
-          <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+          <input type="date" value={checkDate} onChange={e => { const value = e.target.value; if (value !== checkDate) void control.change(() => setCheckDate(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
           {currentRecord && <span className="text-xs text-emerald-600 font-bold">✓ 저장된 기록</span>}
           {isReadOnly && <span className="text-xs text-amber-600 font-medium">📋 오늘({todayStr()})만 작성 가능</span>}
         </div>
@@ -4235,7 +4332,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
       {showHistory && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {pastRecords.map(r => (
-            <button key={r.id} onClick={() => { setCheckDate(r.checkDate); setShowHistory(false); }}
+            <button key={r.id} onClick={() => { void control.change(() => { setCheckDate(r.checkDate); setShowHistory(false); }); }}
               className={`flex flex-col items-start gap-0.5 px-3 py-2 border rounded-lg text-xs font-medium transition-colors ${
                 checkDate === r.checkDate ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
@@ -4276,7 +4373,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
                   </button>
             )}
             {!isReadOnly && (
-              <button onClick={handleSave} disabled={saving}
+              <button onClick={handleSave} disabled={saving || !recordsReady || !!recordsError || (!selected.id && !!currentRecord)}
                 className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50">
                 <Save size={12} /> {saving ? '저장 중...' : '저장'}
               </button>
@@ -4309,7 +4406,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
               <div className="px-1 py-1">
                 {isReadOnly
                   ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
-                  : <input value={selected.checkZone ?? ''} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                  : <input value={selected.checkZone ?? ''} onChange={e => editSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
                       placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
                 }
               </div>
@@ -4410,7 +4507,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
           <div className="mb-4">
             <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
             <textarea value={selected.specialNotes}
-              onChange={e => !isReadOnly && setSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
+              onChange={e => !isReadOnly && editSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
               disabled={isReadOnly} rows={2}
               className="w-full border border-slate-300 rounded px-2 py-1 text-xs disabled:opacity-60 resize-none"
               placeholder="특이사항을 입력하세요" />
@@ -4436,7 +4533,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
           </div>
         </div>
       </div>}
-    </div>
+    </fieldset>
   );
 };
 

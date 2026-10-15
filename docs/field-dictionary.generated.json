@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T04:23:39.993Z",
+  "generatedAt": "2026-10-15T04:44:03.548Z",
   "sourceFiles": 491,
   "unresolvedAccesses": 3410,
   "unresolvedPropertyAccesses": [
@@ -24889,9 +24889,9 @@
         "components/OrdersList.tsx:3582",
         "components/OrdersList.tsx:4463",
         "components/OrdersList.tsx:4467",
-        "components/PalletManager.tsx:124",
-        "components/PalletManager.tsx:235",
-        "components/PalletManager.tsx:344",
+        "components/PalletManager.tsx:122",
+        "components/PalletManager.tsx:233",
+        "components/PalletManager.tsx:342",
         "components/PasteOrderModal.tsx:713",
         "components/PasteOrderModal.tsx:718"
       ]
@@ -24913,10 +24913,10 @@
         "components/OrdersList.tsx:3579",
         "components/OrdersList.tsx:4454",
         "components/OrdersList.tsx:4464",
-        "components/PalletManager.tsx:125",
-        "components/PalletManager.tsx:232",
-        "components/PalletManager.tsx:319",
-        "components/PalletManager.tsx:344",
+        "components/PalletManager.tsx:123",
+        "components/PalletManager.tsx:230",
+        "components/PalletManager.tsx:317",
+        "components/PalletManager.tsx:342",
         "components/PasteOrderModal.tsx:705",
         "components/PasteOrderModal.tsx:713",
         "src/shared/newOrderDraft.ts:60"
@@ -24933,9 +24933,9 @@
         "components/OrdersList.tsx:3009",
         "components/OrdersList.tsx:3580",
         "components/OrdersList.tsx:4465",
-        "components/PalletManager.tsx:123",
-        "components/PalletManager.tsx:319",
-        "components/PalletManager.tsx:342"
+        "components/PalletManager.tsx:121",
+        "components/PalletManager.tsx:317",
+        "components/PalletManager.tsx:340"
       ]
     },
     {
@@ -25524,16 +25524,16 @@
         "components/OrdersList.tsx:4227",
         "components/OrdersList.tsx:4511",
         "components/OrdersList.tsx:482",
-        "components/PalletManager.tsx:113",
-        "components/PalletManager.tsx:137",
-        "components/PalletManager.tsx:255",
-        "components/PalletManager.tsx:331",
-        "components/PalletManager.tsx:798",
-        "components/PalletManager.tsx:834",
-        "components/PalletManager.tsx:841",
-        "components/PalletManager.tsx:848",
-        "components/PalletManager.tsx:979",
-        "components/PalletManager.tsx:982",
+        "components/PalletManager.tsx:111",
+        "components/PalletManager.tsx:135",
+        "components/PalletManager.tsx:253",
+        "components/PalletManager.tsx:329",
+        "components/PalletManager.tsx:796",
+        "components/PalletManager.tsx:832",
+        "components/PalletManager.tsx:839",
+        "components/PalletManager.tsx:846",
+        "components/PalletManager.tsx:977",
+        "components/PalletManager.tsx:980",
         "components/PartnerLedger.tsx:162",
         "components/PartnerLedger.tsx:163",
         "components/PartnerLedger.tsx:641",
@@ -25714,13 +25714,13 @@
         "components/OrdersList.tsx:4227",
         "components/OrdersList.tsx:4511",
         "components/OrdersList.tsx:485",
-        "components/PalletManager.tsx:113",
-        "components/PalletManager.tsx:138",
-        "components/PalletManager.tsx:331",
-        "components/PalletManager.tsx:798",
-        "components/PalletManager.tsx:975",
-        "components/PalletManager.tsx:981",
-        "components/PalletManager.tsx:982",
+        "components/PalletManager.tsx:111",
+        "components/PalletManager.tsx:136",
+        "components/PalletManager.tsx:329",
+        "components/PalletManager.tsx:796",
+        "components/PalletManager.tsx:973",
+        "components/PalletManager.tsx:979",
+        "components/PalletManager.tsx:980",
         "components/PartnerLedger.tsx:163",
         "components/PartnerLedger.tsx:641",
         "components/PartnerManager.tsx:214",
@@ -26484,10 +26484,10 @@
         "components/OrdersList.tsx:891",
         "components/OrdersList.tsx:955",
         "components/OrdersList.tsx:984",
-        "components/PalletManager.tsx:230",
-        "components/PalletManager.tsx:234",
-        "components/PalletManager.tsx:343",
-        "components/PalletManager.tsx:344",
+        "components/PalletManager.tsx:228",
+        "components/PalletManager.tsx:232",
+        "components/PalletManager.tsx:341",
+        "components/PalletManager.tsx:342",
         "components/ProductionManager.tsx:271",
         "components/ProductionManager.tsx:539",
         "components/ProductionManager.tsx:76",
@@ -26714,8 +26714,8 @@
         "components/OrdersList.tsx:4321",
         "components/OrdersList.tsx:4511",
         "components/OrdersList.tsx:482",
-        "components/PalletManager.tsx:120",
-        "components/PalletManager.tsx:226",
+        "components/PalletManager.tsx:118",
+        "components/PalletManager.tsx:224",
         "components/ProductionManager.tsx:541",
         "components/ReceivingReturnsManager.tsx:158",
         "components/ReturnManager.tsx:119",
@@ -26795,8 +26795,8 @@
         "components/OrdersList.tsx:4227",
         "components/OrdersList.tsx:4511",
         "components/OrdersList.tsx:485",
-        "components/PalletManager.tsx:121",
-        "components/PalletManager.tsx:343",
+        "components/PalletManager.tsx:119",
+        "components/PalletManager.tsx:341",
         "components/ProductionManager.tsx:252",
         "components/ProductionManager.tsx:281",
         "components/ProductionManager.tsx:541",
@@ -27145,11 +27145,11 @@
         "components/OrdersList.tsx:549",
         "components/OrdersList.tsx:587",
         "components/OrdersList.tsx:592",
-        "components/PalletManager.tsx:118",
-        "components/PalletManager.tsx:226",
-        "components/PalletManager.tsx:297",
-        "components/PalletManager.tsx:318",
-        "components/PalletManager.tsx:341",
+        "components/PalletManager.tsx:116",
+        "components/PalletManager.tsx:224",
+        "components/PalletManager.tsx:295",
+        "components/PalletManager.tsx:316",
+        "components/PalletManager.tsx:339",
         "components/ProductionManager.tsx:252",
         "components/ReturnManager.tsx:124",
         "src/features/admin/AdminApp.tsx:1607",
@@ -27324,10 +27324,10 @@
         "components/OrdersList.tsx:4117",
         "components/OrdersList.tsx:4158",
         "components/OrdersList.tsx:4249",
-        "components/PalletManager.tsx:233",
-        "components/PalletManager.tsx:298",
-        "components/PalletManager.tsx:319",
-        "components/PalletManager.tsx:343",
+        "components/PalletManager.tsx:231",
+        "components/PalletManager.tsx:296",
+        "components/PalletManager.tsx:317",
+        "components/PalletManager.tsx:341",
         "components/ProductionManager.tsx:538",
         "components/ProductionManager.tsx:542",
         "src/features/admin/dataIntegrityAudit.ts:222",
@@ -27416,15 +27416,15 @@
         "components/OrdersList.tsx:4454",
         "components/OrdersList.tsx:4463",
         "components/OrdersList.tsx:4467",
-        "components/PalletManager.tsx:118",
-        "components/PalletManager.tsx:123",
+        "components/PalletManager.tsx:116",
+        "components/PalletManager.tsx:121",
+        "components/PalletManager.tsx:224",
         "components/PalletManager.tsx:226",
-        "components/PalletManager.tsx:228",
-        "components/PalletManager.tsx:297",
-        "components/PalletManager.tsx:318",
-        "components/PalletManager.tsx:319",
-        "components/PalletManager.tsx:341",
-        "components/PalletManager.tsx:342"
+        "components/PalletManager.tsx:295",
+        "components/PalletManager.tsx:316",
+        "components/PalletManager.tsx:317",
+        "components/PalletManager.tsx:339",
+        "components/PalletManager.tsx:340"
       ]
     },
     {
@@ -30883,17 +30883,17 @@
         "components/OrdersList.tsx:4467",
         "components/OrdersList.tsx:4468",
         "components/OrdersList.tsx:4471",
-        "components/PalletManager.tsx:141",
-        "components/PalletManager.tsx:212",
-        "components/PalletManager.tsx:280",
-        "components/PalletManager.tsx:335",
-        "components/PalletManager.tsx:382",
-        "components/PalletManager.tsx:396",
-        "components/PalletManager.tsx:478",
-        "components/PalletManager.tsx:483",
-        "components/PalletManager.tsx:864",
-        "components/PalletManager.tsx:97",
-        "components/PalletManager.tsx:991",
+        "components/PalletManager.tsx:139",
+        "components/PalletManager.tsx:210",
+        "components/PalletManager.tsx:278",
+        "components/PalletManager.tsx:333",
+        "components/PalletManager.tsx:380",
+        "components/PalletManager.tsx:394",
+        "components/PalletManager.tsx:476",
+        "components/PalletManager.tsx:481",
+        "components/PalletManager.tsx:862",
+        "components/PalletManager.tsx:95",
+        "components/PalletManager.tsx:989",
         "components/PasteOrderModal.tsx:713",
         "components/PasteOrderModal.tsx:718",
         "components/PasteOrderModal.tsx:719",
@@ -30918,17 +30918,17 @@
         "components/OrdersList.tsx:4472",
         "components/OrdersList.tsx:4477",
         "components/OrdersList.tsx:4480",
-        "components/PalletManager.tsx:101",
-        "components/PalletManager.tsx:104",
-        "components/PalletManager.tsx:142",
-        "components/PalletManager.tsx:195",
-        "components/PalletManager.tsx:219",
-        "components/PalletManager.tsx:335",
-        "components/PalletManager.tsx:494",
-        "components/PalletManager.tsx:499",
-        "components/PalletManager.tsx:864",
-        "components/PalletManager.tsx:97",
-        "components/PalletManager.tsx:991",
+        "components/PalletManager.tsx:102",
+        "components/PalletManager.tsx:140",
+        "components/PalletManager.tsx:193",
+        "components/PalletManager.tsx:217",
+        "components/PalletManager.tsx:333",
+        "components/PalletManager.tsx:492",
+        "components/PalletManager.tsx:497",
+        "components/PalletManager.tsx:862",
+        "components/PalletManager.tsx:95",
+        "components/PalletManager.tsx:989",
+        "components/PalletManager.tsx:99",
         "components/PasteOrderModal.tsx:711",
         "components/PasteOrderModal.tsx:725",
         "components/PasteOrderModal.tsx:729",
@@ -30942,16 +30942,16 @@
       "type": "number",
       "declaration": "src/shared/types.ts:635",
       "references": [
-        "components/PalletManager.tsx:281",
-        "components/PalletManager.tsx:383",
-        "components/PalletManager.tsx:462",
-        "components/PalletManager.tsx:480",
-        "components/PalletManager.tsx:527",
-        "components/PalletManager.tsx:532",
-        "components/PalletManager.tsx:557",
-        "components/PalletManager.tsx:560",
-        "components/PalletManager.tsx:561",
-        "components/PalletManager.tsx:562"
+        "components/PalletManager.tsx:279",
+        "components/PalletManager.tsx:381",
+        "components/PalletManager.tsx:460",
+        "components/PalletManager.tsx:478",
+        "components/PalletManager.tsx:525",
+        "components/PalletManager.tsx:530",
+        "components/PalletManager.tsx:555",
+        "components/PalletManager.tsx:558",
+        "components/PalletManager.tsx:559",
+        "components/PalletManager.tsx:560"
       ]
     },
     {
@@ -30969,12 +30969,12 @@
       "type": "number",
       "declaration": "src/shared/types.ts:638",
       "references": [
-        "components/PalletManager.tsx:462",
-        "components/PalletManager.tsx:471",
-        "components/PalletManager.tsx:480",
-        "components/PalletManager.tsx:544",
-        "components/PalletManager.tsx:549",
-        "components/PalletManager.tsx:562"
+        "components/PalletManager.tsx:460",
+        "components/PalletManager.tsx:469",
+        "components/PalletManager.tsx:478",
+        "components/PalletManager.tsx:542",
+        "components/PalletManager.tsx:547",
+        "components/PalletManager.tsx:560"
       ]
     },
     {
@@ -30990,7 +30990,7 @@
         "components/OrdersList.tsx:3577",
         "components/OrdersList.tsx:4442",
         "components/OrdersList.tsx:4462",
-        "components/PalletManager.tsx:103",
+        "components/PalletManager.tsx:101",
         "components/PasteOrderModal.tsx:700",
         "components/PasteOrderModal.tsx:710"
       ]
@@ -31002,18 +31002,18 @@
       "type": "string",
       "declaration": "src/shared/types.ts:643",
       "references": [
-        "components/PalletManager.tsx:214",
-        "components/PalletManager.tsx:220",
-        "components/PalletManager.tsx:334",
-        "components/PalletManager.tsx:338",
-        "components/PalletManager.tsx:360",
-        "components/PalletManager.tsx:374",
-        "components/PalletManager.tsx:379",
+        "components/PalletManager.tsx:212",
+        "components/PalletManager.tsx:218",
+        "components/PalletManager.tsx:332",
+        "components/PalletManager.tsx:336",
+        "components/PalletManager.tsx:358",
+        "components/PalletManager.tsx:372",
+        "components/PalletManager.tsx:377",
+        "components/PalletManager.tsx:384",
         "components/PalletManager.tsx:386",
-        "components/PalletManager.tsx:388",
         "components/PalletManager.tsx:74",
         "components/PalletManager.tsx:75",
-        "components/PalletManager.tsx:867"
+        "components/PalletManager.tsx:865"
       ]
     },
     {
@@ -31023,12 +31023,12 @@
       "type": "string",
       "declaration": "src/shared/types.ts:644",
       "references": [
-        "components/PalletManager.tsx:135",
-        "components/PalletManager.tsx:210",
-        "components/PalletManager.tsx:334",
-        "components/PalletManager.tsx:363",
-        "components/PalletManager.tsx:752",
-        "components/PalletManager.tsx:858"
+        "components/PalletManager.tsx:133",
+        "components/PalletManager.tsx:208",
+        "components/PalletManager.tsx:332",
+        "components/PalletManager.tsx:361",
+        "components/PalletManager.tsx:750",
+        "components/PalletManager.tsx:856"
       ]
     },
     {
@@ -31038,12 +31038,12 @@
       "type": "string",
       "declaration": "src/shared/types.ts:645",
       "references": [
-        "components/PalletManager.tsx:141",
-        "components/PalletManager.tsx:212",
-        "components/PalletManager.tsx:335",
-        "components/PalletManager.tsx:363",
-        "components/PalletManager.tsx:382",
-        "components/PalletManager.tsx:864"
+        "components/PalletManager.tsx:139",
+        "components/PalletManager.tsx:210",
+        "components/PalletManager.tsx:333",
+        "components/PalletManager.tsx:361",
+        "components/PalletManager.tsx:380",
+        "components/PalletManager.tsx:862"
       ]
     },
     {
@@ -31053,15 +31053,15 @@
       "type": "'in' | 'out'",
       "declaration": "src/shared/types.ts:646",
       "references": [
-        "components/PalletManager.tsx:146",
-        "components/PalletManager.tsx:215",
-        "components/PalletManager.tsx:218",
-        "components/PalletManager.tsx:313",
-        "components/PalletManager.tsx:314",
-        "components/PalletManager.tsx:336",
-        "components/PalletManager.tsx:337",
-        "components/PalletManager.tsx:376",
-        "components/PalletManager.tsx:383"
+        "components/PalletManager.tsx:144",
+        "components/PalletManager.tsx:213",
+        "components/PalletManager.tsx:216",
+        "components/PalletManager.tsx:311",
+        "components/PalletManager.tsx:312",
+        "components/PalletManager.tsx:334",
+        "components/PalletManager.tsx:335",
+        "components/PalletManager.tsx:374",
+        "components/PalletManager.tsx:381"
       ]
     },
     {
@@ -31071,19 +31071,19 @@
       "type": "number",
       "declaration": "src/shared/types.ts:647",
       "references": [
+        "components/PalletManager.tsx:145",
         "components/PalletManager.tsx:147",
-        "components/PalletManager.tsx:149",
-        "components/PalletManager.tsx:216",
+        "components/PalletManager.tsx:214",
+        "components/PalletManager.tsx:311",
+        "components/PalletManager.tsx:312",
         "components/PalletManager.tsx:313",
-        "components/PalletManager.tsx:314",
-        "components/PalletManager.tsx:315",
-        "components/PalletManager.tsx:336",
-        "components/PalletManager.tsx:357",
-        "components/PalletManager.tsx:377",
-        "components/PalletManager.tsx:383",
-        "components/PalletManager.tsx:755",
-        "components/PalletManager.tsx:865",
-        "components/PalletManager.tsx:869"
+        "components/PalletManager.tsx:334",
+        "components/PalletManager.tsx:355",
+        "components/PalletManager.tsx:375",
+        "components/PalletManager.tsx:381",
+        "components/PalletManager.tsx:753",
+        "components/PalletManager.tsx:863",
+        "components/PalletManager.tsx:867"
       ]
     },
     {
@@ -31093,12 +31093,12 @@
       "type": "string",
       "declaration": "src/shared/types.ts:648",
       "references": [
-        "components/PalletManager.tsx:217",
-        "components/PalletManager.tsx:295",
-        "components/PalletManager.tsx:311",
-        "components/PalletManager.tsx:334",
-        "components/PalletManager.tsx:753",
-        "components/PalletManager.tsx:869"
+        "components/PalletManager.tsx:215",
+        "components/PalletManager.tsx:293",
+        "components/PalletManager.tsx:309",
+        "components/PalletManager.tsx:332",
+        "components/PalletManager.tsx:751",
+        "components/PalletManager.tsx:867"
       ]
     },
     {
@@ -31108,8 +31108,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:649",
       "references": [
-        "components/PalletManager.tsx:218",
-        "components/PalletManager.tsx:338"
+        "components/PalletManager.tsx:216",
+        "components/PalletManager.tsx:336"
       ]
     },
     {
@@ -31119,9 +31119,9 @@
       "type": "'교체중' | '교체완료'",
       "declaration": "src/shared/types.ts:650",
       "references": [
-        "components/PalletManager.tsx:315",
-        "components/PalletManager.tsx:325",
-        "components/PalletManager.tsx:337"
+        "components/PalletManager.tsx:313",
+        "components/PalletManager.tsx:323",
+        "components/PalletManager.tsx:335"
       ]
     },
     {
@@ -31131,8 +31131,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:651",
       "references": [
-        "components/PalletManager.tsx:357",
-        "components/PalletManager.tsx:865"
+        "components/PalletManager.tsx:355",
+        "components/PalletManager.tsx:863"
       ]
     },
     {
@@ -31142,11 +31142,11 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:652",
       "references": [
-        "components/PalletManager.tsx:134",
-        "components/PalletManager.tsx:210",
-        "components/PalletManager.tsx:312",
-        "components/PalletManager.tsx:337",
-        "components/PalletManager.tsx:381"
+        "components/PalletManager.tsx:132",
+        "components/PalletManager.tsx:208",
+        "components/PalletManager.tsx:310",
+        "components/PalletManager.tsx:335",
+        "components/PalletManager.tsx:379"
       ]
     },
     {
@@ -63535,7 +63535,7 @@
     },
     {
       "model": "Row",
-      "declaration": "components/PalletManager.tsx:332",
+      "declaration": "components/PalletManager.tsx:330",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -63543,89 +63543,89 @@
           "field": "id",
           "optional": false,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:622"
+            "components/PalletManager.tsx:620"
           ]
         },
         {
           "field": "date",
           "optional": false,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
+            "components/PalletManager.tsx:348",
             "components/PalletManager.tsx:350",
-            "components/PalletManager.tsx:352",
-            "components/PalletManager.tsx:623"
+            "components/PalletManager.tsx:621"
           ]
         },
         {
           "field": "partner",
           "optional": false,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:351",
-            "components/PalletManager.tsx:624"
+            "components/PalletManager.tsx:349",
+            "components/PalletManager.tsx:622"
           ]
         },
         {
           "field": "pallet",
           "optional": false,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:625"
+            "components/PalletManager.tsx:623"
           ]
         },
         {
           "field": "type",
           "optional": false,
           "type": "'in' | 'out'",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:627",
-            "components/PalletManager.tsx:628",
-            "components/PalletManager.tsx:631"
+            "components/PalletManager.tsx:625",
+            "components/PalletManager.tsx:626",
+            "components/PalletManager.tsx:629"
           ]
         },
         {
           "field": "quantity",
           "optional": false,
           "type": "number",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:631"
+            "components/PalletManager.tsx:629"
           ]
         },
         {
           "field": "status",
           "optional": true,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:627",
-            "components/PalletManager.tsx:628"
+            "components/PalletManager.tsx:625",
+            "components/PalletManager.tsx:626"
           ]
         },
         {
           "field": "note",
           "optional": false,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:632"
+            "components/PalletManager.tsx:630"
           ]
         },
         {
           "field": "txId",
           "optional": true,
           "type": "string",
-          "declaration": "components/PalletManager.tsx:332",
+          "declaration": "components/PalletManager.tsx:330",
           "references": [
-            "components/PalletManager.tsx:347",
-            "components/PalletManager.tsx:634",
-            "components/PalletManager.tsx:635"
+            "components/PalletManager.tsx:345",
+            "components/PalletManager.tsx:632",
+            "components/PalletManager.tsx:633"
           ]
         }
       ]
@@ -73562,34 +73562,34 @@
           "type": "'pass' | 'fail' | ''",
           "declaration": "components/HaccpChecklist.tsx:3400",
           "references": [
-            "components/HaccpChecklist.tsx:3622",
-            "components/HaccpChecklist.tsx:3638",
-            "components/HaccpChecklist.tsx:3835",
-            "components/HaccpChecklist.tsx:3838",
-            "components/HaccpChecklist.tsx:3839",
-            "components/HaccpChecklist.tsx:3848",
-            "components/HaccpChecklist.tsx:3851",
-            "components/HaccpChecklist.tsx:3854",
-            "components/HaccpChecklist.tsx:3859",
-            "components/HaccpChecklist.tsx:3895",
-            "components/HaccpChecklist.tsx:3900",
-            "components/HaccpChecklist.tsx:3903",
-            "components/HaccpChecklist.tsx:3905",
-            "components/HaccpChecklist.tsx:3918",
-            "components/HaccpChecklist.tsx:4150",
-            "components/HaccpChecklist.tsx:4166",
-            "components/HaccpChecklist.tsx:4325",
-            "components/HaccpChecklist.tsx:4328",
-            "components/HaccpChecklist.tsx:4329",
-            "components/HaccpChecklist.tsx:4338",
-            "components/HaccpChecklist.tsx:4341",
-            "components/HaccpChecklist.tsx:4344",
-            "components/HaccpChecklist.tsx:4349",
-            "components/HaccpChecklist.tsx:4385",
-            "components/HaccpChecklist.tsx:4389",
-            "components/HaccpChecklist.tsx:4390",
-            "components/HaccpChecklist.tsx:4391",
-            "components/HaccpChecklist.tsx:4401"
+            "components/HaccpChecklist.tsx:3662",
+            "components/HaccpChecklist.tsx:3680",
+            "components/HaccpChecklist.tsx:3893",
+            "components/HaccpChecklist.tsx:3896",
+            "components/HaccpChecklist.tsx:3897",
+            "components/HaccpChecklist.tsx:3906",
+            "components/HaccpChecklist.tsx:3909",
+            "components/HaccpChecklist.tsx:3912",
+            "components/HaccpChecklist.tsx:3917",
+            "components/HaccpChecklist.tsx:3953",
+            "components/HaccpChecklist.tsx:3958",
+            "components/HaccpChecklist.tsx:3961",
+            "components/HaccpChecklist.tsx:3963",
+            "components/HaccpChecklist.tsx:3976",
+            "components/HaccpChecklist.tsx:4229",
+            "components/HaccpChecklist.tsx:4247",
+            "components/HaccpChecklist.tsx:4422",
+            "components/HaccpChecklist.tsx:4425",
+            "components/HaccpChecklist.tsx:4426",
+            "components/HaccpChecklist.tsx:4435",
+            "components/HaccpChecklist.tsx:4438",
+            "components/HaccpChecklist.tsx:4441",
+            "components/HaccpChecklist.tsx:4446",
+            "components/HaccpChecklist.tsx:4482",
+            "components/HaccpChecklist.tsx:4486",
+            "components/HaccpChecklist.tsx:4487",
+            "components/HaccpChecklist.tsx:4488",
+            "components/HaccpChecklist.tsx:4498"
           ]
         },
         {
@@ -73598,18 +73598,18 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3401",
           "references": [
-            "components/HaccpChecklist.tsx:3638",
-            "components/HaccpChecklist.tsx:3835",
-            "components/HaccpChecklist.tsx:3859",
-            "components/HaccpChecklist.tsx:3863",
-            "components/HaccpChecklist.tsx:3864",
-            "components/HaccpChecklist.tsx:3914",
-            "components/HaccpChecklist.tsx:4166",
-            "components/HaccpChecklist.tsx:4325",
-            "components/HaccpChecklist.tsx:4349",
-            "components/HaccpChecklist.tsx:4353",
-            "components/HaccpChecklist.tsx:4354",
-            "components/HaccpChecklist.tsx:4399"
+            "components/HaccpChecklist.tsx:3680",
+            "components/HaccpChecklist.tsx:3893",
+            "components/HaccpChecklist.tsx:3917",
+            "components/HaccpChecklist.tsx:3921",
+            "components/HaccpChecklist.tsx:3922",
+            "components/HaccpChecklist.tsx:3972",
+            "components/HaccpChecklist.tsx:4247",
+            "components/HaccpChecklist.tsx:4422",
+            "components/HaccpChecklist.tsx:4446",
+            "components/HaccpChecklist.tsx:4450",
+            "components/HaccpChecklist.tsx:4451",
+            "components/HaccpChecklist.tsx:4496"
           ]
         },
         {
@@ -73618,12 +73618,12 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3402",
           "references": [
-            "components/HaccpChecklist.tsx:3625",
-            "components/HaccpChecklist.tsx:3907",
-            "components/HaccpChecklist.tsx:3908",
-            "components/HaccpChecklist.tsx:4153",
-            "components/HaccpChecklist.tsx:4393",
-            "components/HaccpChecklist.tsx:4394"
+            "components/HaccpChecklist.tsx:3665",
+            "components/HaccpChecklist.tsx:3965",
+            "components/HaccpChecklist.tsx:3966",
+            "components/HaccpChecklist.tsx:4232",
+            "components/HaccpChecklist.tsx:4490",
+            "components/HaccpChecklist.tsx:4491"
           ]
         }
       ]
@@ -73640,17 +73640,20 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3406",
           "references": [
-            "components/HaccpChecklist.tsx:3646",
-            "components/HaccpChecklist.tsx:3652",
-            "components/HaccpChecklist.tsx:3666",
-            "components/HaccpChecklist.tsx:3731",
-            "components/HaccpChecklist.tsx:3734",
-            "components/HaccpChecklist.tsx:3739",
-            "components/HaccpChecklist.tsx:3741",
-            "components/HaccpChecklist.tsx:3759",
-            "components/HaccpChecklist.tsx:3776",
-            "components/HaccpChecklist.tsx:3779",
-            "components/HaccpChecklist.tsx:3808"
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3689",
+            "components/HaccpChecklist.tsx:3696",
+            "components/HaccpChecklist.tsx:3713",
+            "components/HaccpChecklist.tsx:3748",
+            "components/HaccpChecklist.tsx:3789",
+            "components/HaccpChecklist.tsx:3792",
+            "components/HaccpChecklist.tsx:3797",
+            "components/HaccpChecklist.tsx:3799",
+            "components/HaccpChecklist.tsx:3817",
+            "components/HaccpChecklist.tsx:3834",
+            "components/HaccpChecklist.tsx:3837",
+            "components/HaccpChecklist.tsx:3841",
+            "components/HaccpChecklist.tsx:3866"
           ]
         },
         {
@@ -73659,10 +73662,13 @@
           "type": "PeriodCycle",
           "declaration": "components/HaccpChecklist.tsx:3407",
           "references": [
-            "components/HaccpChecklist.tsx:3584",
-            "components/HaccpChecklist.tsx:3588",
-            "components/HaccpChecklist.tsx:3595",
-            "components/HaccpChecklist.tsx:3687"
+            "components/HaccpChecklist.tsx:3624",
+            "components/HaccpChecklist.tsx:3628",
+            "components/HaccpChecklist.tsx:3632",
+            "components/HaccpChecklist.tsx:3637",
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3742",
+            "components/HaccpChecklist.tsx:3748"
           ]
         },
         {
@@ -73671,16 +73677,19 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3408",
           "references": [
-            "components/HaccpChecklist.tsx:3562",
-            "components/HaccpChecklist.tsx:3584",
             "components/HaccpChecklist.tsx:3588",
-            "components/HaccpChecklist.tsx:3595",
-            "components/HaccpChecklist.tsx:3670",
-            "components/HaccpChecklist.tsx:3687",
-            "components/HaccpChecklist.tsx:3737",
-            "components/HaccpChecklist.tsx:3761",
-            "components/HaccpChecklist.tsx:3764",
-            "components/HaccpChecklist.tsx:3810"
+            "components/HaccpChecklist.tsx:3624",
+            "components/HaccpChecklist.tsx:3628",
+            "components/HaccpChecklist.tsx:3632",
+            "components/HaccpChecklist.tsx:3637",
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3718",
+            "components/HaccpChecklist.tsx:3742",
+            "components/HaccpChecklist.tsx:3748",
+            "components/HaccpChecklist.tsx:3795",
+            "components/HaccpChecklist.tsx:3819",
+            "components/HaccpChecklist.tsx:3822",
+            "components/HaccpChecklist.tsx:3868"
           ]
         },
         {
@@ -73689,8 +73698,8 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3409",
           "references": [
-            "components/HaccpChecklist.tsx:3821",
-            "components/HaccpChecklist.tsx:3822"
+            "components/HaccpChecklist.tsx:3879",
+            "components/HaccpChecklist.tsx:3880"
           ]
         },
         {
@@ -73699,11 +73708,11 @@
           "type": "PeriodRow[]",
           "declaration": "components/HaccpChecklist.tsx:3410",
           "references": [
-            "components/HaccpChecklist.tsx:3620",
-            "components/HaccpChecklist.tsx:3632",
-            "components/HaccpChecklist.tsx:3637",
-            "components/HaccpChecklist.tsx:3834",
-            "components/HaccpChecklist.tsx:3893"
+            "components/HaccpChecklist.tsx:3660",
+            "components/HaccpChecklist.tsx:3672",
+            "components/HaccpChecklist.tsx:3679",
+            "components/HaccpChecklist.tsx:3892",
+            "components/HaccpChecklist.tsx:3951"
           ]
         },
         {
@@ -73712,7 +73721,7 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3411",
           "references": [
-            "components/HaccpChecklist.tsx:3931"
+            "components/HaccpChecklist.tsx:3989"
           ]
         },
         {
@@ -73721,8 +73730,8 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3412",
           "references": [
-            "components/HaccpChecklist.tsx:3807",
-            "components/HaccpChecklist.tsx:3945"
+            "components/HaccpChecklist.tsx:3865",
+            "components/HaccpChecklist.tsx:4003"
           ]
         },
         {
@@ -73752,11 +73761,11 @@
           "type": "string",
           "declaration": "components/HaccpChecklist.tsx:3416",
           "references": [
-            "components/HaccpChecklist.tsx:3738",
-            "components/HaccpChecklist.tsx:3770",
-            "components/HaccpChecklist.tsx:3772",
-            "components/HaccpChecklist.tsx:3951",
-            "components/HaccpChecklist.tsx:3952"
+            "components/HaccpChecklist.tsx:3796",
+            "components/HaccpChecklist.tsx:3828",
+            "components/HaccpChecklist.tsx:3830",
+            "components/HaccpChecklist.tsx:4009",
+            "components/HaccpChecklist.tsx:4010"
           ]
         },
         {
@@ -73770,7 +73779,7 @@
     },
     {
       "model": "ClosingRecord",
-      "declaration": "components/HaccpChecklist.tsx:3976",
+      "declaration": "components/HaccpChecklist.tsx:4034",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -73778,121 +73787,126 @@
           "field": "id",
           "optional": true,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3977",
+          "declaration": "components/HaccpChecklist.tsx:4035",
           "references": [
-            "components/HaccpChecklist.tsx:4174",
-            "components/HaccpChecklist.tsx:4180",
-            "components/HaccpChecklist.tsx:4194",
-            "components/HaccpChecklist.tsx:4238",
             "components/HaccpChecklist.tsx:4245",
-            "components/HaccpChecklist.tsx:4246",
-            "components/HaccpChecklist.tsx:4260",
-            "components/HaccpChecklist.tsx:4273",
-            "components/HaccpChecklist.tsx:4275",
-            "components/HaccpChecklist.tsx:4299"
+            "components/HaccpChecklist.tsx:4256",
+            "components/HaccpChecklist.tsx:4263",
+            "components/HaccpChecklist.tsx:4280",
+            "components/HaccpChecklist.tsx:4316",
+            "components/HaccpChecklist.tsx:4335",
+            "components/HaccpChecklist.tsx:4342",
+            "components/HaccpChecklist.tsx:4343",
+            "components/HaccpChecklist.tsx:4357",
+            "components/HaccpChecklist.tsx:4370",
+            "components/HaccpChecklist.tsx:4372",
+            "components/HaccpChecklist.tsx:4376",
+            "components/HaccpChecklist.tsx:4396"
           ]
         },
         {
           "field": "checkDate",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3978",
+          "declaration": "components/HaccpChecklist.tsx:4036",
           "references": [
-            "components/HaccpChecklist.tsx:4110",
-            "components/HaccpChecklist.tsx:4125",
-            "components/HaccpChecklist.tsx:4131",
-            "components/HaccpChecklist.tsx:4198",
-            "components/HaccpChecklist.tsx:4215",
-            "components/HaccpChecklist.tsx:4216",
-            "components/HaccpChecklist.tsx:4238",
-            "components/HaccpChecklist.tsx:4240",
-            "components/HaccpChecklist.tsx:4243",
-            "components/HaccpChecklist.tsx:4262",
-            "components/HaccpChecklist.tsx:4264",
-            "components/HaccpChecklist.tsx:4300"
+            "components/HaccpChecklist.tsx:4176",
+            "components/HaccpChecklist.tsx:4202",
+            "components/HaccpChecklist.tsx:4206",
+            "components/HaccpChecklist.tsx:4245",
+            "components/HaccpChecklist.tsx:4285",
+            "components/HaccpChecklist.tsx:4309",
+            "components/HaccpChecklist.tsx:4310",
+            "components/HaccpChecklist.tsx:4316",
+            "components/HaccpChecklist.tsx:4335",
+            "components/HaccpChecklist.tsx:4337",
+            "components/HaccpChecklist.tsx:4340",
+            "components/HaccpChecklist.tsx:4359",
+            "components/HaccpChecklist.tsx:4361",
+            "components/HaccpChecklist.tsx:4397"
           ]
         },
         {
           "field": "checkZone",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3979",
+          "declaration": "components/HaccpChecklist.tsx:4037",
           "references": [
-            "components/HaccpChecklist.tsx:4311",
-            "components/HaccpChecklist.tsx:4312"
+            "components/HaccpChecklist.tsx:4408",
+            "components/HaccpChecklist.tsx:4409"
           ]
         },
         {
           "field": "rows",
           "optional": false,
           "type": "PeriodRow[]",
-          "declaration": "components/HaccpChecklist.tsx:3980",
+          "declaration": "components/HaccpChecklist.tsx:4038",
           "references": [
-            "components/HaccpChecklist.tsx:4148",
-            "components/HaccpChecklist.tsx:4160",
-            "components/HaccpChecklist.tsx:4165",
-            "components/HaccpChecklist.tsx:4324",
-            "components/HaccpChecklist.tsx:4383"
+            "components/HaccpChecklist.tsx:4227",
+            "components/HaccpChecklist.tsx:4239",
+            "components/HaccpChecklist.tsx:4246",
+            "components/HaccpChecklist.tsx:4421",
+            "components/HaccpChecklist.tsx:4480"
           ]
         },
         {
           "field": "specialNotes",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3981",
+          "declaration": "components/HaccpChecklist.tsx:4039",
           "references": [
-            "components/HaccpChecklist.tsx:4412"
+            "components/HaccpChecklist.tsx:4509"
           ]
         },
         {
           "field": "createdBy",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3982",
+          "declaration": "components/HaccpChecklist.tsx:4040",
           "references": [
-            "components/HaccpChecklist.tsx:4298",
-            "components/HaccpChecklist.tsx:4424"
+            "components/HaccpChecklist.tsx:4395",
+            "components/HaccpChecklist.tsx:4521"
           ]
         },
         {
           "field": "createdAt",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3983",
+          "declaration": "components/HaccpChecklist.tsx:4041",
           "references": []
         },
         {
           "field": "updatedBy",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3984",
+          "declaration": "components/HaccpChecklist.tsx:4042",
           "references": []
         },
         {
           "field": "updatedAt",
           "optional": false,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3985",
+          "declaration": "components/HaccpChecklist.tsx:4043",
           "references": []
         },
         {
           "field": "confirmedBy",
           "optional": true,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3986",
+          "declaration": "components/HaccpChecklist.tsx:4044",
           "references": [
-            "components/HaccpChecklist.tsx:4244",
-            "components/HaccpChecklist.tsx:4269",
-            "components/HaccpChecklist.tsx:4271",
-            "components/HaccpChecklist.tsx:4430",
-            "components/HaccpChecklist.tsx:4431"
+            "components/HaccpChecklist.tsx:4341",
+            "components/HaccpChecklist.tsx:4366",
+            "components/HaccpChecklist.tsx:4368",
+            "components/HaccpChecklist.tsx:4527",
+            "components/HaccpChecklist.tsx:4528"
           ]
         },
         {
           "field": "confirmedAt",
           "optional": true,
           "type": "string",
-          "declaration": "components/HaccpChecklist.tsx:3987",
+          "declaration": "components/HaccpChecklist.tsx:4045",
           "references": []
         }
       ]
@@ -96031,9 +96045,9 @@
             "components/OrdersList.tsx:3582",
             "components/OrdersList.tsx:4463",
             "components/OrdersList.tsx:4467",
-            "components/PalletManager.tsx:124",
-            "components/PalletManager.tsx:235",
-            "components/PalletManager.tsx:344",
+            "components/PalletManager.tsx:122",
+            "components/PalletManager.tsx:233",
+            "components/PalletManager.tsx:342",
             "components/PasteOrderModal.tsx:713",
             "components/PasteOrderModal.tsx:718"
           ]
@@ -96053,10 +96067,10 @@
             "components/OrdersList.tsx:3006",
             "components/OrdersList.tsx:3009",
             "components/OrdersList.tsx:4454",
-            "components/PalletManager.tsx:125",
-            "components/PalletManager.tsx:232",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:344",
+            "components/PalletManager.tsx:123",
+            "components/PalletManager.tsx:230",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:342",
             "components/PasteOrderModal.tsx:705",
             "src/shared/newOrderDraft.ts:60"
           ]
@@ -96071,9 +96085,9 @@
           "inherited": false,
           "references": [
             "components/OrdersList.tsx:3009",
-            "components/PalletManager.tsx:123",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:342"
+            "components/PalletManager.tsx:121",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:340"
           ]
         }
       ]
@@ -96689,14 +96703,14 @@
             "components/OrdersList.tsx:4227",
             "components/OrdersList.tsx:4511",
             "components/OrdersList.tsx:482",
-            "components/PalletManager.tsx:113",
-            "components/PalletManager.tsx:137",
-            "components/PalletManager.tsx:331",
-            "components/PalletManager.tsx:798",
-            "components/PalletManager.tsx:834",
-            "components/PalletManager.tsx:841",
-            "components/PalletManager.tsx:848",
-            "components/PalletManager.tsx:982",
+            "components/PalletManager.tsx:111",
+            "components/PalletManager.tsx:135",
+            "components/PalletManager.tsx:329",
+            "components/PalletManager.tsx:796",
+            "components/PalletManager.tsx:832",
+            "components/PalletManager.tsx:839",
+            "components/PalletManager.tsx:846",
+            "components/PalletManager.tsx:980",
             "components/PartnerLedger.tsx:162",
             "components/PartnerLedger.tsx:163",
             "components/PartnerLedger.tsx:641",
@@ -96832,10 +96846,10 @@
             "components/LoanManager.tsx:201",
             "components/OemManager.tsx:226",
             "components/OrdersList.tsx:2178",
-            "components/PalletManager.tsx:113",
-            "components/PalletManager.tsx:975",
-            "components/PalletManager.tsx:981",
-            "components/PalletManager.tsx:982",
+            "components/PalletManager.tsx:111",
+            "components/PalletManager.tsx:973",
+            "components/PalletManager.tsx:979",
+            "components/PalletManager.tsx:980",
             "components/PartnerLedger.tsx:163",
             "components/PartnerLedger.tsx:641",
             "components/PartnerManager.tsx:214",
@@ -97638,10 +97652,10 @@
             "components/OrdersList.tsx:891",
             "components/OrdersList.tsx:955",
             "components/OrdersList.tsx:984",
-            "components/PalletManager.tsx:230",
-            "components/PalletManager.tsx:234",
-            "components/PalletManager.tsx:343",
-            "components/PalletManager.tsx:344",
+            "components/PalletManager.tsx:228",
+            "components/PalletManager.tsx:232",
+            "components/PalletManager.tsx:341",
+            "components/PalletManager.tsx:342",
             "components/ProductionManager.tsx:271",
             "components/ProductionManager.tsx:539",
             "components/ProductionManager.tsx:76",
@@ -97878,8 +97892,8 @@
             "components/OrdersList.tsx:4321",
             "components/OrdersList.tsx:4511",
             "components/OrdersList.tsx:482",
-            "components/PalletManager.tsx:120",
-            "components/PalletManager.tsx:226",
+            "components/PalletManager.tsx:118",
+            "components/PalletManager.tsx:224",
             "components/ProductionManager.tsx:541",
             "components/ReceivingReturnsManager.tsx:158",
             "components/ReturnManager.tsx:119",
@@ -97959,8 +97973,8 @@
             "components/OrdersList.tsx:4227",
             "components/OrdersList.tsx:4511",
             "components/OrdersList.tsx:485",
-            "components/PalletManager.tsx:121",
-            "components/PalletManager.tsx:343",
+            "components/PalletManager.tsx:119",
+            "components/PalletManager.tsx:341",
             "components/ProductionManager.tsx:252",
             "components/ProductionManager.tsx:281",
             "components/ProductionManager.tsx:541",
@@ -98313,11 +98327,11 @@
             "components/OrdersList.tsx:549",
             "components/OrdersList.tsx:587",
             "components/OrdersList.tsx:592",
-            "components/PalletManager.tsx:118",
-            "components/PalletManager.tsx:226",
-            "components/PalletManager.tsx:297",
-            "components/PalletManager.tsx:318",
-            "components/PalletManager.tsx:341",
+            "components/PalletManager.tsx:116",
+            "components/PalletManager.tsx:224",
+            "components/PalletManager.tsx:295",
+            "components/PalletManager.tsx:316",
+            "components/PalletManager.tsx:339",
             "components/ProductionManager.tsx:252",
             "components/ReturnManager.tsx:124",
             "src/features/admin/AdminApp.tsx:1607",
@@ -98489,10 +98503,10 @@
             "components/OrdersList.tsx:4117",
             "components/OrdersList.tsx:4158",
             "components/OrdersList.tsx:4249",
-            "components/PalletManager.tsx:233",
-            "components/PalletManager.tsx:298",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:343",
+            "components/PalletManager.tsx:231",
+            "components/PalletManager.tsx:296",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:341",
             "components/ProductionManager.tsx:538",
             "components/ProductionManager.tsx:542",
             "src/features/admin/dataIntegrityAudit.ts:222",
@@ -98586,15 +98600,15 @@
             "components/OrdersList.tsx:4454",
             "components/OrdersList.tsx:4463",
             "components/OrdersList.tsx:4467",
-            "components/PalletManager.tsx:118",
-            "components/PalletManager.tsx:123",
+            "components/PalletManager.tsx:116",
+            "components/PalletManager.tsx:121",
+            "components/PalletManager.tsx:224",
             "components/PalletManager.tsx:226",
-            "components/PalletManager.tsx:228",
-            "components/PalletManager.tsx:297",
-            "components/PalletManager.tsx:318",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:341",
-            "components/PalletManager.tsx:342"
+            "components/PalletManager.tsx:295",
+            "components/PalletManager.tsx:316",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:339",
+            "components/PalletManager.tsx:340"
           ]
         },
         {
@@ -102188,17 +102202,17 @@
             "components/OrdersList.tsx:4467",
             "components/OrdersList.tsx:4468",
             "components/OrdersList.tsx:4471",
-            "components/PalletManager.tsx:141",
-            "components/PalletManager.tsx:212",
-            "components/PalletManager.tsx:280",
-            "components/PalletManager.tsx:335",
-            "components/PalletManager.tsx:382",
-            "components/PalletManager.tsx:396",
-            "components/PalletManager.tsx:478",
-            "components/PalletManager.tsx:483",
-            "components/PalletManager.tsx:864",
-            "components/PalletManager.tsx:97",
-            "components/PalletManager.tsx:991",
+            "components/PalletManager.tsx:139",
+            "components/PalletManager.tsx:210",
+            "components/PalletManager.tsx:278",
+            "components/PalletManager.tsx:333",
+            "components/PalletManager.tsx:380",
+            "components/PalletManager.tsx:394",
+            "components/PalletManager.tsx:476",
+            "components/PalletManager.tsx:481",
+            "components/PalletManager.tsx:862",
+            "components/PalletManager.tsx:95",
+            "components/PalletManager.tsx:989",
             "components/PasteOrderModal.tsx:713",
             "components/PasteOrderModal.tsx:718",
             "components/PasteOrderModal.tsx:719",
@@ -102222,11 +102236,11 @@
             "components/OrdersList.tsx:4472",
             "components/OrdersList.tsx:4477",
             "components/OrdersList.tsx:4480",
-            "components/PalletManager.tsx:101",
-            "components/PalletManager.tsx:104",
-            "components/PalletManager.tsx:195",
-            "components/PalletManager.tsx:499",
-            "components/PalletManager.tsx:991",
+            "components/PalletManager.tsx:102",
+            "components/PalletManager.tsx:193",
+            "components/PalletManager.tsx:497",
+            "components/PalletManager.tsx:989",
+            "components/PalletManager.tsx:99",
             "components/PasteOrderModal.tsx:711",
             "components/PasteOrderModal.tsx:725",
             "components/PasteOrderModal.tsx:729",
@@ -102242,15 +102256,15 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:281",
-            "components/PalletManager.tsx:383",
-            "components/PalletManager.tsx:462",
-            "components/PalletManager.tsx:480",
-            "components/PalletManager.tsx:532",
-            "components/PalletManager.tsx:557",
-            "components/PalletManager.tsx:560",
-            "components/PalletManager.tsx:561",
-            "components/PalletManager.tsx:562"
+            "components/PalletManager.tsx:279",
+            "components/PalletManager.tsx:381",
+            "components/PalletManager.tsx:460",
+            "components/PalletManager.tsx:478",
+            "components/PalletManager.tsx:530",
+            "components/PalletManager.tsx:555",
+            "components/PalletManager.tsx:558",
+            "components/PalletManager.tsx:559",
+            "components/PalletManager.tsx:560"
           ]
         },
         {
@@ -102272,11 +102286,11 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:462",
-            "components/PalletManager.tsx:471",
-            "components/PalletManager.tsx:480",
-            "components/PalletManager.tsx:549",
-            "components/PalletManager.tsx:562"
+            "components/PalletManager.tsx:460",
+            "components/PalletManager.tsx:469",
+            "components/PalletManager.tsx:478",
+            "components/PalletManager.tsx:547",
+            "components/PalletManager.tsx:560"
           ]
         },
         {
@@ -102294,7 +102308,7 @@
             "components/OrdersList.tsx:3577",
             "components/OrdersList.tsx:4442",
             "components/OrdersList.tsx:4462",
-            "components/PalletManager.tsx:103",
+            "components/PalletManager.tsx:101",
             "components/PasteOrderModal.tsx:700",
             "components/PasteOrderModal.tsx:710"
           ]
@@ -102315,18 +102329,18 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:214",
-            "components/PalletManager.tsx:220",
-            "components/PalletManager.tsx:334",
-            "components/PalletManager.tsx:338",
-            "components/PalletManager.tsx:360",
-            "components/PalletManager.tsx:374",
-            "components/PalletManager.tsx:379",
+            "components/PalletManager.tsx:212",
+            "components/PalletManager.tsx:218",
+            "components/PalletManager.tsx:332",
+            "components/PalletManager.tsx:336",
+            "components/PalletManager.tsx:358",
+            "components/PalletManager.tsx:372",
+            "components/PalletManager.tsx:377",
+            "components/PalletManager.tsx:384",
             "components/PalletManager.tsx:386",
-            "components/PalletManager.tsx:388",
             "components/PalletManager.tsx:74",
             "components/PalletManager.tsx:75",
-            "components/PalletManager.tsx:867"
+            "components/PalletManager.tsx:865"
           ]
         },
         {
@@ -102338,12 +102352,12 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:135",
-            "components/PalletManager.tsx:210",
-            "components/PalletManager.tsx:334",
-            "components/PalletManager.tsx:363",
-            "components/PalletManager.tsx:752",
-            "components/PalletManager.tsx:858"
+            "components/PalletManager.tsx:133",
+            "components/PalletManager.tsx:208",
+            "components/PalletManager.tsx:332",
+            "components/PalletManager.tsx:361",
+            "components/PalletManager.tsx:750",
+            "components/PalletManager.tsx:856"
           ]
         },
         {
@@ -102355,12 +102369,12 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:141",
-            "components/PalletManager.tsx:212",
-            "components/PalletManager.tsx:335",
-            "components/PalletManager.tsx:363",
-            "components/PalletManager.tsx:382",
-            "components/PalletManager.tsx:864"
+            "components/PalletManager.tsx:139",
+            "components/PalletManager.tsx:210",
+            "components/PalletManager.tsx:333",
+            "components/PalletManager.tsx:361",
+            "components/PalletManager.tsx:380",
+            "components/PalletManager.tsx:862"
           ]
         },
         {
@@ -102372,15 +102386,15 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:146",
-            "components/PalletManager.tsx:215",
-            "components/PalletManager.tsx:218",
-            "components/PalletManager.tsx:313",
-            "components/PalletManager.tsx:314",
-            "components/PalletManager.tsx:336",
-            "components/PalletManager.tsx:337",
-            "components/PalletManager.tsx:376",
-            "components/PalletManager.tsx:383"
+            "components/PalletManager.tsx:144",
+            "components/PalletManager.tsx:213",
+            "components/PalletManager.tsx:216",
+            "components/PalletManager.tsx:311",
+            "components/PalletManager.tsx:312",
+            "components/PalletManager.tsx:334",
+            "components/PalletManager.tsx:335",
+            "components/PalletManager.tsx:374",
+            "components/PalletManager.tsx:381"
           ]
         },
         {
@@ -102392,19 +102406,19 @@
           ],
           "inherited": false,
           "references": [
+            "components/PalletManager.tsx:145",
             "components/PalletManager.tsx:147",
-            "components/PalletManager.tsx:149",
-            "components/PalletManager.tsx:216",
+            "components/PalletManager.tsx:214",
+            "components/PalletManager.tsx:311",
+            "components/PalletManager.tsx:312",
             "components/PalletManager.tsx:313",
-            "components/PalletManager.tsx:314",
-            "components/PalletManager.tsx:315",
-            "components/PalletManager.tsx:336",
-            "components/PalletManager.tsx:357",
-            "components/PalletManager.tsx:377",
-            "components/PalletManager.tsx:383",
-            "components/PalletManager.tsx:755",
-            "components/PalletManager.tsx:865",
-            "components/PalletManager.tsx:869"
+            "components/PalletManager.tsx:334",
+            "components/PalletManager.tsx:355",
+            "components/PalletManager.tsx:375",
+            "components/PalletManager.tsx:381",
+            "components/PalletManager.tsx:753",
+            "components/PalletManager.tsx:863",
+            "components/PalletManager.tsx:867"
           ]
         },
         {
@@ -102416,12 +102430,12 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:217",
-            "components/PalletManager.tsx:295",
-            "components/PalletManager.tsx:311",
-            "components/PalletManager.tsx:334",
-            "components/PalletManager.tsx:753",
-            "components/PalletManager.tsx:869"
+            "components/PalletManager.tsx:215",
+            "components/PalletManager.tsx:293",
+            "components/PalletManager.tsx:309",
+            "components/PalletManager.tsx:332",
+            "components/PalletManager.tsx:751",
+            "components/PalletManager.tsx:867"
           ]
         },
         {
@@ -102433,8 +102447,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:218",
-            "components/PalletManager.tsx:338"
+            "components/PalletManager.tsx:216",
+            "components/PalletManager.tsx:336"
           ]
         },
         {
@@ -102446,9 +102460,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:315",
-            "components/PalletManager.tsx:325",
-            "components/PalletManager.tsx:337"
+            "components/PalletManager.tsx:313",
+            "components/PalletManager.tsx:323",
+            "components/PalletManager.tsx:335"
           ]
         },
         {
@@ -102460,8 +102474,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:357",
-            "components/PalletManager.tsx:865"
+            "components/PalletManager.tsx:355",
+            "components/PalletManager.tsx:863"
           ]
         },
         {
@@ -102473,11 +102487,11 @@
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:134",
-            "components/PalletManager.tsx:210",
-            "components/PalletManager.tsx:312",
-            "components/PalletManager.tsx:337",
-            "components/PalletManager.tsx:381"
+            "components/PalletManager.tsx:132",
+            "components/PalletManager.tsx:208",
+            "components/PalletManager.tsx:310",
+            "components/PalletManager.tsx:335",
+            "components/PalletManager.tsx:379"
           ]
         }
       ]
@@ -143667,7 +143681,7 @@
     },
     {
       "model": "Row",
-      "declaration": "components/PalletManager.tsx:332",
+      "declaration": "components/PalletManager.tsx:330",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -143675,11 +143689,11 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:622"
+            "components/PalletManager.tsx:620"
           ]
         },
         {
@@ -143687,13 +143701,13 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
+            "components/PalletManager.tsx:348",
             "components/PalletManager.tsx:350",
-            "components/PalletManager.tsx:352",
-            "components/PalletManager.tsx:623"
+            "components/PalletManager.tsx:621"
           ]
         },
         {
@@ -143701,12 +143715,12 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:351",
-            "components/PalletManager.tsx:624"
+            "components/PalletManager.tsx:349",
+            "components/PalletManager.tsx:622"
           ]
         },
         {
@@ -143714,11 +143728,11 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:625"
+            "components/PalletManager.tsx:623"
           ]
         },
         {
@@ -143726,13 +143740,13 @@
           "optional": false,
           "type": "\"in\" | \"out\"",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:627",
-            "components/PalletManager.tsx:628",
-            "components/PalletManager.tsx:631"
+            "components/PalletManager.tsx:625",
+            "components/PalletManager.tsx:626",
+            "components/PalletManager.tsx:629"
           ]
         },
         {
@@ -143740,11 +143754,11 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:631"
+            "components/PalletManager.tsx:629"
           ]
         },
         {
@@ -143752,12 +143766,12 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:627",
-            "components/PalletManager.tsx:628"
+            "components/PalletManager.tsx:625",
+            "components/PalletManager.tsx:626"
           ]
         },
         {
@@ -143765,11 +143779,11 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:632"
+            "components/PalletManager.tsx:630"
           ]
         },
         {
@@ -143777,13 +143791,13 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/PalletManager.tsx:332"
+            "components/PalletManager.tsx:330"
           ],
           "inherited": false,
           "references": [
-            "components/PalletManager.tsx:347",
-            "components/PalletManager.tsx:634",
-            "components/PalletManager.tsx:635"
+            "components/PalletManager.tsx:345",
+            "components/PalletManager.tsx:632",
+            "components/PalletManager.tsx:633"
           ]
         }
       ]
@@ -148400,21 +148414,21 @@
             "components/HaccpChecklist.tsx:3456",
             "components/HaccpChecklist.tsx:3471",
             "components/HaccpChecklist.tsx:3488",
-            "components/HaccpChecklist.tsx:3570",
-            "components/HaccpChecklist.tsx:3579",
-            "components/HaccpChecklist.tsx:3611",
-            "components/HaccpChecklist.tsx:3613",
-            "components/HaccpChecklist.tsx:3640",
-            "components/HaccpChecklist.tsx:3724",
-            "components/HaccpChecklist.tsx:4008",
-            "components/HaccpChecklist.tsx:4016",
-            "components/HaccpChecklist.tsx:4031",
-            "components/HaccpChecklist.tsx:4046",
-            "components/HaccpChecklist.tsx:4118",
-            "components/HaccpChecklist.tsx:4139",
-            "components/HaccpChecklist.tsx:4141",
-            "components/HaccpChecklist.tsx:4168",
-            "components/HaccpChecklist.tsx:4232",
+            "components/HaccpChecklist.tsx:3606",
+            "components/HaccpChecklist.tsx:3618",
+            "components/HaccpChecklist.tsx:3651",
+            "components/HaccpChecklist.tsx:3653",
+            "components/HaccpChecklist.tsx:3682",
+            "components/HaccpChecklist.tsx:3782",
+            "components/HaccpChecklist.tsx:4066",
+            "components/HaccpChecklist.tsx:4074",
+            "components/HaccpChecklist.tsx:4089",
+            "components/HaccpChecklist.tsx:4104",
+            "components/HaccpChecklist.tsx:4194",
+            "components/HaccpChecklist.tsx:4218",
+            "components/HaccpChecklist.tsx:4220",
+            "components/HaccpChecklist.tsx:4249",
+            "components/HaccpChecklist.tsx:4329",
             "components/HaccpChecklist.tsx:517",
             "components/HaccpChecklist.tsx:607",
             "components/HaccpChecklist.tsx:612",
@@ -148737,22 +148751,22 @@
             "components/OrdersList.tsx:944",
             "components/OrdersList.tsx:947",
             "components/OrdersList.tsx:976",
-            "components/PalletManager.tsx:118",
-            "components/PalletManager.tsx:199",
-            "components/PalletManager.tsx:226",
-            "components/PalletManager.tsx:250",
-            "components/PalletManager.tsx:297",
-            "components/PalletManager.tsx:318",
-            "components/PalletManager.tsx:341",
-            "components/PalletManager.tsx:578",
-            "components/PalletManager.tsx:619",
-            "components/PalletManager.tsx:712",
-            "components/PalletManager.tsx:734",
-            "components/PalletManager.tsx:754",
-            "components/PalletManager.tsx:823",
-            "components/PalletManager.tsx:859",
-            "components/PalletManager.tsx:862",
-            "components/PalletManager.tsx:945",
+            "components/PalletManager.tsx:116",
+            "components/PalletManager.tsx:197",
+            "components/PalletManager.tsx:224",
+            "components/PalletManager.tsx:248",
+            "components/PalletManager.tsx:295",
+            "components/PalletManager.tsx:316",
+            "components/PalletManager.tsx:339",
+            "components/PalletManager.tsx:576",
+            "components/PalletManager.tsx:617",
+            "components/PalletManager.tsx:710",
+            "components/PalletManager.tsx:732",
+            "components/PalletManager.tsx:752",
+            "components/PalletManager.tsx:821",
+            "components/PalletManager.tsx:857",
+            "components/PalletManager.tsx:860",
+            "components/PalletManager.tsx:943",
             "components/PartnerLedger.tsx:167",
             "components/PartnerLedger.tsx:189",
             "components/PartnerLedger.tsx:268",
@@ -161644,34 +161658,34 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3622",
-            "components/HaccpChecklist.tsx:3638",
-            "components/HaccpChecklist.tsx:3835",
-            "components/HaccpChecklist.tsx:3838",
-            "components/HaccpChecklist.tsx:3839",
-            "components/HaccpChecklist.tsx:3848",
-            "components/HaccpChecklist.tsx:3851",
-            "components/HaccpChecklist.tsx:3854",
-            "components/HaccpChecklist.tsx:3859",
-            "components/HaccpChecklist.tsx:3895",
-            "components/HaccpChecklist.tsx:3900",
-            "components/HaccpChecklist.tsx:3903",
-            "components/HaccpChecklist.tsx:3905",
-            "components/HaccpChecklist.tsx:3918",
-            "components/HaccpChecklist.tsx:4150",
-            "components/HaccpChecklist.tsx:4166",
-            "components/HaccpChecklist.tsx:4325",
-            "components/HaccpChecklist.tsx:4328",
-            "components/HaccpChecklist.tsx:4329",
-            "components/HaccpChecklist.tsx:4338",
-            "components/HaccpChecklist.tsx:4341",
-            "components/HaccpChecklist.tsx:4344",
-            "components/HaccpChecklist.tsx:4349",
-            "components/HaccpChecklist.tsx:4385",
-            "components/HaccpChecklist.tsx:4389",
-            "components/HaccpChecklist.tsx:4390",
-            "components/HaccpChecklist.tsx:4391",
-            "components/HaccpChecklist.tsx:4401"
+            "components/HaccpChecklist.tsx:3662",
+            "components/HaccpChecklist.tsx:3680",
+            "components/HaccpChecklist.tsx:3893",
+            "components/HaccpChecklist.tsx:3896",
+            "components/HaccpChecklist.tsx:3897",
+            "components/HaccpChecklist.tsx:3906",
+            "components/HaccpChecklist.tsx:3909",
+            "components/HaccpChecklist.tsx:3912",
+            "components/HaccpChecklist.tsx:3917",
+            "components/HaccpChecklist.tsx:3953",
+            "components/HaccpChecklist.tsx:3958",
+            "components/HaccpChecklist.tsx:3961",
+            "components/HaccpChecklist.tsx:3963",
+            "components/HaccpChecklist.tsx:3976",
+            "components/HaccpChecklist.tsx:4229",
+            "components/HaccpChecklist.tsx:4247",
+            "components/HaccpChecklist.tsx:4422",
+            "components/HaccpChecklist.tsx:4425",
+            "components/HaccpChecklist.tsx:4426",
+            "components/HaccpChecklist.tsx:4435",
+            "components/HaccpChecklist.tsx:4438",
+            "components/HaccpChecklist.tsx:4441",
+            "components/HaccpChecklist.tsx:4446",
+            "components/HaccpChecklist.tsx:4482",
+            "components/HaccpChecklist.tsx:4486",
+            "components/HaccpChecklist.tsx:4487",
+            "components/HaccpChecklist.tsx:4488",
+            "components/HaccpChecklist.tsx:4498"
           ]
         },
         {
@@ -161683,18 +161697,18 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3638",
-            "components/HaccpChecklist.tsx:3835",
-            "components/HaccpChecklist.tsx:3859",
-            "components/HaccpChecklist.tsx:3863",
-            "components/HaccpChecklist.tsx:3864",
-            "components/HaccpChecklist.tsx:3914",
-            "components/HaccpChecklist.tsx:4166",
-            "components/HaccpChecklist.tsx:4325",
-            "components/HaccpChecklist.tsx:4349",
-            "components/HaccpChecklist.tsx:4353",
-            "components/HaccpChecklist.tsx:4354",
-            "components/HaccpChecklist.tsx:4399"
+            "components/HaccpChecklist.tsx:3680",
+            "components/HaccpChecklist.tsx:3893",
+            "components/HaccpChecklist.tsx:3917",
+            "components/HaccpChecklist.tsx:3921",
+            "components/HaccpChecklist.tsx:3922",
+            "components/HaccpChecklist.tsx:3972",
+            "components/HaccpChecklist.tsx:4247",
+            "components/HaccpChecklist.tsx:4422",
+            "components/HaccpChecklist.tsx:4446",
+            "components/HaccpChecklist.tsx:4450",
+            "components/HaccpChecklist.tsx:4451",
+            "components/HaccpChecklist.tsx:4496"
           ]
         },
         {
@@ -161706,12 +161720,12 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3625",
-            "components/HaccpChecklist.tsx:3907",
-            "components/HaccpChecklist.tsx:3908",
-            "components/HaccpChecklist.tsx:4153",
-            "components/HaccpChecklist.tsx:4393",
-            "components/HaccpChecklist.tsx:4394"
+            "components/HaccpChecklist.tsx:3665",
+            "components/HaccpChecklist.tsx:3965",
+            "components/HaccpChecklist.tsx:3966",
+            "components/HaccpChecklist.tsx:4232",
+            "components/HaccpChecklist.tsx:4490",
+            "components/HaccpChecklist.tsx:4491"
           ]
         }
       ]
@@ -161730,17 +161744,20 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3646",
-            "components/HaccpChecklist.tsx:3652",
-            "components/HaccpChecklist.tsx:3666",
-            "components/HaccpChecklist.tsx:3731",
-            "components/HaccpChecklist.tsx:3734",
-            "components/HaccpChecklist.tsx:3739",
-            "components/HaccpChecklist.tsx:3741",
-            "components/HaccpChecklist.tsx:3759",
-            "components/HaccpChecklist.tsx:3776",
-            "components/HaccpChecklist.tsx:3779",
-            "components/HaccpChecklist.tsx:3808"
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3689",
+            "components/HaccpChecklist.tsx:3696",
+            "components/HaccpChecklist.tsx:3713",
+            "components/HaccpChecklist.tsx:3748",
+            "components/HaccpChecklist.tsx:3789",
+            "components/HaccpChecklist.tsx:3792",
+            "components/HaccpChecklist.tsx:3797",
+            "components/HaccpChecklist.tsx:3799",
+            "components/HaccpChecklist.tsx:3817",
+            "components/HaccpChecklist.tsx:3834",
+            "components/HaccpChecklist.tsx:3837",
+            "components/HaccpChecklist.tsx:3841",
+            "components/HaccpChecklist.tsx:3866"
           ]
         },
         {
@@ -161752,10 +161769,13 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3584",
-            "components/HaccpChecklist.tsx:3588",
-            "components/HaccpChecklist.tsx:3595",
-            "components/HaccpChecklist.tsx:3687"
+            "components/HaccpChecklist.tsx:3624",
+            "components/HaccpChecklist.tsx:3628",
+            "components/HaccpChecklist.tsx:3632",
+            "components/HaccpChecklist.tsx:3637",
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3742",
+            "components/HaccpChecklist.tsx:3748"
           ]
         },
         {
@@ -161767,16 +161787,19 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3562",
-            "components/HaccpChecklist.tsx:3584",
             "components/HaccpChecklist.tsx:3588",
-            "components/HaccpChecklist.tsx:3595",
-            "components/HaccpChecklist.tsx:3670",
-            "components/HaccpChecklist.tsx:3687",
-            "components/HaccpChecklist.tsx:3737",
-            "components/HaccpChecklist.tsx:3761",
-            "components/HaccpChecklist.tsx:3764",
-            "components/HaccpChecklist.tsx:3810"
+            "components/HaccpChecklist.tsx:3624",
+            "components/HaccpChecklist.tsx:3628",
+            "components/HaccpChecklist.tsx:3632",
+            "components/HaccpChecklist.tsx:3637",
+            "components/HaccpChecklist.tsx:3678",
+            "components/HaccpChecklist.tsx:3718",
+            "components/HaccpChecklist.tsx:3742",
+            "components/HaccpChecklist.tsx:3748",
+            "components/HaccpChecklist.tsx:3795",
+            "components/HaccpChecklist.tsx:3819",
+            "components/HaccpChecklist.tsx:3822",
+            "components/HaccpChecklist.tsx:3868"
           ]
         },
         {
@@ -161788,8 +161811,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3821",
-            "components/HaccpChecklist.tsx:3822"
+            "components/HaccpChecklist.tsx:3879",
+            "components/HaccpChecklist.tsx:3880"
           ]
         },
         {
@@ -161801,11 +161824,11 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3620",
-            "components/HaccpChecklist.tsx:3632",
-            "components/HaccpChecklist.tsx:3637",
-            "components/HaccpChecklist.tsx:3834",
-            "components/HaccpChecklist.tsx:3893"
+            "components/HaccpChecklist.tsx:3660",
+            "components/HaccpChecklist.tsx:3672",
+            "components/HaccpChecklist.tsx:3679",
+            "components/HaccpChecklist.tsx:3892",
+            "components/HaccpChecklist.tsx:3951"
           ]
         },
         {
@@ -161817,7 +161840,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3931"
+            "components/HaccpChecklist.tsx:3989"
           ]
         },
         {
@@ -161829,8 +161852,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3807",
-            "components/HaccpChecklist.tsx:3945"
+            "components/HaccpChecklist.tsx:3865",
+            "components/HaccpChecklist.tsx:4003"
           ]
         },
         {
@@ -161872,11 +161895,11 @@
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:3738",
-            "components/HaccpChecklist.tsx:3770",
-            "components/HaccpChecklist.tsx:3772",
-            "components/HaccpChecklist.tsx:3951",
-            "components/HaccpChecklist.tsx:3952"
+            "components/HaccpChecklist.tsx:3796",
+            "components/HaccpChecklist.tsx:3828",
+            "components/HaccpChecklist.tsx:3830",
+            "components/HaccpChecklist.tsx:4009",
+            "components/HaccpChecklist.tsx:4010"
           ]
         },
         {
@@ -161893,7 +161916,7 @@
     },
     {
       "model": "ClosingRecord",
-      "declaration": "components/HaccpChecklist.tsx:3976",
+      "declaration": "components/HaccpChecklist.tsx:4034",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -161901,20 +161924,23 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/HaccpChecklist.tsx:3977"
+            "components/HaccpChecklist.tsx:4035"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4174",
-            "components/HaccpChecklist.tsx:4180",
-            "components/HaccpChecklist.tsx:4194",
-            "components/HaccpChecklist.tsx:4238",
             "components/HaccpChecklist.tsx:4245",
-            "components/HaccpChecklist.tsx:4246",
-            "components/HaccpChecklist.tsx:4260",
-            "components/HaccpChecklist.tsx:4273",
-            "components/HaccpChecklist.tsx:4275",
-            "components/HaccpChecklist.tsx:4299"
+            "components/HaccpChecklist.tsx:4256",
+            "components/HaccpChecklist.tsx:4263",
+            "components/HaccpChecklist.tsx:4280",
+            "components/HaccpChecklist.tsx:4316",
+            "components/HaccpChecklist.tsx:4335",
+            "components/HaccpChecklist.tsx:4342",
+            "components/HaccpChecklist.tsx:4343",
+            "components/HaccpChecklist.tsx:4357",
+            "components/HaccpChecklist.tsx:4370",
+            "components/HaccpChecklist.tsx:4372",
+            "components/HaccpChecklist.tsx:4376",
+            "components/HaccpChecklist.tsx:4396"
           ]
         },
         {
@@ -161922,22 +161948,24 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3978"
+            "components/HaccpChecklist.tsx:4036"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4110",
-            "components/HaccpChecklist.tsx:4125",
-            "components/HaccpChecklist.tsx:4131",
-            "components/HaccpChecklist.tsx:4198",
-            "components/HaccpChecklist.tsx:4215",
-            "components/HaccpChecklist.tsx:4216",
-            "components/HaccpChecklist.tsx:4238",
-            "components/HaccpChecklist.tsx:4240",
-            "components/HaccpChecklist.tsx:4243",
-            "components/HaccpChecklist.tsx:4262",
-            "components/HaccpChecklist.tsx:4264",
-            "components/HaccpChecklist.tsx:4300"
+            "components/HaccpChecklist.tsx:4176",
+            "components/HaccpChecklist.tsx:4202",
+            "components/HaccpChecklist.tsx:4206",
+            "components/HaccpChecklist.tsx:4245",
+            "components/HaccpChecklist.tsx:4285",
+            "components/HaccpChecklist.tsx:4309",
+            "components/HaccpChecklist.tsx:4310",
+            "components/HaccpChecklist.tsx:4316",
+            "components/HaccpChecklist.tsx:4335",
+            "components/HaccpChecklist.tsx:4337",
+            "components/HaccpChecklist.tsx:4340",
+            "components/HaccpChecklist.tsx:4359",
+            "components/HaccpChecklist.tsx:4361",
+            "components/HaccpChecklist.tsx:4397"
           ]
         },
         {
@@ -161945,12 +161973,12 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3979"
+            "components/HaccpChecklist.tsx:4037"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4311",
-            "components/HaccpChecklist.tsx:4312"
+            "components/HaccpChecklist.tsx:4408",
+            "components/HaccpChecklist.tsx:4409"
           ]
         },
         {
@@ -161958,15 +161986,15 @@
           "optional": false,
           "type": "PeriodRow[]",
           "declarations": [
-            "components/HaccpChecklist.tsx:3980"
+            "components/HaccpChecklist.tsx:4038"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4148",
-            "components/HaccpChecklist.tsx:4160",
-            "components/HaccpChecklist.tsx:4165",
-            "components/HaccpChecklist.tsx:4324",
-            "components/HaccpChecklist.tsx:4383"
+            "components/HaccpChecklist.tsx:4227",
+            "components/HaccpChecklist.tsx:4239",
+            "components/HaccpChecklist.tsx:4246",
+            "components/HaccpChecklist.tsx:4421",
+            "components/HaccpChecklist.tsx:4480"
           ]
         },
         {
@@ -161974,11 +162002,11 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3981"
+            "components/HaccpChecklist.tsx:4039"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4412"
+            "components/HaccpChecklist.tsx:4509"
           ]
         },
         {
@@ -161986,12 +162014,12 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3982"
+            "components/HaccpChecklist.tsx:4040"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4298",
-            "components/HaccpChecklist.tsx:4424"
+            "components/HaccpChecklist.tsx:4395",
+            "components/HaccpChecklist.tsx:4521"
           ]
         },
         {
@@ -161999,7 +162027,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3983"
+            "components/HaccpChecklist.tsx:4041"
           ],
           "inherited": false,
           "references": []
@@ -162009,7 +162037,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3984"
+            "components/HaccpChecklist.tsx:4042"
           ],
           "inherited": false,
           "references": []
@@ -162019,7 +162047,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/HaccpChecklist.tsx:3985"
+            "components/HaccpChecklist.tsx:4043"
           ],
           "inherited": false,
           "references": []
@@ -162029,15 +162057,15 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/HaccpChecklist.tsx:3986"
+            "components/HaccpChecklist.tsx:4044"
           ],
           "inherited": false,
           "references": [
-            "components/HaccpChecklist.tsx:4244",
-            "components/HaccpChecklist.tsx:4269",
-            "components/HaccpChecklist.tsx:4271",
-            "components/HaccpChecklist.tsx:4430",
-            "components/HaccpChecklist.tsx:4431"
+            "components/HaccpChecklist.tsx:4341",
+            "components/HaccpChecklist.tsx:4366",
+            "components/HaccpChecklist.tsx:4368",
+            "components/HaccpChecklist.tsx:4527",
+            "components/HaccpChecklist.tsx:4528"
           ]
         },
         {
@@ -162045,7 +162073,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/HaccpChecklist.tsx:3987"
+            "components/HaccpChecklist.tsx:4045"
           ],
           "inherited": false,
           "references": []
@@ -175872,8 +175900,8 @@
             "components/OrdersList.tsx:4321",
             "components/OrdersList.tsx:4511",
             "components/OrdersList.tsx:482",
-            "components/PalletManager.tsx:120",
-            "components/PalletManager.tsx:226",
+            "components/PalletManager.tsx:118",
+            "components/PalletManager.tsx:224",
             "components/ProductionManager.tsx:541",
             "components/ReceivingReturnsManager.tsx:158",
             "components/ReturnManager.tsx:119",
@@ -176521,15 +176549,15 @@
             "components/OrdersList.tsx:4454",
             "components/OrdersList.tsx:4463",
             "components/OrdersList.tsx:4467",
-            "components/PalletManager.tsx:118",
-            "components/PalletManager.tsx:123",
+            "components/PalletManager.tsx:116",
+            "components/PalletManager.tsx:121",
+            "components/PalletManager.tsx:224",
             "components/PalletManager.tsx:226",
-            "components/PalletManager.tsx:228",
-            "components/PalletManager.tsx:297",
-            "components/PalletManager.tsx:318",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:341",
-            "components/PalletManager.tsx:342"
+            "components/PalletManager.tsx:295",
+            "components/PalletManager.tsx:316",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:339",
+            "components/PalletManager.tsx:340"
           ]
         },
         {
@@ -176637,8 +176665,8 @@
             "components/OrdersList.tsx:4227",
             "components/OrdersList.tsx:4511",
             "components/OrdersList.tsx:485",
-            "components/PalletManager.tsx:121",
-            "components/PalletManager.tsx:343",
+            "components/PalletManager.tsx:119",
+            "components/PalletManager.tsx:341",
             "components/ProductionManager.tsx:252",
             "components/ProductionManager.tsx:281",
             "components/ProductionManager.tsx:541",
@@ -176848,10 +176876,10 @@
             "components/OrdersList.tsx:4117",
             "components/OrdersList.tsx:4158",
             "components/OrdersList.tsx:4249",
-            "components/PalletManager.tsx:233",
-            "components/PalletManager.tsx:298",
-            "components/PalletManager.tsx:319",
-            "components/PalletManager.tsx:343",
+            "components/PalletManager.tsx:231",
+            "components/PalletManager.tsx:296",
+            "components/PalletManager.tsx:317",
+            "components/PalletManager.tsx:341",
             "components/ProductionManager.tsx:538",
             "components/ProductionManager.tsx:542",
             "src/features/admin/dataIntegrityAudit.ts:222",
@@ -198066,57 +198094,62 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:88",
+        "location": "components/PalletManager.tsx:89",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:88",
+        "location": "components/PalletManager.tsx:89",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:113",
+        "location": "components/PalletManager.tsx:111",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:121",
+        "location": "components/PalletManager.tsx:119",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:121",
+        "location": "components/PalletManager.tsx:119",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:126",
+        "location": "components/PalletManager.tsx:124",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:126",
+        "location": "components/PalletManager.tsx:124",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:126",
+        "location": "components/PalletManager.tsx:124",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:126",
+        "location": "components/PalletManager.tsx:124",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:127",
+        "location": "components/PalletManager.tsx:125",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:127",
+        "location": "components/PalletManager.tsx:125",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "components/PalletManager.tsx:134",
         "syntax": "element",
         "reason": "dynamic-key"
       },
@@ -198126,27 +198159,32 @@
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:138",
+        "location": "components/PalletManager.tsx:142",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:144",
+        "location": "components/PalletManager.tsx:142",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:144",
+        "location": "components/PalletManager.tsx:142",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:144",
+        "location": "components/PalletManager.tsx:142",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:144",
+        "location": "components/PalletManager.tsx:145",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "components/PalletManager.tsx:145",
         "syntax": "element",
         "reason": "dynamic-key"
       },
@@ -198161,102 +198199,92 @@
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:149",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "components/PalletManager.tsx:149",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "components/PalletManager.tsx:154",
+        "location": "components/PalletManager.tsx:152",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:154",
+        "location": "components/PalletManager.tsx:152",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:189",
+        "location": "components/PalletManager.tsx:187",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:189",
+        "location": "components/PalletManager.tsx:187",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:198",
+        "location": "components/PalletManager.tsx:196",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:198",
+        "location": "components/PalletManager.tsx:196",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:233",
+        "location": "components/PalletManager.tsx:231",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/PalletManager.tsx:343",
+        "location": "components/PalletManager.tsx:341",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/PalletManager.tsx:347",
+        "location": "components/PalletManager.tsx:345",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:722",
+        "location": "components/PalletManager.tsx:720",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PalletManager.tsx:732",
+        "location": "components/PalletManager.tsx:730",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:733",
+        "location": "components/PalletManager.tsx:731",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:733",
+        "location": "components/PalletManager.tsx:731",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:736",
+        "location": "components/PalletManager.tsx:734",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:736",
+        "location": "components/PalletManager.tsx:734",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:759",
+        "location": "components/PalletManager.tsx:757",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/PalletManager.tsx:810",
+        "location": "components/PalletManager.tsx:808",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PalletManager.tsx:810",
+        "location": "components/PalletManager.tsx:808",
         "syntax": "binding",
         "reason": "array-binding"
       },
@@ -206921,377 +206949,457 @@
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3540",
+        "location": "components/HaccpChecklist.tsx:3558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3540",
+        "location": "components/HaccpChecklist.tsx:3558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3540",
+        "location": "components/HaccpChecklist.tsx:3558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3542",
+        "location": "components/HaccpChecklist.tsx:3560",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3542",
+        "location": "components/HaccpChecklist.tsx:3560",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3543",
+        "location": "components/HaccpChecklist.tsx:3561",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3543",
+        "location": "components/HaccpChecklist.tsx:3561",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3544",
+        "location": "components/HaccpChecklist.tsx:3562",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3544",
+        "location": "components/HaccpChecklist.tsx:3562",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3545",
+        "location": "components/HaccpChecklist.tsx:3563",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3545",
+        "location": "components/HaccpChecklist.tsx:3563",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3546",
+        "location": "components/HaccpChecklist.tsx:3564",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3546",
+        "location": "components/HaccpChecklist.tsx:3564",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3547",
+        "location": "components/HaccpChecklist.tsx:3565",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3547",
+        "location": "components/HaccpChecklist.tsx:3565",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3548",
+        "location": "components/HaccpChecklist.tsx:3566",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3548",
+        "location": "components/HaccpChecklist.tsx:3566",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3549",
+        "location": "components/HaccpChecklist.tsx:3567",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3549",
+        "location": "components/HaccpChecklist.tsx:3567",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3550",
+        "location": "components/HaccpChecklist.tsx:3568",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3550",
+        "location": "components/HaccpChecklist.tsx:3568",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3551",
+        "location": "components/HaccpChecklist.tsx:3569",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3551",
+        "location": "components/HaccpChecklist.tsx:3569",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3552",
+        "location": "components/HaccpChecklist.tsx:3570",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3552",
+        "location": "components/HaccpChecklist.tsx:3570",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3621",
+        "location": "components/HaccpChecklist.tsx:3571",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3571",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3574",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3574",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3574",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3574",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3575",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3575",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:3661",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3638",
+        "location": "components/HaccpChecklist.tsx:3680",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3834",
+        "location": "components/HaccpChecklist.tsx:3892",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3893",
+        "location": "components/HaccpChecklist.tsx:3951",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4000",
+        "location": "components/HaccpChecklist.tsx:4058",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4000",
+        "location": "components/HaccpChecklist.tsx:4058",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4001",
+        "location": "components/HaccpChecklist.tsx:4059",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4001",
+        "location": "components/HaccpChecklist.tsx:4059",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4002",
+        "location": "components/HaccpChecklist.tsx:4060",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4002",
+        "location": "components/HaccpChecklist.tsx:4060",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4032",
+        "location": "components/HaccpChecklist.tsx:4090",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4032",
+        "location": "components/HaccpChecklist.tsx:4090",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4032",
+        "location": "components/HaccpChecklist.tsx:4090",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4032",
+        "location": "components/HaccpChecklist.tsx:4090",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4036",
+        "location": "components/HaccpChecklist.tsx:4094",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4036",
+        "location": "components/HaccpChecklist.tsx:4094",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4036",
+        "location": "components/HaccpChecklist.tsx:4094",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4095",
+        "location": "components/HaccpChecklist.tsx:4153",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4095",
+        "location": "components/HaccpChecklist.tsx:4153",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4095",
+        "location": "components/HaccpChecklist.tsx:4153",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4097",
+        "location": "components/HaccpChecklist.tsx:4155",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4097",
+        "location": "components/HaccpChecklist.tsx:4155",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4098",
+        "location": "components/HaccpChecklist.tsx:4156",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4098",
+        "location": "components/HaccpChecklist.tsx:4156",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4099",
+        "location": "components/HaccpChecklist.tsx:4157",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4099",
+        "location": "components/HaccpChecklist.tsx:4157",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4100",
+        "location": "components/HaccpChecklist.tsx:4158",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4100",
+        "location": "components/HaccpChecklist.tsx:4158",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4101",
+        "location": "components/HaccpChecklist.tsx:4159",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4101",
+        "location": "components/HaccpChecklist.tsx:4159",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4102",
+        "location": "components/HaccpChecklist.tsx:4160",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4102",
+        "location": "components/HaccpChecklist.tsx:4160",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4103",
+        "location": "components/HaccpChecklist.tsx:4161",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4103",
+        "location": "components/HaccpChecklist.tsx:4161",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4104",
+        "location": "components/HaccpChecklist.tsx:4162",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4104",
+        "location": "components/HaccpChecklist.tsx:4162",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4149",
-        "syntax": "element",
-        "reason": "array-index"
+        "location": "components/HaccpChecklist.tsx:4163",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4163",
+        "syntax": "binding",
+        "reason": "array-binding"
       },
       {
         "location": "components/HaccpChecklist.tsx:4166",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4166",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4166",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4166",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4167",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4167",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4228",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4324",
+        "location": "components/HaccpChecklist.tsx:4247",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4383",
+        "location": "components/HaccpChecklist.tsx:4421",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4461",
+        "location": "components/HaccpChecklist.tsx:4480",
+        "syntax": "element",
+        "reason": "array-index"
+      },
+      {
+        "location": "components/HaccpChecklist.tsx:4558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4461",
+        "location": "components/HaccpChecklist.tsx:4558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4461",
+        "location": "components/HaccpChecklist.tsx:4558",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4462",
+        "location": "components/HaccpChecklist.tsx:4559",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4462",
+        "location": "components/HaccpChecklist.tsx:4559",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4465",
+        "location": "components/HaccpChecklist.tsx:4562",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4465",
+        "location": "components/HaccpChecklist.tsx:4562",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4481",
+        "location": "components/HaccpChecklist.tsx:4578",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4481",
+        "location": "components/HaccpChecklist.tsx:4578",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4481",
+        "location": "components/HaccpChecklist.tsx:4578",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
@@ -221852,14 +221960,14 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 30232,
-      "dot:connected": 26026,
+      "dot:no-model-declaration": 30465,
+      "dot:connected": 26042,
       "binding:connected": 1656,
       "binding:rest-binding": 53,
       "element:dynamic-key": 751,
-      "binding:array-binding": 3353,
+      "binding:array-binding": 3369,
       "dot:property-symbol-unresolved": 1770,
-      "dot:ambiguous-union": 3379,
+      "dot:ambiguous-union": 3381,
       "element:array-index": 754,
       "binding:no-model-declaration": 358,
       "element:any-receiver": 97,
@@ -227445,7 +227553,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3560",
+        "location": "components/HaccpChecklist.tsx:3585",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -227467,7 +227575,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3567",
+        "location": "components/HaccpChecklist.tsx:3602",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -227493,7 +227601,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "components/HaccpChecklist.tsx:3576",
+        "location": "components/HaccpChecklist.tsx:3614",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -227519,7 +227627,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4005",
+        "location": "components/HaccpChecklist.tsx:4063",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -227545,7 +227653,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4108",
+        "location": "components/HaccpChecklist.tsx:4173",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -227567,7 +227675,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4115",
+        "location": "components/HaccpChecklist.tsx:4190",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -227593,7 +227701,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "components/HaccpChecklist.tsx:4468",
+        "location": "components/HaccpChecklist.tsx:4565",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -242632,7 +242740,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4019",
+            "location": "components/HaccpChecklist.tsx:4077",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -242670,7 +242778,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4489",
+            "location": "components/HaccpChecklist.tsx:4586",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -246387,7 +246495,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:3648",
+            "location": "components/HaccpChecklist.tsx:3691",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -246462,7 +246570,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4176",
+            "location": "components/HaccpChecklist.tsx:4258",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -249421,7 +249529,7 @@
             ]
           },
           {
-            "location": "components/PalletManager.tsx:360",
+            "location": "components/PalletManager.tsx:358",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -249823,7 +249931,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:3652",
+            "location": "components/HaccpChecklist.tsx:3696",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -249854,7 +249962,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:3666",
+            "location": "components/HaccpChecklist.tsx:3713",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -249885,7 +249993,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4180",
+            "location": "components/HaccpChecklist.tsx:4263",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -249916,7 +250024,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4194",
+            "location": "components/HaccpChecklist.tsx:4280",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -251936,7 +252044,7 @@
             ]
           },
           {
-            "location": "components/PalletManager.tsx:379",
+            "location": "components/PalletManager.tsx:377",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -252169,7 +252277,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:3677",
+            "location": "components/HaccpChecklist.tsx:3730",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -252195,7 +252303,7 @@
             ]
           },
           {
-            "location": "components/HaccpChecklist.tsx:4205",
+            "location": "components/HaccpChecklist.tsx:4297",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -254763,11 +254871,11 @@
       "components/HaccpChecklist.tsx:3130",
       "components/HaccpChecklist.tsx:3295",
       "components/HaccpChecklist.tsx:3445",
-      "components/HaccpChecklist.tsx:3567",
-      "components/HaccpChecklist.tsx:3576",
-      "components/HaccpChecklist.tsx:4005",
-      "components/HaccpChecklist.tsx:4115",
-      "components/HaccpChecklist.tsx:4468",
+      "components/HaccpChecklist.tsx:3602",
+      "components/HaccpChecklist.tsx:3614",
+      "components/HaccpChecklist.tsx:4063",
+      "components/HaccpChecklist.tsx:4190",
+      "components/HaccpChecklist.tsx:4565",
       "src/shared/services/interCompanyTransferService.ts:21",
       "src/shared/services/confirmedCashBalance.ts:9",
       "src/features/admin/AdminApp.tsx:4843",

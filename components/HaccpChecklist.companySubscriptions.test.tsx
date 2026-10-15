@@ -13,12 +13,13 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
   where: (field: string, op: string, value: string) => ({ field, op, value }),
   query: (ref: any, ...constraints: any[]) => ({ ...ref, constraints }),
-  onSnapshot: (ref: any, callback: any) => {
+  onSnapshot: (ref: any, ...args: any[]) => {
+    const callback = typeof args[0] === 'function' ? args[0] : args[1];
     const unsubscribe = vi.fn();
     state.subscriptions.push({ ref, callback, unsubscribe });
     if (ref.constraints) {
       const rows = ref.collection === 'haccp_temp' && ref.constraints[0].value === 'taebaek' ? state.tempRows : [];
-      callback({ docs: rows.map(row => ({ id: row.id, data: () => row })) });
+      callback({ docs: rows.map(row => ({ id: row.id, data: () => row })), metadata: { fromCache: false } });
     } else callback({ exists: () => false });
     return unsubscribe;
   },
@@ -68,7 +69,7 @@ it.each([HaccpChecklist, StaffChecklistView])('회사 전환 후 이전 초안�
   view.rerender(<View currentUser={user} isAdmin companyId="punghoe" />);
   fireEvent.click(screen.getByRole('button', { name: /온도관리 일지/ }));
   fireEvent.click(screen.getByRole('button', { name: /오늘 온도 측정 기록/ }));
-  act(() => old.callback({ docs: state.tempRows.map(row => ({ id: row.id, data: () => row })) }));
+  act(() => old.callback({ docs: state.tempRows.map(row => ({ id: row.id, data: () => row })), metadata: { fromCache: false } }));
   expect(old.unsubscribe).toHaveBeenCalledTimes(1);
   expect(screen.queryByDisplayValue('88')).not.toBeInTheDocument();
   expect(screen.queryByText('합성 옛 회사 창고')).not.toBeInTheDocument();

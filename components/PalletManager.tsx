@@ -85,10 +85,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [historyPage, setHistoryPage] = useState(1);
   const [historyDateFilter, setHistoryDateFilter] = useState('');
   const [historySearch, setHistorySearch] = useState(''); // 전체 이력 거래처 검색
-  const [monthFilter, setMonthFilter] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // 기본값: 이번 달 ('' = 전체 기간)
-  });
+  const currentMonth = today().slice(0, 7);
+  const [monthFilter, setMonthFilter] = useState<string>(() => currentMonth);
 
   const ITEMS_PER_PAGE = 5;
 
@@ -290,8 +288,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   // 선택 가능한 월 목록(YYYY-MM) — 거래/주문 출고 날짜 기준, 최신순
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
-    const now = new Date();
-    set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`); // 이번 달은 거래 없어도 항상 표시
+    set.add(currentMonth); // 거래가 없는 새달도 다시 렌더되면 선택할 수 있어야 한다.
+    if (monthFilter) set.add(monthFilter); // 조회 중인 옛 달은 옵션에서 빠져 선택 표시가 바뀌지 않게 한다.
     palletTransactions.forEach(t => { if (t.date) set.add(t.date.slice(0, 7)); });
     orders.forEach(o => {
       if (o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED)) {
@@ -300,7 +298,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       }
     });
     return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
-  }, [palletTransactions, orders]);
+  }, [palletTransactions, orders, currentMonth, monthFilter]);
 
   // 전체 요약: 입고(들어온 합계) / 지급(나간 합계) / 교체중(교체 진행 중)
   // monthFilter 지정 시 해당 월(YYYY-MM) 거래만 합산

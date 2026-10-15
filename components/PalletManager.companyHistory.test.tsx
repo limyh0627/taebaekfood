@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { CompanyId, PalletTransaction } from '../src/shared/types';
 const service = vi.hoisted(() => ({ fetchDateRange: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn() }));
 vi.mock('../src/shared/services/firebaseService', () => service);
@@ -53,4 +53,23 @@ it('정상 거래 삭제 후 같은 회사 캐시에도 삭제가 반영된다',
   view.unmount(); render(<Manager {...props} companyId="taebaek" />); openHistory();
   expect(screen.queryByText('삭제할 이력')).not.toBeInTheDocument();
   expect(service.fetchDateRange).toHaveBeenCalledTimes(1);
+});
+
+afterEach(() => vi.useRealTimers());
+
+it.each([
+ ['월말', '2026-10-31T23:59:00', '2026-11-01T00:01:00', '2026-10', '2026-11'],
+ ['연말', '2026-12-31T23:59:00', '2027-01-01T00:01:00', '2026-12', '2027-01'],
+])('%s 같은 props 재렌더는 새달 옵션을 추가하고 빈자료의 이전 선택월을 유지한다', async (_label,before,after,oldMonth,newMonth) => {
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(before));service.fetchDateRange.mockResolvedValue([]);
+ const {default:Manager}=await import('./PalletManager');const stableProps={...props,companyId:'taebaek' as const};const view=render(<Manager {...stableProps}/>);await act(async()=>{});openHistory();
+ expect(screen.getByRole('combobox')).toHaveValue(oldMonth);
+ vi.setSystemTime(new Date(after));view.rerender(<Manager {...stableProps}/>);
+ expect(screen.getByRole('option',{name:newMonth.slice(0,4)+'년 '+newMonth.slice(5)+'월'})).toHaveValue(newMonth);expect(screen.getByRole('combobox')).toHaveValue(oldMonth);
+ expect(screen.getByRole('option',{name:oldMonth.slice(0,4)+'년 '+oldMonth.slice(5)+'월'})).toBeInTheDocument();
+ fireEvent.change(screen.getByRole('combobox'),{target:{value:newMonth}});expect(screen.getByRole('combobox')).toHaveValue(newMonth);
+ expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();expect(props.onUpdatePallet).not.toHaveBeenCalled();expect(props.onAddPalletTransaction).not.toHaveBeenCalled();
+});
+it('전체 기간 선택도 달 전환 재렌더 후 유지하며 새달만 추가한다',async()=>{
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-31T23:59:00'));service.fetchDateRange.mockResolvedValue([]);const {default:Manager}=await import('./PalletManager');const view=render(<Manager {...props} companyId="taebaek"/>);await act(async()=>{});openHistory();fireEvent.change(screen.getByRole('combobox'),{target:{value:''}});vi.setSystemTime(new Date('2026-11-01T00:01:00'));view.rerender(<Manager {...props} companyId="taebaek"/>);expect(screen.getByRole('combobox')).toHaveValue('');expect(screen.getByRole('option',{name:'2026년 11월'})).toBeInTheDocument();expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
 });
