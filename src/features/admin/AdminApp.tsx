@@ -5077,7 +5077,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
               const { stock: _staleStock, ...safeData } = productData;
               const { image: _oldImage, imagePath: _oldImagePath, ...metadata } = safeData;
-              await updateItem(collectionName, p.id, { ...(photoChanged ? safeData : metadata), companyId });
+              const itemPatch = { ...(photoChanged ? safeData : metadata), companyId };
+              if (p.type === 'product' && Object.hasOwn(p, 'isSmartStore') && typeof p.isSmartStore === 'boolean') {
+                await updateItem(collectionName, p.id, itemPatch, { reconcileSmartStoreMarker: true });
+              } else {
+                await updateItem(collectionName, p.id, itemPatch);
+              }
               /**
                * **낱개 규격을 고쳤으면 그 낱개를 문 박스도 따라간다.**
                *

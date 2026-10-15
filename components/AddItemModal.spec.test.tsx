@@ -103,3 +103,25 @@ describe('스마트스토어 채널 초기값', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false })));
   });
 });
+
+describe('스마트스토어 사용자 체크 해제 저장',()=>{
+  it('옛 표식의 체크를 끄면 false만 보내고 관계 배열은 보내지 않는다',async()=>{
+    const original={...item,type:'product',isSmartStore:false,partnerIds:['SMARTSTORE','old-partner']},before=JSON.stringify(original),onSave=vi.fn();
+    render(<ProductModal companyId="taebaek" initialData={original} items={[]} onSave={onSave} onClose={vi.fn()}/>);
+    const toggle=screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;
+    expect(toggle.querySelector('span')?.className).toContain('translate-x-4');fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));
+    await waitFor(()=>expect(onSave).toHaveBeenCalledWith(expect.objectContaining({isSmartStore:false})));
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('partnerIds');expect(JSON.stringify(original)).toBe(before);
+  });
+  it('저장 실패 뒤 체크 해제 입력을 유지하여 다시 저장할 수 있다',async()=>{
+    const alert=vi.spyOn(window,'alert').mockImplementation(()=>{}),onClose=vi.fn(),onSave=vi.fn().mockRejectedValueOnce(Error('합성 저장 실패')).mockResolvedValueOnce(undefined);
+    try {
+      render(<ProductModal companyId="taebaek" initialData={{...item,type:'product',partnerIds:['SMARTSTORE']}} items={[]} onSave={onSave} onClose={onClose}/>);
+      const toggle=screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));
+      await waitFor(()=>expect(alert).toHaveBeenCalled());expect(onClose).not.toHaveBeenCalled();expect(toggle.querySelector('span')?.className).toContain('translate-x-0.5');
+      fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));await waitFor(()=>expect(onSave).toHaveBeenCalledTimes(2));expect(onSave.mock.calls[1][0].isSmartStore).toBe(false);
+    } finally {alert.mockRestore();}
+  });
+});

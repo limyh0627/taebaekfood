@@ -32,6 +32,7 @@ import {
   QueryConstraint,
   documentId,
   arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 import { auth, authReady, db, functions } from "../firebase";
 import { httpsCallable } from 'firebase/functions';
@@ -94,14 +95,21 @@ function protocolWriteData(name:string,before:Record<string,any>|undefined,data:
  }
  return protectInventoryWriterPatch(before,data);
 }
-async function protocolGatewayWrite(store:Firestore,name:CollectionName,ref:ReturnType<typeof doc>,data:Record<string,any>,mode:'set'|'merge'|'update'):Promise<void>{
- await runInventoryWriterTransaction(store,await captureInventoryWriterContext(store,{requestIdentity:JSON.stringify({name,id:ref.id,data,mode}),companyId:String(data.companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady}),async tx=>{
+export type ItemSaveOptions = { reconcileSmartStoreMarker?: true };
+async function protocolGatewayWrite(store:Firestore,name:CollectionName,ref:ReturnType<typeof doc>,data:Record<string,any>,mode:'set'|'merge'|'update',options?:ItemSaveOptions):Promise<void>{
+ await runInventoryWriterTransaction(store,await captureInventoryWriterContext(store,{requestIdentity:JSON.stringify({name,id:ref.id,data,mode,options}),companyId:String(data.companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady}),async tx=>{
   const snap=await tx.get(ref),before=snap.exists()?snap.data():undefined;
   const tomb=name==='items'&&!snap.exists()?await tx.get(tombstoneRef(store,String(data.companyId),ref.id)):undefined;
   if(before&&companyOf(before)!==data.companyId)throw Error('다른 회사 문서를 수정할 수 없습니다.');
   if(tomb)assertTombstone(tomb.exists()?tomb.data():undefined,String(data.companyId),ref.id);
   if(mode==='update'&&!snap.exists())throw Error('수정할 문서를 찾을 수 없습니다.');
   const scoped=protocolWriteData(name,before,data,tomb?.exists()?tomb.data():undefined);
+  // 사용자가 저장한 체크값을 옛 채널 표식이 다시 켜지 않게 한다. 최신 배열의 다른 연결은 보존한다.
+  if(options?.reconcileSmartStoreMarker===true&&name==='items'&&mode==='update'&&before?.type==='product'
+    &&Object.hasOwn(data,'isSmartStore')&&typeof data.isSmartStore==='boolean'
+    &&Array.isArray(before.partnerIds)&&before.partnerIds.every(value=>typeof value==='string')&&before.partnerIds.includes('SMARTSTORE')){
+    scoped.partnerIds=arrayRemove('SMARTSTORE');
+  }
   if(mode==='update')tx.update(ref,scoped);else tx.set(ref,scoped,mode==='merge'?{merge:true}:{});
  });
 }
@@ -475,14 +483,16 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
   }
 };
 
-export const updateItem = async (collectionName: CollectionName, id: string, data: any) => {
+export const updateItem = async (collectionName: CollectionName, id: string, data: any, options?:ItemSaveOptions) => {
+  if(options?.reconcileSmartStoreMarker===true&&Object.keys(data).some(key=>key==='partnerIds'||key.startsWith('partnerIds.')))
+    throw Error('품목 저장 호출에 거래처 연결 배열을 함께 보낼 수 없습니다.');
   const docRef = doc(db, collectionName, id);
   // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
   // 수정도 로그인 claim의 회사를 함께 보낸다. 생성만 회사 경계를 지나고 수정은 화면값에 맡기면
   // 오피스톡 초대처럼 강화된 규칙에서 저장 경로마다 동작이 갈린다.
   const scoped = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(data)));
-  if(protocolCollections.has(collectionName)){await protocolGatewayWrite(db,collectionName,docRef,scoped,'update');return;}
+  if(protocolCollections.has(collectionName)){await protocolGatewayWrite(db,collectionName,docRef,scoped,'update',options);return;}
   await updateDoc(docRef, scoped);
 };
 
