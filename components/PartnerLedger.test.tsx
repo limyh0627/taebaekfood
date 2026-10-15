@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PartnerLedger from './PartnerLedger';
 import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
@@ -149,4 +149,17 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
     const balances = screen.getByRole('table', { name: '거래처 계정별 잔액' });
     expect([...balances.querySelectorAll('tbody td')].every(cell => cell.textContent === '0')).toBe(true);
   });
+});
+
+describe('거래처 원장 월별 오늘 범위',()=>{
+ beforeEach(()=>{vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));vi.mocked(recordPartnerPayment).mockClear();});
+ afterEach(()=>{vi.useRealTimers();});
+ const make=(id:string,date:string,amount:number):IssuedStatement=>({...전표,id,companyId:'taebaek',tradeDate:date,issuedAt:date+'T03:00:00Z',docNo:id,totalSupply:amount,totalAmount:amount,items:[{...전표.items[0],qty:1,price:amount,supply:amount,total:amount}]});
+ const baseProps={companyId:'taebaek' as const,cashEntries:[],cashAccounts:accounts,accountCodes:계정};
+ function openSales(){fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));fireEvent.click(screen.getByRole('button',{name:'살림터'}));fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));}
+ const history=()=>screen.getByRole('table',{name:'거래처 전체 전표'});
+ const receivable=()=>within(screen.getByRole('table',{name:'거래처 계정별 잔액'})).getByRole('rowheader',{name:/108 외상매출금/}).closest('tr')!;
+ it('다음날 새 전표가 들어오면 선택월의 이력과 기간 금액에 포함한다',()=>{const first=make('FIRST','2026-10-15',100),next=make('NEXT','2026-10-16',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:'월별'}));openSales();expect(within(history()).getByRole('button',{name:'FIRST'})).toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','100','0','100']);vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(within(history()).getByRole('button',{name:'NEXT'})).toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','300','0','300']);expect(recordPartnerPayment).not.toHaveBeenCalled();});
+ it('새달에도 선택한 이전 달을 유지하고 새달 전표를 섞지 않는다',()=>{vi.setSystemTime(new Date('2026-10-31T12:00:00+09:00'));const first=make('OCTOBER','2026-10-31',100),next=make('NOVEMBER','2026-11-01',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:'월별'}));openSales();vi.setSystemTime(new Date('2026-11-01T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(view.container.querySelector('input[type="month"]')).toHaveValue('2026-10');expect(within(history()).getByRole('button',{name:'OCTOBER'})).toBeInTheDocument();expect(within(history()).queryByRole('button',{name:'NOVEMBER'})).not.toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','100','0','100']);expect(recordPartnerPayment).not.toHaveBeenCalled();});
+ it.each(['기간','전체'])('%s 모드는 다음날에도 기존 필터 정책을 유지한다',mode=>{const first=make('FIRST','2026-10-15',100),next=make('NEXT','2026-10-16',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:mode}));openSales();vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(within(history()).getByRole('button',{name:'FIRST'})).toBeInTheDocument();expect(!!within(history()).queryByRole('button',{name:'NEXT'})).toBe(mode==='전체');if(mode==='기간')expect(view.container.querySelectorAll('input[type="date"]')[1]).toHaveValue('2026-10-15');expect(recordPartnerPayment).not.toHaveBeenCalled();});
 });

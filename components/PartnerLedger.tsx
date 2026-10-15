@@ -99,14 +99,15 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
   const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
   const [customFrom, setCustomFrom] = useState(monthStart);
   const [customTo, setCustomTo] = useState(today);
+  const currentDate = today();
   const periodRange = useMemo(() => {
     if (periodMode === 'all') return null;
     if (periodMode === 'month') return selectedMonth
-      ? { from: `${selectedMonth}-01`, to: selectedMonth === today().slice(0, 7) ? today() : endOfMonth(selectedMonth) }
+      ? { from: `${selectedMonth}-01`, to: selectedMonth === currentDate.slice(0, 7) ? currentDate : endOfMonth(selectedMonth) }
       : null;
     if (!customFrom || !customTo || customFrom > customTo) return null;
     return { from: customFrom, to: customTo };
-  }, [periodMode, selectedMonth, customFrom, customTo]);
+  }, [periodMode, selectedMonth, customFrom, customTo, currentDate]);
 
   const balances = useMemo(
     () => partnerBalances(type, issuedStatements, cashEntries, journals),
