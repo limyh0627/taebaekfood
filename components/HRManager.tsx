@@ -1,3 +1,5 @@
+import RetirementBenefitPanel from './hr/RetirementBenefitPanel';
+import { readRetirement, retirementActor } from '../src/shared/services/retirementBenefitCommands';
 import PayrollLineEditor from './hr/PayrollLineEditor';
 import { savePayrollDraft, issuePayrollVoucher } from '../src/shared/services/payrollCommands';
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
@@ -50,7 +52,7 @@ interface HRManagerProps {
   leaveRequests: LeaveRequest[];
   onUpdateEmployee: (_emp: Employee) => void;
   onAddEmployee: (_emp: Employee) => void;
-  onDeleteEmployee: (_id: string) => void;
+  onDeleteEmployee: (_id: string) => Promise<void> | void;
   onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   onDeleteLeaveRequest: (_id: string) => void;
@@ -80,6 +82,29 @@ const HRManager: React.FC<HRManagerProps> = ({
   );
   const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance' | 'payroll'>('employees');
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
+  const [retirementEmployee, setRetirementEmployee] = useState<Employee | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState('');
+  const deleteScope = React.useRef({ companyId, token: {} });
+  if (deleteScope.current.companyId !== companyId) deleteScope.current = { companyId, token: {} };
+  const deleteBusy = React.useRef(false);
+  React.useEffect(() => { setRetirementEmployee(null); setDeleteMessage(''); }, [companyId]);
+  React.useEffect(() => () => { deleteScope.current = { companyId, token: {} }; }, []);
+  async function deleteEmployeeSafely(emp: Employee) {
+    if (deleteBusy.current) return;
+    const token = deleteScope.current.token;
+    deleteBusy.current = true;
+    setConfirmModal(null);
+    try {
+      const actorUid = await retirementActor();
+      const current = () => deleteScope.current.token === token;
+      const result = await readRetirement({ companyId, employeeId: emp.id, actorUid }, todayStr(), current);
+      if (!current()) return;
+      if (result.profile !== null) { setDeleteMessage(`${emp.name} 직원은 퇴직금 관리 이력이 있어 삭제할 수 없습니다. 정보 수정에서 상태를 퇴사로 변경하세요. 퇴직금 정산과 이력은 계속 관리할 수 있습니다.`); return; }
+      await onDeleteEmployee(emp.id);
+      if (current()) setDeleteMessage('직원 삭제를 완료했습니다.');
+    } catch (e) { if (deleteScope.current.token === token) setDeleteMessage(`퇴직금 등록 여부를 확인하지 못해 삭제하지 않았습니다. ${e instanceof Error ? e.message : '다시 조회한 뒤 시도하세요.'}`); }
+    finally { deleteBusy.current = false; }
+  }
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -410,11 +435,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                       </td>
                       <td className="px-4 sm:px-5 py-4 sm:py-6 text-right">
                         <div className="flex justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
+                          <button type="button" onClick={() => setRetirementEmployee(emp)} className="px-2 text-sm text-slate-600">퇴직금</button>
                           <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
                           <button onClick={() => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
-                              subMessage: '휴가 기록 등 관련 데이터도 함께 삭제됩니다.',
-                              onConfirm: () => { onDeleteEmployee(emp.id); setConfirmModal(null); },
+                              subMessage: '퇴직금 관리 등록 여부를 먼저 확인합니다. 이력이 있으면 삭제 대신 퇴사 처리하세요.',
+                              onConfirm: () => { void deleteEmployeeSafely(emp); },
                             })} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                         </div>
                       </td>
@@ -1200,6 +1226,8 @@ const HRManager: React.FC<HRManagerProps> = ({
         );
       })()}
 
+      {deleteMessage && <p role="status" className="border-t border-gray-200 py-3 text-sm">{deleteMessage}</p>}
+      {retirementEmployee && companyOf(retirementEmployee) === companyId && <RetirementBenefitPanel companyId={companyId} employee={retirementEmployee} onClose={() => setRetirementEmployee(null)} />}
       {confirmModal && (
         <ConfirmModal
           message={confirmModal.message}

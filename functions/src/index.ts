@@ -33,6 +33,7 @@ export { recordLoanMovementCommand } from './loanMovementCommand';
 export { mutateManualSettlementCommand } from './manualSettlementCommand';
 export { processGeneralStockReturnCommand } from './processReturnCommand';
 export { savePayrollDraftCommand, issuePayrollVoucherCommand } from './payrollVoucher';
+export { retirementBenefitCommand } from './retirementBenefitCommand';
 import { issueScheduledVoucher } from './autoVoucherCommand';
 
 // 아이디 찾기: 이름 + 연락처가 일치하는 계정의 username 반환

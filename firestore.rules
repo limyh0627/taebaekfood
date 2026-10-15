@@ -103,7 +103,7 @@ service cloud.firestore {
     //  사장님이 정한 관리자 전용 메뉴 그대로다: 전표·세금계산서·견적, 인사관리, 문서함,
     //  현금출납장·거래처원장·제품별원장, 재무제표, 분석 화면들.
     function serverAuditCollection(c) {
-      return c in ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
+      return c in ['retirementProfiles', 'retirementEvents', 'retirementCommandReceipts', 'manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
                    'loanMovementOperations', 'returnOperations', 'voucherMutationOperations',
                    'orderLockRecoveryOperations', 'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations', 'financialOpeningOperations', 'returnSubmissionOperations', 'taxIssueOperations'];
     }
@@ -287,7 +287,9 @@ service cloud.firestore {
     match /employees/{employeeId} {
       allow read: if readOk();
       allow create: if isAdmin() && canSee(request.resource.data.companyId);
-      allow delete: if isAdmin() && deleteOk();
+      // 퇴직금 장부가 생긴 직원은 삭제 대신 퇴사 상태로 보존한다.
+      allow delete: if isAdmin() && deleteOk()
+                    && !exists(/databases/$(database)/documents/retirementProfiles/$(myCompany() + '__' + employeeId));
       allow update: if (isAdmin() && createUpdateOk())
                     || (isEmployee()
                         && me() == employeeId
