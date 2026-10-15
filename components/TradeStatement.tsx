@@ -1,4 +1,5 @@
 import { invalidPurchaseUnitRow, defaultManualPurchaseUnitRowFields } from '../src/shared/purchaseUnitRow';
+import { formatQuantity } from '../src/shared/quantityDisplay';
 import { readPurchaseUnitSnapshot } from '../src/shared/purchaseUnit';
 import { subscribeItemPurchaseUnits } from '../src/shared/services/itemPurchaseUnitService';
 import type { ItemPurchaseUnit, PurchaseUnitSnapshot } from '../src/shared/types';
@@ -2741,7 +2742,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-center">{i+1}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] font-bold">{item.name}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-center font-bold text-slate-700">{item.spec}</td>
-                      <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.qty)}</td>
+                      <td className="border border-slate-200 px-3 py-2 text-[11px] text-right break-all">{Number.isFinite(item.qty) ? formatQuantity(item.qty) : '반품 연결 확인 중'}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.price)}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.supply)}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{item.isTaxExempt?'면세':fmt(item.tax)}</td>

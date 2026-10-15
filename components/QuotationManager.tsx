@@ -9,6 +9,7 @@ import { today, addDays as plusDays } from '../src/shared/day';
 import { marginOf } from '../src/shared/margin';
 import { lineAmount } from '../src/shared/lineAmount';
 import { quoteTotals } from '../src/shared/quoteTotals';
+import { formatQuantity } from '../src/shared/quantityDisplay';
 import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice, type OrderUnitInputs } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
@@ -756,7 +757,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     const amount = l ? lineAmount(l.qty, l.price, l.isTaxExempt) : null;
                     return <tr key={i} className="h-9">
                       <td className="text-center">{i + 1}</td><td className="font-bold">{l?.name || ''}</td><td>{l?.spec || ''}</td>
-                      <td className="text-right tabular-nums">{l ? fmt(l.qty) : ''}</td><td className="text-center">{l?.unit || ''}</td>
+                      <td className="text-right tabular-nums break-all">{l ? formatQuantity(l.qty) : ''}</td><td className="text-center">{l?.unit || ''}</td>
                       <td className="text-right tabular-nums">{l ? fmt(l.price) : ''}</td>
                       <td className="text-right tabular-nums">{amount ? fmt(amount.supply) : ''}</td>
                       <td className="text-right tabular-nums">{amount ? fmt(amount.tax) : ''}</td>

@@ -2,6 +2,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {createHash} from 'node:crypto';
+import { lineAmount } from '../src/shared/lineAmount';
 import {archiveTradePending,listTradePendings,verifyTradeServerRejection} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement, { VoucherDateChip } from './TradeStatement';
@@ -193,6 +194,31 @@ const price = { id: 'pi', itemId: item.id, partnerId: partner.id, Direction: 'in
   taxType: '과세', Account_Code: '500' } as PartnerItem;
 const pendingInvoice = { partnerId: partner.id, partnerName: partner.name,
   items: [{ itemId: item.id, name: item.name, spec: item.spec!, qty: 1, price: 6000 }] };
+
+it.each([
+  [0.0001, '0.0001'], [1.2345, '1.2345'], [2.5, '2.5'], [20, '20'],
+  [NaN, '반품 연결 확인 중'], [Infinity, '반품 연결 확인 중'],
+] as const)('발행 상세 수량 %s의 원문 소수와 기존 미확인 안내를 보존한다', async (qty, shown) => {
+  const amount = lineAmount(Number.isFinite(qty) ? qty : 1, 10000, true);
+  const stmt = { id: 'quantity-detail', companyId: 'taebaek', docNo: '261016-099',
+    partnerId: partner.id, partnerName: partner.name, tradeDate: '2026-10-16', issuedAt: '2026-10-16T00:00:00Z',
+    type: '매입', orderId: '', totalSupply: amount.supply, totalTax: amount.tax, totalAmount: amount.gross,
+    noncashApplication: { kind: 'advance-application' },
+    items: [{ itemId: item.id, name: '상세 수량 검증', spec: 'kg', qty, price: 10000,
+      supply: amount.supply, tax: amount.tax, total: amount.gross, isTaxExempt: true }],
+  } as IssuedStatement;
+  const original = structuredClone(stmt), update = vi.fn();
+  const writes = setup(undefined, undefined, { pendingInvoice: null, issuedStatements: [stmt], onUpdateIssuedStatement: update });
+  fireEvent.click((await screen.findAllByText(partner.name)).find(el => el.closest('tr'))!);
+  const dialog = await screen.findByRole('dialog', { name: `발행 전표 상세 — ${partner.name}` });
+  const cells = within(within(dialog).getByText('상세 수량 검증').closest('tr')!).getAllByRole('cell');
+  expect(cells[2]).toHaveTextContent('kg'); expect(cells[3].textContent).toBe(shown);
+  expect(cells[4].textContent).toBe('10,000');
+  expect(cells[5].textContent).toBe(amount.supply.toLocaleString('ko-KR'));
+  expect(cells[6].textContent).toBe('면세'); expect(cells[7].textContent).toBe(amount.gross.toLocaleString('ko-KR'));
+  expect(stmt).toEqual(original); expect(update).not.toHaveBeenCalled();
+  expect(writes.onApplyStatement).not.toHaveBeenCalled(); expect(writes.onAddIssuedStatement).not.toHaveBeenCalled();
+});
 
 describe('주문 전표 제외 기록', () => {
   const order = { id: 'excluded-order', partnerId: partner.id, partnerName: partner.name,

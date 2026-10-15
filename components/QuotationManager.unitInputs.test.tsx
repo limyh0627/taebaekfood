@@ -2,12 +2,15 @@
 import React from 'react';
 import { fireEvent, render, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import QuotationManager from './QuotationManager';
+import QuotationManager, { type Quotation, type QuotationLine } from './QuotationManager';
+import { subscribeToCollection, addItem } from '../src/shared/services/firebaseService';
+import { lineAmount } from '../src/shared/lineAmount';
+import { quoteTotals } from '../src/shared/quoteTotals';
 import { buildBomIndex, getBomIndex, setBomIndex } from '../src/shared/bomIndex';
 import { buildPackIndex } from '../src/shared/packIndex';
 import type { Item, Partner, PartnerItem } from '../src/shared/types';
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: vi.fn(() => () => {}), addItem: vi.fn(), deleteItem: vi.fn() }));
-const original = getBomIndex(); afterEach(() => setBomIndex(original));
+const original = getBomIndex(); afterEach(() => { setBomIndex(original); vi.mocked(subscribeToCollection).mockImplementation(() => () => {}); vi.mocked(addItem).mockClear(); });
 const items = [{ id: 'box', name: '견적 박스', type: 'product', unit: '박스' }, { id: 'loose', name: '견적 낱개', type: 'product', unit: '병' }] as Item[];
 const input = (count: number) => ({ bom: buildBomIndex(items, [{ parent_id: 'box', child_id: 'loose', quantity: count }]), pack: buildPackIndex([]) });
 const partner = { id: 'client', name: '견적 거래처', type: '일반' } as Partner;
@@ -35,4 +38,36 @@ it('등록된 양수 박스 단가가 우선이고 입력 생략은 기존 전�
   expect(choose(direct.container).getByDisplayValue('7777')).toBeInTheDocument(); direct.unmount();
   const fallback = render(<QuotationManager items={items} partners={[partner]} partnerItems={prices} />);
   expect(choose(fallback.container).getByDisplayValue('6000')).toBeInTheDocument();
+});
+
+it.each([
+  [2.5, '2.5'],
+  [0.25, '0.25'],
+  [0.0001, '0.0001'],
+  [1.2345678901234567, '1.2345678901234567'],
+  [20, '20'],
+  [9007199254740991, '9,007,199,254,740,991'],
+] as const)('저장된 견적 수량 %s를 인쇄할 때 소수와 유효자리를 보존한다', (qty, printedQty) => {
+  const line: QuotationLine = { name: '인쇄 검증 원료', spec: '수량 보존', unit: 'kg', qty, price: 10000, isTaxExempt: true };
+  const totals = quoteTotals([line]);
+  const saved: Quotation = { id: 'saved-quote', companyId: 'taebaek', quoteNo: 'Q-20261015-001', date: '2026-10-15', partnerId: partner.id, partnerName: partner.name, lines: [line], totalSupply: totals.supply, totalTax: totals.tax, totalAmount: totals.total, createdAt: '2026-10-15T00:00:00Z' };
+  const originalSaved = structuredClone(saved);
+  vi.mocked(subscribeToCollection).mockImplementation((_name, onRows) => { onRows([saved]); return () => {}; });
+  const view = render(<QuotationManager items={items} partners={[partner]} />);
+  fireEvent.click(within(view.container).getByTitle('보기 · 인쇄'));
+  const printed = view.container.querySelector('#quotation-print-document')!;
+  const row = within(printed as HTMLElement).getByText(line.name).closest('tr')!;
+  const cells = within(row).getAllByRole('cell');
+  expect(cells[3].textContent).toBe(printedQty);
+  expect(cells[4].textContent).toBe('kg');
+  expect(cells[5].textContent).toBe('10,000');
+  const amount = lineAmount(qty, 10000, true);
+  expect(cells[6].textContent).toBe(Math.round(amount.supply).toLocaleString('ko-KR'));
+  expect(cells[7].textContent).toBe('0');
+  expect(totals.supply).toBe(amount.supply);
+  expect(totals.total).toBe(amount.gross);
+  if (qty === 2.5) expect(cells[6].textContent).toBe('25,000');
+  expect(saved).toEqual(originalSaved);
+  expect(addItem).not.toHaveBeenCalled();
+  view.unmount();
 });

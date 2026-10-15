@@ -13,6 +13,7 @@ import { where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import PageHeader from './PageHeader';
 import { vatOn } from '../src/shared/lineAmount';
+import { formatQuantity } from '../src/shared/quantityDisplay';
 import { companyOf } from '../src/shared/types';
 import { 서류당사자스냅샷우선, type DocParty } from '../src/shared/docParty';
 import type { TaxIssueScope } from '../src/features/tax-documents/domain/taxIssue';
@@ -706,7 +707,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                                 <tr key={i}>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',fontWeight:700}}>{item.name}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center'}}>{item.spec}</td>
-                                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.qty)}</td>
+                                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',overflowWrap:'anywhere'}}>{formatQuantity(item.qty)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.supply)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.tax)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900}}>{fmt(item.total)}</td>
@@ -725,7 +726,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                                 <tr key={i}>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',fontWeight:700}}>{item.name}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center'}}>{item.spec}</td>
-                                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.qty)}</td>
+                                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',overflowWrap:'anywhere'}}>{formatQuantity(item.qty)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.supply)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center',color:'#666'}}>면세</td>
                                   <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900}}>{fmt(item.supply)}</td>
@@ -958,7 +959,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                                 <tr key={i}>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',fontWeight:700}}>{item.name}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'center'}}>{item.spec}</td>
-                                  <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right'}}>{fmt(item.qty)}</td>
+                                  <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right',overflowWrap:'anywhere'}}>{formatQuantity(item.qty)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right'}}>{fmt(item.supply)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right'}}>{fmt(item.tax)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right',fontWeight:900}}>{fmt(item.total)}</td>
@@ -977,7 +978,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                                 <tr key={i}>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',fontWeight:700}}>{item.name}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'center'}}>{item.spec}</td>
-                                  <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right'}}>{fmt(item.qty)}</td>
+                                  <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right',overflowWrap:'anywhere'}}>{formatQuantity(item.qty)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right'}}>{fmt(item.supply)}</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'center',color:'#666'}}>면세</td>
                                   <td style={{border:'1px solid #ccc',padding:'4px 7px',textAlign:'right',fontWeight:900}}>{fmt(item.supply)}</td>

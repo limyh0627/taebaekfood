@@ -122,6 +122,43 @@ function taxDocument(): HTMLElement {
   return title.parentElement?.parentElement ?? title;
 }
 
+describe('세금계산서 수량 표시 정밀도', () => {
+  const cases = [
+    { qty: 0.0001, label: '0.0001' },
+    { qty: 1.2345, label: '1.2345' },
+    { qty: 2, label: '2' },
+    { qty: 1234567.890123, label: '1,234,567.890123' },
+    { qty: Number.MAX_SAFE_INTEGER, label: '9,007,199,254,740,991' },
+  ];
+  it.each(cases.flatMap(value => ['현재 발행', '발행 내역'].map(mode => ({ ...value, mode }))))('$mode 과세·면세 수량 $label을 원문 그대로 표시하고 금액을 유지한다', ({ qty, label, mode }) => {
+    const statement = 전표('quantity-one', 거래처A.id, 'QTY-PRECISION-01', mode === '발행 내역' ? `${이번달}-09T10:00:00+09:00` : undefined);
+    statement.items = [
+      { itemId: 'quantity-taxable', name: '정밀 과세 품목', spec: '합성 규격', qty, price: 11000, supply: 10000, tax: 1000, total: 11000, isTaxExempt: false },
+      { itemId: 'quantity-exempt', name: '정밀 면세 품목', spec: '합성 규격', qty, price: 20000, supply: 20000, tax: 0, total: 20000, isTaxExempt: true },
+    ];
+    statement.totalSupply = 30000; statement.totalTax = 1000; statement.totalAmount = 31000;
+    const before = JSON.stringify(statement), issue = vi.fn().mockResolvedValue([]);
+    render(<TaxStatement issuedStatements={[statement]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue} />);
+    if (mode === '발행 내역') {
+      fireEvent.click(screen.getByRole('button', { name: '조회' }));
+      const row = screen.getByText(/QTY-PRECISION-01/).parentElement!.parentElement!;
+      fireEvent.click(within(row).getByRole('button'));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: /동명유통/ }));
+      fireEvent.click(screen.getByRole('button', { name: /QTY-PRECISION-01/ }));
+    }
+    const document = taxDocument();
+    const taxable = within(document).getByText('정밀 과세 품목', { exact: true }).closest('tr')!;
+    const exempt = within(document).getByText('정밀 면세 품목', { exact: true }).closest('tr')!;
+    expect(Array.from(taxable.querySelectorAll('td')).map(td => td.textContent)).toEqual(['정밀 과세 품목', '합성 규격', label, '10,000', '1,000', '11,000']);
+    expect(Array.from(exempt.querySelectorAll('td')).map(td => td.textContent)).toEqual(['정밀 면세 품목', '합성 규격', label, '20,000', '면세', '20,000']);
+    expect(document).toHaveTextContent('31,000');
+    expect(JSON.stringify(statement)).toBe(before);
+    expect(issue).not.toHaveBeenCalled();
+    expect(resumeTaxIssue).not.toHaveBeenCalled();
+  });
+});
+
 describe('세금계산서 거래처 정보', () => {
   it('동명이인을 ID로 골라 거래처관리 값을 정보 영역과 발행 미리보기에 그대로 표시한다', () => {
     const statements = [
