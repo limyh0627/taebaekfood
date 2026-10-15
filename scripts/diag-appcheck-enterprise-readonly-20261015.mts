@@ -63,11 +63,33 @@ export function summarizeKey(raw: unknown, projectNumber: string, siteKey: strin
   return { coverage, domainCount: domains.length, domainRestrictionDisabled: disabled, scoreBased: settings.integrationType === 'SCORE',
     testingOptionsPresent, testingScorePresent, testingChallengeConfigured: challenge !== 'TESTING_CHALLENGE_UNSPECIFIED' };
 }
+function keyTotals() {
+  return { counts: { domainCount: 0, scoreBased: 0, domainRestrictionDisabled: 0, testingOptionsPresent: 0, testingScorePresent: 0, testingChallengeConfigured: 0 },
+    coverage: { admin: { observedKeys: 0, listedCoverageCount: 0, effectiveAllowedCount: 0 }, staff: { observedKeys: 0, listedCoverageCount: 0, effectiveAllowedCount: 0 } } };
+}
+function addKeyTotals(total: ReturnType<typeof keyTotals>, summary: ReturnType<typeof summarizeKey>) {
+  for (const name of ['admin', 'staff'] as const) {
+    total.coverage[name].observedKeys++;
+    total.coverage[name].listedCoverageCount += Number(summary.coverage[name].listedCoverage);
+    total.coverage[name].effectiveAllowedCount += Number(summary.coverage[name].effectiveAllowed);
+  }
+  total.counts.domainCount += summary.domainCount;
+  for (const flag of ['scoreBased', 'domainRestrictionDisabled', 'testingOptionsPresent', 'testingScorePresent', 'testingChallengeConfigured'] as const) total.counts[flag] += Number(summary[flag]);
+}
+/** 원설정은 메모리에서만 비교한다. 같은 집계 숫자라도 서로 다른 설정이면 합치지 않는다. */
+function keyMeaning(raw: Record<string, any>) {
+  const settings = raw.webSettings, testing = raw.testingOptions ?? {};
+  return JSON.stringify({ allowedDomains: (settings.allowedDomains ?? []).map((domain: string) => domain.toLowerCase()).sort(),
+    allowAllDomains: settings.allowAllDomains ?? false, integrationType: settings.integrationType,
+    testingScore: Object.hasOwn(testing, 'testingScore') ? { present: true, value: testing.testingScore } : { present: false },
+    testingChallenge: testing.testingChallenge ?? 'TESTING_CHALLENGE_UNSPECIFIED' });
+}
 
 /** 정보는 읽되 어느 provider를 선택하거나 활성화하지 않는다. 원문 식별자는 메모리에서만 쓴다. */
-export async function observe(token: string, transport: Transport = fetch, now = new Date(), pageLimit = 10) {
+export async function observe(token: string, transport: Transport = fetch, now = new Date(), pageLimit = 10, inventoryExistingKeys = false) {
   check(typeof token === 'string' && !!token && !/[\r\n]/.test(token));
   check(Number.isInteger(pageLimit) && pageLimit >= 1 && pageLimit <= 20 && Number.isFinite(now.getTime()));
+  check(typeof inventoryExistingKeys === 'boolean');
   async function read(endpoint: string) {
     let response: Awaited<ReturnType<Transport>>, value: unknown;
     try { response = await transport(endpoint, { method: 'GET', headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(60000) }); }
@@ -112,8 +134,7 @@ export async function observe(token: string, transport: Transport = fetch, now =
     } while (next);
     if (webApps.state !== 'truncated') webApps.state = apps.length ? 'complete' : 'empty';
   } catch (error) { fail(webApps, error); webApps.partial = webApps.pages > 0; }
-  const counts = { domainCount: 0, scoreBased: 0, domainRestrictionDisabled: 0, testingOptionsPresent: 0, testingScorePresent: 0, testingChallengeConfigured: 0 };
-  const coverage = { admin: { observedKeys: 0, listedCoverageCount: 0, effectiveAllowedCount: 0 }, staff: { observedKeys: 0, listedCoverageCount: 0, effectiveAllowedCount: 0 } };
+  const total = keyTotals(), { counts, coverage } = total;
   const seenKeys = new Set<string>();
   if (number && ['complete', 'empty'].includes(webApps.state)) for (const app of apps) {
     const config = observation(); configs.push(config); let siteKey: string;
@@ -129,32 +150,65 @@ export async function observe(token: string, transport: Transport = fetch, now =
     try {
       const row = await read(url(`https://recaptchaenterprise.googleapis.com/v1/projects/${project}/keys/${siteKey}`, 'name,webSettings(allowedDomains,allowAllDomains,integrationType),testingOptions'));
       const summary = summarizeKey(row, number, siteKey);
-      for (const name of ['admin', 'staff'] as const) {
-        coverage[name].observedKeys++;
-        coverage[name].listedCoverageCount += Number(summary.coverage[name].listedCoverage);
-        coverage[name].effectiveAllowedCount += Number(summary.coverage[name].effectiveAllowed);
-      }
-      counts.domainCount += summary.domainCount;
-      for (const flag of ['scoreBased', 'domainRestrictionDisabled', 'testingOptionsPresent', 'testingScorePresent', 'testingChallengeConfigured'] as const) counts[flag] += Number(summary[flag]);
+      addKeyTotals(total, summary);
       Object.assign(key, { state: 'complete', pages: 1, observed: 1 });
     } catch (error) { fail(key, error); }
   }
+  const inventory = observation(), inventoryTotal = keyTotals();
+  let conditionalCandidateCount = 0;
+  if (inventoryExistingKeys && number) {
+    const seen = new Map<string, string>(), tokens = new Set<string>();
+    try {
+      let next = '';
+      do {
+        const row = await read(url(`https://recaptchaenterprise.googleapis.com/v1/projects/${project}/keys`, 'keys(name,webSettings(allowedDomains,allowAllDomains,integrationType),testingOptions),nextPageToken', next));
+        check(Object.keys(row).every(key => ['keys', 'nextPageToken'].includes(key)));
+        check(row.keys === undefined || Array.isArray(row.keys)); check(row.nextPageToken === undefined || typeof row.nextPageToken === 'string');
+        const fresh: { id: string; summary: ReturnType<typeof summarizeKey>; proof: string }[] = [];
+        const staged = new Map(seen);
+        for (const raw of row.keys ?? []) {
+          object(raw); check(typeof raw.name === 'string');
+          const match = /^projects\/([^/]+)\/keys\/([A-Za-z0-9_-]{1,256})$/.exec(raw.name);
+          check(match && [project, number].includes(match[1]));
+          const summary = summarizeKey(raw, number, match[2]), proof = keyMeaning(raw);
+          if (staged.has(match[2])) { check(staged.get(match[2]) === proof); continue; }
+          staged.set(match[2], proof); fresh.push({ id: match[2], summary, proof });
+        }
+        for (const item of fresh) {
+          seen.set(item.id, item.proof); addKeyTotals(inventoryTotal, item.summary);
+          if (item.summary.scoreBased && item.summary.coverage.admin.listedCoverage && item.summary.coverage.staff.listedCoverage
+            && !item.summary.domainRestrictionDisabled && !item.summary.testingScorePresent && !item.summary.testingChallengeConfigured) conditionalCandidateCount++;
+        }
+        inventory.pages++; inventory.observed = seen.size; next = row.nextPageToken ?? '';
+        if (next) { check(!tokens.has(next)); tokens.add(next); }
+        if (next && inventory.pages >= pageLimit) { inventory.state = 'truncated'; inventory.partial = true; break; }
+      } while (next);
+      if (inventory.state !== 'truncated') inventory.state = inventory.observed ? 'complete' : 'empty';
+    } catch (error) { fail(inventory, error); inventory.partial = inventory.pages > 0; }
+  }
   return { project, generatedAt: now.toISOString(), readOnly: true, configurationChanged: false, providerSelected: false, enforcementReadiness: 'not-determined',
-    projectInfo, webApps, enterpriseConfigs: aggregate(configs), enterpriseKeys: aggregate(keys), uniqueKeysQueried: seenKeys.size, coverage, keyCounts: counts };
+    projectInfo, webApps, enterpriseConfigs: aggregate(configs), enterpriseKeys: aggregate(keys), uniqueKeysQueried: seenKeys.size, coverage, keyCounts: counts,
+    existingKeyInventory: { requested: inventoryExistingKeys, ...inventory, coverage: inventoryTotal.coverage, keyCounts: inventoryTotal.counts,
+      conditionalCandidateCount, candidateCondition: 'SCORE, 두 호스트 명시 허용, 도메인 제한 유지, 시험 강제값 없음', candidateIsSelection: false } };
 }
 export function outputPath(args: string[], exists = existsSync) {
-  const expected = resolve('../appcheck-enterprise-readonly-20261015.json');
-  check(args.length === 2 && args[0] === '--auth=firebase-cli' && args[1].startsWith('--output='));
-  check(resolve(args[1].slice(9)) === expected && !exists(expected)); return expected;
+  const inventory = args.length === 3 && args[1] === '--inventory-existing-keys';
+  const expected = resolve(inventory ? '../appcheck-enterprise-inventory-readonly-20261015.json' : '../appcheck-enterprise-readonly-20261015.json');
+  const output = args[inventory ? 2 : 1];
+  check(args.length === (inventory ? 3 : 2) && args[0] === '--auth=firebase-cli' && typeof output === 'string' && output.startsWith('--output='));
+  check(resolve(output.slice(9)) === expected && !exists(expected)); return expected;
 }
 export async function run(args: string[], deps = { exists: existsSync, token: cliToken, observe, write: (path: string, text: string) => writeFileSync(path, text, { flag: 'wx' }) }) {
-  const path = outputPath(args, deps.exists); const summary = await deps.observe(await deps.token());
+  const path = outputPath(args, deps.exists); const summary = await deps.observe(await deps.token(), undefined, undefined, undefined, args.includes('--inventory-existing-keys'));
   deps.write(path, JSON.stringify(summary, null, 2)); return summary;
 }
 export async function selfCheck() {
   const summary = await observe('synthetic', async () => ({ status: 403, json: async () => ({ error: { status: 'PERMISSION_DENIED' } }) }), new Date('2026-10-15T00:00:00Z'));
   assert.equal(summary.projectInfo.state, 'denied'); assert.equal(summary.enterpriseKeys.state, 'notQueried');
-  assert.equal(summary.providerSelected, false); return { selfCheck: 'passed', productionRead: false, productionOutputWritten: false };
+  assert.equal(summary.providerSelected, false);
+  const inventory = await observe('synthetic', async endpoint => ({ status: 200, json: async () => new URL(endpoint).pathname.endsWith('/projects/taebaek-3abe4') ? { projectId: project, projectNumber: '123' } : {} }), new Date('2026-10-15T00:00:00Z'), 10, true);
+  assert.equal(inventory.existingKeyInventory.state, 'empty'); assert.equal(inventory.providerSelected, false);
+  return { selfCheck: 'passed', productionRead: false, productionOutputWritten: false };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {

@@ -25,6 +25,7 @@ it('고정 프로젝트 GET만 사용하고 사이트키·앱ID·허용 도메�
   expect(summary.enforcementReadiness).toBe('not-determined');
   expect(JSON.stringify(summary)).not.toMatch(/SECRET|abcdef|web\.app|projectNumber|allowedDomains/);
   expect(transport).toHaveBeenCalledTimes(4);
+  expect(summary.existingKeyInventory).toMatchObject({ state: 'notQueried', requested: false });
   for (const [endpoint, init] of transport.mock.calls) {
     const parsed = new URL(endpoint);
     expect(['firebase.googleapis.com', 'firebaseappcheck.googleapis.com', 'recaptchaenterprise.googleapis.com']).toContain(parsed.hostname);
@@ -34,6 +35,90 @@ it('고정 프로젝트 GET만 사용하고 사이트키·앱ID·허용 도메�
   }
   const fields = new URL(transport.mock.calls[3][0]).searchParams.get('fields')!;
   expect(fields).toContain('),testingOptions'); expect(fields).not.toContain('integrationType,testingOptions');
+});
+
+it('명시 inventory는 SCORE·두 호스트·시험 강제값·도메인 제한을 교차 집계할 뿐 선정하지 않는다', async () => {
+  const base = key(), normal = { ...base, name: 'projects/123/keys/SECRET_NORMAL', testingOptions: {} };
+  const testing = { ...base, name: 'projects/123/keys/SECRET_TEST' };
+  const all = { ...normal, name: 'projects/123/keys/SECRET_ALL', webSettings: { ...normal.webSettings, allowedDomains: [], allowAllDomains: true } };
+  const transport = vi.fn<Transport>().mockImplementation(async (endpoint, init) => new URL(endpoint).pathname.endsWith('/keys') ? response({ keys: [normal, testing, all] }) : ok(endpoint, init));
+  const summary = await observe('synthetic', transport, now, 10, true);
+  expect(summary.existingKeyInventory).toMatchObject({ requested: true, state: 'complete', observed: 3, conditionalCandidateCount: 1, candidateIsSelection: false });
+  expect(summary.existingKeyInventory.keyCounts).toMatchObject({ scoreBased: 3, testingScorePresent: 1, domainRestrictionDisabled: 1 });
+  expect(summary.existingKeyInventory.coverage.admin).toEqual({ observedKeys: 3, listedCoverageCount: 2, effectiveAllowedCount: 3 });
+  expect(summary.providerSelected).toBe(false);
+  expect(JSON.stringify(summary)).not.toMatch(/SECRET|abcdef|web\.app/);
+  expect(transport.mock.calls.filter(([endpoint]) => new URL(endpoint).pathname.endsWith('/keys'))).toHaveLength(1);
+});
+
+it('기존 key 목록은 모든 페이지를 읽고 같은 ID의 정규 이름 별칭을 중복 집계하지 않는다', async () => {
+  let page = 0;
+  const first = { ...key(), name: 'projects/123/keys/SECRET_SAME', testingOptions: {} };
+  const transport: Transport = async (endpoint, init) => {
+    if (!new URL(endpoint).pathname.endsWith('/keys')) return ok(endpoint, init);
+    page++;
+    return page === 1 ? response({ keys: [first], nextPageToken: 'SECRET_PAGE' })
+      : response({ keys: [{ ...first, name: 'projects/taebaek-3abe4/keys/SECRET_SAME' }, { ...first, name: 'projects/123/keys/SECRET_OTHER' }] });
+  };
+  const inventory = (await observe('synthetic', transport, now, 10, true)).existingKeyInventory;
+  expect(inventory).toMatchObject({ state: 'complete', pages: 2, observed: 2, conditionalCandidateCount: 2 });
+  expect(inventory.coverage.admin.observedKeys).toBe(2);
+  expect(JSON.stringify(inventory)).not.toContain('SECRET');
+});
+
+it.each(['domains', 'score'])('같은 집계라도 %s 원설정이 바뀌면 중복으로 합치지 않는다', async kind => {
+  let page = 0;
+  const first = kind === 'domains' ? { ...key(), webSettings: { ...key().webSettings, allowedDomains: ['SECRET-A.test'] } } : key();
+  const second = kind === 'domains' ? { ...first, webSettings: { ...first.webSettings, allowedDomains: ['SECRET-B.test'] } } : { ...first, testingOptions: { testingScore: 1 } };
+  const transport: Transport = async (endpoint, init) => {
+    if (!new URL(endpoint).pathname.endsWith('/keys')) return ok(endpoint, init);
+    return ++page === 1 ? response({ keys: [first], nextPageToken: 'next' }) : response({ keys: [second] });
+  };
+  const summary = await observe('synthetic', transport, now, 10, true);
+  expect(summary.existingKeyInventory).toMatchObject({ state: 'malformed', partial: true, pages: 1, observed: 1 });
+  expect(JSON.stringify(summary)).not.toMatch(/SECRET|testingScore":/);
+});
+
+it('도메인 순서·대소문자와 기본 false 표현만 다른 동일 설정은 한 번 집계한다', async () => {
+  let page = 0;
+  const first = { ...key(), testingOptions: {} };
+  const second = { ...first, name: `projects/taebaek-3abe4/keys/${siteKey}`, webSettings: { ...first.webSettings, allowedDomains: [...first.webSettings.allowedDomains].reverse().map(domain => domain.toUpperCase()), allowAllDomains: false } };
+  const transport: Transport = async (endpoint, init) => {
+    if (!new URL(endpoint).pathname.endsWith('/keys')) return ok(endpoint, init);
+    return ++page === 1 ? response({ keys: [first], nextPageToken: 'next' }) : response({ keys: [second] });
+  };
+  expect((await observe('synthetic', transport, now, 10, true)).existingKeyInventory).toMatchObject({ state: 'complete', partial: false, pages: 2, observed: 1, conditionalCandidateCount: 1 });
+});
+
+it.each(['empty', 'denied', 'disabled', 'notFound', 'foreign', 'bad-id', 'unknown-shape'])('inventory %s 상태를 정확히 구분한다', async kind => {
+  const transport: Transport = async (endpoint, init) => {
+    if (!new URL(endpoint).pathname.endsWith('/keys')) return ok(endpoint, init);
+    if (kind === 'empty') return response({});
+    if (kind === 'foreign') return response({ keys: [{ ...key(), name: 'projects/999/keys/SECRET_SITE_KEY' }] });
+    if (kind === 'bad-id') return response({ keys: [{ ...key(), name: 'https://outside.example/SECRET' }] });
+    if (kind === 'unknown-shape') return response({ unexpected: 'SECRET' });
+    return response({ error: { status: kind === 'notFound' ? 'NOT_FOUND' : 'PERMISSION_DENIED', message: 'SECRET', ...(kind === 'disabled' ? { details: [{ reason: 'SERVICE_DISABLED' }] } : {}) } }, kind === 'notFound' ? 404 : 403);
+  };
+  const summary = await observe('synthetic', transport, now, 10, true);
+  expect(summary.existingKeyInventory.state).toBe(['foreign', 'bad-id', 'unknown-shape'].includes(kind) ? 'malformed' : kind);
+  expect(summary.existingKeyInventory.conditionalCandidateCount).toBe(0);
+  expect(summary.enforcementReadiness).toBe('not-determined');
+  expect(JSON.stringify(summary)).not.toContain('SECRET');
+});
+
+it.each(['truncated', 'later-denied', 'cycle', 'conflicting-duplicate'])('inventory 후속 %s 결과는 partial로 남긴다', async kind => {
+  let page = 0;
+  const first = { ...key(), testingOptions: {} };
+  const transport: Transport = async (endpoint, init) => {
+    if (!new URL(endpoint).pathname.endsWith('/keys')) return ok(endpoint, init);
+    page++;
+    if (kind === 'later-denied' && page > 1) return response({ error: { message: 'SECRET' } }, 403);
+    if (kind === 'conflicting-duplicate' && page > 1) return response({ keys: [key()] });
+    return response({ keys: [first], nextPageToken: 'same' });
+  };
+  const summary = await observe('synthetic', transport, now, kind === 'truncated' ? 1 : 10, true);
+  expect(summary.existingKeyInventory).toMatchObject({ partial: true, observed: 1, conditionalCandidateCount: 1,
+    state: kind === 'truncated' ? 'truncated' : kind === 'later-denied' ? 'denied' : 'malformed' });
 });
 
 it('전체 도메인 허용은 명시 등록과 구분하며 시험 점수 0도 설정 존재로 센다', () => {
@@ -144,6 +229,20 @@ it('고정 출력과 wx 기존 파일 보호는 인증보다 먼저 검사한다
   const token = vi.fn(), write = vi.fn();
   await expect(run(args, { exists: () => true, token, observe: vi.fn(), write })).rejects.toBeDefined();
   expect(token).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
+});
+
+it('inventory 플래그와 별도 고정 출력 경로는 함께 지정해야 하며 기존 결과는 인증 전에 보호한다', async () => {
+  const path = resolve('../appcheck-enterprise-inventory-readonly-20261015.json');
+  const args = ['--auth=firebase-cli', '--inventory-existing-keys', '--output=' + path];
+  expect(outputPath(args, () => false)).toBe(path);
+  expect(() => outputPath(['--auth=firebase-cli', '--output=' + path], () => false)).toThrow();
+  expect(() => outputPath(['--auth=firebase-cli', '--inventory-existing-keys', '--output=' + resolve('../appcheck-enterprise-readonly-20261015.json')], () => false)).toThrow();
+  const token = vi.fn().mockResolvedValue('synthetic'), read = vi.fn().mockResolvedValue({ readOnly: true }), write = vi.fn();
+  await expect(run(args, { exists: () => true, token, observe: read, write })).rejects.toBeDefined();
+  expect(token).not.toHaveBeenCalled();
+  await run(args, { exists: () => false, token, observe: read, write });
+  expect(read).toHaveBeenCalledExactlyOnceWith('synthetic', undefined, undefined, undefined, true);
+  expect(write).toHaveBeenCalledExactlyOnceWith(path, JSON.stringify({ readOnly: true }, null, 2));
 });
 
 it('실제 Node self-check는 인증·운영 통신·결과 출력을 만들지 않는다', async () => {
