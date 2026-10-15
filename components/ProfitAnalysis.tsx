@@ -562,7 +562,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       })()}
 
       {/* 차트 영역 */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 overflow-hidden">
         <div className="text-xs font-black text-slate-600 mb-4">월별 매출 · 매입 · 영업이익</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={monthlyData} barGap={2} barCategoryGap="25%">
@@ -583,7 +583,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       </div>
 
       {/* 영업이익률 추이 라인 차트 */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 overflow-hidden">
         <div className="text-xs font-black text-slate-600 mb-4">월별 영업이익률 추이 (%)</div>
         <ResponsiveContainer width="100%" height={160}>
           <LineChart data={monthlyData}>
