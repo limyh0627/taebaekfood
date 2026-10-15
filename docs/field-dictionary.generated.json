@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-15T06:33:37.492Z",
-  "sourceFiles": 491,
-  "unresolvedAccesses": 3410,
+  "generatedAt": "2026-10-15T07:05:19.968Z",
+  "sourceFiles": 492,
+  "unresolvedAccesses": 3411,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:107",
@@ -9535,6 +9535,13 @@
       "expression": "copySelected.request?.confirmed.orderDraft.partnerName",
       "receiverExpression": "copySelected.request?.confirmed.orderDraft",
       "receiverType": "OrderInterpretationJsonObject | undefined",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/features/admin/oemExternalCostDiagnostic.ts:15",
+      "expression": "evidence?.job?.status",
+      "receiverExpression": "evidence?.job",
+      "receiverType": "Record<string, any> | null | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
@@ -35590,6 +35597,7 @@
         "src/features/admin/oemEngine.ts:258",
         "src/features/admin/oemEngine.ts:279",
         "src/features/admin/oemEngine.ts:285",
+        "src/features/admin/oemExternalCostDiagnostic.ts:8",
         "src/features/admin/oemExternalStock.ts:18",
         "src/features/admin/oemExternalStock.ts:23",
         "src/features/admin/oemExternalStock.ts:25",
@@ -35794,6 +35802,7 @@
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemEngine.ts:133",
         "src/features/admin/oemEngine.ts:257",
+        "src/features/admin/oemExternalCostDiagnostic.ts:15",
         "src/features/admin/oemExternalStock.ts:18",
         "src/features/admin/oemExternalStock.ts:26",
         "src/features/admin/oemExternalStock.ts:63",
@@ -36024,6 +36033,7 @@
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemEngine.ts:130",
         "src/features/admin/oemEngine.ts:255",
+        "src/features/admin/oemExternalCostDiagnostic.ts:9",
         "src/features/admin/oemExternalStock.ts:18",
         "src/features/admin/oemExternalStock.ts:25",
         "src/features/admin/oemIssueJob.ts:106",
@@ -36048,6 +36058,9 @@
         "components/OemManager.tsx:431",
         "src/features/admin/oemEngine.ts:197",
         "src/features/admin/oemEngine.ts:223",
+        "src/features/admin/oemExternalCostDiagnostic.ts:18",
+        "src/features/admin/oemExternalCostDiagnostic.ts:21",
+        "src/features/admin/oemExternalCostDiagnostic.ts:27",
         "src/features/admin/oemReconciliation.ts:39",
         "src/features/admin/oemReconciliation.ts:61",
         "src/features/admin/oemReconciliation.ts:65"
@@ -36059,7 +36072,11 @@
       "optional": true,
       "type": "'issue' | 'receipt'",
       "declaration": "src/shared/types.ts:1258",
-      "references": []
+      "references": [
+        "src/features/admin/oemExternalCostDiagnostic.ts:16",
+        "src/features/admin/oemExternalCostDiagnostic.ts:17",
+        "src/features/admin/oemExternalCostDiagnostic.ts:25"
+      ]
     },
     {
       "model": "PurchaseOrder",
@@ -36101,6 +36118,8 @@
         "src/features/admin/oem.ts:64",
         "src/features/admin/oemEngine.ts:223",
         "src/features/admin/oemEngine.ts:272",
+        "src/features/admin/oemExternalCostDiagnostic.ts:21",
+        "src/features/admin/oemExternalCostDiagnostic.ts:27",
         "src/features/admin/oemExternalStock.ts:19",
         "src/features/admin/oemExternalStock.ts:24",
         "src/features/admin/oemIssueJob.ts:83",
@@ -36126,6 +36145,7 @@
       "type": "'processing' | 'failed' | 'complete'",
       "declaration": "src/shared/types.ts:1265",
       "references": [
+        "src/features/admin/oemExternalCostDiagnostic.ts:15",
         "src/features/admin/oemExternalStock.ts:18",
         "src/features/admin/oemIssueJob.ts:155",
         "src/features/admin/oemIssueJob.ts:41",
@@ -36196,6 +36216,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1268",
       "references": [
+        "src/features/admin/oemExternalCostDiagnostic.ts:25",
         "src/features/admin/oemIssueJob.ts:106",
         "src/features/admin/oemIssueJob.ts:152",
         "src/features/admin/oemIssueJob.ts:166"
@@ -40211,7 +40232,8 @@
             "functions/src/shared/oemBatchCost.ts:63",
             "functions/src/shared/oemBatchCost.ts:74",
             "src/features/admin/oemCostEvidence.ts:20",
-            "src/features/admin/oemCostEvidence.ts:22"
+            "src/features/admin/oemCostEvidence.ts:22",
+            "src/features/admin/oemExternalCostDiagnostic.ts:29"
           ]
         },
         {
@@ -59815,6 +59837,7 @@
           "type": "PurchaseOrder | null",
           "declaration": "src/features/admin/oemExternalStock.ts:6",
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:24",
             "src/features/admin/oemExternalStock.ts:33"
           ]
         },
@@ -59824,6 +59847,7 @@
           "type": "Record<string, any> | null",
           "declaration": "src/features/admin/oemExternalStock.ts:7",
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:32"
           ]
         },
@@ -59887,6 +59911,7 @@
           "declaration": "src/features/admin/oemExternalStock.ts:13",
           "references": [
             "components/OemManager.tsx:315",
+            "src/features/admin/oemExternalCostDiagnostic.ts:10",
             "src/features/admin/oemExternalStock.ts:63"
           ]
         },
@@ -84058,6 +84083,71 @@
       ]
     },
     {
+      "model": "OemExternalCostReason",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "'invalid-scope'|'issue-evidence-unconfirmed'|'cancelled-with-evidence'|'received-po-out-of-open-scope'|'issue-not-complete'|'receipt-cost-only'|'cost-source-unconfirmed'|'cost-evidence-missing'|'cost-evidence-mismatch'|'cost-snapshot-mismatch'|'cost-amount-out-of-range'|'issue-raw-cost-candidate'"
+    },
+    {
+      "model": "OemExternalCostDiagnostic",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+      "kind": "interface",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "poId",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "classification",
+          "optional": false,
+          "type": "'candidate'|'excluded'|'unconfirmed'",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "reason",
+          "optional": false,
+          "type": "OemExternalCostReason",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "sourceState",
+          "optional": false,
+          "type": "OemExternalRow['state']",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "currentOnly",
+          "optional": false,
+          "type": "true",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "assetValuationConfirmed",
+          "optional": false,
+          "type": "false",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "rawSupplyAmountCandidate",
+          "optional": true,
+          "type": "number",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        }
+      ]
+    },
+    {
       "model": "StaffAppProps",
       "declaration": "src/features/staff/StaffApp.tsx:23",
       "kind": "interface",
@@ -89810,7 +89900,8 @@
             "functions/src/shared/oemBatchCost.ts:63",
             "functions/src/shared/oemBatchCost.ts:74",
             "src/features/admin/oemCostEvidence.ts:20",
-            "src/features/admin/oemCostEvidence.ts:22"
+            "src/features/admin/oemCostEvidence.ts:22",
+            "src/features/admin/oemExternalCostDiagnostic.ts:29"
           ]
         },
         {
@@ -108734,6 +108825,7 @@
             "src/features/admin/oemEngine.ts:258",
             "src/features/admin/oemEngine.ts:279",
             "src/features/admin/oemEngine.ts:285",
+            "src/features/admin/oemExternalCostDiagnostic.ts:8",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:23",
             "src/features/admin/oemExternalStock.ts:25",
@@ -108955,6 +109047,7 @@
             "src/features/admin/oem.ts:63",
             "src/features/admin/oemEngine.ts:133",
             "src/features/admin/oemEngine.ts:257",
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:26",
             "src/features/admin/oemExternalStock.ts:63",
@@ -109205,6 +109298,7 @@
             "src/features/admin/oem.ts:63",
             "src/features/admin/oemEngine.ts:130",
             "src/features/admin/oemEngine.ts:255",
+            "src/features/admin/oemExternalCostDiagnostic.ts:9",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:25",
             "src/features/admin/oemIssueJob.ts:106",
@@ -109231,6 +109325,9 @@
             "components/OemManager.tsx:431",
             "src/features/admin/oemEngine.ts:197",
             "src/features/admin/oemEngine.ts:223",
+            "src/features/admin/oemExternalCostDiagnostic.ts:18",
+            "src/features/admin/oemExternalCostDiagnostic.ts:21",
+            "src/features/admin/oemExternalCostDiagnostic.ts:27",
             "src/features/admin/oemReconciliation.ts:39",
             "src/features/admin/oemReconciliation.ts:61",
             "src/features/admin/oemReconciliation.ts:65"
@@ -109244,7 +109341,11 @@
             "src/shared/types.ts:1258"
           ],
           "inherited": false,
-          "references": []
+          "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:16",
+            "src/features/admin/oemExternalCostDiagnostic.ts:17",
+            "src/features/admin/oemExternalCostDiagnostic.ts:25"
+          ]
         },
         {
           "field": "oemBatchCost",
@@ -109292,6 +109393,8 @@
             "src/features/admin/oem.ts:64",
             "src/features/admin/oemEngine.ts:223",
             "src/features/admin/oemEngine.ts:272",
+            "src/features/admin/oemExternalCostDiagnostic.ts:21",
+            "src/features/admin/oemExternalCostDiagnostic.ts:27",
             "src/features/admin/oemExternalStock.ts:19",
             "src/features/admin/oemExternalStock.ts:24",
             "src/features/admin/oemIssueJob.ts:83",
@@ -109321,6 +109424,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemIssueJob.ts:155",
             "src/features/admin/oemIssueJob.ts:41",
@@ -109397,6 +109501,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:25",
             "src/features/admin/oemIssueJob.ts:106",
             "src/features/admin/oemIssueJob.ts:152",
             "src/features/admin/oemIssueJob.ts:166"
@@ -138580,6 +138685,7 @@
             "src/features/admin/oemEngine.ts:258",
             "src/features/admin/oemEngine.ts:279",
             "src/features/admin/oemEngine.ts:285",
+            "src/features/admin/oemExternalCostDiagnostic.ts:8",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:23",
             "src/features/admin/oemExternalStock.ts:25",
@@ -138801,6 +138907,7 @@
             "src/features/admin/oem.ts:63",
             "src/features/admin/oemEngine.ts:133",
             "src/features/admin/oemEngine.ts:257",
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:26",
             "src/features/admin/oemExternalStock.ts:63",
@@ -139051,6 +139158,7 @@
             "src/features/admin/oem.ts:63",
             "src/features/admin/oemEngine.ts:130",
             "src/features/admin/oemEngine.ts:255",
+            "src/features/admin/oemExternalCostDiagnostic.ts:9",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemExternalStock.ts:25",
             "src/features/admin/oemIssueJob.ts:106",
@@ -139077,6 +139185,9 @@
             "components/OemManager.tsx:431",
             "src/features/admin/oemEngine.ts:197",
             "src/features/admin/oemEngine.ts:223",
+            "src/features/admin/oemExternalCostDiagnostic.ts:18",
+            "src/features/admin/oemExternalCostDiagnostic.ts:21",
+            "src/features/admin/oemExternalCostDiagnostic.ts:27",
             "src/features/admin/oemReconciliation.ts:39",
             "src/features/admin/oemReconciliation.ts:61",
             "src/features/admin/oemReconciliation.ts:65"
@@ -139090,7 +139201,11 @@
             "src/shared/types.ts:1258"
           ],
           "inherited": true,
-          "references": []
+          "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:16",
+            "src/features/admin/oemExternalCostDiagnostic.ts:17",
+            "src/features/admin/oemExternalCostDiagnostic.ts:25"
+          ]
         },
         {
           "field": "oemBatchCost",
@@ -139139,6 +139254,8 @@
             "src/features/admin/oem.ts:64",
             "src/features/admin/oemEngine.ts:223",
             "src/features/admin/oemEngine.ts:272",
+            "src/features/admin/oemExternalCostDiagnostic.ts:21",
+            "src/features/admin/oemExternalCostDiagnostic.ts:27",
             "src/features/admin/oemExternalStock.ts:19",
             "src/features/admin/oemExternalStock.ts:24",
             "src/features/admin/oemIssueJob.ts:83",
@@ -139169,6 +139286,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:18",
             "src/features/admin/oemIssueJob.ts:155",
             "src/features/admin/oemIssueJob.ts:41",
@@ -139246,6 +139364,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:25",
             "src/features/admin/oemIssueJob.ts:106",
             "src/features/admin/oemIssueJob.ts:152",
             "src/features/admin/oemIssueJob.ts:166"
@@ -139648,6 +139767,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:24",
             "src/features/admin/oemExternalStock.ts:33"
           ]
         },
@@ -139660,6 +139780,7 @@
           ],
           "inherited": false,
           "references": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:15",
             "src/features/admin/oemExternalStock.ts:32"
           ]
         },
@@ -139740,6 +139861,7 @@
           "inherited": false,
           "references": [
             "components/OemManager.tsx:315",
+            "src/features/admin/oemExternalCostDiagnostic.ts:10",
             "src/features/admin/oemExternalStock.ts:63"
           ]
         },
@@ -178936,6 +179058,89 @@
           "type": "string | undefined",
           "declarations": [
             "src/features/admin/AdminApp.tsx:3876"
+          ],
+          "inherited": false,
+          "references": []
+        }
+      ]
+    },
+    {
+      "model": "OemExternalCostReason",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "OemExternalCostDiagnostic",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "poId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "classification",
+          "optional": false,
+          "type": "\"unconfirmed\" | \"candidate\" | \"excluded\"",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "reason",
+          "optional": false,
+          "type": "OemExternalCostReason",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "sourceState",
+          "optional": false,
+          "type": "\"cancelled\" | \"unknown\" | \"received\" | \"confirmed\" | \"partial\"",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "currentOnly",
+          "optional": false,
+          "type": "true",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "assetValuationConfirmed",
+          "optional": false,
+          "type": "false",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "rawSupplyAmountCandidate",
+          "optional": true,
+          "type": "number | undefined",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
           ],
           "inherited": false,
           "references": []
@@ -223570,13 +223775,13 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 30848,
-      "dot:connected": 27545,
+      "dot:no-model-declaration": 30853,
+      "dot:connected": 27566,
       "binding:connected": 1656,
       "binding:rest-binding": 53,
       "element:dynamic-key": 751,
       "binding:array-binding": 3369,
-      "dot:property-symbol-unresolved": 2067,
+      "dot:property-symbol-unresolved": 2068,
       "dot:ambiguous-union": 1198,
       "element:array-index": 754,
       "binding:no-model-declaration": 358,

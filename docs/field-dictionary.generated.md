@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 91개, 선언 필드 739개, 운영 소스 491개를 분석했다.
+COL 91개, 선언 필드 739개, 운영 소스 492개를 분석했다.
 
 첫 요약과 기존 직접 필드 통계는 TypeScript가 shared/types.ts 직접 interface 선언으로 해석한 속성 접근의 범위다. 별도 모델의 원선언에 귀속된 정적 참조는 아래 additionalModels/resolvedModels에 따로 기록하며 기존 통계와 합산하지 않는다. any·동적 인덱스·객체 전개는 전체 사용처로 해석하지 않으며 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -845,7 +845,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 828개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 830개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -1571,6 +1571,8 @@ shared/types.ts 외 interface/type alias 828개를 별도 목록에 기록한다
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | type-alias | non-object-alias-not-expanded |  |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
 | UsageRow | src/features/admin/AdminApp.tsx:3876 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
+| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | type-alias | non-object-alias-not-expanded |  |
+| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | interface | direct-properties-only | poId, classification, reason, sourceState, currentOnly, assetValuationConfirmed, rawSupplyAmountCandidate |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
 | Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
@@ -2492,6 +2494,8 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | checker-resolved-properties-only | 46 |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | checker-resolved-properties-only | 7 |
 | UsageRow | src/features/admin/AdminApp.tsx:3876 | checker-resolved-properties-only | 10 |
+| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | non-object-model-not-expanded | 0 |
+| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | checker-resolved-properties-only | 7 |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | checker-resolved-properties-only | 10 |
 | Window | src/global.d.ts:3 | checker-resolved-properties-only | 186 |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | checker-resolved-properties-only | 4 |
@@ -3967,6 +3971,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | src/features/admin/AdminApp.tsx:4783 | error?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:4793 | error?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:4986 | copySelected.request?.confirmed.orderDraft.partnerName | OrderInterpretationJsonObject \| undefined | property-symbol-unresolved |
+| src/features/admin/oemExternalCostDiagnostic.ts:15 | evidence?.job?.status | Record<string, any> \| null \| undefined | property-symbol-unresolved |
 | src/shared/components/AuthPage.tsx:34 | cause?.code | any | any-receiver |
 | functions/src/newScopeCounter.ts:40 | gate.data()?.oemLotCutoverDate | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/newScopeCounter.ts:46 | row?.status | DocumentData \| undefined | property-symbol-unresolved |
@@ -6515,7 +6520,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1213 | 29 |
 | PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1214 | 12 |
 | PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1220 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1224 | 107 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1224 | 108 |
 | PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1226 | 6 |
 | PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1227 | 5 |
 | PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1228 | 1 |
@@ -6524,7 +6529,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1231 | 11 |
 | PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1232 | 1 |
 | PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1234 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1235 | 60 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1235 | 61 |
 | PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1236 | 2 |
 | PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1237 | 1 |
 | PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1238 | 25 |
@@ -6536,17 +6541,17 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1248 | 16 |
 | PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1249 | 0 |
 | PurchaseOrder | note | 선택 | string | src/shared/types.ts:1250 | 0 |
-| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1254 | 36 |
-| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1256 | 7 |
-| PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1258 | 0 |
+| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1254 | 37 |
+| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1256 | 10 |
+| PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1258 | 3 |
 | PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1260 | 2 |
 | PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1261 | 3 |
-| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1262 | 16 |
+| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1262 | 18 |
 | PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1263 | 1 |
-| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1265 | 4 |
+| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1265 | 5 |
 | PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1266 | 26 |
 | PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1267 | 13 |
-| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1268 | 3 |
+| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1268 | 4 |
 | PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1269 | 4 |
 | PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1270 | 1 |
 | PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1271 | 0 |
