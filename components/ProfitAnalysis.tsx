@@ -183,6 +183,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // ── 거래처 탭 서브탭 ──
   const [partnersSubTab, setPartnersSubTab] = useState<'receivables' | 'stats'>('receivables');
   const now = new Date();
+  const currentDate = today();
   const currentYear = now.getFullYear();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -241,11 +242,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       endMonth = selectedHalf === 1 ? 6 : 12;
     }
     const rangeEnd = isCurrentYear && endMonth >= currentMonth
-      ? today()
+      ? currentDate
       : `${selectedYear}-${pad(endMonth)}-${pad(monthEnd(selectedYear, endMonth))}`;
     setCustomStart(`${selectedYear}-${pad(startMonth)}-01`);
     setCustomEnd(rangeEnd);
-  }, [period, selectedYear, selectedQuarter, selectedHalf, currentMonth, isCurrentYear]);
+  }, [period, selectedYear, selectedQuarter, selectedHalf, currentMonth, isCurrentYear, currentDate]);
 
   // 연도를 바꿨을 때 못 고르는 기간이면 되돌린다 — 판정은 위 *Available 하나만 쓴다.
   // (전에는 여기서 규칙을 한 번 더 적어 둬서 버튼은 열려 있는데 여기서 튕기는 자리가 있었다)

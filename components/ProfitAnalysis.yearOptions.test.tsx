@@ -33,3 +33,13 @@ it('사용자가 고른 과거 연도와 전표·현금의 연도 선택지를 �
  expect(Array.from(yearPicker().querySelectorAll('option'),option=>option.value)).toEqual(['2027','2025','2024']);
  expect(yearPicker()).toHaveValue('2025');
 });
+
+it.each(['당월','분기','반기','당년'])('%s 빠른기간은 같은 달 다음날 재렌더에서 종료일을 갱신한다',async label=>{
+ vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));const view=render(<ProfitAnalysis {...props}/>);await act(async()=>{});fireEvent.click(screen.getByRole('button',{name:label}));if(label==='분기')fireEvent.click(screen.getByRole('button',{name:'4분기'}));if(label==='반기')fireEvent.click(screen.getByRole('button',{name:'하반기'}));expect(screen.getByLabelText('조회 종료일')).toHaveValue('2026-10-15');vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<ProfitAnalysis {...props}/>);expect(screen.getByLabelText('조회 종료일')).toHaveValue('2026-10-16');
+});
+it('직접 입력한 기간은 다음날 재렌더에도 보존한다',async()=>{
+ vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));const view=render(<ProfitAnalysis {...props}/>);await act(async()=>{});fireEvent.change(screen.getByLabelText('조회 시작일'),{target:{value:'2026-08-03'}});fireEvent.change(screen.getByLabelText('조회 종료일'),{target:{value:'2026-09-07'}});vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<ProfitAnalysis {...props}/>);expect(screen.getByLabelText('조회 시작일')).toHaveValue('2026-08-03');expect(screen.getByLabelText('조회 종료일')).toHaveValue('2026-09-07');
+});
+it.each(['과거연도','완료분기'])('%s 빠른기간은 다음날에도 확정된 종료일을 유지한다',async kind=>{
+ vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));const view=render(<ProfitAnalysis {...props}/>);await act(async()=>{});if(kind==='과거연도'){fireEvent.click(screen.getByRole('button',{name:'당년'}));fireEvent.change(yearPicker(),{target:{value:'2025'}});}else{fireEvent.click(screen.getByRole('button',{name:'분기'}));fireEvent.click(screen.getByRole('button',{name:'1분기'}));}const expected=kind==='과거연도'?'2025-12-31':'2026-03-31';expect(screen.getByLabelText('조회 종료일')).toHaveValue(expected);vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<ProfitAnalysis {...props}/>);expect(screen.getByLabelText('조회 종료일')).toHaveValue(expected);
+});
