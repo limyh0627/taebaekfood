@@ -53,7 +53,10 @@ export async function executeRetirementBenefit(db:admin.firestore.Firestore,acto
  else{try{request=normalizeRetirementRequest(input.request);}catch(e){throw new HttpsError('invalid-argument',e instanceof Error?e.message:'입력을 확인하세요.');}reference=request;}
  if(reference.companyId!==scope.companyId)throw new HttpsError('permission-denied','다른 회사의 퇴직금 요청입니다.');const requestText=request?serializeRetirementRequest(request):null,requestHash=requestText===null?null:sha(requestText),receiptRef=db.collection(COL.receipts).doc(retirementReceiptId(scope.companyId,scope.uid,reference.operationId));
  return db.runTransaction(async tx=>{
-  const [employee,receiptSnap]=await Promise.all([tx.get(db.collection('employees').doc(reference.employeeId)),tx.get(receiptRef)]);employeeScope(employee,scope.companyId);const prior=existingReceipt(receiptSnap,reference,scope,requestText,requestHash);if(prior)return prior;
+  const [employee,receiptSnap]=await Promise.all([tx.get(db.collection('employees').doc(reference.employeeId)),tx.get(receiptRef)]);const prior=existingReceipt(receiptSnap,reference,scope,requestText,requestHash);if(prior)return prior;
+  // 미등록 직원 삭제 뒤에도 최초 요청을 조회·봉쇄할 수 있어야 늦은 전송이 남지 않는다.
+  // 현재 다른 회사 직원이 있는 참조는 열지 않으며 새 적용은 직원 존재를 계속 요구한다.
+  if(input.mode==='apply'||employee.exists)employeeScope(employee,scope.companyId);
   if(input.mode==='inspect-request')return resultOf(reference,scope,'unknown',requestHash,requestText,null,'서버에 확정 결과가 없습니다. 최초 요청을 보존한 채 재시도하거나 미처리 요청을 봉쇄하세요.');
   const now=new Date().toISOString();if(input.mode==='discard-request'){const result=resultOf(reference,scope,'discarded',requestHash,requestText,null,'이 요청의 늦은 적용을 봉쇄했습니다. 기존 확정 이력을 취소한 것은 아닙니다.',null,!request);tx.create(receiptRef,{...result,version:1,createdAt:now});return result;}
   if(!request)throw new HttpsError('invalid-argument','적용할 최초 원문이 필요합니다.');
