@@ -61,10 +61,11 @@ export default function CashLedger({
 
   const effAccounts = cashAccounts;
 
+  const currentDate = today();
   const active = effAccounts.find(a => a.id === activeId) ?? effAccounts[0];
   const totalCash = useMemo(
-    () => totalCashOnHand(effAccounts.filter(a => a.type !== '카드'), cashEntries, today()),
-    [effAccounts, cashEntries],
+    () => totalCashOnHand(effAccounts.filter(a => a.type !== '카드'), cashEntries, currentDate),
+    [effAccounts, cashEntries, currentDate],
   );
   const ledger = useMemo(
     () => (active ? buildAccountLedger(active, cashEntries, from, to) : null),
@@ -122,7 +123,7 @@ export default function CashLedger({
           <p className="text-2xl font-black mt-1 tabular-nums">{fmt(totalCash)}<span className="text-sm ml-1 text-slate-400">원</span></p>
         </div>
         {cashAccounts.filter(a => a.active).map(a => {
-          const bal = totalCashOnHand([a], cashEntries, today());
+          const bal = totalCashOnHand([a], cashEntries, currentDate);
           const Icon = ACCOUNT_ICON[a.type];
           return (
             <button key={a.id} onClick={() => setActiveId(a.id)}

@@ -21,7 +21,7 @@ import {
 import { Order, Item, OrderStatus, ViewType, Partner } from '../types';
 import PageHeader from './PageHeader';
 import DashboardLinks from './DashboardLinks';
-import { dateOfLocal } from '../src/shared/day';
+import { dateOfLocal, today as localToday } from '../src/shared/day';
 
 interface DashboardProps {
   orders: Order[];
@@ -75,8 +75,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
   const [showLowStock, setShowLowStock] = useState(false);
   const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
   const [orderQtys, setOrderQtys] = useState<Record<string, string>>({});
-  const today = useMemo(() => new Date(), []);
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = localToday();
+  const today = useMemo(() => new Date(todayStr + 'T00:00:00'), [todayStr]);
+
 
   // 최근 7일 주문 차트 데이터 (실제 데이터)
   const chartData = useMemo(() => {
@@ -84,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(today);
       date.setDate(today.getDate() - (6 - i));
-      const dateStr = date.toISOString().slice(0, 10);
+      const dateStr = dateOfLocal(date.toISOString());
       const count = orders.filter(o => dateOfLocal(o.createdAt) === dateStr).length;
       return {
         name: i === 6 ? '오늘' : dayNames[date.getDay()],

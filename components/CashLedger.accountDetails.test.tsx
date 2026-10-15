@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { AccountModal } from './CashLedger';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import CashLedger, { AccountModal } from './CashLedger';
 import type { CashAccount, CashEntry } from '../src/shared/types';
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: async () => true, appNotice: async () => {} }));
 const account: CashAccount = { id: 'bank', companyId: 'taebaek', name: '메인통장', type: '통장', active: true, openingDate: '2026-07-31', openingBalance: 1000, createdAt: '' };
@@ -92,4 +92,12 @@ describe('계좌 추가·상세 분리', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('정수 잔액');
     expect(onCorrect).not.toHaveBeenCalled();
   });
+});
+
+describe('자금 합계와 계좌 카드의 오늘 기준',()=>{
+ beforeEach(()=>vi.useFakeTimers({toFake:['Date']}));afterEach(()=>vi.useRealTimers());
+ it.each([['2026-10-15','2026-10-16'],['2026-10-31','2026-11-01'],['2026-12-31','2027-01-01']])('%s에서 %s로 바뀌면 같은 배열의 합계와 개별 잔액이 함께 갱신된다',(first,next)=>{
+  vi.setSystemTime(new Date(first+'T12:00:00+09:00'));const onWrite=vi.fn(),cashEntries=[{id:'future',companyId:'taebaek' as const,cashAccountId:account.id,date:next,dir:'입금' as const,amount:2000,createdAt:next+'T00:00:00+09:00'}];const props={companyId:'taebaek' as const,cashAccounts:[account],cashEntries,accountCodes:[],partners:[],issuedStatements:[],settlements:[],onAddCashAccount:onWrite,onUpdateCashAccount:onWrite,onAddCashEntry:onWrite,onDeleteCashEntry:onWrite,onAddSettlement:onWrite,onDeleteSettlement:onWrite};const view=render(<CashLedger {...props}/>);expect(screen.getByText('보유 자금 (통장+현금)').parentElement).toHaveTextContent('1,000원');expect(screen.getByRole('button',{name:/메인통장 1,000/})).toBeInTheDocument();const oldDates=Array.from(view.container.querySelectorAll('input[type="date"]'),input=>(input as HTMLInputElement).value);vi.setSystemTime(new Date(next+'T00:05:00+09:00'));view.rerender(<CashLedger {...props}/>);expect(screen.getByText('보유 자금 (통장+현금)').parentElement).toHaveTextContent('3,000원');expect(screen.getByRole('button',{name:/메인통장 3,000/})).toBeInTheDocument();expect(Array.from(view.container.querySelectorAll('input[type="date"]'),input=>(input as HTMLInputElement).value)).toEqual(oldDates);expect(onWrite).not.toHaveBeenCalled();
+ });
+ it('날짜가 지나도 열어 둔 계좌 수정 초안은 변경하지 않는다',()=>{vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));const onCorrect=vi.fn(),view=render(<AccountModal {...base} onCorrect={onCorrect}/>);fireEvent.click(screen.getByRole('button',{name:/메인통장/}));fireEvent.change(screen.getByLabelText('계좌 이름'),{target:{value:'작성 중 이름'}});fireEvent.change(screen.getByLabelText('현재 잔액'),{target:{value:'2345'}});vi.setSystemTime(new Date('2026-10-16T00:05:00+09:00'));view.rerender(<AccountModal {...base} onCorrect={onCorrect}/>);expect(screen.getByLabelText('계좌 이름')).toHaveValue('작성 중 이름');expect(screen.getByLabelText('현재 잔액')).toHaveValue('2,345');expect(onCorrect).not.toHaveBeenCalled();});
 });
