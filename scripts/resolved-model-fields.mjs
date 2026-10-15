@@ -46,15 +46,19 @@ export function collectFieldReferences(checker, node, location, references, cove
     const receiver=bindingType(node.parent);if(!receiver)return;
     symbol=checker.getPropertyOfType(receiver,name.text);
   }else{
-    // 기존 점 접근은 공용체를 좁히지 않았으므로 그 경계를 유지한다.
+    // null·undefined만 섞인 단일 모델은 원선언을 읽되 다른 공용체와 기존 점 접근은 그대로 둔다.
     const original=checker.getTypeAtLocation(node.expression);
-    if(syntax==='dot'&&(original.flags&ts.TypeFlags.Union)){record('ambiguous-union');return;}
-    const receiver=syntax==='dot'?original:supported(original);if(!receiver)return;
+    const nullableDot=syntax==='dot'&&original.isUnion()&&original.types.some(part=>part.flags&(ts.TypeFlags.Null|ts.TypeFlags.Undefined));
+    if(syntax==='dot'&&original.isUnion()){
+      const alternatives=original.types.filter(part=>!(part.flags&(ts.TypeFlags.Null|ts.TypeFlags.Undefined)));
+      if(!nullableDot||alternatives.length!==1||!(alternatives[0].flags&(ts.TypeFlags.Object|ts.TypeFlags.Intersection))||checker.isArrayType(alternatives[0])||checker.isTupleType(alternatives[0])){record('ambiguous-union');return;}
+    }
+    const receiver=syntax==='dot'&&!nullableDot?original:supported(original);if(!receiver)return;
     if(syntax==='dot'&&(original.flags&(ts.TypeFlags.Any|ts.TypeFlags.Unknown))){record(original.flags&ts.TypeFlags.Any?'any-receiver':'unknown-receiver');return;}
     if(syntax==='element'){
       if(!ts.isStringLiteral(node.argumentExpression)){record('dynamic-key');return;}
       symbol=checker.getPropertyOfType(receiver,node.argumentExpression.text);
-    }else symbol=checker.getSymbolAtLocation(node.name);
+    }else symbol=nullableDot?checker.getPropertyOfType(receiver,node.name.text):checker.getSymbolAtLocation(node.name);
   }
   if(!symbol){record('property-symbol-unresolved');return;}
   const declarations=(symbol.declarations??[]).filter(declaration=>(ts.isPropertySignature(declaration)||ts.isPropertyDeclaration(declaration))&&(syntax==='dot'||!declaration.getSourceFile().fileName.includes('node_modules')&&isTrackedDeclaration(declaration)));
