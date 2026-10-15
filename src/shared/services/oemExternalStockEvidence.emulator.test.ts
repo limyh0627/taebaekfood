@@ -2,26 +2,29 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {initializeApp,deleteApp} from 'firebase/app';
 import {connectAuthEmulator,getAuth,signInWithEmailAndPassword,signOut} from 'firebase/auth';
-import {connectFirestoreEmulator,getFirestore,getDoc,doc} from 'firebase/firestore';
+import {connectFirestoreEmulator,getFirestore,getDoc,getDocFromServer,doc} from 'firebase/firestore';
 import {initializeApp as initializeAdminApp,deleteApp as deleteAdminApp} from 'firebase-admin/app';
 import {getAuth as getAdminAuth} from 'firebase-admin/auth';
 import {getFirestore as getAdminFirestore} from 'firebase-admin/firestore';
 import {applyRawCommand,commandHash,operationDocId,type RawApplyResult} from '../rawInventoryCore';
 import type {CompanyId,PurchaseOrder} from '../types';
+import {oemIssueFingerprint} from '../../features/admin/oemIssueJob';
 import {readOemExternalStockEvidence} from './oemExternalStockEvidence';
+vi.mock('firebase/firestore', async importOriginal => { const original = await importOriginal<typeof import('firebase/firestore')>(); return { ...original, getDocFromServer: vi.fn(original.getDocFromServer) }; });
 const gateway=vi.hoisted(()=>({db:undefined as any,auth:undefined as any}));
 vi.mock('../firebase',()=>({get db(){return gateway.db;},get auth(){return gateway.auth;},authReady:Promise.resolve()}));
 describe.skipIf(process.env.OEM_EXTERNAL_EVIDENCE_EMULATOR_TEST!=='true')('외주송출 근거 실제 Auth·SDK 읽기',()=>{
- const projectId='demo-taebaekfood-local',prefix='oem-proof-'+randomUUID();let app:any,adminApp:any,adminDb:any,adminAuth:any;
+ const projectId=process.env.OEM_EXTERNAL_EVIDENCE_PROJECT??'demo-taebaekfood-local',prefix='oem-proof-'+randomUUID();let app:any,adminApp:any,adminDb:any,adminAuth:any;
  const users=new Map<CompanyId,{uid:string,email:string,password:string}>(),paths=new Set<string>(),orders=new Map<CompanyId,PurchaseOrder>();
  async function login(company:CompanyId){const user=users.get(company)!;await signOut(gateway.auth);await signInWithEmailAndPassword(gateway.auth,user.email,user.password);expect((await gateway.auth.currentUser.getIdTokenResult(true)).claims).toMatchObject({companyId:company,employeeId:user.uid});}
  beforeAll(async()=>{
+  if(!/^demo-[a-z0-9-]+$/.test(projectId))throw new Error('합성 demo 프로젝트만 허용');
   if(process.env.FIRESTORE_EMULATOR_HOST&&process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8082')throw new Error('emulator mismatch');
   if(process.env.FIREBASE_AUTH_EMULATOR_HOST&&process.env.FIREBASE_AUTH_EMULATOR_HOST!=='127.0.0.1:9099')throw new Error('auth mismatch');
   if(process.env.GCLOUD_PROJECT&&process.env.GCLOUD_PROJECT!==projectId)throw new Error('project mismatch');
   process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8082';process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';process.env.GCLOUD_PROJECT=projectId;
   adminApp=initializeAdminApp({projectId},prefix+'-admin');adminDb=getAdminFirestore(adminApp);adminAuth=getAdminAuth(adminApp);
-  app=initializeApp({projectId,apiKey:'local-only'},prefix+'-sdk');gateway.db=getFirestore(app);connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);gateway.auth=getAuth(app);connectAuthEmulator(gateway.auth,'http://127.0.0.1:9099',{disableWarnings:true});
+  app=initializeApp({projectId,apiKey:'local-emulator-only'},prefix+'-sdk');gateway.db=getFirestore(app);connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);gateway.auth=getAuth(app);connectAuthEmulator(gateway.auth,'http://127.0.0.1:9099',{disableWarnings:true});
   for(const companyId of ['taebaek','punghoe'] as const){const uid=prefix+'-'+companyId,email=uid+'@example.invalid',password=randomUUID()+'A1!';await adminAuth.createUser({uid,email,password});users.set(companyId,{uid,email,password});await adminAuth.setCustomUserClaims(uid,{companyId,employeeId:uid,isAdmin:false});
    const po={id:prefix+'-'+companyId,companyId,poType:'oem',partnerName:'합성외주',status:'pending',oemIssueStatus:'failed',oemIssueDate:'2026-10-12',itemId:'',itemName:'',quantity:0,createdAt:'',oemSent:[{rawItemId:prefix+'-raw-a',material:'참깨',kg:100},{rawItemId:prefix+'-raw-b',material:'들깨',kg:50}]} as PurchaseOrder;orders.set(companyId,po);
    const jobId=`oem-issue:${po.id}`;const raw=po.oemSent![0],operationId=`${jobId}:${raw.rawItemId}`;
@@ -46,7 +49,34 @@ describe.skipIf(process.env.OEM_EXTERNAL_EVIDENCE_EMULATOR_TEST!=='true')('외�
   expect((await readOemExternalStockEvidence('taebaek',[po,{...po,oemSent:[{...po.oemSent![0],kg:1}]}]))[0]).toMatchObject({state:'unknown',reason:expect.stringContaining('중복')});
   expect(await readOemExternalStockEvidence('taebaek',[po,po])).toHaveLength(1);
  },30000);
- it('로그아웃 조회는 거절하며 기존 원문을 유지한다',async()=>{
+ async function costFixture() {
+  const id=prefix+'-cost-'+randomUUID(),rawItemId=id+'-raw';
+  const input={jobId:id,companyId:'taebaek' as const,partnerId:'factory',partnerName:'합성 외주',date:'2026-10-15',sent:[{rawItemId,material:'참깨',kg:100}],oemCostEvidence:{version:1 as const,ownerCompanyId:'taebaek' as const,rawMaterials:[{rawItemId,kg:100,supplyAmount:125000}],packaging:{confirmed:true as const,supplyAmount:9000},capturedAt:'2026-10-15T00:00:00Z'}};
+  const po={...orders.get('taebaek')!,id,status:'invoiced' as const,oemIssueStatus:'complete' as const,partnerId:'factory',oemPartnerId:'factory',partnerName:input.partnerName,oemIssueDate:input.date,oemSent:input.sent,oemCostEvidence:input.oemCostEvidence,oemCostEvidenceSource:'issue' as const,oemIssueFingerprint:oemIssueFingerprint(input)};
+  const operationId=`oem-issue:${id}:${rawItemId}`,command={operationId,companyId:'taebaek' as const,rawItemId,materialSnapshot:'참깨',effectiveAt:'2026-10-15T12:00:00+09:00',source:{type:'oem' as const,id},kind:'consume' as const,kg:100};
+  for(const [path,data] of [[`purchaseOrders/${id}`,po],[`rawInventoryJobs/oem-issue:${id}`,{id:`oem-issue:${id}`,companyId:'taebaek',source:{type:'oem',id},status:'complete',expectedOperationIds:[operationId]}],[`rawMaterialLedger/${operationDocId(operationId)}`,{...command,commandHash:commandHash(command),reportedDeltaKg:-100,appliedDeltaKg:-100}]] as const){await adminDb.doc(path).create(data);paths.add(path);}
+  return po;
+ }
+ it('같은 서버근거로 원물 공급액만 개별 후보로 내보내며 비용충돌 중복ID는 금액을 선택하지 않는다',async()=>{
+  await login('taebaek');const po=await costFixture();const before=await adminDb.doc(`purchaseOrders/${po.id}`).get();
+  const [row]=await readOemExternalStockEvidence('taebaek',[po]);expect(row.costDiagnostic).toMatchObject({classification:'candidate',rawSupplyAmountCandidate:125000,assetValuationConfirmed:false});expect((await adminDb.doc(`purchaseOrders/${po.id}`).get()).updateTime.isEqual(before.updateTime)).toBe(true);
+  const conflict={...po,oemCostEvidence:{...po.oemCostEvidence,rawMaterials:[{...po.oemCostEvidence.rawMaterials[0],supplyAmount:99}]}};
+  const [ambiguous]=await readOemExternalStockEvidence('taebaek',[po,conflict]);expect(ambiguous.costDiagnostic.classification).toBe('unconfirmed');expect(ambiguous.costDiagnostic).not.toHaveProperty('rawSupplyAmountCandidate');
+ },30000);
+ it.each(['amount','delete'])('첫·끝 발주원문 변경 %s는 금액을 제거하고 미확인으로 남긴다',async change=>{
+  await login('taebaek');const po=await costFixture();const original=await vi.importActual<typeof import('firebase/firestore')>('firebase/firestore');let changed=false;
+  vi.mocked(getDocFromServer).mockImplementation(async ref=>{const snapshot=await original.getDocFromServer(ref);if(!changed&&ref.path===`purchaseOrders/${po.id}`){changed=true;if(change==='delete')await adminDb.doc(ref.path).delete();else if(change==='amount')await adminDb.doc(ref.path).update({'oemCostEvidence.rawMaterials':[{...po.oemCostEvidence.rawMaterials[0],supplyAmount:999}]});else { await adminDb.doc(ref.path).update({note:'본인 fixture 중간 변경'}); await adminDb.doc(ref.path).set(po); }}return snapshot;});
+  try{const [row]=await readOemExternalStockEvidence('taebaek',[po]);expect(row.costDiagnostic).toMatchObject({classification:'unconfirmed',reason:'cost-snapshot-mismatch'});expect(row.costDiagnostic).not.toHaveProperty('rawSupplyAmountCandidate');}finally{vi.mocked(getDocFromServer).mockImplementation(original.getDocFromServer);}
+ },30000);
+ it('공개 SDK의 동일원문 복원 비교는 중간 변경 이력을 증명하지 않으며 후보만 유지한다',async()=>{
+  await login('taebaek');const po=await costFixture(),before=await adminDb.doc(`purchaseOrders/${po.id}`).get();const original=await vi.importActual<typeof import('firebase/firestore')>('firebase/firestore');let changed=false;
+  vi.mocked(getDocFromServer).mockImplementation(async ref=>{const snapshot=await original.getDocFromServer(ref);if(!changed&&ref.path===`purchaseOrders/${po.id}`){changed=true;await adminDb.doc(ref.path).update({note:'본인 fixture 중간 변경'});await adminDb.doc(ref.path).set(po);}return snapshot;});
+  try{const [row]=await readOemExternalStockEvidence('taebaek',[po]);expect((await adminDb.doc(`purchaseOrders/${po.id}`).get()).updateTime.isEqual(before.updateTime)).toBe(false);expect(row.costDiagnostic).toMatchObject({classification:'candidate',currentOnly:true,assetValuationConfirmed:false,rawSupplyAmountCandidate:125000});}finally{vi.mocked(getDocFromServer).mockImplementation(original.getDocFromServer);}
+ },30000); it('서버가 확인하지 않은 캐시 snapshot은 후보액으로 표시하지 않는다',async()=>{
+  await login('taebaek');const po=await costFixture();const original=await vi.importActual<typeof import('firebase/firestore')>('firebase/firestore');
+  vi.mocked(getDocFromServer).mockImplementationOnce(async ref=>{const snapshot=await original.getDocFromServer(ref);Object.defineProperty(snapshot,'metadata',{value:{fromCache:true,hasPendingWrites:false}});return snapshot;});
+  await expect(readOemExternalStockEvidence('taebaek',[po])).rejects.toThrow('서버 발주 원문');
+ },30000); it('로그아웃 조회는 거절하며 기존 원문을 유지한다',async()=>{
   await signOut(gateway.auth);await expect(readOemExternalStockEvidence('taebaek',[orders.get('taebaek')!])).rejects.toThrow('로그인');
  },30000);
  it.each([false,true])('공용 코어의 실사 경계 소급=%s 취소 반영량을 actual SDK로 대조한다',async backdated=>{

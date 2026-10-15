@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-15T10:02:21.166Z",
+  "generatedAt": "2026-10-15T11:12:54.505Z",
   "sourceFiles": 497,
-  "unresolvedAccesses": 3490,
+  "unresolvedAccesses": 3492,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:107",
@@ -4594,6 +4594,27 @@
       "receiverExpression": "receipt",
       "receiverType": "Record<string, any>",
       "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/features/admin/oemExternalCostDiagnostic.ts:15",
+      "expression": "evidence?.job?.status",
+      "receiverExpression": "evidence?.job",
+      "receiverType": "Record<string, any> | null | undefined",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/oemExternalStockEvidence.ts:8",
+      "expression": "value.toJSON",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/oemExternalStockEvidence.ts:8",
+      "expression": "value.toJSON",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
     },
     {
       "location": "src/shared/services/boxUnpackService.ts:38",
@@ -10039,13 +10060,6 @@
       "expression": "copySelected.request?.confirmed.orderDraft.partnerName",
       "receiverExpression": "copySelected.request?.confirmed.orderDraft",
       "receiverType": "OrderInterpretationJsonObject | undefined",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/features/admin/oemExternalCostDiagnostic.ts:15",
-      "expression": "evidence?.job?.status",
-      "receiverExpression": "evidence?.job",
-      "receiverType": "Record<string, any> | null | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
@@ -29668,11 +29682,11 @@
         "components/LotTimeline.tsx:90",
         "components/OemManager.tsx:202",
         "components/OemManager.tsx:246",
-        "components/OemManager.tsx:339",
-        "components/OemManager.tsx:347",
-        "components/OemManager.tsx:385",
-        "components/OemManager.tsx:392",
-        "components/OemManager.tsx:414",
+        "components/OemManager.tsx:345",
+        "components/OemManager.tsx:353",
+        "components/OemManager.tsx:391",
+        "components/OemManager.tsx:398",
+        "components/OemManager.tsx:420",
         "components/OrderPicker.tsx:110",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
@@ -30252,8 +30266,8 @@
         "components/ItemManager.tsx:696",
         "components/ItemManager.tsx:707",
         "components/OemManager.tsx:246",
-        "components/OemManager.tsx:392",
-        "components/OemManager.tsx:414",
+        "components/OemManager.tsx:398",
+        "components/OemManager.tsx:420",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
         "components/OrdersList.tsx:1041",
@@ -30916,7 +30930,7 @@
         "components/ItemManager.tsx:1903",
         "components/ItemManager.tsx:249",
         "components/LotTimeline.tsx:180",
-        "components/OemManager.tsx:392",
+        "components/OemManager.tsx:398",
         "components/OrdersList.tsx:1075",
         "components/OrdersList.tsx:2724",
         "components/OrdersList.tsx:3028",
@@ -31125,7 +31139,7 @@
         "components/ItemManager.tsx:702",
         "components/ItemManager.tsx:706",
         "components/ItemManager.tsx:707",
-        "components/OemManager.tsx:392",
+        "components/OemManager.tsx:398",
         "components/OrdersList.tsx:1041",
         "components/OrdersList.tsx:1075",
         "components/OrdersList.tsx:1076",
@@ -36195,13 +36209,15 @@
         "src/shared/services/confirmPendingPurchaseOrderService.ts:11",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:19",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:21",
-        "src/shared/services/oemExternalStockEvidence.ts:21",
-        "src/shared/services/oemExternalStockEvidence.ts:34",
-        "src/shared/services/oemExternalStockEvidence.ts:35",
-        "src/shared/services/oemExternalStockEvidence.ts:36",
-        "src/shared/services/oemExternalStockEvidence.ts:37",
+        "src/shared/services/oemExternalStockEvidence.ts:26",
+        "src/shared/services/oemExternalStockEvidence.ts:40",
         "src/shared/services/oemExternalStockEvidence.ts:41",
-        "src/shared/services/oemExternalStockEvidence.ts:44"
+        "src/shared/services/oemExternalStockEvidence.ts:42",
+        "src/shared/services/oemExternalStockEvidence.ts:45",
+        "src/shared/services/oemExternalStockEvidence.ts:49",
+        "src/shared/services/oemExternalStockEvidence.ts:52",
+        "src/shared/services/oemExternalStockEvidence.ts:54",
+        "src/shared/services/oemExternalStockEvidence.ts:59"
       ]
     },
     {
@@ -36282,8 +36298,8 @@
         "components/ItemList.tsx:1932",
         "components/OemManager.tsx:165",
         "components/OemManager.tsx:168",
-        "components/OemManager.tsx:364",
-        "components/OemManager.tsx:489",
+        "components/OemManager.tsx:370",
+        "components/OemManager.tsx:495",
         "components/OrderPicker.tsx:397",
         "components/OrderPicker.tsx:417",
         "src/features/admin/oemEngine.ts:188",
@@ -36617,7 +36633,7 @@
         "src/shared/services/confirmPendingPurchaseOrderService.ts:39",
         "src/shared/services/firebaseService.ts:1006",
         "src/shared/services/firebaseService.ts:878",
-        "src/shared/services/oemExternalStockEvidence.ts:20"
+        "src/shared/services/oemExternalStockEvidence.ts:25"
       ]
     },
     {
@@ -36627,8 +36643,8 @@
       "type": "OemCostEvidence",
       "declaration": "src/shared/types.ts:1256",
       "references": [
-        "components/OemManager.tsx:334",
-        "components/OemManager.tsx:431",
+        "components/OemManager.tsx:340",
+        "components/OemManager.tsx:437",
         "src/features/admin/oemEngine.ts:197",
         "src/features/admin/oemEngine.ts:223",
         "src/features/admin/oemExternalCostDiagnostic.ts:18",
@@ -36682,11 +36698,11 @@
       "declaration": "src/shared/types.ts:1262",
       "references": [
         "components/ItemList.tsx:1220",
-        "components/OemManager.tsx:329",
-        "components/OemManager.tsx:333",
-        "components/OemManager.tsx:352",
-        "components/OemManager.tsx:353",
-        "components/OemManager.tsx:490",
+        "components/OemManager.tsx:335",
+        "components/OemManager.tsx:339",
+        "components/OemManager.tsx:358",
+        "components/OemManager.tsx:359",
+        "components/OemManager.tsx:496",
         "src/features/admin/oem.ts:56",
         "src/features/admin/oem.ts:64",
         "src/features/admin/oemEngine.ts:223",
@@ -36698,7 +36714,7 @@
         "src/features/admin/oemIssueJob.ts:83",
         "src/features/admin/oemReconciliation.ts:38",
         "src/features/admin/oemReconciliation.ts:69",
-        "src/shared/services/oemExternalStockEvidence.ts:39"
+        "src/shared/services/oemExternalStockEvidence.ts:47"
       ]
     },
     {
@@ -36708,7 +36724,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1263",
       "references": [
-        "components/OemManager.tsx:365"
+        "components/OemManager.tsx:371"
       ]
     },
     {
@@ -36757,7 +36773,7 @@
         "src/features/admin/oemIssueJob.ts:105",
         "src/features/admin/oemIssueJob.ts:151",
         "src/features/admin/oemReconciliation.ts:29",
-        "src/shared/services/oemExternalStockEvidence.ts:44"
+        "src/shared/services/oemExternalStockEvidence.ts:52"
       ]
     },
     {
@@ -36779,7 +36795,7 @@
         "src/features/admin/oemIssueJob.ts:105",
         "src/features/admin/oemIssueJob.ts:151",
         "src/features/admin/oemReconciliation.ts:29",
-        "src/shared/services/oemExternalStockEvidence.ts:44"
+        "src/shared/services/oemExternalStockEvidence.ts:52"
       ]
     },
     {
@@ -36834,8 +36850,8 @@
       "declaration": "src/shared/types.ts:1272",
       "references": [
         "components/ItemList.tsx:1226",
-        "components/OemManager.tsx:478",
-        "components/OemManager.tsx:491",
+        "components/OemManager.tsx:484",
+        "components/OemManager.tsx:497",
         "src/features/admin/oemEngine.ts:262",
         "src/features/admin/oemReconciliation.ts:44",
         "src/features/admin/oemReconciliation.ts:96",
@@ -36863,8 +36879,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1274",
       "references": [
-        "components/OemManager.tsx:336",
-        "components/OemManager.tsx:477",
+        "components/OemManager.tsx:342",
+        "components/OemManager.tsx:483",
         "src/features/admin/oemEngine.ts:263"
       ]
     },
@@ -59176,7 +59192,7 @@
           "type": "number",
           "declaration": "src/features/admin/oem.ts:34",
           "references": [
-            "components/OemManager.tsx:515"
+            "components/OemManager.tsx:521"
           ]
         },
         {
@@ -59185,7 +59201,7 @@
           "type": "number",
           "declaration": "src/features/admin/oem.ts:35",
           "references": [
-            "components/OemManager.tsx:515"
+            "components/OemManager.tsx:521"
           ]
         },
         {
@@ -59194,8 +59210,8 @@
           "type": "number",
           "declaration": "src/features/admin/oem.ts:36",
           "references": [
-            "components/OemManager.tsx:450",
-            "components/OemManager.tsx:516"
+            "components/OemManager.tsx:456",
+            "components/OemManager.tsx:522"
           ]
         }
       ]
@@ -60465,7 +60481,7 @@
           "type": "string",
           "declaration": "src/features/admin/oemExternalStock.ts:13",
           "references": [
-            "components/OemManager.tsx:315"
+            "components/OemManager.tsx:321"
           ]
         },
         {
@@ -60474,7 +60490,7 @@
           "type": "string",
           "declaration": "src/features/admin/oemExternalStock.ts:13",
           "references": [
-            "components/OemManager.tsx:315"
+            "components/OemManager.tsx:321"
           ]
         },
         {
@@ -60483,9 +60499,10 @@
           "type": "'confirmed' | 'partial' | 'unknown' | 'cancelled' | 'received'",
           "declaration": "src/features/admin/oemExternalStock.ts:13",
           "references": [
-            "components/OemManager.tsx:315",
+            "components/OemManager.tsx:321",
             "src/features/admin/oemExternalCostDiagnostic.ts:10",
-            "src/features/admin/oemExternalStock.ts:63"
+            "src/features/admin/oemExternalStock.ts:63",
+            "src/shared/services/oemExternalStockEvidence.ts:59"
           ]
         },
         {
@@ -60494,7 +60511,7 @@
           "type": "{ rawItemId: string; material: string; requestedKg: number; reportedKg?: number; appliedKg?: number; reason?: string }[]",
           "declaration": "src/features/admin/oemExternalStock.ts:14",
           "references": [
-            "components/OemManager.tsx:316",
+            "components/OemManager.tsx:323",
             "src/features/admin/oemExternalStock.ts:29",
             "src/features/admin/oemExternalStock.ts:38",
             "src/features/admin/oemExternalStock.ts:63",
@@ -60507,8 +60524,96 @@
           "type": "string",
           "declaration": "src/features/admin/oemExternalStock.ts:15",
           "references": [
-            "components/OemManager.tsx:316",
+            "components/OemManager.tsx:323",
             "src/features/admin/oemExternalStock.ts:64"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "OemExternalCostReason",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "'invalid-scope'|'issue-evidence-unconfirmed'|'cancelled-with-evidence'|'received-po-out-of-open-scope'|'issue-not-complete'|'receipt-cost-only'|'cost-source-unconfirmed'|'cost-evidence-missing'|'cost-evidence-mismatch'|'cost-snapshot-mismatch'|'cost-amount-out-of-range'|'issue-raw-cost-candidate'"
+    },
+    {
+      "model": "OemExternalCostDiagnostic",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+      "kind": "interface",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "poId",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "classification",
+          "optional": false,
+          "type": "'candidate'|'excluded'|'unconfirmed'",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        },
+        {
+          "field": "reason",
+          "optional": false,
+          "type": "OemExternalCostReason",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        },
+        {
+          "field": "sourceState",
+          "optional": false,
+          "type": "OemExternalRow['state']",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "currentOnly",
+          "optional": false,
+          "type": "true",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "assetValuationConfirmed",
+          "optional": false,
+          "type": "false",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": []
+        },
+        {
+          "field": "rawSupplyAmountCandidate",
+          "optional": true,
+          "type": "number",
+          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "OemExternalStockEvidenceRow",
+      "declaration": "src/shared/services/oemExternalStockEvidence.ts:7",
+      "kind": "interface",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "costDiagnostic",
+          "optional": false,
+          "type": "OemExternalCostDiagnostic",
+          "declaration": "src/shared/services/oemExternalStockEvidence.ts:7",
+          "references": [
+            "components/OemManager.tsx:322"
           ]
         }
       ]
@@ -85689,71 +85794,6 @@
       ]
     },
     {
-      "model": "OemExternalCostReason",
-      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
-      "kind": "type-alias",
-      "scope": "non-object-alias-not-expanded",
-      "fields": [],
-      "type": "'invalid-scope'|'issue-evidence-unconfirmed'|'cancelled-with-evidence'|'received-po-out-of-open-scope'|'issue-not-complete'|'receipt-cost-only'|'cost-source-unconfirmed'|'cost-evidence-missing'|'cost-evidence-mismatch'|'cost-snapshot-mismatch'|'cost-amount-out-of-range'|'issue-raw-cost-candidate'"
-    },
-    {
-      "model": "OemExternalCostDiagnostic",
-      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-      "kind": "interface",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "poId",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "classification",
-          "optional": false,
-          "type": "'candidate'|'excluded'|'unconfirmed'",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "reason",
-          "optional": false,
-          "type": "OemExternalCostReason",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "sourceState",
-          "optional": false,
-          "type": "OemExternalRow['state']",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "currentOnly",
-          "optional": false,
-          "type": "true",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "assetValuationConfirmed",
-          "optional": false,
-          "type": "false",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        },
-        {
-          "field": "rawSupplyAmountCandidate",
-          "optional": true,
-          "type": "number",
-          "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-          "references": []
-        }
-      ]
-    },
-    {
       "model": "StaffAppProps",
       "declaration": "src/features/staff/StaffApp.tsx:23",
       "kind": "interface",
@@ -92159,7 +92199,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:538",
+            "components/OemManager.tsx:544",
             "src/features/admin/oemReconciliation.ts:50"
           ]
         },
@@ -92172,7 +92212,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:538",
+            "components/OemManager.tsx:544",
             "functions/src/oemFeeVoucher.ts:216"
           ]
         },
@@ -92185,7 +92225,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:538"
+            "components/OemManager.tsx:544"
           ]
         },
         {
@@ -102944,11 +102984,11 @@
             "components/LotTimeline.tsx:90",
             "components/OemManager.tsx:202",
             "components/OemManager.tsx:246",
-            "components/OemManager.tsx:339",
-            "components/OemManager.tsx:347",
-            "components/OemManager.tsx:385",
-            "components/OemManager.tsx:392",
-            "components/OemManager.tsx:414",
+            "components/OemManager.tsx:345",
+            "components/OemManager.tsx:353",
+            "components/OemManager.tsx:391",
+            "components/OemManager.tsx:398",
+            "components/OemManager.tsx:420",
             "components/OrderPicker.tsx:110",
             "components/OrderPicker.tsx:319",
             "components/OrderPicker.tsx:418",
@@ -103532,8 +103572,8 @@
             "components/ItemManager.tsx:696",
             "components/ItemManager.tsx:707",
             "components/OemManager.tsx:246",
-            "components/OemManager.tsx:392",
-            "components/OemManager.tsx:414",
+            "components/OemManager.tsx:398",
+            "components/OemManager.tsx:420",
             "components/OrderPicker.tsx:319",
             "components/OrderPicker.tsx:418",
             "components/OrdersList.tsx:1041",
@@ -104222,7 +104262,7 @@
             "components/ItemManager.tsx:1903",
             "components/ItemManager.tsx:249",
             "components/LotTimeline.tsx:180",
-            "components/OemManager.tsx:392",
+            "components/OemManager.tsx:398",
             "components/OrdersList.tsx:1075",
             "components/OrdersList.tsx:2724",
             "components/OrdersList.tsx:3028",
@@ -104446,7 +104486,7 @@
             "components/ItemManager.tsx:702",
             "components/ItemManager.tsx:706",
             "components/ItemManager.tsx:707",
-            "components/OemManager.tsx:392",
+            "components/OemManager.tsx:398",
             "components/OrdersList.tsx:1041",
             "components/OrdersList.tsx:1075",
             "components/OrdersList.tsx:1076",
@@ -110535,13 +110575,15 @@
             "src/shared/services/confirmPendingPurchaseOrderService.ts:11",
             "src/shared/services/confirmPendingPurchaseOrderService.ts:19",
             "src/shared/services/confirmPendingPurchaseOrderService.ts:21",
-            "src/shared/services/oemExternalStockEvidence.ts:21",
-            "src/shared/services/oemExternalStockEvidence.ts:34",
-            "src/shared/services/oemExternalStockEvidence.ts:35",
-            "src/shared/services/oemExternalStockEvidence.ts:36",
-            "src/shared/services/oemExternalStockEvidence.ts:37",
+            "src/shared/services/oemExternalStockEvidence.ts:26",
+            "src/shared/services/oemExternalStockEvidence.ts:40",
             "src/shared/services/oemExternalStockEvidence.ts:41",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:42",
+            "src/shared/services/oemExternalStockEvidence.ts:45",
+            "src/shared/services/oemExternalStockEvidence.ts:49",
+            "src/shared/services/oemExternalStockEvidence.ts:52",
+            "src/shared/services/oemExternalStockEvidence.ts:54",
+            "src/shared/services/oemExternalStockEvidence.ts:59"
           ]
         },
         {
@@ -110631,8 +110673,8 @@
             "components/ItemList.tsx:1824",
             "components/OemManager.tsx:165",
             "components/OemManager.tsx:168",
-            "components/OemManager.tsx:364",
-            "components/OemManager.tsx:489",
+            "components/OemManager.tsx:370",
+            "components/OemManager.tsx:495",
             "components/OrderPicker.tsx:397",
             "components/OrderPicker.tsx:417",
             "src/features/admin/oemEngine.ts:188",
@@ -110994,7 +111036,7 @@
             "src/shared/services/confirmPendingPurchaseOrderService.ts:39",
             "src/shared/services/firebaseService.ts:1006",
             "src/shared/services/firebaseService.ts:878",
-            "src/shared/services/oemExternalStockEvidence.ts:20"
+            "src/shared/services/oemExternalStockEvidence.ts:25"
           ]
         },
         {
@@ -111006,8 +111048,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:334",
-            "components/OemManager.tsx:431",
+            "components/OemManager.tsx:340",
+            "components/OemManager.tsx:437",
             "src/features/admin/oemEngine.ts:197",
             "src/features/admin/oemEngine.ts:223",
             "src/features/admin/oemExternalCostDiagnostic.ts:18",
@@ -111069,11 +111111,11 @@
           "inherited": false,
           "references": [
             "components/ItemList.tsx:1220",
-            "components/OemManager.tsx:329",
-            "components/OemManager.tsx:333",
-            "components/OemManager.tsx:352",
-            "components/OemManager.tsx:353",
-            "components/OemManager.tsx:490",
+            "components/OemManager.tsx:335",
+            "components/OemManager.tsx:339",
+            "components/OemManager.tsx:358",
+            "components/OemManager.tsx:359",
+            "components/OemManager.tsx:496",
             "src/features/admin/oem.ts:56",
             "src/features/admin/oem.ts:64",
             "src/features/admin/oemEngine.ts:223",
@@ -111085,7 +111127,7 @@
             "src/features/admin/oemIssueJob.ts:83",
             "src/features/admin/oemReconciliation.ts:38",
             "src/features/admin/oemReconciliation.ts:69",
-            "src/shared/services/oemExternalStockEvidence.ts:39"
+            "src/shared/services/oemExternalStockEvidence.ts:47"
           ]
         },
         {
@@ -111097,7 +111139,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:365"
+            "components/OemManager.tsx:371"
           ]
         },
         {
@@ -111150,7 +111192,7 @@
             "src/features/admin/oemIssueJob.ts:105",
             "src/features/admin/oemIssueJob.ts:151",
             "src/features/admin/oemReconciliation.ts:29",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:52"
           ]
         },
         {
@@ -111174,7 +111216,7 @@
             "src/features/admin/oemIssueJob.ts:105",
             "src/features/admin/oemIssueJob.ts:151",
             "src/features/admin/oemReconciliation.ts:29",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:52"
           ]
         },
         {
@@ -111239,8 +111281,8 @@
           "inherited": false,
           "references": [
             "components/ItemList.tsx:1226",
-            "components/OemManager.tsx:478",
-            "components/OemManager.tsx:491",
+            "components/OemManager.tsx:484",
+            "components/OemManager.tsx:497",
             "src/features/admin/oemEngine.ts:262",
             "src/features/admin/oemReconciliation.ts:44",
             "src/features/admin/oemReconciliation.ts:96",
@@ -111272,8 +111314,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:336",
-            "components/OemManager.tsx:477",
+            "components/OemManager.tsx:342",
+            "components/OemManager.tsx:483",
             "src/features/admin/oemEngine.ts:263"
           ]
         },
@@ -116416,11 +116458,11 @@
             "components/LotTimeline.tsx:90",
             "components/OemManager.tsx:202",
             "components/OemManager.tsx:246",
-            "components/OemManager.tsx:339",
-            "components/OemManager.tsx:347",
-            "components/OemManager.tsx:385",
-            "components/OemManager.tsx:392",
-            "components/OemManager.tsx:414",
+            "components/OemManager.tsx:345",
+            "components/OemManager.tsx:353",
+            "components/OemManager.tsx:391",
+            "components/OemManager.tsx:398",
+            "components/OemManager.tsx:420",
             "components/OrderPicker.tsx:110",
             "components/OrderPicker.tsx:319",
             "components/OrderPicker.tsx:418",
@@ -139080,7 +139122,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:515"
+            "components/OemManager.tsx:521"
           ]
         },
         {
@@ -139092,7 +139134,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:515"
+            "components/OemManager.tsx:521"
           ]
         },
         {
@@ -139104,8 +139146,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:450",
-            "components/OemManager.tsx:516"
+            "components/OemManager.tsx:456",
+            "components/OemManager.tsx:522"
           ]
         }
       ]
@@ -140395,13 +140437,15 @@
             "src/shared/services/confirmPendingPurchaseOrderService.ts:11",
             "src/shared/services/confirmPendingPurchaseOrderService.ts:19",
             "src/shared/services/confirmPendingPurchaseOrderService.ts:21",
-            "src/shared/services/oemExternalStockEvidence.ts:21",
-            "src/shared/services/oemExternalStockEvidence.ts:34",
-            "src/shared/services/oemExternalStockEvidence.ts:35",
-            "src/shared/services/oemExternalStockEvidence.ts:36",
-            "src/shared/services/oemExternalStockEvidence.ts:37",
+            "src/shared/services/oemExternalStockEvidence.ts:26",
+            "src/shared/services/oemExternalStockEvidence.ts:40",
             "src/shared/services/oemExternalStockEvidence.ts:41",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:42",
+            "src/shared/services/oemExternalStockEvidence.ts:45",
+            "src/shared/services/oemExternalStockEvidence.ts:49",
+            "src/shared/services/oemExternalStockEvidence.ts:52",
+            "src/shared/services/oemExternalStockEvidence.ts:54",
+            "src/shared/services/oemExternalStockEvidence.ts:59"
           ]
         },
         {
@@ -140491,8 +140535,8 @@
             "components/ItemList.tsx:1824",
             "components/OemManager.tsx:165",
             "components/OemManager.tsx:168",
-            "components/OemManager.tsx:364",
-            "components/OemManager.tsx:489",
+            "components/OemManager.tsx:370",
+            "components/OemManager.tsx:495",
             "components/OrderPicker.tsx:397",
             "components/OrderPicker.tsx:417",
             "src/features/admin/oemEngine.ts:188",
@@ -140854,7 +140898,7 @@
             "src/shared/services/confirmPendingPurchaseOrderService.ts:39",
             "src/shared/services/firebaseService.ts:1006",
             "src/shared/services/firebaseService.ts:878",
-            "src/shared/services/oemExternalStockEvidence.ts:20"
+            "src/shared/services/oemExternalStockEvidence.ts:25"
           ]
         },
         {
@@ -140866,8 +140910,8 @@
           ],
           "inherited": true,
           "references": [
-            "components/OemManager.tsx:334",
-            "components/OemManager.tsx:431",
+            "components/OemManager.tsx:340",
+            "components/OemManager.tsx:437",
             "src/features/admin/oemEngine.ts:197",
             "src/features/admin/oemEngine.ts:223",
             "src/features/admin/oemExternalCostDiagnostic.ts:18",
@@ -140930,11 +140974,11 @@
           "inherited": false,
           "references": [
             "components/ItemList.tsx:1220",
-            "components/OemManager.tsx:329",
-            "components/OemManager.tsx:333",
-            "components/OemManager.tsx:352",
-            "components/OemManager.tsx:353",
-            "components/OemManager.tsx:490",
+            "components/OemManager.tsx:335",
+            "components/OemManager.tsx:339",
+            "components/OemManager.tsx:358",
+            "components/OemManager.tsx:359",
+            "components/OemManager.tsx:496",
             "src/features/admin/oem.ts:56",
             "src/features/admin/oem.ts:64",
             "src/features/admin/oemEngine.ts:223",
@@ -140946,7 +140990,7 @@
             "src/features/admin/oemIssueJob.ts:83",
             "src/features/admin/oemReconciliation.ts:38",
             "src/features/admin/oemReconciliation.ts:69",
-            "src/shared/services/oemExternalStockEvidence.ts:39"
+            "src/shared/services/oemExternalStockEvidence.ts:47"
           ]
         },
         {
@@ -140958,7 +141002,7 @@
           ],
           "inherited": true,
           "references": [
-            "components/OemManager.tsx:365"
+            "components/OemManager.tsx:371"
           ]
         },
         {
@@ -141012,7 +141056,7 @@
             "src/features/admin/oemIssueJob.ts:105",
             "src/features/admin/oemIssueJob.ts:151",
             "src/features/admin/oemReconciliation.ts:29",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:52"
           ]
         },
         {
@@ -141036,7 +141080,7 @@
             "src/features/admin/oemIssueJob.ts:105",
             "src/features/admin/oemIssueJob.ts:151",
             "src/features/admin/oemReconciliation.ts:29",
-            "src/shared/services/oemExternalStockEvidence.ts:44"
+            "src/shared/services/oemExternalStockEvidence.ts:52"
           ]
         },
         {
@@ -141104,8 +141148,8 @@
           "inherited": true,
           "references": [
             "components/ItemList.tsx:1226",
-            "components/OemManager.tsx:478",
-            "components/OemManager.tsx:491",
+            "components/OemManager.tsx:484",
+            "components/OemManager.tsx:497",
             "src/features/admin/oemEngine.ts:262",
             "src/features/admin/oemReconciliation.ts:44",
             "src/features/admin/oemReconciliation.ts:96",
@@ -141137,8 +141181,8 @@
           ],
           "inherited": true,
           "references": [
-            "components/OemManager.tsx:336",
-            "components/OemManager.tsx:477",
+            "components/OemManager.tsx:342",
+            "components/OemManager.tsx:483",
             "src/features/admin/oemEngine.ts:263"
           ]
         },
@@ -141521,7 +141565,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:315"
+            "components/OemManager.tsx:321"
           ]
         },
         {
@@ -141533,7 +141577,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:315"
+            "components/OemManager.tsx:321"
           ]
         },
         {
@@ -141545,9 +141589,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:315",
+            "components/OemManager.tsx:321",
             "src/features/admin/oemExternalCostDiagnostic.ts:10",
-            "src/features/admin/oemExternalStock.ts:63"
+            "src/features/admin/oemExternalStock.ts:63",
+            "src/shared/services/oemExternalStockEvidence.ts:59"
           ]
         },
         {
@@ -141559,7 +141604,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:316",
+            "components/OemManager.tsx:323",
             "src/features/admin/oemExternalStock.ts:29",
             "src/features/admin/oemExternalStock.ts:38",
             "src/features/admin/oemExternalStock.ts:63",
@@ -141575,7 +141620,183 @@
           ],
           "inherited": false,
           "references": [
-            "components/OemManager.tsx:316",
+            "components/OemManager.tsx:323",
+            "src/features/admin/oemExternalStock.ts:64"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "OemExternalCostReason",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "OemExternalCostDiagnostic",
+      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "poId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "classification",
+          "optional": false,
+          "type": "\"candidate\" | \"excluded\" | \"unconfirmed\"",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        },
+        {
+          "field": "reason",
+          "optional": false,
+          "type": "OemExternalCostReason",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        },
+        {
+          "field": "sourceState",
+          "optional": false,
+          "type": "\"cancelled\" | \"unknown\" | \"received\" | \"confirmed\" | \"partial\"",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "currentOnly",
+          "optional": false,
+          "type": "true",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "assetValuationConfirmed",
+          "optional": false,
+          "type": "false",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": []
+        },
+        {
+          "field": "rawSupplyAmountCandidate",
+          "optional": true,
+          "type": "number | undefined",
+          "declarations": [
+            "src/features/admin/oemExternalCostDiagnostic.ts:5"
+          ],
+          "inherited": false,
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "OemExternalStockEvidenceRow",
+      "declaration": "src/shared/services/oemExternalStockEvidence.ts:7",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "costDiagnostic",
+          "optional": false,
+          "type": "OemExternalCostDiagnostic",
+          "declarations": [
+            "src/shared/services/oemExternalStockEvidence.ts:7"
+          ],
+          "inherited": false,
+          "references": [
+            "components/OemManager.tsx:322"
+          ]
+        },
+        {
+          "field": "poId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/features/admin/oemExternalStock.ts:13"
+          ],
+          "inherited": true,
+          "references": [
+            "components/OemManager.tsx:321"
+          ]
+        },
+        {
+          "field": "partnerName",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/features/admin/oemExternalStock.ts:13"
+          ],
+          "inherited": true,
+          "references": [
+            "components/OemManager.tsx:321"
+          ]
+        },
+        {
+          "field": "state",
+          "optional": false,
+          "type": "\"cancelled\" | \"unknown\" | \"received\" | \"confirmed\" | \"partial\"",
+          "declarations": [
+            "src/features/admin/oemExternalStock.ts:13"
+          ],
+          "inherited": true,
+          "references": [
+            "components/OemManager.tsx:321",
+            "src/features/admin/oemExternalCostDiagnostic.ts:10",
+            "src/features/admin/oemExternalStock.ts:63",
+            "src/shared/services/oemExternalStockEvidence.ts:59"
+          ]
+        },
+        {
+          "field": "rows",
+          "optional": false,
+          "type": "{ rawItemId: string; material: string; requestedKg: number; reportedKg?: number | undefined; appliedKg?: number | undefined; reason?: string | undefined; }[]",
+          "declarations": [
+            "src/features/admin/oemExternalStock.ts:14"
+          ],
+          "inherited": true,
+          "references": [
+            "components/OemManager.tsx:323",
+            "src/features/admin/oemExternalStock.ts:29",
+            "src/features/admin/oemExternalStock.ts:38",
+            "src/features/admin/oemExternalStock.ts:63",
+            "src/features/admin/oemExternalStock.ts:64"
+          ]
+        },
+        {
+          "field": "reason",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "src/features/admin/oemExternalStock.ts:15"
+          ],
+          "inherited": true,
+          "references": [
+            "components/OemManager.tsx:323",
             "src/features/admin/oemExternalStock.ts:64"
           ]
         }
@@ -151838,12 +152059,12 @@
             "components/OemManager.tsx:208",
             "components/OemManager.tsx:252",
             "components/OemManager.tsx:260",
-            "components/OemManager.tsx:334",
-            "components/OemManager.tsx:339",
-            "components/OemManager.tsx:355",
-            "components/OemManager.tsx:379",
-            "components/OemManager.tsx:398",
-            "components/OemManager.tsx:420",
+            "components/OemManager.tsx:340",
+            "components/OemManager.tsx:345",
+            "components/OemManager.tsx:361",
+            "components/OemManager.tsx:385",
+            "components/OemManager.tsx:404",
+            "components/OemManager.tsx:426",
             "components/OfficeTalk.tsx:1033",
             "components/OfficeTalk.tsx:1038",
             "components/OfficeTalk.tsx:1081",
@@ -182126,89 +182347,6 @@
       ]
     },
     {
-      "model": "OemExternalCostReason",
-      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:4",
-      "scope": "non-object-model-not-expanded",
-      "fields": []
-    },
-    {
-      "model": "OemExternalCostDiagnostic",
-      "declaration": "src/features/admin/oemExternalCostDiagnostic.ts:5",
-      "scope": "checker-resolved-properties-only",
-      "fields": [
-        {
-          "field": "poId",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "classification",
-          "optional": false,
-          "type": "\"unconfirmed\" | \"candidate\" | \"excluded\"",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "reason",
-          "optional": false,
-          "type": "OemExternalCostReason",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "sourceState",
-          "optional": false,
-          "type": "\"cancelled\" | \"unknown\" | \"received\" | \"confirmed\" | \"partial\"",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "currentOnly",
-          "optional": false,
-          "type": "true",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "assetValuationConfirmed",
-          "optional": false,
-          "type": "false",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        },
-        {
-          "field": "rawSupplyAmountCandidate",
-          "optional": true,
-          "type": "number | undefined",
-          "declarations": [
-            "src/features/admin/oemExternalCostDiagnostic.ts:5"
-          ],
-          "inherited": false,
-          "references": []
-        }
-      ]
-    },
-    {
       "model": "StaffAppProps",
       "declaration": "src/features/staff/StaffApp.tsx:23",
       "scope": "checker-resolved-properties-only",
@@ -198435,36 +198573,41 @@
       },
       {
         "location": "src/shared/services/oemExternalStockEvidence.ts:8",
+        "syntax": "element",
+        "reason": "any-receiver"
+      },
+      {
+        "location": "src/shared/services/oemExternalStockEvidence.ts:13",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:8",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:13",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:8",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:13",
         "syntax": "binding",
         "reason": "no-model-declaration"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:42",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:50",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:43",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:51",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:44",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:52",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:44",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:52",
         "syntax": "element",
         "reason": "dynamic-key"
       },
@@ -198734,129 +198877,114 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/OemManager.tsx:315",
+        "location": "components/OemManager.tsx:319",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/OemManager.tsx:321",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:321",
+        "location": "components/OemManager.tsx:327",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:328",
+        "location": "components/OemManager.tsx:334",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/OemManager.tsx:328",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:329",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:329",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:330",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:330",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:331",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:331",
+        "location": "components/OemManager.tsx:334",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
         "location": "components/OemManager.tsx:335",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:335",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:336",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:336",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:337",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:337",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:341",
         "syntax": "element",
         "reason": "array-index"
-      },
-      {
-        "location": "components/OemManager.tsx:336",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:336",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:338",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:338",
-        "syntax": "binding",
-        "reason": "array-binding"
       },
       {
         "location": "components/OemManager.tsx:342",
@@ -198869,72 +198997,92 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/OemManager.tsx:434",
+        "location": "components/OemManager.tsx:344",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:344",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:348",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:348",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:440",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "components/OemManager.tsx:470",
+        "location": "components/OemManager.tsx:476",
         "syntax": "binding",
         "reason": "connected"
       },
       {
         "location": "components/OemManager.tsx:476",
         "syntax": "binding",
-        "reason": "array-binding"
+        "reason": "connected"
       },
       {
         "location": "components/OemManager.tsx:476",
         "syntax": "binding",
-        "reason": "array-binding"
+        "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:477",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:477",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/OemManager.tsx:530",
+        "location": "components/OemManager.tsx:476",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/OemManager.tsx:530",
+        "location": "components/OemManager.tsx:476",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/OemManager.tsx:476",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/OemManager.tsx:476",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/OemManager.tsx:482",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:482",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:483",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:483",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/OemManager.tsx:536",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/OemManager.tsx:536",
         "syntax": "binding",
         "reason": "connected"
       },
@@ -227400,18 +227548,18 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 31183,
-      "dot:connected": 28070,
-      "binding:connected": 1660,
+      "dot:no-model-declaration": 31205,
+      "dot:connected": 28082,
+      "binding:connected": 1661,
       "binding:rest-binding": 53,
       "element:dynamic-key": 759,
       "binding:array-binding": 3411,
       "dot:property-symbol-unresolved": 2139,
-      "dot:ambiguous-union": 1285,
+      "dot:ambiguous-union": 1286,
       "element:array-index": 755,
       "binding:no-model-declaration": 359,
-      "element:any-receiver": 98,
-      "dot:any-receiver": 1351,
+      "element:any-receiver": 99,
+      "dot:any-receiver": 1353,
       "binding:property-symbol-unresolved": 80,
       "binding:ambiguous-union": 23,
       "binding:any-receiver": 38,
@@ -230877,7 +231025,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/oemExternalStockEvidence.ts:23",
+        "location": "src/shared/services/oemExternalStockEvidence.ts:28",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -230902,7 +231050,59 @@
         "unresolved": true,
         "resolutionKind": "dynamic-collection",
         "wrapper": "read",
-        "wrapperDeclaration": "src/shared/services/oemExternalStockEvidence.ts:22"
+        "wrapperDeclaration": "src/shared/services/oemExternalStockEvidence.ts:27"
+      },
+      {
+        "location": "src/shared/services/oemExternalStockEvidence.ts:42",
+        "runtime": "client",
+        "api": "doc",
+        "style": "modular",
+        "evidence": "firebase/firestore import",
+        "expression": "doc(db, 'purchaseOrders', po.id)",
+        "path": "purchaseOrders/{po.id}",
+        "segments": [
+          {
+            "value": "purchaseOrders",
+            "kind": "literal"
+          },
+          {
+            "expression": "po.id",
+            "kind": "dynamic"
+          }
+        ],
+        "context": "root",
+        "pathKind": "top-level-candidate",
+        "depth": null,
+        "argumentDepthCandidate": 1,
+        "outsideRegistry": [],
+        "unresolved": true,
+        "resolutionKind": "known-collection-dynamic-document"
+      },
+      {
+        "location": "src/shared/services/oemExternalStockEvidence.ts:54",
+        "runtime": "client",
+        "api": "doc",
+        "style": "modular",
+        "evidence": "firebase/firestore import",
+        "expression": "doc(db, 'purchaseOrders', po.id)",
+        "path": "purchaseOrders/{po.id}",
+        "segments": [
+          {
+            "value": "purchaseOrders",
+            "kind": "literal"
+          },
+          {
+            "expression": "po.id",
+            "kind": "dynamic"
+          }
+        ],
+        "context": "root",
+        "pathKind": "top-level-candidate",
+        "depth": null,
+        "argumentDepthCandidate": 1,
+        "outsideRegistry": [],
+        "unresolved": true,
+        "resolutionKind": "known-collection-dynamic-document"
       },
       {
         "location": "src/shared/services/boxUnpackService.ts:30",
@@ -259482,17 +259682,17 @@
       },
       {
         "name": "read",
-        "declaration": "src/shared/services/oemExternalStockEvidence.ts:22",
+        "declaration": "src/shared/services/oemExternalStockEvidence.ts:27",
         "sdkLocations": [
-          "src/shared/services/oemExternalStockEvidence.ts:23"
+          "src/shared/services/oemExternalStockEvidence.ts:28"
         ],
         "callers": [
           {
-            "location": "src/shared/services/oemExternalStockEvidence.ts:27",
+            "location": "src/shared/services/oemExternalStockEvidence.ts:33",
             "callee": "read",
             "resolvedPaths": [
               {
-                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:23",
+                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:28",
                 "path": "rawMaterialLedger/{operationDocId(operationId)}",
                 "collection": "rawMaterialLedger",
                 "collectionKind": "literal",
@@ -259514,11 +259714,11 @@
             ]
           },
           {
-            "location": "src/shared/services/oemExternalStockEvidence.ts:29",
+            "location": "src/shared/services/oemExternalStockEvidence.ts:35",
             "callee": "read",
             "resolvedPaths": [
               {
-                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:23",
+                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:28",
                 "path": "rawMaterialLedger/{legacyOperationDocId(operationId)}",
                 "collection": "rawMaterialLedger",
                 "collectionKind": "literal",
@@ -259540,37 +259740,11 @@
             ]
           },
           {
-            "location": "src/shared/services/oemExternalStockEvidence.ts:36",
+            "location": "src/shared/services/oemExternalStockEvidence.ts:45",
             "callee": "read",
             "resolvedPaths": [
               {
-                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:23",
-                "path": "purchaseOrders/{po.id}",
-                "collection": "purchaseOrders",
-                "collectionKind": "literal",
-                "resolutionKind": "known-wrapper-collection"
-              }
-            ],
-            "argumentExpressions": [
-              {
-                "parameter": "collection",
-                "expression": "'purchaseOrders'",
-                "truncated": false,
-                "staticString": "purchaseOrders"
-              },
-              {
-                "parameter": "id",
-                "expression": "po.id",
-                "truncated": false
-              }
-            ]
-          },
-          {
-            "location": "src/shared/services/oemExternalStockEvidence.ts:37",
-            "callee": "read",
-            "resolvedPaths": [
-              {
-                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:23",
+                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:28",
                 "path": "rawInventoryJobs/{`oem-issue:${po.id}`}",
                 "collection": "rawInventoryJobs",
                 "collectionKind": "literal",
@@ -259592,11 +259766,11 @@
             ]
           },
           {
-            "location": "src/shared/services/oemExternalStockEvidence.ts:43",
+            "location": "src/shared/services/oemExternalStockEvidence.ts:51",
             "callee": "read",
             "resolvedPaths": [
               {
-                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:23",
+                "sdkLocation": "src/shared/services/oemExternalStockEvidence.ts:28",
                 "path": "rawInventoryReversalGuards/{operationDocId(operationId)}",
                 "collection": "rawInventoryReversalGuards",
                 "collectionKind": "literal",
@@ -260744,7 +260918,9 @@
       "src/features/admin/oemIssueJob.ts:99",
       "src/features/admin/oemIssueJob.ts:146",
       "src/features/admin/oemIssueJob.ts:161",
-      "src/shared/services/oemExternalStockEvidence.ts:23",
+      "src/shared/services/oemExternalStockEvidence.ts:28",
+      "src/shared/services/oemExternalStockEvidence.ts:42",
+      "src/shared/services/oemExternalStockEvidence.ts:54",
       "src/shared/services/boxUnpackService.ts:30",
       "src/shared/services/boxUnpackService.ts:31",
       "src/shared/services/boxUnpackService.ts:32",

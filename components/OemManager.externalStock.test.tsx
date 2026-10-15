@@ -33,3 +33,13 @@ it('재고 화면의 외주 발주 실제 진입은 기존 예정·완료 PO를 
  render(<ItemList {...p} mode="lots"/>);fireEvent.click(screen.getByRole('button',{name:'외주 발주'}));fireEvent.click(screen.getByRole('button',{name:'송출 근거 조회'}));await act(async()=>{});
  expect(api.read).toHaveBeenCalledWith('taebaek',[po,expect.objectContaining({id:'received'})]);expect(noop).not.toHaveBeenCalled();
 });
+
+it.each([
+ ['candidate','issue-raw-cost-candidate',125000,'송출 당시 확인 원물 금액: 125,000원'],
+ ['unconfirmed','receipt-cost-only',undefined,'입고 때 확인 원가'],
+ ['unconfirmed','cost-evidence-missing',undefined,'원가 근거 미확인'],
+ ['excluded','received-po-out-of-open-scope',undefined,'현재 미입고 대상 밖'],
+] as const)('원가 진단 %s/%s는 금액 근거의 의미를 구분한다',async(classification,reason,amount,label)=>{
+ api.read.mockResolvedValueOnce([{poId:'po',partnerName:'외주',state:'confirmed',rows:[],costDiagnostic:{poId:'po',classification,reason,sourceState:'confirmed',currentOnly:true,assetValuationConfirmed:false,...(amount===undefined?{}:{rawSupplyAmountCandidate:amount})}}]);render(<OemManager {...props()}/>);fireEvent.click(screen.getByRole('button',{name:'송출 근거 조회'}));await act(async()=>{});expect(screen.getByText(new RegExp(label))).toBeInTheDocument();expect(screen.queryByText(/undefined원|NaN원/)).toBeNull();expect(screen.getByText(/확정 재고자산·합계·월말 평가가 아닙니다/)).toBeInTheDocument();
+});
+it('비용 필드만 바뀐 전체 발주 원문도 늦은 후보 금액을 표시하지 않는다',async()=>{let finish!:(v:any)=>void;api.read.mockReturnValueOnce(new Promise(resolve=>finish=resolve));const p=props(),view=render(<OemManager {...p}/>);fireEvent.click(screen.getByRole('button',{name:'송출 근거 조회'}));view.rerender(<OemManager {...p} purchaseOrders={[{...po,oemCostEvidenceSource:'receipt'}]}/>);await act(async()=>finish([{poId:'po',partnerName:'외주',state:'confirmed',rows:[],costDiagnostic:{classification:'candidate',rawSupplyAmountCandidate:1234567}}]));expect(screen.queryByText(/1,234,567원/)).toBeNull();});

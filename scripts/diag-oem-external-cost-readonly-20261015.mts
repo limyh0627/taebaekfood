@@ -28,7 +28,7 @@ export const SOURCE_MANIFEST=Object.freeze({
   "scripts/prepare-zero-item-price-dry-20261015.mts": "DA4245008D1CDF72F75218ED13B864EE113CD369E23C79180598DF62AC764A86",
   "scripts/shared/zeroItemPriceBackup.ts": "0F1F9A8EC366444E7F6D3D8D83CBCB1F30024C698BF2851FD6A55ED28BF8F4DE",
   "scripts/shared/zeroItemPriceMigration.ts": "86507F891DDABAA5126B2AC3F7EBEE9AB1360E90FEF14181E71C1CFC0FAEDCAA",
-  "src/shared/services/oemExternalStockEvidence.ts": "DB30D6A6EB5383D51ABB58CC2687C09F633F31AE4B8C421F84238C775CF766B7"
+  "src/shared/services/oemExternalStockEvidence.ts": "B9069945BFBEB7C67566642C1359D3E3C8E5E9E00C1043DF548486D3F1660A57"
 });
 const workspace=fileURLToPath(new URL('../',import.meta.url));
 const stages=['arguments','source','paths','auth','query','restshape','calculation','output'] as const;

@@ -10,7 +10,7 @@ import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
 import { inspectStoredOemCostDisplay, reconcileOemBatch } from '../src/features/admin/oemReconciliation';
-import { readOemExternalStockEvidence } from '../src/shared/services/oemExternalStockEvidence';
+import { readOemExternalStockEvidence, type OemExternalStockEvidenceRow } from '../src/shared/services/oemExternalStockEvidence';
 import type { OemExternalRow } from '../src/features/admin/oemExternalStock';
 import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 import {listOemReceiptEntries,readOemReceiptEntry,storeOemReceiptDraft,clearOemReceiptAttempt,markOemReceiptFailure,isOemReceiptPreCallFailure,type OemReceiptEntry} from '../src/shared/oemReceiptPending';
@@ -291,7 +291,7 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pu
 }
 
 function ExternalDispatchEvidence({ companyId, orders }: { companyId: CompanyId; orders: PurchaseOrder[] }) {
-  const [state, setState] = useState<{busy:boolean;rows:OemExternalRow[];error:string}>({busy:false,rows:[],error:''});
+  const [state, setState] = useState<{busy:boolean;rows:OemExternalStockEvidenceRow[];error:string}>({busy:false,rows:[],error:''});
   const generation = useRef(0);
   const inFlight = useRef(false);
   const key = JSON.stringify([companyId, orders]);
@@ -307,14 +307,20 @@ function ExternalDispatchEvidence({ companyId, orders }: { companyId: CompanyId;
       if(captured===generation.current)setState({busy:false,rows:[],error:error instanceof Error?error.message:'송출 근거 조회 실패'});
     } finally { if(captured===generation.current)inFlight.current=false; }
   };
-  const labels:Record<OemExternalRow['state'],string>={confirmed:'송출 근거 확인',partial:'일부 확인',unknown:'미확인',cancelled:'취소 근거 확인',received:'PO 입고 완료 표시 · 송출 근거 확인'};
+
   return <section aria-label="외주송출근거현황" className="rounded-xl border border-slate-200 p-3 space-y-2 text-xs">
     <div className="flex items-center justify-between gap-2"><strong>외주송출근거현황</strong><button type="button" disabled={state.busy} onClick={inspect} className="rounded-lg border px-3 py-2">{state.busy?'조회 중':'송출 근거 조회'}</button></div>
-    <p className="text-slate-500">장부 송출 증거를 확인합니다. 물리 창고의 실측량이나 소유재고 잔량 확정이 아닙니다.</p>
+    <p className="text-slate-500">장부 송출 증거를 확인합니다. 물리 창고의 실측량이나 소유재고 잔량 확정이 아닙니다. 표시 금액은 개별 근거 후보이며 확정 재고자산·합계·월말 평가가 아닙니다.</p>
     {state.error&&<p role="alert">{state.error} · 근거 미확인</p>}
-    {state.rows.map(row=><div key={row.poId} className="rounded-lg bg-slate-50 p-2"><strong>{row.partnerName} · {row.poId} · {labels[row.state]}</strong>
-      {row.reason&&<p>{row.reason}</p>}{row.rows.map(raw=><p key={raw.rawItemId}>{raw.material} · 요청 {raw.requestedKg}kg · {raw.reportedKg===undefined?'송출 미확인':`장부 송출 ${raw.reportedKg}kg · 당시 재고 반영 ${raw.appliedKg}kg`}{raw.reason?` · ${raw.reason}`:''}</p>)}</div>)}
+    <OemExternalEvidenceRows rows={state.rows} />
   </section>;
+}
+
+export function OemExternalEvidenceRows({ rows }: { rows: OemExternalStockEvidenceRow[] }) {
+  const labels:Record<OemExternalRow['state'],string>={confirmed:'송출 근거 확인',partial:'일부 확인',unknown:'미확인',cancelled:'취소 근거 확인',received:'PO 입고 완료 표시 · 송출 근거 확인'};
+  return <>{rows.map(row=><div key={row.poId} className="border-t border-slate-200 py-2"><strong>{row.partnerName} · {row.poId} · {labels[row.state]}</strong>
+            {row.costDiagnostic && <p>{row.costDiagnostic.classification === 'candidate' ? `송출 당시 확인 원물 금액: ${row.costDiagnostic.rawSupplyAmountCandidate?.toLocaleString('ko-KR')}원 · 개별 후보 금액` : row.costDiagnostic.reason === 'receipt-cost-only' ? '입고 때 확인 원가 · 송출 당시 원물 금액 근거는 미확인' : row.costDiagnostic.classification === 'excluded' ? '현재 미입고 대상 밖 · 금액 평가 제외' : '원가 근거 미확인 · 송출 당시 입력 근거와 처리 원문을 확인한 뒤 다시 조회하세요.'}</p>}
+      {row.reason&&<p>{row.reason}</p>}{row.rows.map(raw=><p key={raw.rawItemId}>{raw.material} · 요청 {raw.requestedKg}kg · {raw.reportedKg===undefined?'송출 미확인':`장부 송출 ${raw.reportedKg}kg · 당시 재고 반영 ${raw.appliedKg}kg`}{raw.reason?` · ${raw.reason}`:''}</p>)}</div>)}</>;
 }
 
 // ── 가공입고 (완제품 받기) ───────────────────────────────────────────────────

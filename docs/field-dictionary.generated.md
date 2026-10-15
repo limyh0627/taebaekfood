@@ -6,11 +6,11 @@ COL 94개, 선언 필드 739개, 운영 소스 497개를 분석했다.
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 810건. 동적 문서 ID도 미해석으로 보존하며, 미해석 429건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 812건. 동적 문서 ID도 미해석으로 보존하며, 미해석 431건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `orderInterpretationRules`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 60건과 정적 컬렉션의 동적 문서 경로 368건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 60건과 정적 컬렉션의 동적 문서 경로 370건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
@@ -32,7 +32,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | fetchByIds | src/shared/services/firebaseService.ts:729 | src/shared/services/firebaseService.ts:737 | src/features/admin/useVoucherLedger.ts:136: issuedStatements |
 | subscribeWhere | src/shared/services/firebaseService.ts:743 | src/shared/services/firebaseService.ts:750 | 정적 호출 연결 없음 |
 | commitCompanyWrites | src/shared/services/firebaseService.ts:764 | src/shared/services/firebaseService.ts:771, src/shared/services/firebaseService.ts:797 | src/shared/services/firebaseService.ts:546: 미해석, 미해석; src/shared/services/firebaseService.ts:650: 미해석, 미해석; src/shared/services/firebaseService.ts:681: 미해석, 미해석; src/shared/services/firebaseService.ts:1018: 미해석, 미해석; src/features/admin/AdminApp.tsx:1455: 미해석, 미해석; src/features/admin/AdminApp.tsx:4829: 미해석, 미해석; src/features/admin/AdminApp.tsx:5025: 미해석, 미해석; src/features/admin/AdminApp.tsx:5120: 미해석, 미해석 |
-| read | src/shared/services/oemExternalStockEvidence.ts:22 | src/shared/services/oemExternalStockEvidence.ts:23 | src/shared/services/oemExternalStockEvidence.ts:27: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:29: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:36: purchaseOrders; src/shared/services/oemExternalStockEvidence.ts:37: rawInventoryJobs; src/shared/services/oemExternalStockEvidence.ts:43: rawInventoryReversalGuards |
+| read | src/shared/services/oemExternalStockEvidence.ts:27 | src/shared/services/oemExternalStockEvidence.ts:28 | src/shared/services/oemExternalStockEvidence.ts:33: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:35: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:45: rawInventoryJobs; src/shared/services/oemExternalStockEvidence.ts:51: rawInventoryReversalGuards |
 | readVoucherScopeRows | functions/src/newScopeCounter.ts:21 | functions/src/newScopeCounter.ts:27 | functions/src/newScopeCounter.ts:62: 미해석; functions/src/voucherIssue.ts:94: 미해석 |
 | readStatementIssueEffects | functions/src/statementIssueReceipt.ts:55 | functions/src/statementIssueReceipt.ts:61 | functions/src/statementIssueReceipt.ts:102: 미해석; functions/src/cancelTradeStatementCommand.ts:30: 미해석 |
 | readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98: 미해석; functions/src/partnerAdvanceCommand.ts:128: 미해석; functions/src/deleteIssuedStatementCommand.ts:64: 미해석; functions/src/cashMutationCommand.ts:198: 미해석; functions/src/editIssuedStatementCommand.ts:200: 미해석; functions/src/processReturnCommand.ts:209: 미해석 |
@@ -179,7 +179,9 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | src/features/admin/oemIssueJob.ts:99 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{input.jobId} |  |
 | src/features/admin/oemIssueJob.ts:146 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{draft.id} |  |
 | src/features/admin/oemIssueJob.ts:161 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{draft.id} |  |
-| src/shared/services/oemExternalStockEvidence.ts:23 | client | doc | root / top-level-candidate | 미해석 | {collection}/{id} |  |
+| src/shared/services/oemExternalStockEvidence.ts:28 | client | doc | root / top-level-candidate | 미해석 | {collection}/{id} |  |
+| src/shared/services/oemExternalStockEvidence.ts:42 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{po.id} |  |
+| src/shared/services/oemExternalStockEvidence.ts:54 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{po.id} |  |
 | src/shared/services/boxUnpackService.ts:30 | client | doc | root / top-level-candidate | 미해석 | items/{boxItemId} |  |
 | src/shared/services/boxUnpackService.ts:31 | client | doc | root / top-level-candidate | 미해석 | items/{unitItemId} |  |
 | src/shared/services/boxUnpackService.ts:32 | client | doc | root / top-level-candidate | 미해석 | itemUnpackMovements/{operationId} | itemUnpackMovements |
@@ -860,7 +862,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 852개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 853개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -1195,6 +1197,9 @@ shared/types.ts 외 interface/type alias 852개를 별도 목록에 기록한다
 | StoredOemCostDisplay | src/features/admin/oemReconciliation.ts:8 | type-alias | non-object-alias-not-expanded |  |
 | OemExternalEvidence | src/features/admin/oemExternalStock.ts:5 | interface | direct-properties-only | po, job, receipts, reversals, guards |
 | OemExternalRow | src/features/admin/oemExternalStock.ts:12 | interface | direct-properties-only | poId, partnerName, state, rows, reason |
+| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | type-alias | non-object-alias-not-expanded |  |
+| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | interface | direct-properties-only | poId, classification, reason, sourceState, currentOnly, assetValuationConfirmed, rawSupplyAmountCandidate |
+| OemExternalStockEvidenceRow | src/shared/services/oemExternalStockEvidence.ts:7 | interface | direct-properties-only | costDiagnostic |
 | Props | components/OemManager.tsx:23 | interface | direct-properties-only | actorUid, isCurrentActor, orderUnitInputs, companyId, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee |
 | IssueInput | components/OemManager.tsx:42 | type-alias | non-object-alias-not-expanded |  |
 | ReceiveInput | components/OemManager.tsx:43 | type-alias | non-object-alias-not-expanded |  |
@@ -1605,8 +1610,6 @@ shared/types.ts 외 interface/type alias 852개를 별도 목록에 기록한다
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | type-alias | non-object-alias-not-expanded |  |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
 | UsageRow | src/features/admin/AdminApp.tsx:3876 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
-| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | type-alias | non-object-alias-not-expanded |  |
-| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | interface | direct-properties-only | poId, classification, reason, sourceState, currentOnly, assetValuationConfirmed, rawSupplyAmountCandidate |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
 | Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
@@ -2140,6 +2143,9 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | StoredOemCostDisplay | src/features/admin/oemReconciliation.ts:8 | non-object-model-not-expanded | 0 |
 | OemExternalEvidence | src/features/admin/oemExternalStock.ts:5 | checker-resolved-properties-only | 5 |
 | OemExternalRow | src/features/admin/oemExternalStock.ts:12 | checker-resolved-properties-only | 5 |
+| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | non-object-model-not-expanded | 0 |
+| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | checker-resolved-properties-only | 7 |
+| OemExternalStockEvidenceRow | src/shared/services/oemExternalStockEvidence.ts:7 | checker-resolved-properties-only | 6 |
 | Props | components/OemManager.tsx:23 | checker-resolved-properties-only | 16 |
 | IssueInput | components/OemManager.tsx:42 | checker-resolved-properties-only | 7 |
 | ReceiveInput | components/OemManager.tsx:43 | checker-resolved-properties-only | 6 |
@@ -2550,8 +2556,6 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | checker-resolved-properties-only | 46 |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | checker-resolved-properties-only | 7 |
 | UsageRow | src/features/admin/AdminApp.tsx:3876 | checker-resolved-properties-only | 10 |
-| OemExternalCostReason | src/features/admin/oemExternalCostDiagnostic.ts:4 | non-object-model-not-expanded | 0 |
-| OemExternalCostDiagnostic | src/features/admin/oemExternalCostDiagnostic.ts:5 | checker-resolved-properties-only | 7 |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | checker-resolved-properties-only | 10 |
 | Window | src/global.d.ts:3 | checker-resolved-properties-only | 186 |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | checker-resolved-properties-only | 4 |
@@ -3324,6 +3328,9 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | src/features/admin/oemExternalStock.ts:61 | receipt.reportedDeltaKg | Record<string, any> | property-symbol-unresolved |
 | src/features/admin/oemExternalStock.ts:61 | receipt.appliedDeltaKg | Record<string, any> | property-symbol-unresolved |
 | src/features/admin/oemExternalStock.ts:61 | receipt.appliedDeltaKg | Record<string, any> | property-symbol-unresolved |
+| src/features/admin/oemExternalCostDiagnostic.ts:15 | evidence?.job?.status | Record<string, any> \| null \| undefined | property-symbol-unresolved |
+| src/shared/services/oemExternalStockEvidence.ts:8 | value.toJSON | any | any-receiver |
+| src/shared/services/oemExternalStockEvidence.ts:8 | value.toJSON | any | any-receiver |
 | src/shared/services/boxUnpackService.ts:38 | row.qty | any | any-receiver |
 | src/shared/services/boxUnpackService.ts:38 | row.qty | any | any-receiver |
 | src/shared/services/boxUnpackService.ts:38 | row.qty | any | any-receiver |
@@ -4102,7 +4109,6 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | src/features/admin/AdminApp.tsx:4783 | error?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:4793 | error?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:4986 | copySelected.request?.confirmed.orderDraft.partnerName | OrderInterpretationJsonObject \| undefined | property-symbol-unresolved |
-| src/features/admin/oemExternalCostDiagnostic.ts:15 | evidence?.job?.status | Record<string, any> \| null \| undefined | property-symbol-unresolved |
 | src/shared/components/AuthPage.tsx:34 | cause?.code | any | any-receiver |
 | functions/src/newScopeCounter.ts:40 | gate.data()?.oemLotCutoverDate | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/newScopeCounter.ts:46 | row?.status | DocumentData \| undefined | property-symbol-unresolved |
@@ -6658,7 +6664,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1213 | 29 |
 | PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1214 | 12 |
 | PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1220 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1224 | 108 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1224 | 110 |
 | PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1226 | 6 |
 | PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1227 | 5 |
 | PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1228 | 1 |
