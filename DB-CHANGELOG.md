@@ -1,5 +1,13 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-15 — 사용자 승인한 noncash 옛 표식 4개 삭제
+
+사용자 “해당 4개 표식 삭제 허용” 답변으로 기존 v2 원본에 고정된 accountCodes.noncash true4개(태백2·풍회2)만 삭제했다. 전체 원문·나노초 버전을 재대조하고 단일 원자 commit4로 처리해 종료0·문서4·쓰기4였다. 계정번호·이름·그룹·금액·전표와 다른 필드는 변경하지 않았다. 기존9필드 도구와 영수증도 보존했다.
+
+도구는 `scripts/execute-account-noncash-removal-20261015.mts`, 계획 해시는 `37de9c91864e731e55c3647c5ea596a54c0c2f320af966a2ad80e9f749177f47`다. 비공개 v2 원본·계획·실영수증과 intent는 work에 보존하며 Git에 올리지 않는다. intent SHA256은 `8A318CCA2F0DC2CF00FEBA88DFB23AA08A85BDB7232460B017CEEACD1DE91A72`, 영수증 SHA256은 `CE88F139A031CE4C5142F29945AC6AAAF261B93C4AA69C0B5C71AD6F4CE8DEB8`이다.
+
+별도 담당의 실제 inspect도 종료0·state applied·writes0이었다. 현재4개 문서 전체가 계획after와 같고 각updateTime은 실영수증과 일치했으며 원본·계획SHA와 타필드는 불변이었다. lock·실패파일은 없고 undo는 실행하지 않았다. 복원은 실제삭제영수증/삭제후전체원문/버전이 유지된 경우에만 true를 되돌릴 수 있으며 후속변경이 있으면 새 검토와 별도 승인이 필요하다. 앱·Functions·Rules 추가 배포는 없다.
+
 ## 2026-10-15 — 사용자 승인한 폐기 필드 9개 삭제
 
 사용자 “ㅇㅇ삭제하고 다음 todo진행” 승인으로 고정 계획의 태백 `pallets.inUse`8개와 정확 boolean false였던 `items.lotsAreTotal`1개만 삭제했다. 다른 문서나 필드로 대상을 확대하지 않았다. 전체 원문·나노초 문서 버전과 기존 백업 SHA를 재검사한 뒤9개를 한 원자 commit으로 처리했다. 실행 종료0·문서9·쓰기9이며 재고·금액·원가·로트·원자 재고 상태 문서는 변경 대상이 아니다.
