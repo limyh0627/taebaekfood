@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-16T10:08:41.091Z",
+  "generatedAt": "2026-10-16T10:53:12.297Z",
   "sourceFiles": 501,
-  "unresolvedAccesses": 3509,
+  "unresolvedAccesses": 3510,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:107",
@@ -9909,21 +9909,21 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "components/PartnerLedger.tsx:519",
+      "location": "components/PartnerLedger.tsx:520",
       "expression": "it.name",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/PartnerLedger.tsx:520",
+      "location": "components/PartnerLedger.tsx:521",
       "expression": "it.spec",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/PartnerLedger.tsx:521",
+      "location": "components/PartnerLedger.tsx:522",
       "expression": "it.qty",
       "receiverExpression": "it",
       "receiverType": "any",
@@ -9931,34 +9931,41 @@
     },
     {
       "location": "components/PartnerLedger.tsx:522",
-      "expression": "it.price",
+      "expression": "it.qty",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
       "location": "components/PartnerLedger.tsx:523",
-      "expression": "it.supply",
+      "expression": "it.price",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
       "location": "components/PartnerLedger.tsx:524",
-      "expression": "it.tax",
+      "expression": "it.supply",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
       "location": "components/PartnerLedger.tsx:525",
+      "expression": "it.tax",
+      "receiverExpression": "it",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "components/PartnerLedger.tsx:526",
       "expression": "it.total",
       "receiverExpression": "it",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/PartnerLedger.tsx:545",
+      "location": "components/PartnerLedger.tsx:546",
       "expression": "i.name",
       "receiverExpression": "i",
       "receiverType": "any",
@@ -26176,7 +26183,7 @@
         "components/AddOrderModal.tsx:83",
         "components/AddPartnerModal.tsx:103",
         "components/AdminChecklist.tsx:132",
-        "components/AdminChecklist.tsx:177",
+        "components/AdminChecklist.tsx:176",
         "components/AdminChecklist.tsx:193",
         "components/CashLedger.tsx:475",
         "components/CashLedger.tsx:528",
@@ -26252,9 +26259,9 @@
         "components/PalletManager.tsx:846",
         "components/PalletManager.tsx:977",
         "components/PalletManager.tsx:980",
-        "components/PartnerLedger.tsx:163",
         "components/PartnerLedger.tsx:164",
-        "components/PartnerLedger.tsx:642",
+        "components/PartnerLedger.tsx:165",
+        "components/PartnerLedger.tsx:643",
         "components/PartnerManager.tsx:205",
         "components/PartnerManager.tsx:421",
         "components/PartnerManager.tsx:424",
@@ -26440,8 +26447,8 @@
         "components/PalletManager.tsx:973",
         "components/PalletManager.tsx:979",
         "components/PalletManager.tsx:980",
-        "components/PartnerLedger.tsx:164",
-        "components/PartnerLedger.tsx:642",
+        "components/PartnerLedger.tsx:165",
+        "components/PartnerLedger.tsx:643",
         "components/PartnerManager.tsx:214",
         "components/PartnerManager.tsx:240",
         "components/PartnerManager.tsx:287",
@@ -26752,7 +26759,7 @@
       "type": "PartnerType",
       "declaration": "src/shared/types.ts:177",
       "references": [
-        "components/PartnerLedger.tsx:162",
+        "components/PartnerLedger.tsx:163",
         "components/PartnerManager.tsx:221",
         "components/PartnerManager.tsx:369",
         "components/PartnerManager.tsx:378",
@@ -34985,7 +34992,7 @@
       "declaration": "src/shared/types.ts:1107",
       "references": [
         "components/FinancialReports.tsx:153",
-        "components/PartnerLedger.tsx:151",
+        "components/PartnerLedger.tsx:152",
         "components/TradeStatement.tsx:1226",
         "components/TradeStatement.tsx:1720",
         "components/voucher/VoucherComposer.tsx:693",
@@ -35147,9 +35154,9 @@
         "components/ItemList.tsx:822",
         "components/ItemList.tsx:824",
         "components/OrderPicker.tsx:311",
-        "components/PartnerLedger.tsx:486",
-        "components/PartnerLedger.tsx:630",
-        "components/PartnerLedger.tsx:640",
+        "components/PartnerLedger.tsx:487",
+        "components/PartnerLedger.tsx:631",
+        "components/PartnerLedger.tsx:641",
         "components/ProfitAnalysis.tsx:1051",
         "components/ProfitAnalysis.tsx:977",
         "components/ReceivingReturnsManager.tsx:186",
@@ -35405,10 +35412,10 @@
         "components/CashLedger.tsx:384",
         "components/FinancialReports.tsx:212",
         "components/FinancialReports.tsx:70",
-        "components/PartnerLedger.tsx:191",
         "components/PartnerLedger.tsx:192",
-        "components/PartnerLedger.tsx:501",
-        "components/PartnerLedger.tsx:559",
+        "components/PartnerLedger.tsx:193",
+        "components/PartnerLedger.tsx:502",
+        "components/PartnerLedger.tsx:560",
         "components/ProfitAnalysis.tsx:1000",
         "components/ProfitAnalysis.tsx:1006",
         "components/ProfitAnalysis.tsx:1025",
@@ -35507,10 +35514,10 @@
       "declaration": "src/shared/types.ts:1152",
       "references": [
         "components/ItemList.tsx:2854",
-        "components/PartnerLedger.tsx:151",
-        "components/PartnerLedger.tsx:496",
-        "components/PartnerLedger.tsx:498",
-        "components/PartnerLedger.tsx:558",
+        "components/PartnerLedger.tsx:152",
+        "components/PartnerLedger.tsx:497",
+        "components/PartnerLedger.tsx:499",
+        "components/PartnerLedger.tsx:559",
         "components/ProfitAnalysis.tsx:1025",
         "components/ProfitAnalysis.tsx:1052",
         "components/ProfitAnalysis.tsx:926",
@@ -35591,14 +35598,14 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1153",
       "references": [
-        "components/PartnerLedger.tsx:154",
         "components/PartnerLedger.tsx:155",
         "components/PartnerLedger.tsx:156",
-        "components/PartnerLedger.tsx:168",
-        "components/PartnerLedger.tsx:190",
-        "components/PartnerLedger.tsx:630",
-        "components/PartnerLedger.tsx:636",
-        "components/PartnerLedger.tsx:639",
+        "components/PartnerLedger.tsx:157",
+        "components/PartnerLedger.tsx:169",
+        "components/PartnerLedger.tsx:191",
+        "components/PartnerLedger.tsx:631",
+        "components/PartnerLedger.tsx:637",
+        "components/PartnerLedger.tsx:640",
         "components/ProfitAnalysis.tsx:1025",
         "components/ProfitAnalysis.tsx:1039",
         "components/ProfitAnalysis.tsx:919",
@@ -35687,11 +35694,11 @@
         "components/CashLedger.tsx:352",
         "components/CashLedger.tsx:383",
         "components/FinancialReports.tsx:213",
-        "components/PartnerLedger.tsx:155",
-        "components/PartnerLedger.tsx:190",
-        "components/PartnerLedger.tsx:500",
-        "components/PartnerLedger.tsx:560",
-        "components/PartnerLedger.tsx:640",
+        "components/PartnerLedger.tsx:156",
+        "components/PartnerLedger.tsx:191",
+        "components/PartnerLedger.tsx:501",
+        "components/PartnerLedger.tsx:561",
+        "components/PartnerLedger.tsx:641",
         "components/ProfitAnalysis.tsx:919",
         "components/TaxStatement.tsx:264",
         "components/TaxStatement.tsx:360",
@@ -35807,7 +35814,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1157",
       "references": [
-        "components/PartnerLedger.tsx:532",
+        "components/PartnerLedger.tsx:533",
         "components/TradeStatement.tsx:1432",
         "components/TradeStatement.tsx:1937",
         "components/TradeStatement.tsx:2772",
@@ -35824,7 +35831,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1158",
       "references": [
-        "components/PartnerLedger.tsx:533",
+        "components/PartnerLedger.tsx:534",
         "components/TradeStatement.tsx:1433",
         "components/TradeStatement.tsx:1937",
         "components/TradeStatement.tsx:2773",
@@ -35842,7 +35849,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1159",
       "references": [
-        "components/PartnerLedger.tsx:534",
+        "components/PartnerLedger.tsx:535",
         "components/ProfitAnalysis.tsx:1001",
         "components/ProfitAnalysis.tsx:1007",
         "components/ProfitAnalysis.tsx:1027",
@@ -35919,9 +35926,9 @@
       "references": [
         "components/FinancialReports.tsx:153",
         "components/ItemList.tsx:2856",
-        "components/PartnerLedger.tsx:151",
-        "components/PartnerLedger.tsx:491",
-        "components/PartnerLedger.tsx:545",
+        "components/PartnerLedger.tsx:152",
+        "components/PartnerLedger.tsx:492",
+        "components/PartnerLedger.tsx:546",
         "components/ProfitAnalysis.tsx:1053",
         "components/ReceivingReturnsManager.tsx:186",
         "components/ReceivingReturnsManager.tsx:349",
@@ -38676,7 +38683,7 @@
         "components/FinancialReports.tsx:63",
         "components/ItemManager.tsx:148",
         "components/ItemManager.tsx:176",
-        "components/PartnerLedger.tsx:53",
+        "components/PartnerLedger.tsx:54",
         "components/ProfitAnalysis.tsx:1833",
         "components/ProfitAnalysis.tsx:1894",
         "components/ProfitAnalysis.tsx:1897",
@@ -38778,7 +38785,7 @@
         "components/CostManager.tsx:88",
         "components/FinancialReports.tsx:379",
         "components/ItemManager.tsx:176",
-        "components/PartnerLedger.tsx:53",
+        "components/PartnerLedger.tsx:54",
         "components/ProfitAnalysis.tsx:1895",
         "components/ProfitAnalysis.tsx:1897",
         "components/ProfitAnalysis.tsx:1952",
@@ -38924,7 +38931,7 @@
       "declaration": "src/shared/types.ts:1511",
       "references": [
         "components/FinancialReports.tsx:237",
-        "components/PartnerLedger.tsx:157",
+        "components/PartnerLedger.tsx:158",
         "components/TradeStatement.tsx:1076",
         "components/TradeStatement.tsx:2113",
         "components/voucher/VoucherComposer.tsx:1471",
@@ -39053,9 +39060,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1514",
       "references": [
-        "components/PartnerLedger.tsx:157",
         "components/PartnerLedger.tsx:158",
         "components/PartnerLedger.tsx:159",
+        "components/PartnerLedger.tsx:160",
         "src/features/admin/cashLedger.ts:144",
         "src/features/admin/cashLedger.ts:163",
         "src/features/admin/cashLedger.ts:271",
@@ -39087,7 +39094,7 @@
       "references": [
         "components/FinancialReports.tsx:315",
         "components/FinancialReports.tsx:317",
-        "components/PartnerLedger.tsx:490",
+        "components/PartnerLedger.tsx:491",
         "src/features/admin/cashLedger.ts:138",
         "src/features/admin/cashLedger.ts:148",
         "src/features/admin/cashLedger.ts:166",
@@ -39131,7 +39138,7 @@
       "declaration": "src/shared/types.ts:1521",
       "references": [
         "components/FinancialReports.tsx:237",
-        "components/PartnerLedger.tsx:157",
+        "components/PartnerLedger.tsx:158",
         "components/TradeStatement.tsx:1075",
         "components/TradeStatement.tsx:2112",
         "components/voucher/VoucherComposer.tsx:1467",
@@ -39184,8 +39191,8 @@
       "type": "'매출' | '매입' | '대체' | '자금' | '수동'",
       "declaration": "src/shared/types.ts:1523",
       "references": [
-        "components/PartnerLedger.tsx:488",
         "components/PartnerLedger.tsx:489",
+        "components/PartnerLedger.tsx:490",
         "src/features/admin/cashLedger.ts:137",
         "src/features/admin/cashLedger.ts:152",
         "src/features/admin/cashLedger.ts:164",
@@ -39204,7 +39211,7 @@
       "references": [
         "components/FinancialReports.tsx:220",
         "components/FinancialReports.tsx:317",
-        "components/PartnerLedger.tsx:490",
+        "components/PartnerLedger.tsx:491",
         "components/ProfitAnalysis.tsx:1029",
         "components/ProfitAnalysis.tsx:1030",
         "src/features/admin/cashLedger.ts:138",
@@ -39354,9 +39361,9 @@
         "components/HRManager.tsx:138",
         "components/HRManager.tsx:701",
         "components/LoanManager.tsx:232",
-        "components/PartnerLedger.tsx:129",
-        "components/PartnerLedger.tsx:606",
-        "components/PartnerLedger.tsx:638",
+        "components/PartnerLedger.tsx:130",
+        "components/PartnerLedger.tsx:607",
+        "components/PartnerLedger.tsx:639",
         "components/TradeStatement.tsx:1704",
         "components/TradeStatement.tsx:2290",
         "components/TradeStatement.tsx:2306",
@@ -39403,7 +39410,7 @@
         "components/CashLedger.tsx:737",
         "components/HRManager.tsx:701",
         "components/LoanManager.tsx:232",
-        "components/PartnerLedger.tsx:606",
+        "components/PartnerLedger.tsx:607",
         "components/TradeStatement.tsx:2290",
         "components/TradeStatement.tsx:2306",
         "components/voucher/VoucherComposer.tsx:1188",
@@ -39484,9 +39491,9 @@
         "components/HRManager.tsx:137",
         "components/HRManager.tsx:701",
         "components/LoanManager.tsx:88",
-        "components/PartnerLedger.tsx:129",
-        "components/PartnerLedger.tsx:56",
-        "components/PartnerLedger.tsx:606",
+        "components/PartnerLedger.tsx:130",
+        "components/PartnerLedger.tsx:57",
+        "components/PartnerLedger.tsx:607",
         "components/TradeStatement.tsx:2290",
         "components/TradeStatement.tsx:2306",
         "components/TradeStatement.tsx:549",
@@ -39544,7 +39551,7 @@
         "components/CashLedger.tsx:931",
         "components/FinancialReports.tsx:209",
         "components/LoanManager.tsx:213",
-        "components/PartnerLedger.tsx:487",
+        "components/PartnerLedger.tsx:488",
         "components/ProfitAnalysis.tsx:1014",
         "components/TradeStatement.tsx:1072",
         "components/TradeStatement.tsx:1918",
@@ -39718,10 +39725,10 @@
         "components/FinancialReports.tsx:212",
         "components/FinancialReports.tsx:71",
         "components/LoanManager.tsx:213",
-        "components/PartnerLedger.tsx:191",
         "components/PartnerLedger.tsx:192",
-        "components/PartnerLedger.tsx:501",
-        "components/PartnerLedger.tsx:559",
+        "components/PartnerLedger.tsx:193",
+        "components/PartnerLedger.tsx:502",
+        "components/PartnerLedger.tsx:560",
         "components/ProfitAnalysis.tsx:1014",
         "components/ProfitAnalysis.tsx:1016",
         "components/ProfitAnalysis.tsx:202",
@@ -39789,11 +39796,11 @@
         "components/CashLedger.tsx:340",
         "components/CashLedger.tsx:85",
         "components/CashLedger.tsx:934",
-        "components/PartnerLedger.tsx:153",
-        "components/PartnerLedger.tsx:497",
+        "components/PartnerLedger.tsx:154",
         "components/PartnerLedger.tsx:498",
-        "components/PartnerLedger.tsx:543",
-        "components/PartnerLedger.tsx:558",
+        "components/PartnerLedger.tsx:499",
+        "components/PartnerLedger.tsx:544",
+        "components/PartnerLedger.tsx:559",
         "components/ProfitAnalysis.tsx:901",
         "components/ProfitAnalysis.tsx:902",
         "components/TradeStatement.tsx:2533",
@@ -39845,7 +39852,7 @@
         "components/CashLedger.tsx:340",
         "components/CashLedger.tsx:676",
         "components/CashLedger.tsx:85",
-        "components/PartnerLedger.tsx:542",
+        "components/PartnerLedger.tsx:543",
         "components/ProfitAnalysis.tsx:897",
         "components/TradeStatement.tsx:523",
         "components/TradeStatement.tsx:530",
@@ -39884,11 +39891,11 @@
         "components/CashLedger.tsx:367",
         "components/CashLedger.tsx:420",
         "components/CashLedger.tsx:634",
-        "components/PartnerLedger.tsx:154",
         "components/PartnerLedger.tsx:155",
         "components/PartnerLedger.tsx:156",
-        "components/PartnerLedger.tsx:168",
-        "components/PartnerLedger.tsx:190",
+        "components/PartnerLedger.tsx:157",
+        "components/PartnerLedger.tsx:169",
+        "components/PartnerLedger.tsx:191",
         "components/ProfitAnalysis.tsx:1012",
         "components/ProfitAnalysis.tsx:893",
         "components/ProfitAnalysis.tsx:900",
@@ -39943,10 +39950,10 @@
         "components/CashLedger.tsx:84",
         "components/CashLedger.tsx:934",
         "components/FinancialReports.tsx:213",
-        "components/PartnerLedger.tsx:155",
-        "components/PartnerLedger.tsx:190",
-        "components/PartnerLedger.tsx:500",
-        "components/PartnerLedger.tsx:560",
+        "components/PartnerLedger.tsx:156",
+        "components/PartnerLedger.tsx:191",
+        "components/PartnerLedger.tsx:501",
+        "components/PartnerLedger.tsx:561",
         "components/voucher/CashEntryModal.tsx:267",
         "components/voucher/CashEntryModal.tsx:270",
         "components/voucher/CashEntryModal.tsx:326",
@@ -39968,8 +39975,8 @@
         "components/CashLedger.tsx:215",
         "components/CashLedger.tsx:618",
         "components/CashLedger.tsx:676",
-        "components/PartnerLedger.tsx:153",
-        "components/PartnerLedger.tsx:544",
+        "components/PartnerLedger.tsx:154",
+        "components/PartnerLedger.tsx:545",
         "components/ProfitAnalysis.tsx:897",
         "components/TradeStatement.tsx:703",
         "components/TradeStatement.tsx:754",
@@ -40002,7 +40009,7 @@
         "components/CashLedger.tsx:420",
         "components/CashLedger.tsx:421",
         "components/CashLedger.tsx:618",
-        "components/PartnerLedger.tsx:153",
+        "components/PartnerLedger.tsx:154",
         "components/ProfitAnalysis.tsx:894",
         "components/TradeStatement.tsx:2498",
         "components/voucher/CashEntryModal.tsx:233",
@@ -40048,7 +40055,7 @@
         "components/CashLedger.tsx:84",
         "components/FinancialReports.tsx:213",
         "components/LoanManager.tsx:213",
-        "components/PartnerLedger.tsx:545",
+        "components/PartnerLedger.tsx:546",
         "components/ProfitAnalysis.tsx:1019",
         "components/voucher/CashEntryModal.tsx:236",
         "components/voucher/CashEntryModal.tsx:241",
@@ -77654,12 +77661,12 @@
           "type": "'전표' | '결제'",
           "declaration": "src/features/admin/cashLedger.ts:206",
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:330",
-            "components/PartnerLedger.tsx:383",
-            "components/PartnerLedger.tsx:394",
-            "components/PartnerLedger.tsx:396",
-            "components/PartnerLedger.tsx:416",
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:331",
+            "components/PartnerLedger.tsx:384",
+            "components/PartnerLedger.tsx:395",
+            "components/PartnerLedger.tsx:397",
+            "components/PartnerLedger.tsx:417",
             "src/features/admin/cashLedger.ts:655"
           ]
         },
@@ -77669,7 +77676,7 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:207",
           "references": [
-            "components/PartnerLedger.tsx:383",
+            "components/PartnerLedger.tsx:384",
             "src/features/admin/cashLedger.ts:302",
             "src/features/admin/cashLedger.ts:303"
           ]
@@ -77680,9 +77687,9 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:208",
           "references": [
-            "components/PartnerLedger.tsx:326",
-            "components/PartnerLedger.tsx:387",
-            "components/PartnerLedger.tsx:420",
+            "components/PartnerLedger.tsx:327",
+            "components/PartnerLedger.tsx:388",
+            "components/PartnerLedger.tsx:421",
             "src/features/admin/cashLedger.ts:328",
             "src/features/admin/cashLedger.ts:330"
           ]
@@ -77693,8 +77700,8 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:214",
           "references": [
-            "components/PartnerLedger.tsx:328",
-            "components/PartnerLedger.tsx:399"
+            "components/PartnerLedger.tsx:329",
+            "components/PartnerLedger.tsx:400"
           ]
         },
         {
@@ -77703,11 +77710,11 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:216",
           "references": [
-            "components/PartnerLedger.tsx:328",
-            "components/PartnerLedger.tsx:401",
-            "components/PartnerLedger.tsx:403",
-            "components/PartnerLedger.tsx:405",
-            "components/PartnerLedger.tsx:407"
+            "components/PartnerLedger.tsx:329",
+            "components/PartnerLedger.tsx:402",
+            "components/PartnerLedger.tsx:404",
+            "components/PartnerLedger.tsx:406",
+            "components/PartnerLedger.tsx:408"
           ]
         },
         {
@@ -77716,10 +77723,10 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:218",
           "references": [
-            "components/PartnerLedger.tsx:330",
-            "components/PartnerLedger.tsx:402",
+            "components/PartnerLedger.tsx:331",
             "components/PartnerLedger.tsx:403",
-            "components/PartnerLedger.tsx:416",
+            "components/PartnerLedger.tsx:404",
+            "components/PartnerLedger.tsx:417",
             "components/TradeStatement.tsx:1914"
           ]
         },
@@ -77729,8 +77736,8 @@
           "type": "string",
           "declaration": "src/features/admin/cashLedger.ts:220",
           "references": [
-            "components/PartnerLedger.tsx:326",
-            "components/PartnerLedger.tsx:388"
+            "components/PartnerLedger.tsx:327",
+            "components/PartnerLedger.tsx:389"
           ]
         },
         {
@@ -77739,10 +77746,10 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:221",
           "references": [
-            "components/PartnerLedger.tsx:328",
             "components/PartnerLedger.tsx:329",
-            "components/PartnerLedger.tsx:410",
+            "components/PartnerLedger.tsx:330",
             "components/PartnerLedger.tsx:411",
+            "components/PartnerLedger.tsx:412",
             "src/features/admin/cashLedger.ts:307",
             "src/features/admin/cashLedger.ts:308",
             "src/features/admin/cashLedger.ts:309",
@@ -77759,8 +77766,8 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:222",
           "references": [
-            "components/PartnerLedger.tsx:329",
-            "components/PartnerLedger.tsx:412",
+            "components/PartnerLedger.tsx:330",
+            "components/PartnerLedger.tsx:413",
             "components/TradeStatement.tsx:1915"
           ]
         },
@@ -77770,9 +77777,9 @@
           "type": "'cash'",
           "declaration": "src/features/admin/cashLedger.ts:224",
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:396",
-            "components/PartnerLedger.tsx:403"
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:397",
+            "components/PartnerLedger.tsx:404"
           ]
         },
         {
@@ -77781,9 +77788,9 @@
           "type": "true",
           "declaration": "src/features/admin/cashLedger.ts:226",
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:393",
-            "components/PartnerLedger.tsx:396",
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:394",
+            "components/PartnerLedger.tsx:397",
             "src/features/admin/cashLedger.ts:309",
             "src/features/admin/cashLedger.ts:328",
             "src/features/admin/cashLedger.ts:330"
@@ -77803,9 +77810,9 @@
           "type": "PartnerLedgerRow[]",
           "declaration": "src/features/admin/cashLedger.ts:230",
           "references": [
-            "components/PartnerLedger.tsx:325",
-            "components/PartnerLedger.tsx:382",
-            "components/PartnerLedger.tsx:431",
+            "components/PartnerLedger.tsx:326",
+            "components/PartnerLedger.tsx:383",
+            "components/PartnerLedger.tsx:432",
             "components/TradeStatement.tsx:1914",
             "components/TradeStatement.tsx:1915",
             "src/features/admin/cashLedger.ts:327",
@@ -77819,8 +77826,8 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:239",
           "references": [
-            "components/PartnerLedger.tsx:317",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:318",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -77829,8 +77836,8 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:240",
           "references": [
-            "components/PartnerLedger.tsx:318",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:319",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -77839,8 +77846,8 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:241",
           "references": [
-            "components/PartnerLedger.tsx:319",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:320",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -77849,8 +77856,8 @@
           "type": "number",
           "declaration": "src/features/admin/cashLedger.ts:242",
           "references": [
-            "components/PartnerLedger.tsx:321",
-            "components/PartnerLedger.tsx:334",
+            "components/PartnerLedger.tsx:322",
+            "components/PartnerLedger.tsx:335",
             "src/features/admin/cashLedger.ts:655"
           ]
         }
@@ -79272,7 +79279,7 @@
           "references": [
             "components/FinancialReports.tsx:218",
             "components/FinancialReports.tsx:220",
-            "components/PartnerLedger.tsx:84",
+            "components/PartnerLedger.tsx:85",
             "src/features/admin/profitPeriodProjection.ts:9",
             "src/features/admin/useVoucherLedger.ts:254"
           ]
@@ -79285,7 +79292,7 @@
           "references": [
             "components/FinancialReports.tsx:207",
             "components/FinancialReports.tsx:215",
-            "components/PartnerLedger.tsx:183"
+            "components/PartnerLedger.tsx:184"
           ]
         }
       ]
@@ -85899,7 +85906,7 @@
     },
     {
       "model": "ComposerProps",
-      "declaration": "components/PartnerLedger.tsx:19",
+      "declaration": "components/PartnerLedger.tsx:20",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -85907,7 +85914,7 @@
     },
     {
       "model": "Props",
-      "declaration": "components/PartnerLedger.tsx:21",
+      "declaration": "components/PartnerLedger.tsx:22",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -85915,144 +85922,144 @@
           "field": "partners",
           "optional": true,
           "type": "Partner[]",
-          "declaration": "components/PartnerLedger.tsx:22",
+          "declaration": "components/PartnerLedger.tsx:23",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "accountGroups",
           "optional": true,
           "type": "AccountGroup[]",
-          "declaration": "components/PartnerLedger.tsx:23",
+          "declaration": "components/PartnerLedger.tsx:24",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "fixedCostTemplates",
           "optional": true,
           "type": "FixedCostTemplate[]",
-          "declaration": "components/PartnerLedger.tsx:24",
+          "declaration": "components/PartnerLedger.tsx:25",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "onAddCashEntry",
           "optional": true,
           "type": "ComposerProps['onAddCashEntry']",
-          "declaration": "components/PartnerLedger.tsx:25",
+          "declaration": "components/PartnerLedger.tsx:26",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "onIssueCashEntry",
           "optional": true,
           "type": "ComposerProps['onIssueCashEntry']",
-          "declaration": "components/PartnerLedger.tsx:26",
+          "declaration": "components/PartnerLedger.tsx:27",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "onAddIssuedStatement",
           "optional": true,
           "type": "ComposerProps['onAddIssuedStatement']",
-          "declaration": "components/PartnerLedger.tsx:27",
+          "declaration": "components/PartnerLedger.tsx:28",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "onAddFixedCostTemplate",
           "optional": true,
           "type": "ComposerProps['onAddFixedCostTemplate']",
-          "declaration": "components/PartnerLedger.tsx:28",
+          "declaration": "components/PartnerLedger.tsx:29",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "advanceStatements",
           "optional": true,
           "type": "readonly IssuedStatement[]",
-          "declaration": "components/PartnerLedger.tsx:29",
+          "declaration": "components/PartnerLedger.tsx:30",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "returnOperations",
           "optional": true,
           "type": "readonly ReadonlyReturnOperation[]",
-          "declaration": "components/PartnerLedger.tsx:30",
+          "declaration": "components/PartnerLedger.tsx:31",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "companyId",
           "optional": false,
           "type": "CompanyId",
-          "declaration": "components/PartnerLedger.tsx:31",
+          "declaration": "components/PartnerLedger.tsx:32",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "issuedStatements",
           "optional": false,
           "type": "IssuedStatement[]",
-          "declaration": "components/PartnerLedger.tsx:32",
+          "declaration": "components/PartnerLedger.tsx:33",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "cashEntries",
           "optional": false,
           "type": "CashEntry[]",
-          "declaration": "components/PartnerLedger.tsx:33",
+          "declaration": "components/PartnerLedger.tsx:34",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "cashAccounts",
           "optional": false,
           "type": "CashAccount[]",
-          "declaration": "components/PartnerLedger.tsx:34",
+          "declaration": "components/PartnerLedger.tsx:35",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "accountCodes",
           "optional": false,
           "type": "AccountCode[]",
-          "declaration": "components/PartnerLedger.tsx:35",
+          "declaration": "components/PartnerLedger.tsx:36",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "settlements",
           "optional": true,
           "type": "Settlement[]",
-          "declaration": "components/PartnerLedger.tsx:37",
+          "declaration": "components/PartnerLedger.tsx:38",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
           "field": "onOpenVoucher",
           "optional": true,
           "type": "(sourceId: string, docNo: string) => void",
-          "declaration": "components/PartnerLedger.tsx:39",
+          "declaration": "components/PartnerLedger.tsx:40",
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         }
       ]
@@ -99515,7 +99522,7 @@
             "components/AddOrderModal.tsx:83",
             "components/AddPartnerModal.tsx:103",
             "components/AdminChecklist.tsx:132",
-            "components/AdminChecklist.tsx:177",
+            "components/AdminChecklist.tsx:176",
             "components/AdminChecklist.tsx:193",
             "components/CashLedger.tsx:475",
             "components/CashLedger.tsx:528",
@@ -99591,9 +99598,9 @@
             "components/PalletManager.tsx:846",
             "components/PalletManager.tsx:977",
             "components/PalletManager.tsx:980",
-            "components/PartnerLedger.tsx:163",
             "components/PartnerLedger.tsx:164",
-            "components/PartnerLedger.tsx:642",
+            "components/PartnerLedger.tsx:165",
+            "components/PartnerLedger.tsx:643",
             "components/PartnerManager.tsx:205",
             "components/PartnerManager.tsx:421",
             "components/PartnerManager.tsx:424",
@@ -99781,8 +99788,8 @@
             "components/PalletManager.tsx:973",
             "components/PalletManager.tsx:979",
             "components/PalletManager.tsx:980",
-            "components/PartnerLedger.tsx:164",
-            "components/PartnerLedger.tsx:642",
+            "components/PartnerLedger.tsx:165",
+            "components/PartnerLedger.tsx:643",
             "components/PartnerManager.tsx:214",
             "components/PartnerManager.tsx:240",
             "components/PartnerManager.tsx:287",
@@ -100119,7 +100126,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:162",
+            "components/PartnerLedger.tsx:163",
             "components/PartnerManager.tsx:221",
             "components/PartnerManager.tsx:369",
             "components/PartnerManager.tsx:378",
@@ -109438,7 +109445,7 @@
           "inherited": false,
           "references": [
             "components/FinancialReports.tsx:153",
-            "components/PartnerLedger.tsx:151",
+            "components/PartnerLedger.tsx:152",
             "components/TradeStatement.tsx:1226",
             "components/TradeStatement.tsx:1720",
             "components/voucher/VoucherComposer.tsx:693",
@@ -109781,9 +109788,9 @@
             "components/ItemList.tsx:822",
             "components/ItemList.tsx:824",
             "components/OrderPicker.tsx:311",
-            "components/PartnerLedger.tsx:486",
-            "components/PartnerLedger.tsx:630",
-            "components/PartnerLedger.tsx:640",
+            "components/PartnerLedger.tsx:487",
+            "components/PartnerLedger.tsx:631",
+            "components/PartnerLedger.tsx:641",
             "components/ProfitAnalysis.tsx:1051",
             "components/ProfitAnalysis.tsx:977",
             "components/ReceivingReturnsManager.tsx:186",
@@ -110048,10 +110055,10 @@
             "components/CashLedger.tsx:384",
             "components/FinancialReports.tsx:212",
             "components/FinancialReports.tsx:70",
-            "components/PartnerLedger.tsx:191",
             "components/PartnerLedger.tsx:192",
-            "components/PartnerLedger.tsx:501",
-            "components/PartnerLedger.tsx:559",
+            "components/PartnerLedger.tsx:193",
+            "components/PartnerLedger.tsx:502",
+            "components/PartnerLedger.tsx:560",
             "components/ProfitAnalysis.tsx:1000",
             "components/ProfitAnalysis.tsx:1006",
             "components/ProfitAnalysis.tsx:1025",
@@ -110152,10 +110159,10 @@
           "inherited": false,
           "references": [
             "components/ItemList.tsx:2854",
-            "components/PartnerLedger.tsx:151",
-            "components/PartnerLedger.tsx:496",
-            "components/PartnerLedger.tsx:498",
-            "components/PartnerLedger.tsx:558",
+            "components/PartnerLedger.tsx:152",
+            "components/PartnerLedger.tsx:497",
+            "components/PartnerLedger.tsx:499",
+            "components/PartnerLedger.tsx:559",
             "components/ProfitAnalysis.tsx:1025",
             "components/ProfitAnalysis.tsx:1052",
             "components/ProfitAnalysis.tsx:926",
@@ -110238,10 +110245,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:168",
-            "components/PartnerLedger.tsx:630",
-            "components/PartnerLedger.tsx:636",
-            "components/PartnerLedger.tsx:639",
+            "components/PartnerLedger.tsx:169",
+            "components/PartnerLedger.tsx:631",
+            "components/PartnerLedger.tsx:637",
+            "components/PartnerLedger.tsx:640",
             "components/ProfitAnalysis.tsx:1025",
             "components/ProfitAnalysis.tsx:1039",
             "components/ProfitAnalysis.tsx:919",
@@ -110330,9 +110337,9 @@
             "components/CashLedger.tsx:352",
             "components/CashLedger.tsx:383",
             "components/FinancialReports.tsx:213",
-            "components/PartnerLedger.tsx:500",
-            "components/PartnerLedger.tsx:560",
-            "components/PartnerLedger.tsx:640",
+            "components/PartnerLedger.tsx:501",
+            "components/PartnerLedger.tsx:561",
+            "components/PartnerLedger.tsx:641",
             "components/ProfitAnalysis.tsx:919",
             "components/TaxStatement.tsx:264",
             "components/TaxStatement.tsx:360",
@@ -110452,7 +110459,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:532",
+            "components/PartnerLedger.tsx:533",
             "components/TradeStatement.tsx:1432",
             "components/TradeStatement.tsx:1937",
             "components/TradeStatement.tsx:2772",
@@ -110471,7 +110478,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:533",
+            "components/PartnerLedger.tsx:534",
             "components/TradeStatement.tsx:1433",
             "components/TradeStatement.tsx:1937",
             "components/TradeStatement.tsx:2773",
@@ -110491,7 +110498,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:534",
+            "components/PartnerLedger.tsx:535",
             "components/ProfitAnalysis.tsx:1001",
             "components/ProfitAnalysis.tsx:1007",
             "components/ProfitAnalysis.tsx:1027",
@@ -110570,9 +110577,9 @@
           "references": [
             "components/FinancialReports.tsx:153",
             "components/ItemList.tsx:2856",
-            "components/PartnerLedger.tsx:151",
-            "components/PartnerLedger.tsx:491",
-            "components/PartnerLedger.tsx:545",
+            "components/PartnerLedger.tsx:152",
+            "components/PartnerLedger.tsx:492",
+            "components/PartnerLedger.tsx:546",
             "components/ProfitAnalysis.tsx:1053",
             "components/ReceivingReturnsManager.tsx:186",
             "components/ReceivingReturnsManager.tsx:349",
@@ -113853,7 +113860,7 @@
             "components/FinancialReports.tsx:63",
             "components/ItemManager.tsx:148",
             "components/ItemManager.tsx:176",
-            "components/PartnerLedger.tsx:53",
+            "components/PartnerLedger.tsx:54",
             "components/ProfitAnalysis.tsx:1833",
             "components/ProfitAnalysis.tsx:1894",
             "components/ProfitAnalysis.tsx:1897",
@@ -113957,7 +113964,7 @@
             "components/CostManager.tsx:88",
             "components/FinancialReports.tsx:379",
             "components/ItemManager.tsx:176",
-            "components/PartnerLedger.tsx:53",
+            "components/PartnerLedger.tsx:54",
             "components/ProfitAnalysis.tsx:1895",
             "components/ProfitAnalysis.tsx:1897",
             "components/ProfitAnalysis.tsx:1952",
@@ -114124,7 +114131,7 @@
           "inherited": false,
           "references": [
             "components/FinancialReports.tsx:237",
-            "components/PartnerLedger.tsx:157",
+            "components/PartnerLedger.tsx:158",
             "components/TradeStatement.tsx:1076",
             "components/TradeStatement.tsx:2113",
             "components/voucher/VoucherComposer.tsx:1471",
@@ -114259,9 +114266,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:157",
             "components/PartnerLedger.tsx:158",
             "components/PartnerLedger.tsx:159",
+            "components/PartnerLedger.tsx:160",
             "src/features/admin/cashLedger.ts:144",
             "src/features/admin/cashLedger.ts:163",
             "src/features/admin/cashLedger.ts:271",
@@ -114304,7 +114311,7 @@
           "references": [
             "components/FinancialReports.tsx:315",
             "components/FinancialReports.tsx:317",
-            "components/PartnerLedger.tsx:490",
+            "components/PartnerLedger.tsx:491",
             "src/features/admin/cashLedger.ts:138",
             "src/features/admin/cashLedger.ts:148",
             "src/features/admin/cashLedger.ts:166",
@@ -114352,7 +114359,7 @@
           "inherited": false,
           "references": [
             "components/FinancialReports.tsx:237",
-            "components/PartnerLedger.tsx:157",
+            "components/PartnerLedger.tsx:158",
             "components/TradeStatement.tsx:1075",
             "components/TradeStatement.tsx:2112",
             "components/voucher/VoucherComposer.tsx:1467",
@@ -114409,8 +114416,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:488",
             "components/PartnerLedger.tsx:489",
+            "components/PartnerLedger.tsx:490",
             "src/features/admin/cashLedger.ts:137",
             "src/features/admin/cashLedger.ts:152",
             "src/features/admin/cashLedger.ts:164",
@@ -114431,7 +114438,7 @@
           "references": [
             "components/FinancialReports.tsx:220",
             "components/FinancialReports.tsx:317",
-            "components/PartnerLedger.tsx:490",
+            "components/PartnerLedger.tsx:491",
             "components/ProfitAnalysis.tsx:1029",
             "components/ProfitAnalysis.tsx:1030",
             "src/features/admin/cashLedger.ts:138",
@@ -114625,9 +114632,9 @@
             "components/HRManager.tsx:138",
             "components/HRManager.tsx:701",
             "components/LoanManager.tsx:232",
-            "components/PartnerLedger.tsx:129",
-            "components/PartnerLedger.tsx:606",
-            "components/PartnerLedger.tsx:638",
+            "components/PartnerLedger.tsx:130",
+            "components/PartnerLedger.tsx:607",
+            "components/PartnerLedger.tsx:639",
             "components/TradeStatement.tsx:1704",
             "components/TradeStatement.tsx:2290",
             "components/TradeStatement.tsx:2306",
@@ -114678,7 +114685,7 @@
             "components/CashLedger.tsx:737",
             "components/HRManager.tsx:701",
             "components/LoanManager.tsx:232",
-            "components/PartnerLedger.tsx:606",
+            "components/PartnerLedger.tsx:607",
             "components/TradeStatement.tsx:2290",
             "components/TradeStatement.tsx:2306",
             "components/voucher/VoucherComposer.tsx:1188",
@@ -114767,9 +114774,9 @@
             "components/HRManager.tsx:137",
             "components/HRManager.tsx:701",
             "components/LoanManager.tsx:88",
-            "components/PartnerLedger.tsx:129",
-            "components/PartnerLedger.tsx:56",
-            "components/PartnerLedger.tsx:606",
+            "components/PartnerLedger.tsx:130",
+            "components/PartnerLedger.tsx:57",
+            "components/PartnerLedger.tsx:607",
             "components/TradeStatement.tsx:2290",
             "components/TradeStatement.tsx:2306",
             "components/TradeStatement.tsx:549",
@@ -114842,7 +114849,7 @@
             "components/CashLedger.tsx:931",
             "components/FinancialReports.tsx:209",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:487",
+            "components/PartnerLedger.tsx:488",
             "components/ProfitAnalysis.tsx:1014",
             "components/TradeStatement.tsx:1072",
             "components/TradeStatement.tsx:1918",
@@ -115023,10 +115030,10 @@
             "components/FinancialReports.tsx:212",
             "components/FinancialReports.tsx:71",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:191",
             "components/PartnerLedger.tsx:192",
-            "components/PartnerLedger.tsx:501",
-            "components/PartnerLedger.tsx:559",
+            "components/PartnerLedger.tsx:193",
+            "components/PartnerLedger.tsx:502",
+            "components/PartnerLedger.tsx:560",
             "components/ProfitAnalysis.tsx:1014",
             "components/ProfitAnalysis.tsx:1016",
             "components/ProfitAnalysis.tsx:202",
@@ -115098,11 +115105,11 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:85",
             "components/CashLedger.tsx:934",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:497",
+            "components/PartnerLedger.tsx:154",
             "components/PartnerLedger.tsx:498",
-            "components/PartnerLedger.tsx:543",
-            "components/PartnerLedger.tsx:558",
+            "components/PartnerLedger.tsx:499",
+            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:559",
             "components/ProfitAnalysis.tsx:901",
             "components/ProfitAnalysis.tsx:902",
             "components/TradeStatement.tsx:2533",
@@ -115156,7 +115163,7 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:676",
             "components/CashLedger.tsx:85",
-            "components/PartnerLedger.tsx:542",
+            "components/PartnerLedger.tsx:543",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:523",
             "components/TradeStatement.tsx:530",
@@ -115197,7 +115204,7 @@
             "components/CashLedger.tsx:367",
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:634",
-            "components/PartnerLedger.tsx:168",
+            "components/PartnerLedger.tsx:169",
             "components/ProfitAnalysis.tsx:1012",
             "components/ProfitAnalysis.tsx:893",
             "components/ProfitAnalysis.tsx:900",
@@ -115252,8 +115259,8 @@
             "components/CashLedger.tsx:84",
             "components/CashLedger.tsx:934",
             "components/FinancialReports.tsx:213",
-            "components/PartnerLedger.tsx:500",
-            "components/PartnerLedger.tsx:560",
+            "components/PartnerLedger.tsx:501",
+            "components/PartnerLedger.tsx:561",
             "components/voucher/CashEntryModal.tsx:267",
             "components/voucher/CashEntryModal.tsx:270",
             "components/voucher/CashEntryModal.tsx:326",
@@ -115277,8 +115284,8 @@
             "components/CashLedger.tsx:215",
             "components/CashLedger.tsx:618",
             "components/CashLedger.tsx:676",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:154",
+            "components/PartnerLedger.tsx:545",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:703",
             "components/TradeStatement.tsx:754",
@@ -115313,7 +115320,7 @@
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:421",
             "components/CashLedger.tsx:618",
-            "components/PartnerLedger.tsx:153",
+            "components/PartnerLedger.tsx:154",
             "components/ProfitAnalysis.tsx:894",
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
@@ -115363,7 +115370,7 @@
             "components/CashLedger.tsx:84",
             "components/FinancialReports.tsx:213",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:545",
+            "components/PartnerLedger.tsx:546",
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
@@ -123966,7 +123973,7 @@
             "components/CashLedger.tsx:367",
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:634",
-            "components/PartnerLedger.tsx:168",
+            "components/PartnerLedger.tsx:169",
             "components/ProfitAnalysis.tsx:1012",
             "components/ProfitAnalysis.tsx:893",
             "components/ProfitAnalysis.tsx:900",
@@ -124027,10 +124034,10 @@
             "components/FinancialReports.tsx:212",
             "components/FinancialReports.tsx:71",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:191",
             "components/PartnerLedger.tsx:192",
-            "components/PartnerLedger.tsx:501",
-            "components/PartnerLedger.tsx:559",
+            "components/PartnerLedger.tsx:193",
+            "components/PartnerLedger.tsx:502",
+            "components/PartnerLedger.tsx:560",
             "components/ProfitAnalysis.tsx:1014",
             "components/ProfitAnalysis.tsx:1016",
             "components/ProfitAnalysis.tsx:202",
@@ -124076,7 +124083,7 @@
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:421",
             "components/CashLedger.tsx:618",
-            "components/PartnerLedger.tsx:153",
+            "components/PartnerLedger.tsx:154",
             "components/ProfitAnalysis.tsx:894",
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
@@ -124116,7 +124123,7 @@
             "components/CashLedger.tsx:84",
             "components/FinancialReports.tsx:213",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:545",
+            "components/PartnerLedger.tsx:546",
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
@@ -124148,8 +124155,8 @@
             "components/CashLedger.tsx:215",
             "components/CashLedger.tsx:618",
             "components/CashLedger.tsx:676",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:154",
+            "components/PartnerLedger.tsx:545",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:703",
             "components/TradeStatement.tsx:754",
@@ -124185,7 +124192,7 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:676",
             "components/CashLedger.tsx:85",
-            "components/PartnerLedger.tsx:542",
+            "components/PartnerLedger.tsx:543",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:523",
             "components/TradeStatement.tsx:530",
@@ -124250,8 +124257,8 @@
             "components/CashLedger.tsx:84",
             "components/CashLedger.tsx:934",
             "components/FinancialReports.tsx:213",
-            "components/PartnerLedger.tsx:500",
-            "components/PartnerLedger.tsx:560",
+            "components/PartnerLedger.tsx:501",
+            "components/PartnerLedger.tsx:561",
             "components/voucher/CashEntryModal.tsx:267",
             "components/voucher/CashEntryModal.tsx:270",
             "components/voucher/CashEntryModal.tsx:326",
@@ -124279,11 +124286,11 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:85",
             "components/CashLedger.tsx:934",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:497",
+            "components/PartnerLedger.tsx:154",
             "components/PartnerLedger.tsx:498",
-            "components/PartnerLedger.tsx:543",
-            "components/PartnerLedger.tsx:558",
+            "components/PartnerLedger.tsx:499",
+            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:559",
             "components/ProfitAnalysis.tsx:901",
             "components/ProfitAnalysis.tsx:902",
             "components/TradeStatement.tsx:2533",
@@ -137156,7 +137163,7 @@
           ],
           "inherited": true,
           "references": [
-            "components/PartnerLedger.tsx:162",
+            "components/PartnerLedger.tsx:163",
             "components/PartnerManager.tsx:221",
             "components/PartnerManager.tsx:369",
             "components/PartnerManager.tsx:378",
@@ -152836,14 +152843,14 @@
             "components/PalletManager.tsx:857",
             "components/PalletManager.tsx:860",
             "components/PalletManager.tsx:943",
-            "components/PartnerLedger.tsx:168",
-            "components/PartnerLedger.tsx:190",
-            "components/PartnerLedger.tsx:269",
-            "components/PartnerLedger.tsx:297",
-            "components/PartnerLedger.tsx:431",
-            "components/PartnerLedger.tsx:472",
-            "components/PartnerLedger.tsx:476",
-            "components/PartnerLedger.tsx:506",
+            "components/PartnerLedger.tsx:169",
+            "components/PartnerLedger.tsx:191",
+            "components/PartnerLedger.tsx:270",
+            "components/PartnerLedger.tsx:298",
+            "components/PartnerLedger.tsx:432",
+            "components/PartnerLedger.tsx:473",
+            "components/PartnerLedger.tsx:477",
+            "components/PartnerLedger.tsx:507",
             "components/PartnerManager.tsx:143",
             "components/PartnerManager.tsx:155",
             "components/PartnerManager.tsx:252",
@@ -170084,12 +170091,12 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:330",
-            "components/PartnerLedger.tsx:383",
-            "components/PartnerLedger.tsx:394",
-            "components/PartnerLedger.tsx:396",
-            "components/PartnerLedger.tsx:416",
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:331",
+            "components/PartnerLedger.tsx:384",
+            "components/PartnerLedger.tsx:395",
+            "components/PartnerLedger.tsx:397",
+            "components/PartnerLedger.tsx:417",
             "src/features/admin/cashLedger.ts:655"
           ]
         },
@@ -170102,7 +170109,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:383",
+            "components/PartnerLedger.tsx:384",
             "src/features/admin/cashLedger.ts:302",
             "src/features/admin/cashLedger.ts:303"
           ]
@@ -170116,9 +170123,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:326",
-            "components/PartnerLedger.tsx:387",
-            "components/PartnerLedger.tsx:420",
+            "components/PartnerLedger.tsx:327",
+            "components/PartnerLedger.tsx:388",
+            "components/PartnerLedger.tsx:421",
             "src/features/admin/cashLedger.ts:328",
             "src/features/admin/cashLedger.ts:330"
           ]
@@ -170132,8 +170139,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:328",
-            "components/PartnerLedger.tsx:399"
+            "components/PartnerLedger.tsx:329",
+            "components/PartnerLedger.tsx:400"
           ]
         },
         {
@@ -170145,11 +170152,11 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:328",
-            "components/PartnerLedger.tsx:401",
-            "components/PartnerLedger.tsx:403",
-            "components/PartnerLedger.tsx:405",
-            "components/PartnerLedger.tsx:407"
+            "components/PartnerLedger.tsx:329",
+            "components/PartnerLedger.tsx:402",
+            "components/PartnerLedger.tsx:404",
+            "components/PartnerLedger.tsx:406",
+            "components/PartnerLedger.tsx:408"
           ]
         },
         {
@@ -170161,10 +170168,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:330",
-            "components/PartnerLedger.tsx:402",
+            "components/PartnerLedger.tsx:331",
             "components/PartnerLedger.tsx:403",
-            "components/PartnerLedger.tsx:416",
+            "components/PartnerLedger.tsx:404",
+            "components/PartnerLedger.tsx:417",
             "components/TradeStatement.tsx:1914"
           ]
         },
@@ -170177,8 +170184,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:326",
-            "components/PartnerLedger.tsx:388"
+            "components/PartnerLedger.tsx:327",
+            "components/PartnerLedger.tsx:389"
           ]
         },
         {
@@ -170190,10 +170197,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:328",
             "components/PartnerLedger.tsx:329",
-            "components/PartnerLedger.tsx:410",
+            "components/PartnerLedger.tsx:330",
             "components/PartnerLedger.tsx:411",
+            "components/PartnerLedger.tsx:412",
             "src/features/admin/cashLedger.ts:307",
             "src/features/admin/cashLedger.ts:308",
             "src/features/admin/cashLedger.ts:309",
@@ -170213,8 +170220,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:329",
-            "components/PartnerLedger.tsx:412",
+            "components/PartnerLedger.tsx:330",
+            "components/PartnerLedger.tsx:413",
             "components/TradeStatement.tsx:1915"
           ]
         },
@@ -170227,9 +170234,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:396",
-            "components/PartnerLedger.tsx:403"
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:397",
+            "components/PartnerLedger.tsx:404"
           ]
         },
         {
@@ -170241,9 +170248,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:327",
-            "components/PartnerLedger.tsx:393",
-            "components/PartnerLedger.tsx:396",
+            "components/PartnerLedger.tsx:328",
+            "components/PartnerLedger.tsx:394",
+            "components/PartnerLedger.tsx:397",
             "src/features/admin/cashLedger.ts:309",
             "src/features/admin/cashLedger.ts:328",
             "src/features/admin/cashLedger.ts:330"
@@ -170265,9 +170272,9 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:325",
-            "components/PartnerLedger.tsx:382",
-            "components/PartnerLedger.tsx:431",
+            "components/PartnerLedger.tsx:326",
+            "components/PartnerLedger.tsx:383",
+            "components/PartnerLedger.tsx:432",
             "components/TradeStatement.tsx:1914",
             "components/TradeStatement.tsx:1915",
             "src/features/admin/cashLedger.ts:327",
@@ -170284,8 +170291,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:317",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:318",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -170297,8 +170304,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:318",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:319",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -170310,8 +170317,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:319",
-            "components/PartnerLedger.tsx:334"
+            "components/PartnerLedger.tsx:320",
+            "components/PartnerLedger.tsx:335"
           ]
         },
         {
@@ -170323,8 +170330,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:321",
-            "components/PartnerLedger.tsx:334",
+            "components/PartnerLedger.tsx:322",
+            "components/PartnerLedger.tsx:335",
             "src/features/admin/cashLedger.ts:655"
           ]
         }
@@ -172208,7 +172215,7 @@
           "references": [
             "components/FinancialReports.tsx:218",
             "components/FinancialReports.tsx:220",
-            "components/PartnerLedger.tsx:84",
+            "components/PartnerLedger.tsx:85",
             "src/features/admin/profitPeriodProjection.ts:9",
             "src/features/admin/useVoucherLedger.ts:254"
           ]
@@ -172224,7 +172231,7 @@
           "references": [
             "components/FinancialReports.tsx:207",
             "components/FinancialReports.tsx:215",
-            "components/PartnerLedger.tsx:183"
+            "components/PartnerLedger.tsx:184"
           ]
         }
       ]
@@ -174485,7 +174492,7 @@
             "components/CashLedger.tsx:931",
             "components/FinancialReports.tsx:209",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:487",
+            "components/PartnerLedger.tsx:488",
             "components/ProfitAnalysis.tsx:1014",
             "components/TradeStatement.tsx:1072",
             "components/TradeStatement.tsx:1918",
@@ -174666,10 +174673,10 @@
             "components/FinancialReports.tsx:212",
             "components/FinancialReports.tsx:71",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:191",
             "components/PartnerLedger.tsx:192",
-            "components/PartnerLedger.tsx:501",
-            "components/PartnerLedger.tsx:559",
+            "components/PartnerLedger.tsx:193",
+            "components/PartnerLedger.tsx:502",
+            "components/PartnerLedger.tsx:560",
             "components/ProfitAnalysis.tsx:1014",
             "components/ProfitAnalysis.tsx:1016",
             "components/ProfitAnalysis.tsx:202",
@@ -174741,11 +174748,11 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:85",
             "components/CashLedger.tsx:934",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:497",
+            "components/PartnerLedger.tsx:154",
             "components/PartnerLedger.tsx:498",
-            "components/PartnerLedger.tsx:543",
-            "components/PartnerLedger.tsx:558",
+            "components/PartnerLedger.tsx:499",
+            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:559",
             "components/ProfitAnalysis.tsx:901",
             "components/ProfitAnalysis.tsx:902",
             "components/TradeStatement.tsx:2533",
@@ -174799,7 +174806,7 @@
             "components/CashLedger.tsx:340",
             "components/CashLedger.tsx:676",
             "components/CashLedger.tsx:85",
-            "components/PartnerLedger.tsx:542",
+            "components/PartnerLedger.tsx:543",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:523",
             "components/TradeStatement.tsx:530",
@@ -174840,7 +174847,7 @@
             "components/CashLedger.tsx:367",
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:634",
-            "components/PartnerLedger.tsx:168",
+            "components/PartnerLedger.tsx:169",
             "components/ProfitAnalysis.tsx:1012",
             "components/ProfitAnalysis.tsx:893",
             "components/ProfitAnalysis.tsx:900",
@@ -174895,8 +174902,8 @@
             "components/CashLedger.tsx:84",
             "components/CashLedger.tsx:934",
             "components/FinancialReports.tsx:213",
-            "components/PartnerLedger.tsx:500",
-            "components/PartnerLedger.tsx:560",
+            "components/PartnerLedger.tsx:501",
+            "components/PartnerLedger.tsx:561",
             "components/voucher/CashEntryModal.tsx:267",
             "components/voucher/CashEntryModal.tsx:270",
             "components/voucher/CashEntryModal.tsx:326",
@@ -174920,8 +174927,8 @@
             "components/CashLedger.tsx:215",
             "components/CashLedger.tsx:618",
             "components/CashLedger.tsx:676",
-            "components/PartnerLedger.tsx:153",
-            "components/PartnerLedger.tsx:544",
+            "components/PartnerLedger.tsx:154",
+            "components/PartnerLedger.tsx:545",
             "components/ProfitAnalysis.tsx:897",
             "components/TradeStatement.tsx:703",
             "components/TradeStatement.tsx:754",
@@ -174956,7 +174963,7 @@
             "components/CashLedger.tsx:420",
             "components/CashLedger.tsx:421",
             "components/CashLedger.tsx:618",
-            "components/PartnerLedger.tsx:153",
+            "components/PartnerLedger.tsx:154",
             "components/ProfitAnalysis.tsx:894",
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
@@ -175006,7 +175013,7 @@
             "components/CashLedger.tsx:84",
             "components/FinancialReports.tsx:213",
             "components/LoanManager.tsx:213",
-            "components/PartnerLedger.tsx:545",
+            "components/PartnerLedger.tsx:546",
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
@@ -181452,7 +181459,7 @@
     },
     {
       "model": "ComposerProps",
-      "declaration": "components/PartnerLedger.tsx:19",
+      "declaration": "components/PartnerLedger.tsx:20",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -181723,7 +181730,7 @@
     },
     {
       "model": "Props",
-      "declaration": "components/PartnerLedger.tsx:21",
+      "declaration": "components/PartnerLedger.tsx:22",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -181731,11 +181738,11 @@
           "optional": true,
           "type": "Partner[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:22"
+            "components/PartnerLedger.tsx:23"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181743,11 +181750,11 @@
           "optional": true,
           "type": "AccountGroup[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:23"
+            "components/PartnerLedger.tsx:24"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181755,11 +181762,11 @@
           "optional": true,
           "type": "FixedCostTemplate[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:24"
+            "components/PartnerLedger.tsx:25"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181767,11 +181774,11 @@
           "optional": true,
           "type": "((_e: CashEntry) => void | Promise<unknown>) | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:25"
+            "components/PartnerLedger.tsx:26"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181779,11 +181786,11 @@
           "optional": true,
           "type": "((_e: CashEntry) => Promise<unknown>) | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:26"
+            "components/PartnerLedger.tsx:27"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181791,11 +181798,11 @@
           "optional": true,
           "type": "((_s: IssuedStatement) => void | Promise<unknown>) | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:27"
+            "components/PartnerLedger.tsx:28"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181803,11 +181810,11 @@
           "optional": true,
           "type": "((_t: Omit<FixedCostTemplate, \"id\">) => void | Promise<void>) | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:28"
+            "components/PartnerLedger.tsx:29"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181815,11 +181822,11 @@
           "optional": true,
           "type": "readonly IssuedStatement[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:29"
+            "components/PartnerLedger.tsx:30"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181827,11 +181834,11 @@
           "optional": true,
           "type": "readonly ReadonlyReturnOperation[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:30"
+            "components/PartnerLedger.tsx:31"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181839,11 +181846,11 @@
           "optional": false,
           "type": "CompanyId",
           "declarations": [
-            "components/PartnerLedger.tsx:31"
+            "components/PartnerLedger.tsx:32"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181851,11 +181858,11 @@
           "optional": false,
           "type": "IssuedStatement[]",
           "declarations": [
-            "components/PartnerLedger.tsx:32"
+            "components/PartnerLedger.tsx:33"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181863,11 +181870,11 @@
           "optional": false,
           "type": "CashEntry[]",
           "declarations": [
-            "components/PartnerLedger.tsx:33"
+            "components/PartnerLedger.tsx:34"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181875,11 +181882,11 @@
           "optional": false,
           "type": "CashAccount[]",
           "declarations": [
-            "components/PartnerLedger.tsx:34"
+            "components/PartnerLedger.tsx:35"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181887,11 +181894,11 @@
           "optional": false,
           "type": "AccountCode[]",
           "declarations": [
-            "components/PartnerLedger.tsx:35"
+            "components/PartnerLedger.tsx:36"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181899,11 +181906,11 @@
           "optional": true,
           "type": "Settlement[] | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:37"
+            "components/PartnerLedger.tsx:38"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         },
         {
@@ -181911,11 +181918,11 @@
           "optional": true,
           "type": "((sourceId: string, docNo: string) => void) | undefined",
           "declarations": [
-            "components/PartnerLedger.tsx:39"
+            "components/PartnerLedger.tsx:40"
           ],
           "inherited": false,
           "references": [
-            "components/PartnerLedger.tsx:44"
+            "components/PartnerLedger.tsx:45"
           ]
         }
       ]
@@ -223354,94 +223361,84 @@
         "reason": "array-index"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/PartnerLedger.tsx:44",
+        "location": "components/PartnerLedger.tsx:45",
         "syntax": "binding",
         "reason": "connected"
-      },
-      {
-        "location": "components/PartnerLedger.tsx:50",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/PartnerLedger.tsx:50",
-        "syntax": "binding",
-        "reason": "array-binding"
       },
       {
         "location": "components/PartnerLedger.tsx:51",
@@ -223454,12 +223451,12 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:54",
+        "location": "components/PartnerLedger.tsx:52",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:54",
+        "location": "components/PartnerLedger.tsx:52",
         "syntax": "binding",
         "reason": "array-binding"
       },
@@ -223474,12 +223471,12 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:57",
+        "location": "components/PartnerLedger.tsx:56",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:57",
+        "location": "components/PartnerLedger.tsx:56",
         "syntax": "binding",
         "reason": "array-binding"
       },
@@ -223504,31 +223501,31 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:79",
+        "location": "components/PartnerLedger.tsx:60",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:79",
+        "location": "components/PartnerLedger.tsx:60",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:89",
+        "location": "components/PartnerLedger.tsx:80",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/PartnerLedger.tsx:80",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/PartnerLedger.tsx:90",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/PartnerLedger.tsx:95",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/PartnerLedger.tsx:95",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
         "location": "components/PartnerLedger.tsx:96",
         "syntax": "binding",
         "reason": "array-binding"
@@ -223589,32 +223586,42 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:172",
+        "location": "components/PartnerLedger.tsx:102",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/PartnerLedger.tsx:102",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "components/PartnerLedger.tsx:173",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/PartnerLedger.tsx:228",
+        "location": "components/PartnerLedger.tsx:229",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:228",
+        "location": "components/PartnerLedger.tsx:229",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:545",
+        "location": "components/PartnerLedger.tsx:546",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:545",
+        "location": "components/PartnerLedger.tsx:546",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/PartnerLedger.tsx:634",
+        "location": "components/PartnerLedger.tsx:635",
         "syntax": "element",
         "reason": "array-index"
       },
@@ -229020,7 +229027,7 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 31393,
+      "dot:no-model-declaration": 31395,
       "dot:connected": 28302,
       "binding:connected": 1674,
       "binding:rest-binding": 53,
@@ -229031,7 +229038,7 @@
       "element:array-index": 755,
       "binding:no-model-declaration": 364,
       "element:any-receiver": 99,
-      "dot:any-receiver": 1353,
+      "dot:any-receiver": 1354,
       "binding:property-symbol-unresolved": 80,
       "binding:ambiguous-union": 23,
       "binding:any-receiver": 38,

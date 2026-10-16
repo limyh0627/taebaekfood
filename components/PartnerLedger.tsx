@@ -1,4 +1,5 @@
 import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
+import { formatQuantity } from '../src/shared/quantityDisplay';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
@@ -518,7 +519,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                           <tr key={k}>
                             <td className="border border-slate-200 px-3 py-2 font-bold text-slate-700 whitespace-nowrap">{it.name}</td>
                             <td className="border border-slate-200 px-3 py-2 text-slate-400 whitespace-nowrap">{it.spec || '-'}</td>
-                            <td className="border border-slate-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmt(Number(it.qty) || 0)}</td>
+                            <td className="border border-slate-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">{Number.isFinite(Number(it.qty) || 0) ? formatQuantity(Number(it.qty) || 0) : '반품 연결 확인 중'}</td>
                             <td className="border border-slate-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmt(Number(it.price) || 0)}</td>
                             <td className="border border-slate-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmt(Number(it.supply) || 0)}</td>
                             <td className="border border-slate-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmt(Number(it.tax) || 0)}</td>

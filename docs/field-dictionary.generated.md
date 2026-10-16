@@ -1625,8 +1625,8 @@ shared/types.ts 외 interface/type alias 863개를 별도 목록에 기록한다
 | Props | components/FinancialReports.tsx:19 | interface | direct-properties-only | companyId, statements, cashEntries, accounts, onAddAccountCode, cashAccounts, partners, items, inventorySnapshots |
 | Props | components/LoanManager.tsx:17 | interface | direct-properties-only | companyId, cashEntries, cashAccounts, partners, currentUserName, onAddCashEntry |
 | Props | components/PartnerAdvanceModal.tsx:11 | type-alias | direct-properties-only | companyId, partnerId, partnerName, onClose |
-| ComposerProps | components/PartnerLedger.tsx:19 | type-alias | non-object-alias-not-expanded |  |
-| Props | components/PartnerLedger.tsx:21 | interface | direct-properties-only | partners, accountGroups, fixedCostTemplates, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, advanceStatements, returnOperations, companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements, onOpenVoucher |
+| ComposerProps | components/PartnerLedger.tsx:20 | type-alias | non-object-alias-not-expanded |  |
+| Props | components/PartnerLedger.tsx:22 | interface | direct-properties-only | partners, accountGroups, fixedCostTemplates, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, advanceStatements, returnOperations, companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements, onOpenVoucher |
 | AdminAppProps | src/features/admin/AdminApp.tsx:266 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | type-alias | non-object-alias-not-expanded |  |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
@@ -2581,8 +2581,8 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | Props | components/FinancialReports.tsx:19 | checker-resolved-properties-only | 9 |
 | Props | components/LoanManager.tsx:17 | checker-resolved-properties-only | 6 |
 | Props | components/PartnerAdvanceModal.tsx:11 | checker-resolved-properties-only | 4 |
-| ComposerProps | components/PartnerLedger.tsx:19 | checker-resolved-properties-only | 22 |
-| Props | components/PartnerLedger.tsx:21 | checker-resolved-properties-only | 16 |
+| ComposerProps | components/PartnerLedger.tsx:20 | checker-resolved-properties-only | 22 |
+| Props | components/PartnerLedger.tsx:22 | checker-resolved-properties-only | 16 |
 | AdminAppProps | src/features/admin/AdminApp.tsx:266 | checker-resolved-properties-only | 12 |
 | NewOrderDraft | src/features/admin/AdminApp.tsx:1473 | checker-resolved-properties-only | 46 |
 | RightRow | src/features/admin/AdminApp.tsx:3293 | checker-resolved-properties-only | 7 |
@@ -4118,14 +4118,15 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
-| components/PartnerLedger.tsx:519 | it.name | any | any-receiver |
-| components/PartnerLedger.tsx:520 | it.spec | any | any-receiver |
-| components/PartnerLedger.tsx:521 | it.qty | any | any-receiver |
-| components/PartnerLedger.tsx:522 | it.price | any | any-receiver |
-| components/PartnerLedger.tsx:523 | it.supply | any | any-receiver |
-| components/PartnerLedger.tsx:524 | it.tax | any | any-receiver |
-| components/PartnerLedger.tsx:525 | it.total | any | any-receiver |
-| components/PartnerLedger.tsx:545 | i.name | any | any-receiver |
+| components/PartnerLedger.tsx:520 | it.name | any | any-receiver |
+| components/PartnerLedger.tsx:521 | it.spec | any | any-receiver |
+| components/PartnerLedger.tsx:522 | it.qty | any | any-receiver |
+| components/PartnerLedger.tsx:522 | it.qty | any | any-receiver |
+| components/PartnerLedger.tsx:523 | it.price | any | any-receiver |
+| components/PartnerLedger.tsx:524 | it.supply | any | any-receiver |
+| components/PartnerLedger.tsx:525 | it.tax | any | any-receiver |
+| components/PartnerLedger.tsx:526 | it.total | any | any-receiver |
+| components/PartnerLedger.tsx:546 | i.name | any | any-receiver |
 | src/features/admin/AdminApp.tsx:439 | e?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:663 | (pc as any).itemId | any | any-receiver |
 | src/features/admin/AdminApp.tsx:664 | (pc as any).partnerId | any | any-receiver |

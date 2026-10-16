@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import PartnerLedger from './PartnerLedger';
 import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import type { AccountCode, CashEntry, IssuedStatement } from '../src/shared/types';
+import { lineAmount } from '../src/shared/lineAmount';
 
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand', () => ({ recordPartnerPayment: vi.fn() }));
 const accounts = [{ id: 'bank-1', companyId: 'taebaek' as const, name: '보통예금', active: true,
@@ -25,6 +26,31 @@ const 계정 = [
   { id: '108', code: '108', name: '외상매출금', type: '자산', normalBalance: 'debit' },
   { id: '800', code: '800', name: '제품매출', type: '수익', normalBalance: 'credit' },
 ] as AccountCode[];
+
+it.each([
+  [0.0001, '0.0001'], [1.2345, '1.2345'], [2.5, '2.5'], [20, '20'],
+  [9007199254740991, '9,007,199,254,740,991'], [undefined, '0'], [NaN, '0'],
+  [Infinity, '반품 연결 확인 중'],
+] as const)('원장 전표 상세 수량 %s는 소수와 기존 결측·비유한 표시를 보존한다', (qty, shown) => {
+  vi.mocked(recordPartnerPayment).mockClear();
+  const amount = lineAmount(Number.isFinite(qty) ? Number(qty) : 1, 10000, true);
+  const source = { ...전표, items: [{ ...전표.items[0], name: '원장 수량 검증', spec: 'kg', qty,
+    price: 10000, supply: amount.supply, tax: amount.tax, total: amount.gross }],
+    totalSupply: amount.supply, totalTax: amount.tax, totalAmount: amount.gross } as IssuedStatement;
+  const original = structuredClone(source);
+  render(<PartnerLedger companyId="taebaek" issuedStatements={[source]} cashEntries={[]} cashAccounts={accounts} accountCodes={계정} />);
+  fireEvent.click(screen.getByRole('button', { name: '전체' }));
+  fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
+  fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
+  fireEvent.click(within(screen.getByRole('table', { name: '거래처 전체 전표' })).getByRole('button', { name: source.docNo }));
+  const dialog = screen.getByRole('dialog', { name: `전표 ${source.docNo}` });
+  const cells = within(within(dialog).getByText('원장 수량 검증', { selector: 'td' }).closest('tr')!).getAllByRole('cell');
+  expect(cells[1].textContent).toBe('kg'); expect(cells[2].textContent).toBe(shown);
+  expect(cells[3].textContent).toBe('10,000');
+  expect(cells[4].textContent).toBe(amount.supply.toLocaleString('ko-KR'));
+  expect(cells[5].textContent).toBe('0'); expect(cells[6].textContent).toBe(amount.gross.toLocaleString('ko-KR'));
+  expect(source).toEqual(original); expect(recordPartnerPayment).not.toHaveBeenCalled();
+});
 
 describe('거래처 원장 수금 입력', () => {
   it('전표의 남은 금액은 쉼표로 보이고 날짜는 그 전표일로 열린다', async () => {

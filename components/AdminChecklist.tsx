@@ -173,8 +173,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   // poIds를 함께 넘겨 발행 시 해당 PO들이 전표에 연결(linkedStatementId)되고 입고대기로 전환됨.
   const issueStatementForPos = (pos: PurchaseOrder[], partnerId: string, partnerName: string) => {
     if (pos.length === 0 || !onCreatePurchaseStatement) return;
-    const matchedClient = partners.find(c =>
-      c.id === partnerId || c.name === partnerName ||
+    const matchedClient = partners.find(c => c.id === partnerId) ?? partners.find(c =>
+      c.name === partnerName ||
       (partnerName && (c.name.includes(partnerName) || partnerName.includes(c.name)))
     );
     const invoiceItems = pos.flatMap(po => poLines(po)).map(line => {
