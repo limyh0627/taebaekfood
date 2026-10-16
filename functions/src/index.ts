@@ -351,3 +351,4 @@ export { inspectTradeStatementCommand } from './inspectTradeStatementCommand';
 export { cancelTradeStatementCommand } from './cancelTradeStatementCommand';
 
 export { partnerItemCleanupCommand } from './partnerItemCleanupCommand';
+export { askHelp } from './helpChat';

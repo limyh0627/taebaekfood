@@ -1,4 +1,5 @@
 import { appConfirm } from '../src/shared/components/appDialog';
+import { moveMenuItem, reorderMenuGroup, reorderMenuItem, type MenuGroup, type MenuItem, type MenuPreferences } from '../src/shared/menuPreferences';
 import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, Bell, BellOff, Check, User, Shield, Smartphone } from 'lucide-react';
 import { Employee } from '../src/shared/types';
@@ -28,7 +29,10 @@ import { currentDeviceLabel } from '../src/shared/deviceLabel';
 const MyPage: React.FC<{
   currentUser: Employee;
   onLogout: () => void;
-}> = ({ currentUser, onLogout }) => {
+  onOpenHelp?: () => void;
+  helpAvailable?: boolean;
+  menuSettings?: {groups:MenuGroup[];items:MenuItem[];value:MenuPreferences;enabled:boolean;error:string;onChange:(next:MenuPreferences)=>void;onReset:()=>void};
+}> = ({ currentUser, onLogout, menuSettings, onOpenHelp, helpAvailable = true }) => {
   const logoutPending = useRef(false);
   const confirmLogout = async () => {
     if (logoutPending.current) return;
@@ -120,6 +124,37 @@ const MyPage: React.FC<{
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
+      {onOpenHelp && <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="font-bold">앱 사용법 도움말</h2><p className="my-2 text-sm text-slate-600">메뉴 위치와 작업 방법을 질문할 수 있습니다.</p><button type="button" disabled={!helpAvailable} onClick={onOpenHelp} className="min-h-10 rounded border border-slate-300 px-4 disabled:opacity-40">사용법 질문하기</button>{!helpAvailable && <p className="mt-2 text-sm text-slate-500">로그인 계정을 확인하고 있습니다.</p>}</section>}
+      {menuSettings && <section aria-label="이 브라우저의 내 메뉴" className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+        <h2 className="font-bold">이 브라우저의 내 메뉴</h2>
+        <p className="text-sm text-slate-600">회사·계정·관리자/직원 화면별로 저장됩니다. 그룹과 메뉴의 위치를 바꾸거나 숨길 수 있습니다. 마이페이지는 항상 표시됩니다.</p>
+        {!menuSettings.enabled && <p role="status">로그인 계정을 확인한 뒤 메뉴를 설정할 수 있습니다.</p>}
+        {menuSettings.error && <p role="alert">{menuSettings.error}</p>}
+        <details><summary className="cursor-pointer min-h-10 py-2 font-bold">메뉴 설정 열기</summary>
+        <fieldset disabled={!menuSettings.enabled} className="space-y-4 [&_button]:min-h-10 [&_button]:rounded [&_button]:border [&_button]:border-slate-300 [&_button]:px-3 [&_button:disabled]:opacity-40">
+          {menuSettings.value.groups.map((groupId,groupIndex)=>{
+            const group=menuSettings.groups.find(row=>row.id===groupId)!;
+            const rows=menuSettings.value.items.filter(row=>row.groupId===groupId);
+            return <div key={groupId} className="border-t border-slate-200 pt-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold flex-1">{group.label}</h3>
+                <button type="button" aria-label={`${group.label} 그룹 위로`} disabled={groupIndex===0} onClick={()=>menuSettings.onChange(reorderMenuGroup(menuSettings.value,groupId,-1))}>위로</button>
+                <button type="button" aria-label={`${group.label} 그룹 아래로`} disabled={groupIndex===menuSettings.value.groups.length-1} onClick={()=>menuSettings.onChange(reorderMenuGroup(menuSettings.value,groupId,1))}>아래로</button></div>
+              {!rows.length && <p className="text-sm text-slate-500">이 그룹의 메뉴 없음</p>}
+              {rows.map((row,index)=>{
+                const item=menuSettings.items.find(entry=>entry.id===row.id)!;
+                return <div key={row.id} className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-2 text-sm">
+                  <label className="flex gap-2 items-center min-w-32"><input type="checkbox" aria-label={`${item.label} 표시`} checked={!row.hidden} onChange={event=>menuSettings.onChange({...menuSettings.value,items:menuSettings.value.items.map(entry=>entry.id===row.id?{...entry,hidden:!event.target.checked}:entry)})}/>{item.label}</label>
+                  <select aria-label={`${item.label} 그룹`} value={row.groupId} onChange={event=>menuSettings.onChange(moveMenuItem(menuSettings.value,row.id,event.target.value))} className="min-h-10 max-w-full rounded border border-slate-300 px-2">{menuSettings.groups.map(entry=><option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
+                  <button type="button" aria-label={`${item.label} 위로`} disabled={index===0} onClick={()=>menuSettings.onChange(reorderMenuItem(menuSettings.value,row.id,-1))}>위로</button>
+                  <button type="button" aria-label={`${item.label} 아래로`} disabled={index===rows.length-1} onClick={()=>menuSettings.onChange(reorderMenuItem(menuSettings.value,row.id,1))}>아래로</button>
+                </div>;
+              })}
+            </div>;
+          })}
+          <button type="button" onClick={menuSettings.onReset}>내 메뉴 초기화</button>
+        </fieldset>
+        </details>
+      </section>}
 
       {/* ── 나 ── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5">

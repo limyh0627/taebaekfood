@@ -1,4 +1,7 @@
 import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
+import { onAuthStateChanged } from 'firebase/auth';
+import { menuPreferenceKey, normalizeMenuPreferences, loadMenuPreferences, saveMenuPreferences, resetMenuPreferences, type MenuPreferences } from '../../shared/menuPreferences';
+const HelpChat = React.lazy(() => import('../../../components/HelpChat'));
 import {readOemReceiptEntry,markOemReceiptPreCallFailure} from '../../shared/oemReceiptPending';
 import {getOemReceiptRecoveryContext} from '../../shared/services/firebaseService';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
@@ -353,6 +356,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 빈 목록으로 뜬다. 그게 "메뉴가 아예 없다"보다 낫다 — 없는 건지 못 여는 건지 알 수 있다.
    */
   const viewAllowed = (_v: ViewType) => true;
+  const [menuIdentity, setMenuIdentity] = useState<{uid:string;employeeId:string;companyId:string;admin:boolean}|null>(null);
+  const [menuSaved, setMenuSaved] = useState<{key:string|null;value:MenuPreferences}|null>(null);
+  const [menuError, setMenuError] = useState('');
+  const [helpOpen, setHelpOpen] = useState<string|null>(null);
+  useEffect(() => {
+    let live=true, generation=0;
+    const stop=onAuthStateChanged(auth,user=>{
+      const captured=++generation;setMenuIdentity(null);
+      if(!user)return;
+      void user.getIdTokenResult().then(({claims})=>{
+        if(live && captured===generation && auth.currentUser?.uid===user.uid && typeof claims.employeeId==='string' && typeof claims.companyId==='string')
+          setMenuIdentity({uid:user.uid,employeeId:claims.employeeId,companyId:claims.companyId,admin:claims.isAdmin===true});
+      }).catch(()=>{if(live&&captured===generation)setMenuIdentity(null);});
+    });
+    return()=>{live=false;generation++;stop();};
+  },[]);
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
   const allOrders = useMemo(() => mergeCompanyOrders(orders, historicalOrders, companyId), [orders, historicalOrders, companyId]);
   const receivedOrders = purchaseOrders.filter(po => po.status === 'received' || po.status === 'cancelled');
@@ -2244,8 +2263,96 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
+  const adminPendingCount = leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length + adjustmentRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length;
+  const menuGroups = isAdmin ? [{"id":"dash","label":"대시보드"},{"id":"work","label":"업무 관리"},{"id":"master","label":"기준정보 관리"},{"id":"ledger","label":"장부 / 원장 관리"},{"id":"biz","label":"경영 분석 및 통계"},{"id":"special","label":"특수 관리"},{"id":"ext","label":"외부 서비스"}] : [{"id":"staff-work","label":"현장 운영"},{"id":"staff-ext","label":"외부 서비스"}];
+  const menuEntries = (isAdmin ? [{id:"dashboard",label:"대시보드",groupId:"dash",element:(<NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />)},
+{id:"data-integrity",label:"데이터 점검",groupId:"dash",element:(<NavItem icon={ShieldCheck} label="데이터 점검" active={currentView === 'data-integrity'} onClick={() => handleNavClick('data-integrity')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('data-integrity')} />)},
+{id:"officetalk",label:"오피스톡",groupId:"dash",element:(<NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />)},
+{id:"orders",label:"주문·배송",groupId:"work",element:(<NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />)},
+{id:"admin-checklist",label:"확인사항",groupId:"work",element:(<NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />)},
+{id:"trade-statement",label:"전표",groupId:"work",element:(<NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />)},
+{id:"tax-statement",label:"세금계산서",groupId:"work",element:(<NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />)},
+{id:"quotation",label:"견적서",groupId:"work",element:(<NavItem icon={FileSignature} label="견적서" active={currentView === 'quotation'} onClick={() => handleNavClick('quotation')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('quotation')} />)},
+{id:"inventory",label:"재고 관리",groupId:"master",element:(<NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />)},
+{id:"lot-management",label:"생산 관리",groupId:"master",element:(<NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />)},
+{id:"item-management",label:"품목 관리",groupId:"master",element:(<NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />)},
+{id:"partners",label:"거래처 관리",groupId:"master",element:(<NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />)},
+{id:"hr",label:"인사 관리",groupId:"master",element:(<NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />)},
+{id:"notice",label:"공지사항",groupId:"master",element:(<NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />)},
+{id:"file-cabinet",label:"문서함",groupId:"master",element:(<NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />)},
+{id:"qr-label",label:"QR 라벨 인쇄",groupId:"master",element:(<NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />)},
+{id:"ledger-cash",label:"현금출납장",groupId:"ledger",element:(<NavItem icon={Wallet} label="현금출납장" active={currentView === 'ledger-cash' && ledgerTab === 'cash'} onClick={() => { setLedgerTab('cash'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />)},
+{id:"ledger-partner",label:"거래처원장",groupId:"ledger",element:(<NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash' && ledgerTab === 'partner'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />)},
+{id:"item-ledger",label:"제품별원장",groupId:"ledger",element:(<NavItem icon={Package} label="제품별원장" active={currentView === 'item-ledger'} onClick={() => handleNavClick('item-ledger')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-ledger')} />)},
+{id:"financial-reports",label:"재무제표",groupId:"ledger",element:(<NavItem icon={Scale} label="재무제표" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />)},
+{id:"loan-management",label:"대출 관리",groupId:"ledger",element:(<NavItem icon={Wallet} label="대출 관리" active={currentView === 'loan-management'} onClick={() => handleNavClick('loan-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('loan-management')} />)},
+{id:"profit-analysis",label:"손익 / 비용 분석",groupId:"biz",element:(<NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />)},
+{id:"cash-flow",label:"현금흐름 분석",groupId:"biz",element:(<NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />)},
+{id:"partner-stats",label:"거래처통계",groupId:"biz",element:(<NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />)},
+{id:"production",label:"생산 실적",groupId:"biz",element:(<NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />)},
+{id:"smartstore-analytics",label:"스마트스토어 분석",groupId:"biz",element:(<NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />)},
+{id:"haccp-checklist",label:"HACCP 체크리스트",groupId:"special",element:(<NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />)},
+{id:"partner-signup",label:"거래처 가입승인",groupId:"ext",element:(<NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partner-signup')} />)},
+{id:"partner-portal",label:"거래처 주문 포털",groupId:"ext",element:(<button
+                        onClick={openPartnerPortal}
+                        title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
+                        className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-cyan-50 hover:text-cyan-600 transition-all group`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Globe size={18} />
+                          {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
+                        </div>
+                        {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </button>)}] : [{id:"notice",label:"공지사항",groupId:"staff-work",element:(<NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />)},
+{id:"officetalk",label:"오피스톡",groupId:"staff-work",element:(<NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />)},
+{id:"orders",label:"주문·배송",groupId:"staff-work",element:(<NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />)},
+{id:"inventory",label:"재고 관리",groupId:"staff-work",element:(<NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />)},
+{id:"lot-management",label:"생산 관리",groupId:"staff-work",element:(<NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />)},
+{id:"item-management",label:"품목 관리",groupId:"staff-work",element:(<NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />)},
+{id:"pallets",label:"파렛트 관리",groupId:"staff-work",element:(<NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />)},
+{id:"leave-portal",label:"연차 신청",groupId:"staff-work",element:(<NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('leave-portal')} />)},
+{id:"confirmation-items",label:"확인사항",groupId:"staff-work",element:(<NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('confirmation-items')} />)},
+{id:"sanitation-checklist",label:"작업장 위생점검",groupId:"staff-work",element:(<NavItem icon={ShieldAlert} label="작업장 위생점검" active={currentView === 'sanitation-checklist'} onClick={() => handleNavClick('sanitation-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('sanitation-checklist')} />)},
+{id:"documents",label:"서류 관리",groupId:"staff-work",element:(<NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />)},
+{id:"partner-portal",label:"거래처 주문 포털",groupId:"staff-ext",element:(<button
+                      onClick={openPartnerPortal}
+                      title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
+                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Globe size={18} />
+                        {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
+                      </div>
+                      {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    </button>)}]).filter(row => !(row.element.props as {hidden?:boolean}).hidden);
+  const menuCatalog = menuEntries.map(({id,label,groupId}) => ({id,label,groupId}));
+  const menuKey = menuIdentity && menuIdentity.uid === auth.currentUser?.uid && menuIdentity.employeeId === currentUser.id && (menuIdentity.companyId === companyId || menuIdentity.admin) && (!isAdmin || menuIdentity.admin) ? menuPreferenceKey({companyId,uid:menuIdentity.uid,mode:isAdmin?'admin':'staff'}) : null;
+  const menuDefaults = normalizeMenuPreferences(null,menuGroups,menuCatalog);
+  const helpSessionKey = menuKey ? `${menuKey}:${currentView}` : null;
+  useEffect(()=>{setHelpOpen(null);},[helpSessionKey]);
+  const menuValue = normalizeMenuPreferences(menuSaved?.key === menuKey && menuKey ? menuSaved.value : null,menuGroups,menuCatalog);
+  const menuCatalogSignature = JSON.stringify({groups:menuGroups,items:menuCatalog});
+  useEffect(() => { setMenuSaved({key:menuKey,value:loadMenuPreferences(menuKey,menuGroups,menuCatalog)});setMenuError(''); },[menuKey,menuCatalogSignature]);
+  const changeMenu = (next: MenuPreferences) => {
+    if(!menuKey || menuIdentity?.uid !== auth.currentUser?.uid) return;
+    const value=normalizeMenuPreferences(next,menuGroups,menuCatalog);setMenuSaved({key:menuKey,value});
+    try{saveMenuPreferences(menuKey,value);setMenuError('');}catch{setMenuError('이 브라우저에 메뉴 설정을 저장하지 못했습니다. 현재 화면에는 적용했지만 다시 열면 유지되지 않을 수 있습니다.');}
+  };
+  const resetMenu = () => {
+    if(!menuKey || menuIdentity?.uid !== auth.currentUser?.uid)return;
+    setMenuSaved({key:menuKey,value:menuDefaults});
+    try{resetMenuPreferences(menuKey);setMenuError('');}catch{setMenuError('기본 메뉴는 적용했지만 저장된 설정을 삭제하지 못했습니다. 다시 시도해 주세요.');}
+  };
+
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
+      {helpOpen && helpOpen === helpSessionKey && menuIdentity && <React.Suspense fallback={<p role="status">도움말을 여는 중입니다.</p>}><HelpChat key={helpSessionKey} companyId={companyId} userId={menuIdentity.uid} mode={isAdmin?'admin':'staff'} currentView={currentView} onClose={()=>setHelpOpen(null)} onNavigate={id=>{
+        if(menuIdentity.uid!==auth.currentUser?.uid)return;
+        if(id==='mypage'){setCurrentView('mypage');setHelpOpen(null);return;}
+        const entry=menuEntries.find(row=>row.id===id);
+        if(!entry)return;
+        entry.element.props.onClick();setHelpOpen(null);
+      }}/></React.Suspense>}
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
         className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 xl:hidden ${
@@ -2346,135 +2453,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
           
           <div className="flex-1 min-h-0 space-y-8 overflow-y-auto no-scrollbar">
 
-            {/* ── 사장님(Admin) 전용: 경영 현황 ── */}
-            {isAdmin && (() => {
-              const adminPendingCount =
-                leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
-                adjustmentRequests.filter(r => r.status === 'pending').length +
-                receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length;
-              return (
-                <>
-                  {/* 메뉴 짜임 — 사장님이 정한 순서 그대로.
-                      대시보드 · 업무 관리 · 기준정보 관리 · 장부/원장 · 경영 분석 · 특수 관리 · 외부 서비스(맨 아래) */}
-                  <NavGroup title="대시보드" storageKey="dash" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
-                      <NavItem icon={ShieldCheck} label="데이터 점검" active={currentView === 'data-integrity'} onClick={() => handleNavClick('data-integrity')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('data-integrity')} />
-                      <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="업무 관리" storageKey="work" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
-                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
-                      <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
-                      <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
-                      <NavItem icon={FileSignature} label="견적서" active={currentView === 'quotation'} onClick={() => handleNavClick('quotation')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('quotation')} />
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
-                      <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
-                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
-                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
-                      <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
-                      <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />
-                      {/* 관리자뷰 '서류 관리'는 없앴다(2026-09-01) — 안에 있던 넷이 다 나갔다.
-                          벤조피렌·원료수불부·생산작업기록부는 직원뷰로, 생산판매기록부는 문서함으로.
-                          생산작업기록부2는 삭제. 빈 탭줄만 남을 자리라 문을 닫는다.
-                          직원뷰 메뉴(아래)는 그대로 둔다. */}
-                      <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />
-                      <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="장부 / 원장 관리" storageKey="ledger" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다.
-                          두 장부는 한 화면(ledger-cash)을 ledgerTab으로 갈라 쓴다 — 여기가 유일한 전환 자리다. */}
-                      <NavItem icon={Wallet} label="현금출납장" active={currentView === 'ledger-cash' && ledgerTab === 'cash'} onClick={() => { setLedgerTab('cash'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
-                      <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash' && ledgerTab === 'partner'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
-                      <NavItem icon={Package} label="제품별원장" active={currentView === 'item-ledger'} onClick={() => handleNavClick('item-ledger')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-ledger')} />
-                      <NavItem icon={Scale} label="재무제표" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
-                      <NavItem icon={Wallet} label="대출 관리" active={currentView === 'loan-management'} onClick={() => handleNavClick('loan-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('loan-management')} />
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="경영 분석 및 통계" storageKey="biz" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
-                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
-                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
-                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
-                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="특수 관리" storageKey="special" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
-                    </nav>
-                  </NavGroup>
-                  {/* 외부 서비스는 맨 아래. 거래처 가입승인도 거래처가 포털에서 넣는 것이라 여기 둔다. */}
-                  <NavGroup title="외부 서비스" storageKey="ext" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partner-signup')} />
-                      <button
-                        onClick={openPartnerPortal}
-                        title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
-                        className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-cyan-50 hover:text-cyan-600 transition-all group`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <Globe size={18} />
-                          {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
-                        </div>
-                        {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
-                      </button>
-                    </nav>
-                  </NavGroup>
-                </>
-              );
-            })()}
-
-            {/* ── 일반 직원: 현장 운영 메뉴 ── */}
-            {!isAdmin && (
-              <>
-                <div>
-                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
-                  <nav className="space-y-1">
-                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />
-                    <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
-                    {/*  **주문·배송은 한 칸이다**(2026-09-11 사장님: "메뉴는 하나로 줄일거고").
-                         화면이 거의 같았다 — 캘린더만 배송 쪽 것을 쓰고 리스트·보드는 주문 쪽 것을 쓴다.
-                         `shipping` 권한이 있는 사람도 이 칸으로 들어온다. */}
-                    <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
-                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
-                    <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
-                    <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
-                    <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />
-                    <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('leave-portal')} />
-                    <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('confirmation-items')} />
-                    <NavItem icon={ShieldAlert} label="작업장 위생점검" active={currentView === 'sanitation-checklist'} onClick={() => handleNavClick('sanitation-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('sanitation-checklist')} />
-                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
-                  </nav>
-                </div>
-                <div>
-                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
-                  <nav className="space-y-1">
-                    <button
-                      onClick={openPartnerPortal}
-                      title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
-                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Globe size={18} />
-                        {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
-                      </div>
-                      {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
-                    </button>
-                  </nav>
-                </div>
-              </>
-            )}
-
+            {menuValue.groups.map(groupId => {
+              const group=menuGroups.find(row=>row.id===groupId)!;
+              const rows=menuValue.items.filter(row=>row.groupId===groupId&&!row.hidden);
+              if(!rows.length)return null;
+              return <NavGroup key={groupId} title={group.label} storageKey={groupId} collapsed={isSidebarCollapsed}><nav className="space-y-1">{rows.map(row=><React.Fragment key={row.id}>{menuEntries.find(entry=>entry.id===row.id)?.element}</React.Fragment>)}</nav></NavGroup>;
+            })}
           </div>
 
         </div>
@@ -4851,7 +4835,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {currentView === 'mypage' && (
             <React.Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-300">불러오는 중…</div>}>
-              <MyPage currentUser={currentUser} onLogout={onLogout} />
+              <MyPage key={menuKey ?? `pending:${companyId}:${currentUser.id}:${isAdmin}`} currentUser={currentUser} onLogout={onLogout} onOpenHelp={()=>setHelpOpen(helpSessionKey)} helpAvailable={!!helpSessionKey} menuSettings={{groups:menuGroups,items:menuCatalog,value:menuValue,enabled:!!menuKey,error:menuError,onChange:changeMenu,onReset:resetMenu}} />
             </React.Suspense>
           )}
 
