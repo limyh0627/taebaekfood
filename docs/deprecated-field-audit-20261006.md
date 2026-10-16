@@ -331,3 +331,45 @@ SMARTSTORE 진단의 실제 읽기는 2026-10-15T03:04:45.62961Z 종료0이었�
 옛 표식이 있는 제품은 모달에서 체크를 꺼 false로 저장해도 배열의 표식이 남아 공용 판독이 다시 true가 됐다. 전역 OR 호환을 바꾸지 않고 기존 제품의 사용자 저장에서만 명시 옵션을 전달한다. 기존 transaction이 현재 회사·제품 종류·배열을 확인한 뒤 정확 SMARTSTORE 원소 제거와 선택 flag를 같은 쓰기로 처리한다. 다른 거래처 연결과 기존 재고·사진·BOM·삭제 보호는 보존한다. 운영의 충돌1건을 일괄 교정하지 않는다.
 고유 집중102개(서비스62·실부모/모달32·실SDK8), 보호 변이, 각 타입 및 독립 검수가 통과했다. SDK는 Rules 인증 문맥이며 실제 Auth 서버 로그인이 아니다. 합성 ABORTED 재시도 뒤 최신 배열 보존과 타회사·삭제·재고 보호를 확인했다. 최종 앱 전체 타입과 양앱/PWA 빌드도 통과했고 source6 SHA·148 manifest·FCM 원문을 보존했다.
 root는 실제 모달과 실제 부모 onSave 본문을 추출한 합성 저장소에서 데스크톱과390px의 해제 저장→재열기false, 켠 채 저장→재열기true를 확인했다. 다른 관계의 중복도 보존됐고 stock/관계 payload는 전송되지 않았다. 모바일 clientWidth/scrollWidth는390으로 같고 성공 동선의 console 오류0이었다. 서비스 transaction은 별도 실제SDK8 근거로 구분한다. 추가 합성 실패 브라우저 동선은 native alert에서 자동화 연결이 멈춰 완료하지 못했으며, 실패 입력 보존·재시도는 RTL 시험 근거로만 기록한다. 기존 성공 화면 증거를 실패 동선 증거로 확대하지 않는다. 앱은 최종 통합 뒤 배포한다.
+
+## 2026-10-16 잔여 호환 경로의 코드 대조
+
+기준은 main `f169b8d`다. 이번에는 제품 소스와 기존 조사·변경 이력만 읽었다. 운영 조회·필드 삭제·값 이관·새 시험은 하지 않았다. 위의 잔존 개수와 실측 시각은 과거 관측이며 현재 개수로 갱신하지 않는다. 기존 price·noncash·inUse·lotsAreTotal 정리는 재실행하지 않는다. 아래 표는 남은 계약을 정리하는 산출물이며 원본039 전체 완료나 새 제품 결함 확정을 뜻하지 않는다.
+
+### partnerIds: 저장 원문과 화면 파생값을 구분
+
+| 구분 | 현재 읽기·쓰기 근거 | 대체·제거 조건 | 삭제 버전·현재 판정 |
+| --- | --- | --- | --- |
+| 저장 `Item.partnerIds`의 SMARTSTORE 원소 | 중앙 판독은 `src/shared/partnerPrice.ts:133`의 `isSmartStoreItem` 한 곳이다. 명시 `isSmartStore === true` 또는 정확 표식이 있으면 true다. 호출 소비자는 AddOrderModal:246, PasteOrderModal:242, SmartStoreAnalytics:48, AddItemModal:113, AdminApp:678의 다섯 곳이다. | 명시 flag와 표식의 모든 조합에서 기존 판독을 보존할 전환 근거가 필요하다. false+표식을 사람의 해제 또는 자동 기본값으로 추정해 일괄 덮지 않는다. | 호환 복구 `3c6db28`, 사용자 저장 보완 `8fea3ee`. 중앙 호환 reader·선언의 제거 버전은 미정이다. |
+| 실제 판매 거래처 관계 | `partnerPrice.ts:70`의 `partnersOfItem`과 각 주문 화면은 `partner_item`을 사용한다. AdminApp:658~679의 판매 맵은 out 관계를 조인한다. 저장된 옛 거래처 배열을 판매 관계로 되살리지 않는다. | 과거 배열과 현재 연결의 의미·방향·보관 상태를 확인해야 한다. 기존 누락 관계 수를 신규 판매 관계 생성의 근거로 삼지 않는다. | 판매 관계의 구 배열 fallback은 기존에 제거됐다. 이번에는 관계 생성·삭제나 추가 제거를 하지 않는다. |
+| AdminApp의 동명 `partnerIds` prop | AdminApp:679는 저장 원문이 아닌 화면 복사본에 현재 판매 관계 ID 배열을 넣는다. 바로 앞에서 원본의 SMARTSTORE 판독 결과를 `isSmartStore`로 보존한다. | DB 배열 제거와 UI prop 제거는 별개다. prop의 이름만 보고 원문 재저장이나 legacy reader로 세지 않는다. | 파생 prop은 유지한다. `3c6db28`의 판독 보존을 회귀 없이 제거하지 않는다. |
+| 신규·기존 품목의 명시 사용자 저장 | AddItemModal:308~328은 품목 payload를 새로 구성하며 partnerIds는 만들지 않는다. AdminApp:5074는 전달된 partnerIds도 제외한다. 기존 product의 boolean flag 저장에만 `reconcileSmartStoreMarker` 옵션을 전달한다. 서비스:108~112는 현재 DB 배열이 정상 문자열 배열이고 정확 표식이 있을 때 최신 배열에 `arrayRemove('SMARTSTORE')`와 flag를 같은 transaction으로 반영한다. | 새 품목과 일반 저장을 운영 일괄 이관으로 확대하지 않는다. 다른 거래처 원소·중복·잘못된 배열을 임의 재작성하지 않는다. | `8fea3ee`의 조건부 원소 제거가 현행이다. 필드 전체 삭제 버전은 미정이며 사용자 저장 시 표식 하나가 제거되는 것과 구분한다. |
+| 일반 API의 전체 사본·부분 병합 | `itemWritePayload.ts:5`는 items의 price/lotsAreTotal만 제외하며 partnerIds는 제외하지 않는다. 공용 add/update/merge API는 호출자가 넘긴 legacy 필드를 보존할 수 있다. 이 사실은 새 품목 모달이 그 배열을 생성한다는 뜻은 아니다. | 전체 필드 차단 전 SMARTSTORE reader와 일반 호출자의 원문 보존 계약을 대조해야 한다. 사용자 저장 전용 옵션과 일반 API 전체를 같은 writer로 설명하지 않는다. | 신규 재생성의 전면 차단 또는 저장 필드 전수 삭제를 완료했다고 판정하지 않는다. |
+| 동명 지역변수·함수 인수 | SmartStoreAnalytics:87~98의 partnerIds는 월별 고유 거래처를 세는 Set이다. firebaseService의 setProductClients:618~643 인수도 `partner_item` 집합 변경용이며 items.partnerIds 저장이 아니다. | 문자열 검색 결과를 DB 필드 reader/writer에 그대로 합산하지 않는다. setProductClients의 일반 관계 변경은 이 표의 필드 제거와 별개다. | 삭제 대상이 아니다. |
+
+여기서 중앙 helper가 한 곳이라는 것은 실제 사용처가 한 곳이라는 뜻이 아니다. 위 다섯 소비자를 포함한 제품 검색에서 직접 legacy 원소 판독은 중앙 helper로 모이며, Functions 소스에는 partnerIds 직접 참조가 없었다. 과거 감사·복구 스크립트는 별도다. `fix-drop-legacy-partnerids.mts`는 이미 안내로 종료됐고, `fix-punghoe-setup.mts` 등 보존 도구의 원문 취급을 이번에 다시 실행하거나 폐기하지 않았다.
+
+### InventoryCategory: 신규 선택과 구 자료 호환을 구분
+
+| 구분 | 현재 소비·저장 근거 | 대체·제거 조건 | 삭제 버전·현재 판정 |
+| --- | --- | --- | --- |
+| 신규 분류 선택 | `itemTaxonomy.ts:85`의 TYPE_KEYS는 product/goods/wip/raw/submaterial/service 여섯 값이다. AddItemModal:556과 ItemManager:868은 taxonomy에서 고른 값을 사용한다. | 신규 선택 목록이 여섯 개라는 사실만으로 기존 저장 type이 모두 전환됐다고 판단하지 않는다. | 신규 체계는 현행이다. legacy union 전체 제거 버전은 미정이다. |
+| 기존 품목의 편집·재저장 | AddItemModal:103은 initialData.type을 formData에 보존하고, :310에서 그 type을 저장 payload에 그대로 넣는다. Item.type과 category 선언도 `InventoryCategory \| string`을 허용한다. | 기존 type별 실제 의미와 category/subtype/unit의 보존·전환 계약이 필요하다. 편집창을 열었다는 이유만으로 구값을 현대값으로 치환하지 않는다. | legacy 편집 보존은 남아 있다. 타입 union만 축소해도 런타임 값이 이관되거나 차단되는 것은 아니다. |
+| 분류 UI의 타입 사용 | AddItemModal·ItemManager는 InventoryCategory 타입을 실제 입력·상태에 사용한다. ItemList의 같은 이름 import는 런타임 변환기가 아니다. | import 정리와 DB 분류 전환을 분리한다. 미사용 import 한 줄 정리를 별도 기능 완료로 세지 않는다. | 이번 제품 코드 제거는 없다. |
+| 영문 부자재 구값 판독 | types.ts:469의 isSubmaterial은 현행 submaterial과 label/cap/container/box/tape를 허용한다. ItemList:852의 로트 대상 분리에 실제 쓰인다. | 현재 부자재 구값을 같은 의미로 전환한 근거와 로트 대상 포함/제외 동치가 필요하다. | 호환 판독을 유지한다. |
+| 한국어·영문 구값의 입고 판독 | types.ts:473의 CATEGORY_MIGRATION_MAP은 한국어·영문 구분류를 현대 type으로 대응한다. inboundInventory.ts:7~11의 isInboundInventoryItem이 입고대기 대상 판정에 사용하며 DB 값을 직접 고치는 함수가 아니다. | 구값별 입고 대상·용역 제외·배송 subtype 제외의 동치와 실제 저장 자료 전환을 따로 확인해야 한다. | map과 실제 소비자가 남아 있으므로 제거 버전 미정이다. |
+| 사입·임가공 재고 판독 | itemTaxonomy.ts:73~76의 isGoodsItem은 goods 외에 향미유·고춧가루 구값과 procureType도 본다. AddOrderModal과 orderStockEngine·orderProductLots·stockUseRows가 이 공용 판독을 사용한다. | 구분류 제거가 생산 증가·완제품 소비·부자재 소모의 판단을 바꾸지 않는지 확인해야 한다. 운영 분류를 추정해 재계산하지 않는다. | 단순 UI 타입 정리가 아니라 재고 의미의 호환이므로 보존한다. |
+
+### 검색 범위와 다음 수용 조건
+
+제품의 `src`, `components`, `functions/src` 전체에서 시험 파일을 제외하고 아래 검색을 수행했다. 표의 행 번호는 `f169b8d` 기준이다. 변경 시 다시 찾을 수 있도록 검색식을 함께 남긴다.
+
+```powershell
+rg -n 'partnerIds|SMARTSTORE' src components functions/src -g '*.ts' -g '*.tsx' -g '!*.test.ts' -g '!*.test.tsx'
+rg -n 'isSmartStoreItem|InventoryCategory|CATEGORY_MIGRATION_MAP|isSubmaterial\(|isGoodsItem' src components functions/src -g '*.ts' -g '*.tsx' -g '!*.test.ts' -g '!*.test.tsx'
+rg -n 'partnerIds' scripts -g '*.mts'
+```
+
+이번 산출물은 기존 조사표의 현재 경로·조건을 갱신하는 것이므로 소스 무변경 상태에서 기존 시험을 반복하지 않았다. 향후 표식 정책을 바꿀 때는 기존 `partnerPrice.test.ts`, `AdminApp.smartStoreProjection.test.tsx`, `AddItemModal.spec.test.tsx`, `firebaseService.smartStoreSave.test.ts`, `firebaseService.smartStoreSave.emulator.test.ts`의 관련 인수 조건을 대조해야 한다. 분류 호환 제거는 `inboundInventory.test.ts`와 주문 재고·로트 판독 회귀를 포함한 별도 정확 범위를 먼저 정해야 한다. 기존 합성·SDK 근거를 이번 새 시험 통과로 합산하지 않는다.
+
+현재 코드만으로 안전하게 제거할 새 실질 경로는 확정하지 못했다. 남은 작업은 위의 원문 의미·소비자 동치·운영 전환 근거를 채운 뒤 필드 또는 호환 함수별 제거 버전을 정하는 것이다. 새로 발견한 결함 없이 이미 인수한 표식 보완을 다시 구현하거나 현재 자료가 0건이라고 가정해 전체039를 완료하지 않는다.
