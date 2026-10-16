@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T10:53:12.297Z",
+  "generatedAt": "2026-10-16T11:49:19.037Z",
   "sourceFiles": 501,
   "unresolvedAccesses": 3510,
   "unresolvedPropertyAccesses": [
@@ -26332,14 +26332,14 @@
         "components/voucher/CashEntryModal.tsx:263",
         "components/voucher/CashEntryModal.tsx:264",
         "components/voucher/CashEntryModal.tsx:268",
+        "components/voucher/VoucherComposer.tsx:1071",
+        "components/voucher/VoucherComposer.tsx:1074",
         "components/voucher/VoucherComposer.tsx:1075",
-        "components/voucher/VoucherComposer.tsx:1078",
-        "components/voucher/VoucherComposer.tsx:1079",
-        "components/voucher/VoucherComposer.tsx:1322",
-        "components/voucher/VoucherComposer.tsx:1323",
-        "components/voucher/VoucherComposer.tsx:367",
-        "components/voucher/VoucherComposer.tsx:944",
-        "components/voucher/VoucherComposer.tsx:945",
+        "components/voucher/VoucherComposer.tsx:1318",
+        "components/voucher/VoucherComposer.tsx:1319",
+        "components/voucher/VoucherComposer.tsx:374",
+        "components/voucher/VoucherComposer.tsx:959",
+        "components/voucher/VoucherComposer.tsx:960",
         "src/features/admin/AdminApp.tsx:1197",
         "src/features/admin/AdminApp.tsx:1252",
         "src/features/admin/AdminApp.tsx:1260",
@@ -26521,21 +26521,21 @@
         "components/VoucherTemplateManager.tsx:88",
         "components/voucher/CashEntryModal.tsx:268",
         "components/voucher/CashEntryModal.tsx:270",
-        "components/voucher/VoucherComposer.tsx:1056",
-        "components/voucher/VoucherComposer.tsx:1066",
-        "components/voucher/VoucherComposer.tsx:1081",
-        "components/voucher/VoucherComposer.tsx:1119",
-        "components/voucher/VoucherComposer.tsx:1129",
-        "components/voucher/VoucherComposer.tsx:1314",
-        "components/voucher/VoucherComposer.tsx:1325",
-        "components/voucher/VoucherComposer.tsx:1415",
-        "components/voucher/VoucherComposer.tsx:1526",
-        "components/voucher/VoucherComposer.tsx:379",
-        "components/voucher/VoucherComposer.tsx:407",
-        "components/voucher/VoucherComposer.tsx:593",
-        "components/voucher/VoucherComposer.tsx:605",
-        "components/voucher/VoucherComposer.tsx:936",
-        "components/voucher/VoucherComposer.tsx:947",
+        "components/voucher/VoucherComposer.tsx:1052",
+        "components/voucher/VoucherComposer.tsx:1062",
+        "components/voucher/VoucherComposer.tsx:1077",
+        "components/voucher/VoucherComposer.tsx:1115",
+        "components/voucher/VoucherComposer.tsx:1125",
+        "components/voucher/VoucherComposer.tsx:1310",
+        "components/voucher/VoucherComposer.tsx:1321",
+        "components/voucher/VoucherComposer.tsx:1411",
+        "components/voucher/VoucherComposer.tsx:1522",
+        "components/voucher/VoucherComposer.tsx:386",
+        "components/voucher/VoucherComposer.tsx:414",
+        "components/voucher/VoucherComposer.tsx:600",
+        "components/voucher/VoucherComposer.tsx:612",
+        "components/voucher/VoucherComposer.tsx:951",
+        "components/voucher/VoucherComposer.tsx:962",
         "src/features/admin/AdminApp.tsx:1197",
         "src/features/admin/AdminApp.tsx:1260",
         "src/features/admin/AdminApp.tsx:1517",
@@ -34808,7 +34808,7 @@
         "components/TradeStatement.tsx:2272",
         "components/TradeStatement.tsx:2294",
         "components/TradeStatement.tsx:2761",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/AdminApp.tsx:1871",
         "src/features/admin/AdminApp.tsx:1874",
         "src/features/admin/cashLedger.ts:127",
@@ -34949,7 +34949,7 @@
         "components/TradeStatement.tsx:2272",
         "components/TradeStatement.tsx:2294",
         "components/TradeStatement.tsx:2767",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/purchaseReturnRequest.ts:24",
         "src/features/admin/purchaseReturnRequest.ts:46",
         "src/features/admin/purchaseReturnRequest.ts:62",
@@ -34995,8 +34995,8 @@
         "components/PartnerLedger.tsx:152",
         "components/TradeStatement.tsx:1226",
         "components/TradeStatement.tsx:1720",
-        "components/voucher/VoucherComposer.tsx:693",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:700",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:128",
         "src/features/admin/cashLedger.ts:491",
         "src/features/admin/dataIntegrityAudit.ts:352",
@@ -35021,7 +35021,7 @@
       "type": "'차변' | '대변'",
       "declaration": "src/shared/types.ts:1120",
       "references": [
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:491",
         "src/features/admin/dataIntegrityAudit.ts:350",
         "src/features/admin/dataIntegrityAudit.ts:351",
@@ -35460,8 +35460,8 @@
         "components/TradeStatement.tsx:2733",
         "components/voucher/CashEntryModal.tsx:102",
         "components/voucher/CashEntryModal.tsx:144",
-        "components/voucher/VoucherComposer.tsx:417",
-        "components/voucher/VoucherComposer.tsx:774",
+        "components/voucher/VoucherComposer.tsx:424",
+        "components/voucher/VoucherComposer.tsx:781",
         "src/features/admin/AdminApp.tsx:1889",
         "src/features/admin/cashLedger.ts:126",
         "src/features/admin/cashLedger.ts:277",
@@ -35642,7 +35642,7 @@
         "components/TradeStatement.tsx:661",
         "components/voucher/CashEntryModal.tsx:109",
         "components/voucher/CashEntryModal.tsx:117",
-        "components/voucher/VoucherComposer.tsx:416",
+        "components/voucher/VoucherComposer.tsx:423",
         "src/features/admin/AdminApp.tsx:1889",
         "src/features/admin/cashLedger.ts:125",
         "src/features/admin/cashLedger.ts:145",
@@ -35713,7 +35713,7 @@
         "components/TradeStatement.tsx:2729",
         "components/TradeStatement.tsx:664",
         "components/voucher/CashEntryModal.tsx:144",
-        "components/voucher/VoucherComposer.tsx:701",
+        "components/voucher/VoucherComposer.tsx:708",
         "src/features/admin/AdminApp.tsx:1887",
         "src/features/admin/AdminApp.tsx:1889",
         "src/features/admin/cashLedger.ts:127",
@@ -35881,7 +35881,7 @@
         "components/TradeStatement.tsx:705",
         "components/voucher/CashEntryModal.tsx:108",
         "components/voucher/CashEntryModal.tsx:150",
-        "components/voucher/VoucherComposer.tsx:774",
+        "components/voucher/VoucherComposer.tsx:781",
         "src/features/admin/cashLedger.ts:443",
         "src/features/admin/cashLedger.ts:516",
         "src/features/admin/cashLedger.ts:66",
@@ -35946,8 +35946,8 @@
         "components/TradeStatement.tsx:2294",
         "components/TradeStatement.tsx:2758",
         "components/TradeStatement.tsx:3018",
-        "components/voucher/VoucherComposer.tsx:693",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:700",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/AdminApp.tsx:1865",
         "src/features/admin/cashLedger.ts:127",
         "src/features/admin/cashLedger.ts:128",
@@ -36014,7 +36014,7 @@
         "components/TradeStatement.tsx:1212",
         "components/TradeStatement.tsx:1719",
         "components/TradeStatement.tsx:1937",
-        "components/voucher/VoucherComposer.tsx:775",
+        "components/voucher/VoucherComposer.tsx:782",
         "src/features/statements/domain/statementHistoryRowView.ts:59",
         "src/features/statements/infrastructure/voucherIssuePending.ts:13"
       ]
@@ -38640,9 +38640,9 @@
         "components/ProfitAnalysis.tsx:1966",
         "components/VoucherTemplateManager.tsx:354",
         "components/voucher/CashEntryModal.tsx:281",
-        "components/voucher/VoucherComposer.tsx:1023",
-        "components/voucher/VoucherComposer.tsx:1166",
-        "components/voucher/VoucherComposer.tsx:1336",
+        "components/voucher/VoucherComposer.tsx:1019",
+        "components/voucher/VoucherComposer.tsx:1162",
+        "components/voucher/VoucherComposer.tsx:1332",
         "src/features/statements/ui/StatementManualItemRows.tsx:113",
         "src/features/statements/ui/StatementOrderItemRows.tsx:54",
         "src/shared/services/firebaseService.ts:139",
@@ -38722,21 +38722,21 @@
         "components/voucher/CashEntryModal.tsx:77",
         "components/voucher/RecurringModal.tsx:110",
         "components/voucher/VoucherComposer.tsx:101",
-        "components/voucher/VoucherComposer.tsx:1023",
+        "components/voucher/VoucherComposer.tsx:1019",
         "components/voucher/VoucherComposer.tsx:104",
-        "components/voucher/VoucherComposer.tsx:1166",
+        "components/voucher/VoucherComposer.tsx:1162",
         "components/voucher/VoucherComposer.tsx:128",
-        "components/voucher/VoucherComposer.tsx:1284",
-        "components/voucher/VoucherComposer.tsx:1336",
-        "components/voucher/VoucherComposer.tsx:394",
-        "components/voucher/VoucherComposer.tsx:395",
-        "components/voucher/VoucherComposer.tsx:396",
+        "components/voucher/VoucherComposer.tsx:1280",
+        "components/voucher/VoucherComposer.tsx:1332",
+        "components/voucher/VoucherComposer.tsx:401",
+        "components/voucher/VoucherComposer.tsx:402",
         "components/voucher/VoucherComposer.tsx:403",
-        "components/voucher/VoucherComposer.tsx:495",
-        "components/voucher/VoucherComposer.tsx:519",
-        "components/voucher/VoucherComposer.tsx:520",
-        "components/voucher/VoucherComposer.tsx:692",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:410",
+        "components/voucher/VoucherComposer.tsx:502",
+        "components/voucher/VoucherComposer.tsx:526",
+        "components/voucher/VoucherComposer.tsx:527",
+        "components/voucher/VoucherComposer.tsx:699",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:191",
         "src/features/admin/financials.ts:142",
         "src/features/admin/financials.ts:161",
@@ -38754,8 +38754,8 @@
         "src/features/statements/ui/StatementOrderItemRows.tsx:54",
         "src/shared/buildJournals.ts:74",
         "src/shared/cashTemplates.tsx:244",
-        "src/shared/cashTemplates.tsx:357",
-        "src/shared/cashTemplates.tsx:424",
+        "src/shared/cashTemplates.tsx:359",
+        "src/shared/cashTemplates.tsx:427",
         "src/shared/journal.ts:73",
         "src/shared/journal.ts:93",
         "src/shared/services/firebaseService.ts:137",
@@ -38806,27 +38806,27 @@
         "components/voucher/CashEntryModal.tsx:281",
         "components/voucher/RecurringModal.tsx:116",
         "components/voucher/VoucherComposer.tsx:101",
-        "components/voucher/VoucherComposer.tsx:1023",
-        "components/voucher/VoucherComposer.tsx:1166",
+        "components/voucher/VoucherComposer.tsx:1019",
+        "components/voucher/VoucherComposer.tsx:1162",
         "components/voucher/VoucherComposer.tsx:128",
-        "components/voucher/VoucherComposer.tsx:1284",
-        "components/voucher/VoucherComposer.tsx:1336",
-        "components/voucher/VoucherComposer.tsx:393",
-        "components/voucher/VoucherComposer.tsx:394",
-        "components/voucher/VoucherComposer.tsx:395",
-        "components/voucher/VoucherComposer.tsx:396",
-        "components/voucher/VoucherComposer.tsx:495",
-        "components/voucher/VoucherComposer.tsx:519",
-        "components/voucher/VoucherComposer.tsx:520",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:1280",
+        "components/voucher/VoucherComposer.tsx:1332",
+        "components/voucher/VoucherComposer.tsx:400",
+        "components/voucher/VoucherComposer.tsx:401",
+        "components/voucher/VoucherComposer.tsx:402",
+        "components/voucher/VoucherComposer.tsx:403",
+        "components/voucher/VoucherComposer.tsx:502",
+        "components/voucher/VoucherComposer.tsx:526",
+        "components/voucher/VoucherComposer.tsx:527",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:200",
         "src/features/admin/financials.ts:47",
         "src/features/admin/profitAccountProjection.ts:36",
         "src/features/admin/recurringVoucherIssue.ts:27",
         "src/features/statements/ui/StatementManualItemRows.tsx:113",
         "src/features/statements/ui/StatementOrderItemRows.tsx:54",
-        "src/shared/cashTemplates.tsx:357",
-        "src/shared/cashTemplates.tsx:424",
+        "src/shared/cashTemplates.tsx:359",
+        "src/shared/cashTemplates.tsx:427",
         "src/shared/journal.ts:81",
         "src/shared/services/firebaseService.ts:138"
       ]
@@ -38843,7 +38843,7 @@
         "components/ProfitAnalysis.tsx:1929",
         "components/ProfitAnalysis.tsx:1958",
         "components/TradeStatement.tsx:886",
-        "components/voucher/VoucherComposer.tsx:692",
+        "components/voucher/VoucherComposer.tsx:699",
         "src/features/admin/financials.ts:33",
         "src/features/admin/financials.ts:35",
         "src/features/admin/financials.ts:36",
@@ -38862,8 +38862,8 @@
         "components/FinancialReports.tsx:139",
         "components/FinancialReports.tsx:235",
         "components/TradeStatement.tsx:601",
-        "components/voucher/VoucherComposer.tsx:393",
-        "components/voucher/VoucherComposer.tsx:403",
+        "components/voucher/VoucherComposer.tsx:400",
+        "components/voucher/VoucherComposer.tsx:410",
         "src/features/admin/financials.ts:129",
         "src/features/admin/financials.ts:130",
         "src/features/admin/financials.ts:149",
@@ -38934,7 +38934,7 @@
         "components/PartnerLedger.tsx:158",
         "components/TradeStatement.tsx:1076",
         "components/TradeStatement.tsx:2113",
-        "components/voucher/VoucherComposer.tsx:1471",
+        "components/voucher/VoucherComposer.tsx:1467",
         "src/features/admin/cashLedger.ts:154",
         "src/features/admin/cashLedger.ts:155",
         "src/features/admin/cashLedger.ts:164",
@@ -38980,8 +38980,8 @@
         "components/TradeStatement.tsx:1077",
         "components/TradeStatement.tsx:2114",
         "components/TradeStatement.tsx:2115",
+        "components/voucher/VoucherComposer.tsx:1465",
         "components/voucher/VoucherComposer.tsx:1469",
-        "components/voucher/VoucherComposer.tsx:1473",
         "src/features/admin/cashLedger.ts:155",
         "src/features/admin/cashLedger.ts:167",
         "src/features/admin/cashLedger.ts:273",
@@ -39024,7 +39024,7 @@
         "components/TradeStatement.tsx:1077",
         "components/TradeStatement.tsx:2114",
         "components/TradeStatement.tsx:2115",
-        "components/voucher/VoucherComposer.tsx:1474",
+        "components/voucher/VoucherComposer.tsx:1470",
         "src/features/admin/cashLedger.ts:155",
         "src/features/admin/cashLedger.ts:167",
         "src/features/admin/cashLedger.ts:273",
@@ -39141,7 +39141,7 @@
         "components/PartnerLedger.tsx:158",
         "components/TradeStatement.tsx:1075",
         "components/TradeStatement.tsx:2112",
-        "components/voucher/VoucherComposer.tsx:1467",
+        "components/voucher/VoucherComposer.tsx:1463",
         "src/features/admin/cashLedger.ts:144",
         "src/features/admin/cashLedger.ts:154",
         "src/features/admin/cashLedger.ts:155",
@@ -39269,7 +39269,7 @@
         "components/TradeStatement.tsx:953",
         "components/TradeStatement.tsx:960",
         "components/TradeStatement.tsx:988",
-        "components/voucher/VoucherComposer.tsx:692",
+        "components/voucher/VoucherComposer.tsx:699",
         "src/features/admin/financials.ts:28",
         "src/features/admin/financials.ts:29",
         "src/features/admin/financials.ts:79",
@@ -39303,7 +39303,7 @@
       "references": [
         "components/ProfitAnalysis.tsx:1863",
         "components/ProfitAnalysis.tsx:1866",
-        "components/voucher/VoucherComposer.tsx:692",
+        "components/voucher/VoucherComposer.tsx:699",
         "src/features/admin/financials.ts:304",
         "src/features/admin/financials.ts:305",
         "src/features/admin/financials.ts:79"
@@ -39372,14 +39372,14 @@
         "components/TradeStatement.tsx:659",
         "components/TradeStatement.tsx:673",
         "components/TradeStatement.tsx:704",
-        "components/voucher/VoucherComposer.tsx:1188",
+        "components/voucher/VoucherComposer.tsx:1184",
         "components/voucher/VoucherComposer.tsx:187",
         "components/voucher/VoucherComposer.tsx:188",
-        "components/voucher/VoucherComposer.tsx:635",
-        "components/voucher/VoucherComposer.tsx:748",
-        "components/voucher/VoucherComposer.tsx:830",
-        "components/voucher/VoucherComposer.tsx:859",
-        "components/voucher/VoucherComposer.tsx:864",
+        "components/voucher/VoucherComposer.tsx:642",
+        "components/voucher/VoucherComposer.tsx:755",
+        "components/voucher/VoucherComposer.tsx:845",
+        "components/voucher/VoucherComposer.tsx:874",
+        "components/voucher/VoucherComposer.tsx:879",
         "src/shared/defaultCashAccount.ts:6",
         "src/shared/services/confirmedCashBalance.ts:8",
         "src/shared/services/confirmedCashBalance.ts:9",
@@ -39413,10 +39413,10 @@
         "components/PartnerLedger.tsx:607",
         "components/TradeStatement.tsx:2290",
         "components/TradeStatement.tsx:2306",
-        "components/voucher/VoucherComposer.tsx:1188",
-        "components/voucher/VoucherComposer.tsx:830",
-        "components/voucher/VoucherComposer.tsx:859",
-        "components/voucher/VoucherComposer.tsx:864"
+        "components/voucher/VoucherComposer.tsx:1184",
+        "components/voucher/VoucherComposer.tsx:845",
+        "components/voucher/VoucherComposer.tsx:874",
+        "components/voucher/VoucherComposer.tsx:879"
       ]
     },
     {
@@ -39576,8 +39576,8 @@
         "components/voucher/CashEntryModal.tsx:315",
         "components/voucher/CashEntryModal.tsx:439",
         "components/voucher/CashEntryModal.tsx:452",
-        "components/voucher/VoucherComposer.tsx:1457",
-        "components/voucher/VoucherComposer.tsx:476",
+        "components/voucher/VoucherComposer.tsx:1453",
+        "components/voucher/VoucherComposer.tsx:483",
         "src/features/admin/AdminApp.tsx:382",
         "src/features/admin/AdminApp.tsx:4294",
         "src/features/admin/AdminApp.tsx:4542",
@@ -39735,7 +39735,7 @@
         "components/TradeStatement.tsx:1917",
         "components/voucher/CashEntryModal.tsx:239",
         "components/voucher/CashEntryModal.tsx:261",
-        "components/voucher/VoucherComposer.tsx:774",
+        "components/voucher/VoucherComposer.tsx:781",
         "src/features/admin/cashLedger.ts:131",
         "src/features/admin/cashLedger.ts:277",
         "src/features/admin/cashLedger.ts:691",
@@ -39808,7 +39808,7 @@
         "components/voucher/CashEntryModal.tsx:240",
         "components/voucher/CashEntryModal.tsx:274",
         "components/voucher/CashEntryModal.tsx:286",
-        "components/voucher/VoucherComposer.tsx:1289",
+        "components/voucher/VoucherComposer.tsx:1285",
         "components/voucher/VoucherComposer.tsx:133",
         "src/features/admin/AdminApp.tsx:2205",
         "src/features/admin/cashLedger.ts:132",
@@ -39858,10 +39858,10 @@
         "components/TradeStatement.tsx:530",
         "components/TradeStatement.tsx:705",
         "components/voucher/CashEntryModal.tsx:239",
-        "components/voucher/VoucherComposer.tsx:1287",
+        "components/voucher/VoucherComposer.tsx:1283",
         "components/voucher/VoucherComposer.tsx:131",
-        "components/voucher/VoucherComposer.tsx:774",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:781",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:693",
         "src/features/admin/cashLedger.ts:97",
         "src/features/admin/voucherMerge.ts:72",
@@ -39982,9 +39982,9 @@
         "components/TradeStatement.tsx:754",
         "components/TradeStatement.tsx:759",
         "components/voucher/CashEntryModal.tsx:241",
-        "components/voucher/VoucherComposer.tsx:1287",
+        "components/voucher/VoucherComposer.tsx:1283",
         "components/voucher/VoucherComposer.tsx:131",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:133",
         "src/features/admin/cashLedger.ts:688",
         "src/features/admin/voucherMerge.ts:71",
@@ -40014,9 +40014,9 @@
         "components/TradeStatement.tsx:2498",
         "components/voucher/CashEntryModal.tsx:233",
         "components/voucher/CashEntryModal.tsx:249",
-        "components/voucher/VoucherComposer.tsx:1286",
+        "components/voucher/VoucherComposer.tsx:1282",
         "components/voucher/VoucherComposer.tsx:130",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:133",
         "src/features/admin/cashLedger.ts:687",
         "src/features/statements/domain/statementHistoryRowView.ts:35",
@@ -40059,8 +40059,8 @@
         "components/ProfitAnalysis.tsx:1019",
         "components/voucher/CashEntryModal.tsx:236",
         "components/voucher/CashEntryModal.tsx:241",
-        "components/voucher/VoucherComposer.tsx:775",
-        "components/voucher/VoucherComposer.tsx:776",
+        "components/voucher/VoucherComposer.tsx:782",
+        "components/voucher/VoucherComposer.tsx:783",
         "src/features/admin/cashLedger.ts:132",
         "src/features/admin/cashLedger.ts:286",
         "src/features/statements/infrastructure/voucherIssuePending.ts:13",
@@ -40085,7 +40085,7 @@
         "components/ProfitAnalysis.tsx:1016",
         "components/TradeStatement.tsx:2520",
         "components/TradeStatement.tsx:2529",
-        "components/voucher/VoucherComposer.tsx:476",
+        "components/voucher/VoucherComposer.tsx:483",
         "src/features/admin/cashLedger.ts:290",
         "src/features/admin/cashLedger.ts:295",
         "src/features/statements/domain/statementHistoryRowView.ts:41",
@@ -46257,10 +46257,10 @@
           "declaration": "functions/src/shared/lineAmount.ts:2",
           "references": [
             "components/QuotationManager.tsx:516",
-            "components/voucher/VoucherComposer.tsx:547",
+            "components/voucher/VoucherComposer.tsx:554",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:98"
           ]
         },
@@ -46271,12 +46271,12 @@
           "declaration": "functions/src/shared/lineAmount.ts:2",
           "references": [
             "components/QuotationManager.tsx:762",
-            "components/voucher/VoucherComposer.tsx:547",
-            "components/voucher/VoucherComposer.tsx:560",
+            "components/voucher/VoucherComposer.tsx:554",
+            "components/voucher/VoucherComposer.tsx:567",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
             "src/features/statements/domain/quickItemModel.ts:22",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:154",
             "src/shared/lineAmount.ts:63",
             "src/shared/lineAmount.ts:98",
@@ -46295,12 +46295,12 @@
             "components/QuotationManager.tsx:513",
             "components/QuotationManager.tsx:514",
             "components/QuotationManager.tsx:763",
-            "components/voucher/VoucherComposer.tsx:547",
-            "components/voucher/VoucherComposer.tsx:561",
+            "components/voucher/VoucherComposer.tsx:554",
+            "components/voucher/VoucherComposer.tsx:568",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
             "src/features/statements/domain/quickItemModel.ts:23",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:98",
             "src/shared/quoteTotals.ts:62",
             "src/shared/statementLines.ts:120",
@@ -49129,8 +49129,8 @@
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:450",
             "components/VoucherTemplateManager.tsx:457",
+            "components/voucher/VoucherComposer.tsx:1338",
             "components/voucher/VoucherComposer.tsx:1342",
-            "components/voucher/VoucherComposer.tsx:1346",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:28",
             "src/shared/loanLedger.ts:48"
@@ -49146,8 +49146,8 @@
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:450",
             "components/VoucherTemplateManager.tsx:456",
+            "components/voucher/VoucherComposer.tsx:1338",
             "components/voucher/VoucherComposer.tsx:1342",
-            "components/voucher/VoucherComposer.tsx:1346",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:28",
             "src/shared/loanLedger.ts:48"
@@ -49170,7 +49170,7 @@
             "components/LoanManager.tsx:230",
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:457",
-            "components/voucher/VoucherComposer.tsx:1346"
+            "components/voucher/VoucherComposer.tsx:1342"
           ]
         },
         {
@@ -49185,7 +49185,7 @@
             "components/LoanManager.tsx:193",
             "components/LoanManager.tsx:207",
             "components/VoucherTemplateManager.tsx:457",
-            "components/voucher/VoucherComposer.tsx:1346"
+            "components/voucher/VoucherComposer.tsx:1342"
           ]
         },
         {
@@ -49197,7 +49197,7 @@
             "components/CashLedger.tsx:876",
             "components/LoanManager.tsx:157",
             "components/LoanManager.tsx:166",
-            "components/voucher/VoucherComposer.tsx:1342"
+            "components/voucher/VoucherComposer.tsx:1338"
           ]
         },
         {
@@ -49213,7 +49213,7 @@
             "components/LoanManager.tsx:192",
             "components/LoanManager.tsx:207",
             "components/VoucherTemplateManager.tsx:450",
-            "components/voucher/VoucherComposer.tsx:1342",
+            "components/voucher/VoucherComposer.tsx:1338",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:33",
             "src/shared/loanLedger.ts:48"
@@ -80027,8 +80027,7 @@
           "type": "TemplateStatementType",
           "declaration": "src/shared/cashTemplates.tsx:57",
           "references": [
-            "components/voucher/VoucherComposer.tsx:279",
-            "components/voucher/VoucherComposer.tsx:969",
+            "components/voucher/VoucherComposer.tsx:274",
             "src/shared/cashTemplates.tsx:296"
           ]
         },
@@ -80042,17 +80041,16 @@
             "components/CashLedger.tsx:499",
             "components/CashLedger.tsx:700",
             "components/CashLedger.tsx:961",
-            "components/voucher/VoucherComposer.tsx:1549",
-            "components/voucher/VoucherComposer.tsx:280",
-            "components/voucher/VoucherComposer.tsx:360",
-            "components/voucher/VoucherComposer.tsx:809",
-            "components/voucher/VoucherComposer.tsx:969",
+            "components/voucher/VoucherComposer.tsx:1545",
+            "components/voucher/VoucherComposer.tsx:289",
+            "components/voucher/VoucherComposer.tsx:367",
+            "components/voucher/VoucherComposer.tsx:824",
             "src/shared/cashTemplates.tsx:321",
             "src/shared/cashTemplates.tsx:323",
             "src/shared/cashTemplates.tsx:332",
-            "src/shared/cashTemplates.tsx:437",
             "src/shared/cashTemplates.tsx:440",
-            "src/shared/cashTemplates.tsx:475"
+            "src/shared/cashTemplates.tsx:443",
+            "src/shared/cashTemplates.tsx:478"
           ]
         },
         {
@@ -80063,12 +80061,12 @@
           "references": [
             "components/CashLedger.tsx:707",
             "components/CashLedger.tsx:720",
-            "components/voucher/VoucherComposer.tsx:1501",
-            "components/voucher/VoucherComposer.tsx:816",
+            "components/voucher/VoucherComposer.tsx:1497",
+            "components/voucher/VoucherComposer.tsx:831",
             "src/shared/cashTemplates.tsx:298",
             "src/shared/cashTemplates.tsx:306",
-            "src/shared/cashTemplates.tsx:363",
-            "src/shared/cashTemplates.tsx:451"
+            "src/shared/cashTemplates.tsx:365",
+            "src/shared/cashTemplates.tsx:454"
           ]
         },
         {
@@ -80080,16 +80078,17 @@
             "components/CashLedger.tsx:500",
             "components/CashLedger.tsx:717",
             "components/CashLedger.tsx:720",
-            "components/voucher/VoucherComposer.tsx:279",
-            "components/voucher/VoucherComposer.tsx:282",
-            "components/voucher/VoucherComposer.tsx:297",
+            "components/voucher/VoucherComposer.tsx:272",
+            "components/voucher/VoucherComposer.tsx:273",
+            "components/voucher/VoucherComposer.tsx:274",
+            "components/voucher/VoucherComposer.tsx:304",
             "src/shared/cashTemplates.tsx:294",
-            "src/shared/cashTemplates.tsx:362",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:446",
-            "src/shared/cashTemplates.tsx:447",
-            "src/shared/cashTemplates.tsx:523",
-            "src/shared/cashTemplates.tsx:568"
+            "src/shared/cashTemplates.tsx:364",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:449",
+            "src/shared/cashTemplates.tsx:450",
+            "src/shared/cashTemplates.tsx:526",
+            "src/shared/cashTemplates.tsx:571"
           ]
         },
         {
@@ -80100,13 +80099,13 @@
           "references": [
             "components/CashLedger.tsx:501",
             "components/CashLedger.tsx:510",
-            "components/voucher/VoucherComposer.tsx:283",
-            "components/voucher/VoucherComposer.tsx:299",
+            "components/voucher/VoucherComposer.tsx:290",
             "components/voucher/VoucherComposer.tsx:306",
+            "components/voucher/VoucherComposer.tsx:313",
             "src/shared/cashTemplates.tsx:321",
             "src/shared/cashTemplates.tsx:323",
-            "src/shared/cashTemplates.tsx:452",
-            "src/shared/cashTemplates.tsx:498"
+            "src/shared/cashTemplates.tsx:455",
+            "src/shared/cashTemplates.tsx:501"
           ]
         },
         {
@@ -80117,22 +80116,22 @@
           "references": [
             "components/CashLedger.tsx:502",
             "components/CashLedger.tsx:708",
-            "components/voucher/VoucherComposer.tsx:285",
-            "components/voucher/VoucherComposer.tsx:817",
+            "components/voucher/VoucherComposer.tsx:292",
+            "components/voucher/VoucherComposer.tsx:832",
             "src/shared/cashTemplates.tsx:278",
             "src/shared/cashTemplates.tsx:279",
             "src/shared/cashTemplates.tsx:280",
             "src/shared/cashTemplates.tsx:307",
             "src/shared/cashTemplates.tsx:323",
-            "src/shared/cashTemplates.tsx:364",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:456",
-            "src/shared/cashTemplates.tsx:530",
-            "src/shared/cashTemplates.tsx:532",
+            "src/shared/cashTemplates.tsx:366",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:459",
             "src/shared/cashTemplates.tsx:533",
-            "src/shared/cashTemplates.tsx:563",
-            "src/shared/cashTemplates.tsx:567"
+            "src/shared/cashTemplates.tsx:535",
+            "src/shared/cashTemplates.tsx:536",
+            "src/shared/cashTemplates.tsx:566",
+            "src/shared/cashTemplates.tsx:570"
           ]
         },
         {
@@ -80142,7 +80141,7 @@
           "declaration": "src/shared/cashTemplates.tsx:66",
           "references": [
             "components/CashLedger.tsx:504",
-            "components/voucher/VoucherComposer.tsx:287",
+            "components/voucher/VoucherComposer.tsx:294",
             "src/shared/cashTemplates.tsx:306"
           ]
         },
@@ -80160,10 +80159,10 @@
           "declaration": "src/shared/cashTemplates.tsx:70",
           "references": [
             "components/CashLedger.tsx:708",
-            "components/voucher/VoucherComposer.tsx:817",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:456"
+            "components/voucher/VoucherComposer.tsx:832",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:459"
           ]
         },
         {
@@ -80173,14 +80172,14 @@
           "declaration": "src/shared/cashTemplates.tsx:72",
           "references": [
             "components/CashLedger.tsx:506",
-            "components/voucher/VoucherComposer.tsx:290",
-            "components/voucher/VoucherComposer.tsx:320",
-            "components/voucher/VoucherComposer.tsx:321",
+            "components/voucher/VoucherComposer.tsx:297",
+            "components/voucher/VoucherComposer.tsx:327",
+            "components/voucher/VoucherComposer.tsx:328",
             "src/shared/cashTemplates.tsx:300",
             "src/shared/cashTemplates.tsx:308",
-            "src/shared/cashTemplates.tsx:463",
-            "src/shared/cashTemplates.tsx:464",
-            "src/shared/cashTemplates.tsx:496"
+            "src/shared/cashTemplates.tsx:466",
+            "src/shared/cashTemplates.tsx:467",
+            "src/shared/cashTemplates.tsx:499"
           ]
         },
         {
@@ -80190,8 +80189,8 @@
           "declaration": "src/shared/cashTemplates.tsx:73",
           "references": [
             "components/CashLedger.tsx:505",
-            "components/voucher/VoucherComposer.tsx:288",
-            "src/shared/cashTemplates.tsx:530"
+            "components/voucher/VoucherComposer.tsx:295",
+            "src/shared/cashTemplates.tsx:533"
           ]
         },
         {
@@ -80200,8 +80199,8 @@
           "type": "boolean",
           "declaration": "src/shared/cashTemplates.tsx:75",
           "references": [
-            "components/voucher/VoucherComposer.tsx:297",
-            "src/shared/cashTemplates.tsx:531"
+            "components/voucher/VoucherComposer.tsx:304",
+            "src/shared/cashTemplates.tsx:534"
           ]
         },
         {
@@ -80210,9 +80209,9 @@
           "type": "string",
           "declaration": "src/shared/cashTemplates.tsx:76",
           "references": [
-            "src/shared/cashTemplates.tsx:363",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:457"
+            "src/shared/cashTemplates.tsx:365",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:460"
           ]
         },
         {
@@ -80221,7 +80220,7 @@
           "type": "string",
           "declaration": "src/shared/cashTemplates.tsx:78",
           "references": [
-            "components/voucher/VoucherComposer.tsx:1501"
+            "components/voucher/VoucherComposer.tsx:1497"
           ]
         },
         {
@@ -80230,10 +80229,10 @@
           "type": "string",
           "declaration": "src/shared/cashTemplates.tsx:80",
           "references": [
-            "components/voucher/VoucherComposer.tsx:1509",
-            "src/shared/cashTemplates.tsx:355",
-            "src/shared/cashTemplates.tsx:361",
-            "src/shared/cashTemplates.tsx:432"
+            "components/voucher/VoucherComposer.tsx:1505",
+            "src/shared/cashTemplates.tsx:357",
+            "src/shared/cashTemplates.tsx:363",
+            "src/shared/cashTemplates.tsx:435"
           ]
         },
         {
@@ -80242,9 +80241,9 @@
           "type": "boolean",
           "declaration": "src/shared/cashTemplates.tsx:82",
           "references": [
-            "src/shared/cashTemplates.tsx:362",
-            "src/shared/cashTemplates.tsx:428",
-            "src/shared/cashTemplates.tsx:431"
+            "src/shared/cashTemplates.tsx:364",
+            "src/shared/cashTemplates.tsx:431",
+            "src/shared/cashTemplates.tsx:434"
           ]
         },
         {
@@ -80254,12 +80253,12 @@
           "declaration": "src/shared/cashTemplates.tsx:84",
           "references": [
             "components/CashLedger.tsx:504",
-            "components/voucher/VoucherComposer.tsx:287",
+            "components/voucher/VoucherComposer.tsx:294",
             "src/shared/cashTemplates.tsx:298",
             "src/shared/cashTemplates.tsx:306",
-            "src/shared/cashTemplates.tsx:532",
-            "src/shared/cashTemplates.tsx:563",
-            "src/shared/cashTemplates.tsx:567"
+            "src/shared/cashTemplates.tsx:535",
+            "src/shared/cashTemplates.tsx:566",
+            "src/shared/cashTemplates.tsx:570"
           ]
         },
         {
@@ -80269,8 +80268,8 @@
           "declaration": "src/shared/cashTemplates.tsx:86",
           "references": [
             "components/CashLedger.tsx:520",
-            "components/voucher/VoucherComposer.tsx:316",
-            "src/shared/cashTemplates.tsx:514"
+            "components/voucher/VoucherComposer.tsx:323",
+            "src/shared/cashTemplates.tsx:517"
           ]
         },
         {
@@ -80279,7 +80278,7 @@
           "type": "string",
           "declaration": "src/shared/cashTemplates.tsx:87",
           "references": [
-            "components/voucher/VoucherComposer.tsx:299"
+            "components/voucher/VoucherComposer.tsx:306"
           ]
         },
         {
@@ -80304,10 +80303,10 @@
           "references": [
             "src/shared/cashTemplates.tsx:296",
             "src/shared/cashTemplates.tsx:297",
-            "src/shared/cashTemplates.tsx:547",
-            "src/shared/cashTemplates.tsx:555",
-            "src/shared/cashTemplates.tsx:556",
-            "src/shared/cashTemplates.tsx:558"
+            "src/shared/cashTemplates.tsx:550",
+            "src/shared/cashTemplates.tsx:558",
+            "src/shared/cashTemplates.tsx:559",
+            "src/shared/cashTemplates.tsx:561"
           ]
         },
         {
@@ -80316,9 +80315,9 @@
           "type": "string[]",
           "declaration": "src/shared/cashTemplates.tsx:101",
           "references": [
-            "src/shared/cashTemplates.tsx:438",
             "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:460"
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:463"
           ]
         },
         {
@@ -80493,13 +80492,13 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:185",
             "components/voucher/VoucherComposer.tsx:186",
-            "components/voucher/VoucherComposer.tsx:625",
-            "components/voucher/VoucherComposer.tsx:626",
-            "components/voucher/VoucherComposer.tsx:640",
-            "components/voucher/VoucherComposer.tsx:678",
-            "components/voucher/VoucherComposer.tsx:679",
-            "components/voucher/VoucherComposer.tsx:869",
-            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:632",
+            "components/voucher/VoucherComposer.tsx:633",
+            "components/voucher/VoucherComposer.tsx:647",
+            "components/voucher/VoucherComposer.tsx:685",
+            "components/voucher/VoucherComposer.tsx:686",
+            "components/voucher/VoucherComposer.tsx:884",
+            "components/voucher/VoucherComposer.tsx:889",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -80518,10 +80517,10 @@
           "type": "string",
           "declaration": "src/shared/services/interCompanyTransferService.ts:6",
           "references": [
-            "components/voucher/VoucherComposer.tsx:678",
-            "components/voucher/VoucherComposer.tsx:679",
-            "components/voucher/VoucherComposer.tsx:869",
-            "components/voucher/VoucherComposer.tsx:874"
+            "components/voucher/VoucherComposer.tsx:685",
+            "components/voucher/VoucherComposer.tsx:686",
+            "components/voucher/VoucherComposer.tsx:884",
+            "components/voucher/VoucherComposer.tsx:889"
           ]
         },
         {
@@ -80530,7 +80529,7 @@
           "type": "number",
           "declaration": "src/shared/services/interCompanyTransferService.ts:6",
           "references": [
-            "components/voucher/VoucherComposer.tsx:641",
+            "components/voucher/VoucherComposer.tsx:648",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -80540,7 +80539,7 @@
           "type": "number",
           "declaration": "src/shared/services/interCompanyTransferService.ts:6",
           "references": [
-            "components/voucher/VoucherComposer.tsx:629",
+            "components/voucher/VoucherComposer.tsx:636",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         }
@@ -80560,12 +80559,12 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:185",
             "components/voucher/VoucherComposer.tsx:188",
-            "components/voucher/VoucherComposer.tsx:624",
-            "components/voucher/VoucherComposer.tsx:625",
-            "components/voucher/VoucherComposer.tsx:635",
-            "components/voucher/VoucherComposer.tsx:748",
-            "components/voucher/VoucherComposer.tsx:859",
-            "components/voucher/VoucherComposer.tsx:869",
+            "components/voucher/VoucherComposer.tsx:631",
+            "components/voucher/VoucherComposer.tsx:632",
+            "components/voucher/VoucherComposer.tsx:642",
+            "components/voucher/VoucherComposer.tsx:755",
+            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:884",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -80577,12 +80576,12 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:186",
             "components/voucher/VoucherComposer.tsx:187",
-            "components/voucher/VoucherComposer.tsx:624",
-            "components/voucher/VoucherComposer.tsx:626",
-            "components/voucher/VoucherComposer.tsx:635",
-            "components/voucher/VoucherComposer.tsx:748",
-            "components/voucher/VoucherComposer.tsx:864",
-            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:631",
+            "components/voucher/VoucherComposer.tsx:633",
+            "components/voucher/VoucherComposer.tsx:642",
+            "components/voucher/VoucherComposer.tsx:755",
+            "components/voucher/VoucherComposer.tsx:879",
+            "components/voucher/VoucherComposer.tsx:889",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -80592,7 +80591,7 @@
           "type": "string",
           "declaration": "src/shared/services/interCompanyTransferService.ts:7",
           "references": [
-            "components/voucher/VoucherComposer.tsx:641",
+            "components/voucher/VoucherComposer.tsx:648",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         }
@@ -80857,8 +80856,8 @@
           "type": "number",
           "declaration": "src/shared/interCompany.ts:56",
           "references": [
-            "components/voucher/VoucherComposer.tsx:897",
-            "components/voucher/VoucherComposer.tsx:900",
+            "components/voucher/VoucherComposer.tsx:912",
+            "components/voucher/VoucherComposer.tsx:915",
             "src/shared/interCompany.ts:84",
             "src/shared/interCompany.ts:88"
           ]
@@ -80869,8 +80868,8 @@
           "type": "number",
           "declaration": "src/shared/interCompany.ts:58",
           "references": [
-            "components/voucher/VoucherComposer.tsx:903",
-            "components/voucher/VoucherComposer.tsx:907",
+            "components/voucher/VoucherComposer.tsx:918",
+            "components/voucher/VoucherComposer.tsx:922",
             "src/shared/interCompany.ts:85",
             "src/shared/interCompany.ts:89"
           ]
@@ -80901,7 +80900,7 @@
           "type": "CashEntry",
           "declaration": "src/shared/interCompany.ts:69",
           "references": [
-            "components/voucher/VoucherComposer.tsx:682"
+            "components/voucher/VoucherComposer.tsx:689"
           ]
         },
         {
@@ -80910,7 +80909,7 @@
           "type": "CashEntry",
           "declaration": "src/shared/interCompany.ts:70",
           "references": [
-            "components/voucher/VoucherComposer.tsx:682"
+            "components/voucher/VoucherComposer.tsx:689"
           ]
         },
         {
@@ -99671,14 +99670,14 @@
             "components/voucher/CashEntryModal.tsx:263",
             "components/voucher/CashEntryModal.tsx:264",
             "components/voucher/CashEntryModal.tsx:268",
+            "components/voucher/VoucherComposer.tsx:1071",
+            "components/voucher/VoucherComposer.tsx:1074",
             "components/voucher/VoucherComposer.tsx:1075",
-            "components/voucher/VoucherComposer.tsx:1078",
-            "components/voucher/VoucherComposer.tsx:1079",
-            "components/voucher/VoucherComposer.tsx:1322",
-            "components/voucher/VoucherComposer.tsx:1323",
-            "components/voucher/VoucherComposer.tsx:367",
-            "components/voucher/VoucherComposer.tsx:944",
-            "components/voucher/VoucherComposer.tsx:945",
+            "components/voucher/VoucherComposer.tsx:1318",
+            "components/voucher/VoucherComposer.tsx:1319",
+            "components/voucher/VoucherComposer.tsx:374",
+            "components/voucher/VoucherComposer.tsx:959",
+            "components/voucher/VoucherComposer.tsx:960",
             "src/features/admin/AdminApp.tsx:1197",
             "src/features/admin/AdminApp.tsx:1252",
             "src/features/admin/AdminApp.tsx:1260",
@@ -99862,21 +99861,21 @@
             "components/VoucherTemplateManager.tsx:88",
             "components/voucher/CashEntryModal.tsx:268",
             "components/voucher/CashEntryModal.tsx:270",
-            "components/voucher/VoucherComposer.tsx:1056",
-            "components/voucher/VoucherComposer.tsx:1066",
-            "components/voucher/VoucherComposer.tsx:1081",
-            "components/voucher/VoucherComposer.tsx:1119",
-            "components/voucher/VoucherComposer.tsx:1129",
-            "components/voucher/VoucherComposer.tsx:1314",
-            "components/voucher/VoucherComposer.tsx:1325",
-            "components/voucher/VoucherComposer.tsx:1415",
-            "components/voucher/VoucherComposer.tsx:1526",
-            "components/voucher/VoucherComposer.tsx:379",
-            "components/voucher/VoucherComposer.tsx:407",
-            "components/voucher/VoucherComposer.tsx:593",
-            "components/voucher/VoucherComposer.tsx:605",
-            "components/voucher/VoucherComposer.tsx:936",
-            "components/voucher/VoucherComposer.tsx:947",
+            "components/voucher/VoucherComposer.tsx:1052",
+            "components/voucher/VoucherComposer.tsx:1062",
+            "components/voucher/VoucherComposer.tsx:1077",
+            "components/voucher/VoucherComposer.tsx:1115",
+            "components/voucher/VoucherComposer.tsx:1125",
+            "components/voucher/VoucherComposer.tsx:1310",
+            "components/voucher/VoucherComposer.tsx:1321",
+            "components/voucher/VoucherComposer.tsx:1411",
+            "components/voucher/VoucherComposer.tsx:1522",
+            "components/voucher/VoucherComposer.tsx:386",
+            "components/voucher/VoucherComposer.tsx:414",
+            "components/voucher/VoucherComposer.tsx:600",
+            "components/voucher/VoucherComposer.tsx:612",
+            "components/voucher/VoucherComposer.tsx:951",
+            "components/voucher/VoucherComposer.tsx:962",
             "src/features/admin/AdminApp.tsx:1197",
             "src/features/admin/AdminApp.tsx:1260",
             "src/features/admin/AdminApp.tsx:1517",
@@ -109245,7 +109244,7 @@
             "components/TradeStatement.tsx:2272",
             "components/TradeStatement.tsx:2294",
             "components/TradeStatement.tsx:2761",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/AdminApp.tsx:1871",
             "src/features/admin/AdminApp.tsx:1874",
             "src/features/admin/cashLedger.ts:127",
@@ -109398,7 +109397,7 @@
             "components/TradeStatement.tsx:2272",
             "components/TradeStatement.tsx:2294",
             "components/TradeStatement.tsx:2767",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/purchaseReturnRequest.ts:24",
             "src/features/admin/purchaseReturnRequest.ts:46",
             "src/features/admin/purchaseReturnRequest.ts:62",
@@ -109448,8 +109447,8 @@
             "components/PartnerLedger.tsx:152",
             "components/TradeStatement.tsx:1226",
             "components/TradeStatement.tsx:1720",
-            "components/voucher/VoucherComposer.tsx:693",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:700",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:128",
             "src/features/admin/cashLedger.ts:491",
             "src/features/admin/dataIntegrityAudit.ts:352",
@@ -109476,7 +109475,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:491",
             "src/features/admin/dataIntegrityAudit.ts:350",
             "src/features/admin/dataIntegrityAudit.ts:351",
@@ -110103,8 +110102,8 @@
             "components/TradeStatement.tsx:2733",
             "components/voucher/CashEntryModal.tsx:102",
             "components/voucher/CashEntryModal.tsx:144",
-            "components/voucher/VoucherComposer.tsx:417",
-            "components/voucher/VoucherComposer.tsx:774",
+            "components/voucher/VoucherComposer.tsx:424",
+            "components/voucher/VoucherComposer.tsx:781",
             "src/features/admin/AdminApp.tsx:1889",
             "src/features/admin/cashLedger.ts:126",
             "src/features/admin/cashLedger.ts:277",
@@ -110285,7 +110284,7 @@
             "components/TradeStatement.tsx:661",
             "components/voucher/CashEntryModal.tsx:109",
             "components/voucher/CashEntryModal.tsx:117",
-            "components/voucher/VoucherComposer.tsx:416",
+            "components/voucher/VoucherComposer.tsx:423",
             "src/features/admin/AdminApp.tsx:1889",
             "src/features/admin/cashLedger.ts:125",
             "src/features/admin/cashLedger.ts:442",
@@ -110354,7 +110353,7 @@
             "components/TradeStatement.tsx:2729",
             "components/TradeStatement.tsx:664",
             "components/voucher/CashEntryModal.tsx:144",
-            "components/voucher/VoucherComposer.tsx:701",
+            "components/voucher/VoucherComposer.tsx:708",
             "src/features/admin/AdminApp.tsx:1887",
             "src/features/admin/AdminApp.tsx:1889",
             "src/features/admin/cashLedger.ts:127",
@@ -110530,7 +110529,7 @@
             "components/TradeStatement.tsx:705",
             "components/voucher/CashEntryModal.tsx:108",
             "components/voucher/CashEntryModal.tsx:150",
-            "components/voucher/VoucherComposer.tsx:774",
+            "components/voucher/VoucherComposer.tsx:781",
             "src/features/admin/cashLedger.ts:443",
             "src/features/admin/cashLedger.ts:516",
             "src/features/admin/cashLedger.ts:66",
@@ -110597,8 +110596,8 @@
             "components/TradeStatement.tsx:2294",
             "components/TradeStatement.tsx:2758",
             "components/TradeStatement.tsx:3018",
-            "components/voucher/VoucherComposer.tsx:693",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:700",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/AdminApp.tsx:1865",
             "src/features/admin/cashLedger.ts:127",
             "src/features/admin/cashLedger.ts:128",
@@ -110669,7 +110668,7 @@
             "components/TradeStatement.tsx:1212",
             "components/TradeStatement.tsx:1719",
             "components/TradeStatement.tsx:1937",
-            "components/voucher/VoucherComposer.tsx:775",
+            "components/voucher/VoucherComposer.tsx:782",
             "src/features/statements/domain/statementHistoryRowView.ts:59",
             "src/features/statements/infrastructure/voucherIssuePending.ts:13"
           ]
@@ -113815,9 +113814,9 @@
             "components/ProfitAnalysis.tsx:1966",
             "components/VoucherTemplateManager.tsx:354",
             "components/voucher/CashEntryModal.tsx:281",
-            "components/voucher/VoucherComposer.tsx:1023",
-            "components/voucher/VoucherComposer.tsx:1166",
-            "components/voucher/VoucherComposer.tsx:1336",
+            "components/voucher/VoucherComposer.tsx:1019",
+            "components/voucher/VoucherComposer.tsx:1162",
+            "components/voucher/VoucherComposer.tsx:1332",
             "src/features/statements/ui/StatementManualItemRows.tsx:113",
             "src/features/statements/ui/StatementOrderItemRows.tsx:54",
             "src/shared/services/firebaseService.ts:139",
@@ -113899,21 +113898,21 @@
             "components/voucher/CashEntryModal.tsx:77",
             "components/voucher/RecurringModal.tsx:110",
             "components/voucher/VoucherComposer.tsx:101",
-            "components/voucher/VoucherComposer.tsx:1023",
+            "components/voucher/VoucherComposer.tsx:1019",
             "components/voucher/VoucherComposer.tsx:104",
-            "components/voucher/VoucherComposer.tsx:1166",
+            "components/voucher/VoucherComposer.tsx:1162",
             "components/voucher/VoucherComposer.tsx:128",
-            "components/voucher/VoucherComposer.tsx:1284",
-            "components/voucher/VoucherComposer.tsx:1336",
-            "components/voucher/VoucherComposer.tsx:394",
-            "components/voucher/VoucherComposer.tsx:395",
-            "components/voucher/VoucherComposer.tsx:396",
+            "components/voucher/VoucherComposer.tsx:1280",
+            "components/voucher/VoucherComposer.tsx:1332",
+            "components/voucher/VoucherComposer.tsx:401",
+            "components/voucher/VoucherComposer.tsx:402",
             "components/voucher/VoucherComposer.tsx:403",
-            "components/voucher/VoucherComposer.tsx:495",
-            "components/voucher/VoucherComposer.tsx:519",
-            "components/voucher/VoucherComposer.tsx:520",
-            "components/voucher/VoucherComposer.tsx:692",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:410",
+            "components/voucher/VoucherComposer.tsx:502",
+            "components/voucher/VoucherComposer.tsx:526",
+            "components/voucher/VoucherComposer.tsx:527",
+            "components/voucher/VoucherComposer.tsx:699",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:191",
             "src/features/admin/financials.ts:142",
             "src/features/admin/financials.ts:161",
@@ -113931,8 +113930,8 @@
             "src/features/statements/ui/StatementOrderItemRows.tsx:54",
             "src/shared/buildJournals.ts:74",
             "src/shared/cashTemplates.tsx:244",
-            "src/shared/cashTemplates.tsx:357",
-            "src/shared/cashTemplates.tsx:424",
+            "src/shared/cashTemplates.tsx:359",
+            "src/shared/cashTemplates.tsx:427",
             "src/shared/journal.ts:73",
             "src/shared/journal.ts:93",
             "src/shared/services/firebaseService.ts:137",
@@ -113985,27 +113984,27 @@
             "components/voucher/CashEntryModal.tsx:281",
             "components/voucher/RecurringModal.tsx:116",
             "components/voucher/VoucherComposer.tsx:101",
-            "components/voucher/VoucherComposer.tsx:1023",
-            "components/voucher/VoucherComposer.tsx:1166",
+            "components/voucher/VoucherComposer.tsx:1019",
+            "components/voucher/VoucherComposer.tsx:1162",
             "components/voucher/VoucherComposer.tsx:128",
-            "components/voucher/VoucherComposer.tsx:1284",
-            "components/voucher/VoucherComposer.tsx:1336",
-            "components/voucher/VoucherComposer.tsx:393",
-            "components/voucher/VoucherComposer.tsx:394",
-            "components/voucher/VoucherComposer.tsx:395",
-            "components/voucher/VoucherComposer.tsx:396",
-            "components/voucher/VoucherComposer.tsx:495",
-            "components/voucher/VoucherComposer.tsx:519",
-            "components/voucher/VoucherComposer.tsx:520",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:1280",
+            "components/voucher/VoucherComposer.tsx:1332",
+            "components/voucher/VoucherComposer.tsx:400",
+            "components/voucher/VoucherComposer.tsx:401",
+            "components/voucher/VoucherComposer.tsx:402",
+            "components/voucher/VoucherComposer.tsx:403",
+            "components/voucher/VoucherComposer.tsx:502",
+            "components/voucher/VoucherComposer.tsx:526",
+            "components/voucher/VoucherComposer.tsx:527",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:200",
             "src/features/admin/financials.ts:47",
             "src/features/admin/profitAccountProjection.ts:36",
             "src/features/admin/recurringVoucherIssue.ts:27",
             "src/features/statements/ui/StatementManualItemRows.tsx:113",
             "src/features/statements/ui/StatementOrderItemRows.tsx:54",
-            "src/shared/cashTemplates.tsx:357",
-            "src/shared/cashTemplates.tsx:424",
+            "src/shared/cashTemplates.tsx:359",
+            "src/shared/cashTemplates.tsx:427",
             "src/shared/journal.ts:81",
             "src/shared/services/firebaseService.ts:138"
           ]
@@ -114024,7 +114023,7 @@
             "components/ProfitAnalysis.tsx:1929",
             "components/ProfitAnalysis.tsx:1958",
             "components/TradeStatement.tsx:886",
-            "components/voucher/VoucherComposer.tsx:692",
+            "components/voucher/VoucherComposer.tsx:699",
             "src/features/admin/financials.ts:33",
             "src/features/admin/financials.ts:35",
             "src/features/admin/financials.ts:36",
@@ -114045,8 +114044,8 @@
             "components/FinancialReports.tsx:139",
             "components/FinancialReports.tsx:235",
             "components/TradeStatement.tsx:601",
-            "components/voucher/VoucherComposer.tsx:393",
-            "components/voucher/VoucherComposer.tsx:403",
+            "components/voucher/VoucherComposer.tsx:400",
+            "components/voucher/VoucherComposer.tsx:410",
             "src/features/admin/financials.ts:129",
             "src/features/admin/financials.ts:130",
             "src/features/admin/financials.ts:149",
@@ -114134,7 +114133,7 @@
             "components/PartnerLedger.tsx:158",
             "components/TradeStatement.tsx:1076",
             "components/TradeStatement.tsx:2113",
-            "components/voucher/VoucherComposer.tsx:1471",
+            "components/voucher/VoucherComposer.tsx:1467",
             "src/features/admin/cashLedger.ts:154",
             "src/features/admin/cashLedger.ts:155",
             "src/features/admin/cashLedger.ts:164",
@@ -114182,8 +114181,8 @@
             "components/TradeStatement.tsx:1077",
             "components/TradeStatement.tsx:2114",
             "components/TradeStatement.tsx:2115",
+            "components/voucher/VoucherComposer.tsx:1465",
             "components/voucher/VoucherComposer.tsx:1469",
-            "components/voucher/VoucherComposer.tsx:1473",
             "src/features/admin/cashLedger.ts:155",
             "src/features/admin/cashLedger.ts:167",
             "src/features/admin/cashLedger.ts:273",
@@ -114228,7 +114227,7 @@
             "components/TradeStatement.tsx:1077",
             "components/TradeStatement.tsx:2114",
             "components/TradeStatement.tsx:2115",
-            "components/voucher/VoucherComposer.tsx:1474",
+            "components/voucher/VoucherComposer.tsx:1470",
             "src/features/admin/cashLedger.ts:155",
             "src/features/admin/cashLedger.ts:167",
             "src/features/admin/cashLedger.ts:273",
@@ -114362,7 +114361,7 @@
             "components/PartnerLedger.tsx:158",
             "components/TradeStatement.tsx:1075",
             "components/TradeStatement.tsx:2112",
-            "components/voucher/VoucherComposer.tsx:1467",
+            "components/voucher/VoucherComposer.tsx:1463",
             "src/features/admin/cashLedger.ts:144",
             "src/features/admin/cashLedger.ts:154",
             "src/features/admin/cashLedger.ts:155",
@@ -114521,7 +114520,7 @@
             "components/TradeStatement.tsx:953",
             "components/TradeStatement.tsx:960",
             "components/TradeStatement.tsx:988",
-            "components/voucher/VoucherComposer.tsx:692",
+            "components/voucher/VoucherComposer.tsx:699",
             "src/features/admin/financials.ts:28",
             "src/features/admin/financials.ts:29",
             "src/features/admin/financials.ts:79",
@@ -114559,7 +114558,7 @@
           "references": [
             "components/ProfitAnalysis.tsx:1863",
             "components/ProfitAnalysis.tsx:1866",
-            "components/voucher/VoucherComposer.tsx:692",
+            "components/voucher/VoucherComposer.tsx:699",
             "src/features/admin/financials.ts:304",
             "src/features/admin/financials.ts:305",
             "src/features/admin/financials.ts:79"
@@ -114643,14 +114642,14 @@
             "components/TradeStatement.tsx:659",
             "components/TradeStatement.tsx:673",
             "components/TradeStatement.tsx:704",
-            "components/voucher/VoucherComposer.tsx:1188",
+            "components/voucher/VoucherComposer.tsx:1184",
             "components/voucher/VoucherComposer.tsx:187",
             "components/voucher/VoucherComposer.tsx:188",
-            "components/voucher/VoucherComposer.tsx:635",
-            "components/voucher/VoucherComposer.tsx:748",
-            "components/voucher/VoucherComposer.tsx:830",
-            "components/voucher/VoucherComposer.tsx:859",
-            "components/voucher/VoucherComposer.tsx:864",
+            "components/voucher/VoucherComposer.tsx:642",
+            "components/voucher/VoucherComposer.tsx:755",
+            "components/voucher/VoucherComposer.tsx:845",
+            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:879",
             "src/shared/defaultCashAccount.ts:6",
             "src/shared/services/confirmedCashBalance.ts:8",
             "src/shared/services/confirmedCashBalance.ts:9",
@@ -114688,10 +114687,10 @@
             "components/PartnerLedger.tsx:607",
             "components/TradeStatement.tsx:2290",
             "components/TradeStatement.tsx:2306",
-            "components/voucher/VoucherComposer.tsx:1188",
-            "components/voucher/VoucherComposer.tsx:830",
-            "components/voucher/VoucherComposer.tsx:859",
-            "components/voucher/VoucherComposer.tsx:864"
+            "components/voucher/VoucherComposer.tsx:1184",
+            "components/voucher/VoucherComposer.tsx:845",
+            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:879"
           ]
         },
         {
@@ -114874,8 +114873,8 @@
             "components/voucher/CashEntryModal.tsx:315",
             "components/voucher/CashEntryModal.tsx:439",
             "components/voucher/CashEntryModal.tsx:452",
-            "components/voucher/VoucherComposer.tsx:1457",
-            "components/voucher/VoucherComposer.tsx:476",
+            "components/voucher/VoucherComposer.tsx:1453",
+            "components/voucher/VoucherComposer.tsx:483",
             "src/features/admin/AdminApp.tsx:382",
             "src/features/admin/AdminApp.tsx:4294",
             "src/features/admin/AdminApp.tsx:4542",
@@ -115040,7 +115039,7 @@
             "components/TradeStatement.tsx:1917",
             "components/voucher/CashEntryModal.tsx:239",
             "components/voucher/CashEntryModal.tsx:261",
-            "components/voucher/VoucherComposer.tsx:774",
+            "components/voucher/VoucherComposer.tsx:781",
             "src/features/admin/cashLedger.ts:131",
             "src/features/admin/cashLedger.ts:277",
             "src/features/admin/cashLedger.ts:691",
@@ -115117,7 +115116,7 @@
             "components/voucher/CashEntryModal.tsx:240",
             "components/voucher/CashEntryModal.tsx:274",
             "components/voucher/CashEntryModal.tsx:286",
-            "components/voucher/VoucherComposer.tsx:1289",
+            "components/voucher/VoucherComposer.tsx:1285",
             "components/voucher/VoucherComposer.tsx:133",
             "src/features/admin/AdminApp.tsx:2205",
             "src/features/admin/cashLedger.ts:132",
@@ -115169,10 +115168,10 @@
             "components/TradeStatement.tsx:530",
             "components/TradeStatement.tsx:705",
             "components/voucher/CashEntryModal.tsx:239",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:774",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:781",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:693",
             "src/features/admin/cashLedger.ts:97",
             "src/features/admin/voucherMerge.ts:72",
@@ -115291,9 +115290,9 @@
             "components/TradeStatement.tsx:754",
             "components/TradeStatement.tsx:759",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:688",
             "src/features/admin/voucherMerge.ts:71",
@@ -115325,9 +115324,9 @@
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
             "components/voucher/CashEntryModal.tsx:249",
-            "components/voucher/VoucherComposer.tsx:1286",
+            "components/voucher/VoucherComposer.tsx:1282",
             "components/voucher/VoucherComposer.tsx:130",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:687",
             "src/features/statements/domain/statementHistoryRowView.ts:35",
@@ -115374,8 +115373,8 @@
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:775",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:782",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:132",
             "src/features/admin/cashLedger.ts:286",
             "src/features/statements/infrastructure/voucherIssuePending.ts:13",
@@ -115402,7 +115401,7 @@
             "components/ProfitAnalysis.tsx:1016",
             "components/TradeStatement.tsx:2520",
             "components/TradeStatement.tsx:2529",
-            "components/voucher/VoucherComposer.tsx:476",
+            "components/voucher/VoucherComposer.tsx:483",
             "src/features/admin/cashLedger.ts:290",
             "src/features/admin/cashLedger.ts:295",
             "src/features/statements/domain/statementHistoryRowView.ts:41",
@@ -117599,10 +117598,10 @@
           "inherited": false,
           "references": [
             "components/QuotationManager.tsx:516",
-            "components/voucher/VoucherComposer.tsx:547",
+            "components/voucher/VoucherComposer.tsx:554",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:98"
           ]
         },
@@ -117616,12 +117615,12 @@
           "inherited": false,
           "references": [
             "components/QuotationManager.tsx:762",
-            "components/voucher/VoucherComposer.tsx:547",
-            "components/voucher/VoucherComposer.tsx:560",
+            "components/voucher/VoucherComposer.tsx:554",
+            "components/voucher/VoucherComposer.tsx:567",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
             "src/features/statements/domain/quickItemModel.ts:22",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:154",
             "src/shared/lineAmount.ts:63",
             "src/shared/lineAmount.ts:98",
@@ -117643,12 +117642,12 @@
             "components/QuotationManager.tsx:513",
             "components/QuotationManager.tsx:514",
             "components/QuotationManager.tsx:763",
-            "components/voucher/VoucherComposer.tsx:547",
-            "components/voucher/VoucherComposer.tsx:561",
+            "components/voucher/VoucherComposer.tsx:554",
+            "components/voucher/VoucherComposer.tsx:568",
             "functions/src/shared/oemFeePlan.ts:8",
             "src/features/admin/oem.ts:49",
             "src/features/statements/domain/quickItemModel.ts:23",
-            "src/shared/cashTemplates.tsx:531",
+            "src/shared/cashTemplates.tsx:534",
             "src/shared/lineAmount.ts:98",
             "src/shared/quoteTotals.ts:62",
             "src/shared/statementLines.ts:120",
@@ -122144,8 +122143,8 @@
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:450",
             "components/VoucherTemplateManager.tsx:457",
+            "components/voucher/VoucherComposer.tsx:1338",
             "components/voucher/VoucherComposer.tsx:1342",
-            "components/voucher/VoucherComposer.tsx:1346",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:28",
             "src/shared/loanLedger.ts:48"
@@ -122164,8 +122163,8 @@
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:450",
             "components/VoucherTemplateManager.tsx:456",
+            "components/voucher/VoucherComposer.tsx:1338",
             "components/voucher/VoucherComposer.tsx:1342",
-            "components/voucher/VoucherComposer.tsx:1346",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:28",
             "src/shared/loanLedger.ts:48"
@@ -122191,7 +122190,7 @@
             "components/LoanManager.tsx:230",
             "components/VoucherTemplateManager.tsx:231",
             "components/VoucherTemplateManager.tsx:457",
-            "components/voucher/VoucherComposer.tsx:1346"
+            "components/voucher/VoucherComposer.tsx:1342"
           ]
         },
         {
@@ -122209,7 +122208,7 @@
             "components/LoanManager.tsx:193",
             "components/LoanManager.tsx:207",
             "components/VoucherTemplateManager.tsx:457",
-            "components/voucher/VoucherComposer.tsx:1346"
+            "components/voucher/VoucherComposer.tsx:1342"
           ]
         },
         {
@@ -122224,7 +122223,7 @@
             "components/CashLedger.tsx:876",
             "components/LoanManager.tsx:157",
             "components/LoanManager.tsx:166",
-            "components/voucher/VoucherComposer.tsx:1342"
+            "components/voucher/VoucherComposer.tsx:1338"
           ]
         },
         {
@@ -122243,7 +122242,7 @@
             "components/LoanManager.tsx:192",
             "components/LoanManager.tsx:207",
             "components/VoucherTemplateManager.tsx:450",
-            "components/voucher/VoucherComposer.tsx:1342",
+            "components/voucher/VoucherComposer.tsx:1338",
             "src/shared/autoVoucher.ts:54",
             "src/shared/loanLedger.ts:33",
             "src/shared/loanLedger.ts:48"
@@ -124044,7 +124043,7 @@
             "components/TradeStatement.tsx:1917",
             "components/voucher/CashEntryModal.tsx:239",
             "components/voucher/CashEntryModal.tsx:261",
-            "components/voucher/VoucherComposer.tsx:774",
+            "components/voucher/VoucherComposer.tsx:781",
             "src/features/admin/cashLedger.ts:131",
             "src/features/admin/cashLedger.ts:277",
             "src/features/admin/cashLedger.ts:691",
@@ -124088,9 +124087,9 @@
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
             "components/voucher/CashEntryModal.tsx:249",
-            "components/voucher/VoucherComposer.tsx:1286",
+            "components/voucher/VoucherComposer.tsx:1282",
             "components/voucher/VoucherComposer.tsx:130",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:687",
             "src/features/statements/domain/statementHistoryRowView.ts:35",
@@ -124127,8 +124126,8 @@
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:775",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:782",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:132",
             "src/features/admin/cashLedger.ts:286",
             "src/features/statements/infrastructure/voucherIssuePending.ts:13",
@@ -124162,9 +124161,9 @@
             "components/TradeStatement.tsx:754",
             "components/TradeStatement.tsx:759",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:688",
             "src/features/admin/voucherMerge.ts:71",
@@ -124198,10 +124197,10 @@
             "components/TradeStatement.tsx:530",
             "components/TradeStatement.tsx:705",
             "components/voucher/CashEntryModal.tsx:239",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:774",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:781",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:693",
             "src/features/admin/cashLedger.ts:97",
             "src/features/admin/voucherMerge.ts:72",
@@ -124298,7 +124297,7 @@
             "components/voucher/CashEntryModal.tsx:240",
             "components/voucher/CashEntryModal.tsx:274",
             "components/voucher/CashEntryModal.tsx:286",
-            "components/voucher/VoucherComposer.tsx:1289",
+            "components/voucher/VoucherComposer.tsx:1285",
             "components/voucher/VoucherComposer.tsx:133",
             "src/features/admin/AdminApp.tsx:2205",
             "src/features/admin/cashLedger.ts:132",
@@ -153086,38 +153085,38 @@
             "components/voucher/RecurringModal.tsx:102",
             "components/voucher/RecurringModal.tsx:136",
             "components/voucher/RecurringModal.tsx:138",
-            "components/voucher/VoucherComposer.tsx:1028",
-            "components/voucher/VoucherComposer.tsx:1035",
-            "components/voucher/VoucherComposer.tsx:1071",
-            "components/voucher/VoucherComposer.tsx:1168",
-            "components/voucher/VoucherComposer.tsx:1171",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1024",
+            "components/voucher/VoucherComposer.tsx:1031",
+            "components/voucher/VoucherComposer.tsx:1067",
+            "components/voucher/VoucherComposer.tsx:1164",
+            "components/voucher/VoucherComposer.tsx:1167",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:1319",
-            "components/voucher/VoucherComposer.tsx:1335",
-            "components/voucher/VoucherComposer.tsx:1411",
-            "components/voucher/VoucherComposer.tsx:1439",
-            "components/voucher/VoucherComposer.tsx:1446",
-            "components/voucher/VoucherComposer.tsx:1451",
-            "components/voucher/VoucherComposer.tsx:1515",
-            "components/voucher/VoucherComposer.tsx:433",
-            "components/voucher/VoucherComposer.tsx:437",
+            "components/voucher/VoucherComposer.tsx:1315",
+            "components/voucher/VoucherComposer.tsx:1331",
+            "components/voucher/VoucherComposer.tsx:1407",
+            "components/voucher/VoucherComposer.tsx:1435",
+            "components/voucher/VoucherComposer.tsx:1442",
+            "components/voucher/VoucherComposer.tsx:1447",
+            "components/voucher/VoucherComposer.tsx:1511",
+            "components/voucher/VoucherComposer.tsx:440",
             "components/voucher/VoucherComposer.tsx:444",
-            "components/voucher/VoucherComposer.tsx:445",
-            "components/voucher/VoucherComposer.tsx:566",
-            "components/voucher/VoucherComposer.tsx:577",
-            "components/voucher/VoucherComposer.tsx:585",
-            "components/voucher/VoucherComposer.tsx:655",
-            "components/voucher/VoucherComposer.tsx:688",
-            "components/voucher/VoucherComposer.tsx:710",
-            "components/voucher/VoucherComposer.tsx:711",
-            "components/voucher/VoucherComposer.tsx:735",
-            "components/voucher/VoucherComposer.tsx:746",
-            "components/voucher/VoucherComposer.tsx:749",
-            "components/voucher/VoucherComposer.tsx:941",
-            "components/voucher/VoucherComposer.tsx:959",
-            "components/voucher/VoucherComposer.tsx:986",
-            "components/voucher/VoucherComposer.tsx:992",
+            "components/voucher/VoucherComposer.tsx:451",
+            "components/voucher/VoucherComposer.tsx:452",
+            "components/voucher/VoucherComposer.tsx:573",
+            "components/voucher/VoucherComposer.tsx:584",
+            "components/voucher/VoucherComposer.tsx:592",
+            "components/voucher/VoucherComposer.tsx:662",
+            "components/voucher/VoucherComposer.tsx:695",
+            "components/voucher/VoucherComposer.tsx:717",
+            "components/voucher/VoucherComposer.tsx:718",
+            "components/voucher/VoucherComposer.tsx:742",
+            "components/voucher/VoucherComposer.tsx:753",
+            "components/voucher/VoucherComposer.tsx:756",
+            "components/voucher/VoucherComposer.tsx:802",
+            "components/voucher/VoucherComposer.tsx:956",
+            "components/voucher/VoucherComposer.tsx:982",
+            "components/voucher/VoucherComposer.tsx:988",
             "functions/src/autoVoucherCommand.ts:31",
             "functions/src/autoVoucherDraft.ts:66",
             "functions/src/autoVoucherDraft.ts:68",
@@ -153580,11 +153579,11 @@
             "src/shared/cashEntryEdit.ts:75",
             "src/shared/cashEntryEdit.ts:97",
             "src/shared/cashTemplates.tsx:275",
-            "src/shared/cashTemplates.tsx:367",
-            "src/shared/cashTemplates.tsx:406",
-            "src/shared/cashTemplates.tsx:429",
-            "src/shared/cashTemplates.tsx:555",
-            "src/shared/cashTemplates.tsx:556",
+            "src/shared/cashTemplates.tsx:369",
+            "src/shared/cashTemplates.tsx:408",
+            "src/shared/cashTemplates.tsx:432",
+            "src/shared/cashTemplates.tsx:558",
+            "src/shared/cashTemplates.tsx:559",
             "src/shared/chatUpload.ts:110",
             "src/shared/chatUpload.ts:111",
             "src/shared/chatUpload.ts:80",
@@ -173150,8 +173149,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:279",
-            "components/voucher/VoucherComposer.tsx:969",
+            "components/voucher/VoucherComposer.tsx:274",
             "src/shared/cashTemplates.tsx:296"
           ]
         },
@@ -173168,17 +173166,16 @@
             "components/CashLedger.tsx:499",
             "components/CashLedger.tsx:700",
             "components/CashLedger.tsx:961",
-            "components/voucher/VoucherComposer.tsx:1549",
-            "components/voucher/VoucherComposer.tsx:280",
-            "components/voucher/VoucherComposer.tsx:360",
-            "components/voucher/VoucherComposer.tsx:809",
-            "components/voucher/VoucherComposer.tsx:969",
+            "components/voucher/VoucherComposer.tsx:1545",
+            "components/voucher/VoucherComposer.tsx:289",
+            "components/voucher/VoucherComposer.tsx:367",
+            "components/voucher/VoucherComposer.tsx:824",
             "src/shared/cashTemplates.tsx:321",
             "src/shared/cashTemplates.tsx:323",
             "src/shared/cashTemplates.tsx:332",
-            "src/shared/cashTemplates.tsx:437",
             "src/shared/cashTemplates.tsx:440",
-            "src/shared/cashTemplates.tsx:475"
+            "src/shared/cashTemplates.tsx:443",
+            "src/shared/cashTemplates.tsx:478"
           ]
         },
         {
@@ -173192,12 +173189,12 @@
           "references": [
             "components/CashLedger.tsx:707",
             "components/CashLedger.tsx:720",
-            "components/voucher/VoucherComposer.tsx:1501",
-            "components/voucher/VoucherComposer.tsx:816",
+            "components/voucher/VoucherComposer.tsx:1497",
+            "components/voucher/VoucherComposer.tsx:831",
             "src/shared/cashTemplates.tsx:298",
             "src/shared/cashTemplates.tsx:306",
-            "src/shared/cashTemplates.tsx:363",
-            "src/shared/cashTemplates.tsx:451"
+            "src/shared/cashTemplates.tsx:365",
+            "src/shared/cashTemplates.tsx:454"
           ]
         },
         {
@@ -173212,16 +173209,17 @@
             "components/CashLedger.tsx:500",
             "components/CashLedger.tsx:717",
             "components/CashLedger.tsx:720",
-            "components/voucher/VoucherComposer.tsx:279",
-            "components/voucher/VoucherComposer.tsx:282",
-            "components/voucher/VoucherComposer.tsx:297",
+            "components/voucher/VoucherComposer.tsx:272",
+            "components/voucher/VoucherComposer.tsx:273",
+            "components/voucher/VoucherComposer.tsx:274",
+            "components/voucher/VoucherComposer.tsx:304",
             "src/shared/cashTemplates.tsx:294",
-            "src/shared/cashTemplates.tsx:362",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:446",
-            "src/shared/cashTemplates.tsx:447",
-            "src/shared/cashTemplates.tsx:523",
-            "src/shared/cashTemplates.tsx:568"
+            "src/shared/cashTemplates.tsx:364",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:449",
+            "src/shared/cashTemplates.tsx:450",
+            "src/shared/cashTemplates.tsx:526",
+            "src/shared/cashTemplates.tsx:571"
           ]
         },
         {
@@ -173235,13 +173233,13 @@
           "references": [
             "components/CashLedger.tsx:501",
             "components/CashLedger.tsx:510",
-            "components/voucher/VoucherComposer.tsx:283",
-            "components/voucher/VoucherComposer.tsx:299",
+            "components/voucher/VoucherComposer.tsx:290",
             "components/voucher/VoucherComposer.tsx:306",
+            "components/voucher/VoucherComposer.tsx:313",
             "src/shared/cashTemplates.tsx:321",
             "src/shared/cashTemplates.tsx:323",
-            "src/shared/cashTemplates.tsx:452",
-            "src/shared/cashTemplates.tsx:498"
+            "src/shared/cashTemplates.tsx:455",
+            "src/shared/cashTemplates.tsx:501"
           ]
         },
         {
@@ -173255,22 +173253,22 @@
           "references": [
             "components/CashLedger.tsx:502",
             "components/CashLedger.tsx:708",
-            "components/voucher/VoucherComposer.tsx:285",
-            "components/voucher/VoucherComposer.tsx:817",
+            "components/voucher/VoucherComposer.tsx:292",
+            "components/voucher/VoucherComposer.tsx:832",
             "src/shared/cashTemplates.tsx:278",
             "src/shared/cashTemplates.tsx:279",
             "src/shared/cashTemplates.tsx:280",
             "src/shared/cashTemplates.tsx:307",
             "src/shared/cashTemplates.tsx:323",
-            "src/shared/cashTemplates.tsx:364",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:456",
-            "src/shared/cashTemplates.tsx:530",
-            "src/shared/cashTemplates.tsx:532",
+            "src/shared/cashTemplates.tsx:366",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:459",
             "src/shared/cashTemplates.tsx:533",
-            "src/shared/cashTemplates.tsx:563",
-            "src/shared/cashTemplates.tsx:567"
+            "src/shared/cashTemplates.tsx:535",
+            "src/shared/cashTemplates.tsx:536",
+            "src/shared/cashTemplates.tsx:566",
+            "src/shared/cashTemplates.tsx:570"
           ]
         },
         {
@@ -173283,7 +173281,7 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:504",
-            "components/voucher/VoucherComposer.tsx:287",
+            "components/voucher/VoucherComposer.tsx:294",
             "src/shared/cashTemplates.tsx:306"
           ]
         },
@@ -173307,10 +173305,10 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:708",
-            "components/voucher/VoucherComposer.tsx:817",
-            "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:456"
+            "components/voucher/VoucherComposer.tsx:832",
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:459"
           ]
         },
         {
@@ -173323,14 +173321,14 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:506",
-            "components/voucher/VoucherComposer.tsx:290",
-            "components/voucher/VoucherComposer.tsx:320",
-            "components/voucher/VoucherComposer.tsx:321",
+            "components/voucher/VoucherComposer.tsx:297",
+            "components/voucher/VoucherComposer.tsx:327",
+            "components/voucher/VoucherComposer.tsx:328",
             "src/shared/cashTemplates.tsx:300",
             "src/shared/cashTemplates.tsx:308",
-            "src/shared/cashTemplates.tsx:463",
-            "src/shared/cashTemplates.tsx:464",
-            "src/shared/cashTemplates.tsx:496"
+            "src/shared/cashTemplates.tsx:466",
+            "src/shared/cashTemplates.tsx:467",
+            "src/shared/cashTemplates.tsx:499"
           ]
         },
         {
@@ -173343,8 +173341,8 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:505",
-            "components/voucher/VoucherComposer.tsx:288",
-            "src/shared/cashTemplates.tsx:530"
+            "components/voucher/VoucherComposer.tsx:295",
+            "src/shared/cashTemplates.tsx:533"
           ]
         },
         {
@@ -173356,8 +173354,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:297",
-            "src/shared/cashTemplates.tsx:531"
+            "components/voucher/VoucherComposer.tsx:304",
+            "src/shared/cashTemplates.tsx:534"
           ]
         },
         {
@@ -173369,9 +173367,9 @@
           ],
           "inherited": false,
           "references": [
-            "src/shared/cashTemplates.tsx:363",
-            "src/shared/cashTemplates.tsx:454",
-            "src/shared/cashTemplates.tsx:457"
+            "src/shared/cashTemplates.tsx:365",
+            "src/shared/cashTemplates.tsx:457",
+            "src/shared/cashTemplates.tsx:460"
           ]
         },
         {
@@ -173383,7 +173381,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:1501"
+            "components/voucher/VoucherComposer.tsx:1497"
           ]
         },
         {
@@ -173395,10 +173393,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:1509",
-            "src/shared/cashTemplates.tsx:355",
-            "src/shared/cashTemplates.tsx:361",
-            "src/shared/cashTemplates.tsx:432"
+            "components/voucher/VoucherComposer.tsx:1505",
+            "src/shared/cashTemplates.tsx:357",
+            "src/shared/cashTemplates.tsx:363",
+            "src/shared/cashTemplates.tsx:435"
           ]
         },
         {
@@ -173410,9 +173408,9 @@
           ],
           "inherited": false,
           "references": [
-            "src/shared/cashTemplates.tsx:362",
-            "src/shared/cashTemplates.tsx:428",
-            "src/shared/cashTemplates.tsx:431"
+            "src/shared/cashTemplates.tsx:364",
+            "src/shared/cashTemplates.tsx:431",
+            "src/shared/cashTemplates.tsx:434"
           ]
         },
         {
@@ -173425,12 +173423,12 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:504",
-            "components/voucher/VoucherComposer.tsx:287",
+            "components/voucher/VoucherComposer.tsx:294",
             "src/shared/cashTemplates.tsx:298",
             "src/shared/cashTemplates.tsx:306",
-            "src/shared/cashTemplates.tsx:532",
-            "src/shared/cashTemplates.tsx:563",
-            "src/shared/cashTemplates.tsx:567"
+            "src/shared/cashTemplates.tsx:535",
+            "src/shared/cashTemplates.tsx:566",
+            "src/shared/cashTemplates.tsx:570"
           ]
         },
         {
@@ -173443,8 +173441,8 @@
           "inherited": false,
           "references": [
             "components/CashLedger.tsx:520",
-            "components/voucher/VoucherComposer.tsx:316",
-            "src/shared/cashTemplates.tsx:514"
+            "components/voucher/VoucherComposer.tsx:323",
+            "src/shared/cashTemplates.tsx:517"
           ]
         },
         {
@@ -173456,7 +173454,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:299"
+            "components/voucher/VoucherComposer.tsx:306"
           ]
         },
         {
@@ -173490,10 +173488,10 @@
           "references": [
             "src/shared/cashTemplates.tsx:296",
             "src/shared/cashTemplates.tsx:297",
-            "src/shared/cashTemplates.tsx:547",
-            "src/shared/cashTemplates.tsx:555",
-            "src/shared/cashTemplates.tsx:556",
-            "src/shared/cashTemplates.tsx:558"
+            "src/shared/cashTemplates.tsx:550",
+            "src/shared/cashTemplates.tsx:558",
+            "src/shared/cashTemplates.tsx:559",
+            "src/shared/cashTemplates.tsx:561"
           ]
         },
         {
@@ -173505,9 +173503,9 @@
           ],
           "inherited": false,
           "references": [
-            "src/shared/cashTemplates.tsx:438",
             "src/shared/cashTemplates.tsx:441",
-            "src/shared/cashTemplates.tsx:460"
+            "src/shared/cashTemplates.tsx:444",
+            "src/shared/cashTemplates.tsx:463"
           ]
         },
         {
@@ -173727,13 +173725,13 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:185",
             "components/voucher/VoucherComposer.tsx:186",
-            "components/voucher/VoucherComposer.tsx:625",
-            "components/voucher/VoucherComposer.tsx:626",
-            "components/voucher/VoucherComposer.tsx:640",
-            "components/voucher/VoucherComposer.tsx:678",
-            "components/voucher/VoucherComposer.tsx:679",
-            "components/voucher/VoucherComposer.tsx:869",
-            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:632",
+            "components/voucher/VoucherComposer.tsx:633",
+            "components/voucher/VoucherComposer.tsx:647",
+            "components/voucher/VoucherComposer.tsx:685",
+            "components/voucher/VoucherComposer.tsx:686",
+            "components/voucher/VoucherComposer.tsx:884",
+            "components/voucher/VoucherComposer.tsx:889",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -173758,10 +173756,10 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:678",
-            "components/voucher/VoucherComposer.tsx:679",
-            "components/voucher/VoucherComposer.tsx:869",
-            "components/voucher/VoucherComposer.tsx:874"
+            "components/voucher/VoucherComposer.tsx:685",
+            "components/voucher/VoucherComposer.tsx:686",
+            "components/voucher/VoucherComposer.tsx:884",
+            "components/voucher/VoucherComposer.tsx:889"
           ]
         },
         {
@@ -173773,7 +173771,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:641",
+            "components/voucher/VoucherComposer.tsx:648",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -173786,7 +173784,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:629",
+            "components/voucher/VoucherComposer.tsx:636",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         }
@@ -173808,12 +173806,12 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:185",
             "components/voucher/VoucherComposer.tsx:188",
-            "components/voucher/VoucherComposer.tsx:624",
-            "components/voucher/VoucherComposer.tsx:625",
-            "components/voucher/VoucherComposer.tsx:635",
-            "components/voucher/VoucherComposer.tsx:748",
-            "components/voucher/VoucherComposer.tsx:859",
-            "components/voucher/VoucherComposer.tsx:869",
+            "components/voucher/VoucherComposer.tsx:631",
+            "components/voucher/VoucherComposer.tsx:632",
+            "components/voucher/VoucherComposer.tsx:642",
+            "components/voucher/VoucherComposer.tsx:755",
+            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:884",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -173828,12 +173826,12 @@
           "references": [
             "components/voucher/VoucherComposer.tsx:186",
             "components/voucher/VoucherComposer.tsx:187",
-            "components/voucher/VoucherComposer.tsx:624",
-            "components/voucher/VoucherComposer.tsx:626",
-            "components/voucher/VoucherComposer.tsx:635",
-            "components/voucher/VoucherComposer.tsx:748",
-            "components/voucher/VoucherComposer.tsx:864",
-            "components/voucher/VoucherComposer.tsx:874",
+            "components/voucher/VoucherComposer.tsx:631",
+            "components/voucher/VoucherComposer.tsx:633",
+            "components/voucher/VoucherComposer.tsx:642",
+            "components/voucher/VoucherComposer.tsx:755",
+            "components/voucher/VoucherComposer.tsx:879",
+            "components/voucher/VoucherComposer.tsx:889",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         },
@@ -173846,7 +173844,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:641",
+            "components/voucher/VoucherComposer.tsx:648",
             "src/shared/services/interCompanyTransferService.ts:14"
           ]
         }
@@ -174341,8 +174339,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:897",
-            "components/voucher/VoucherComposer.tsx:900",
+            "components/voucher/VoucherComposer.tsx:912",
+            "components/voucher/VoucherComposer.tsx:915",
             "src/shared/interCompany.ts:84",
             "src/shared/interCompany.ts:88"
           ]
@@ -174356,8 +174354,8 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:903",
-            "components/voucher/VoucherComposer.tsx:907",
+            "components/voucher/VoucherComposer.tsx:918",
+            "components/voucher/VoucherComposer.tsx:922",
             "src/shared/interCompany.ts:85",
             "src/shared/interCompany.ts:89"
           ]
@@ -174393,7 +174391,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:682"
+            "components/voucher/VoucherComposer.tsx:689"
           ]
         },
         {
@@ -174405,7 +174403,7 @@
           ],
           "inherited": false,
           "references": [
-            "components/voucher/VoucherComposer.tsx:682"
+            "components/voucher/VoucherComposer.tsx:689"
           ]
         },
         {
@@ -174517,8 +174515,8 @@
             "components/voucher/CashEntryModal.tsx:315",
             "components/voucher/CashEntryModal.tsx:439",
             "components/voucher/CashEntryModal.tsx:452",
-            "components/voucher/VoucherComposer.tsx:1457",
-            "components/voucher/VoucherComposer.tsx:476",
+            "components/voucher/VoucherComposer.tsx:1453",
+            "components/voucher/VoucherComposer.tsx:483",
             "src/features/admin/AdminApp.tsx:382",
             "src/features/admin/AdminApp.tsx:4294",
             "src/features/admin/AdminApp.tsx:4542",
@@ -174683,7 +174681,7 @@
             "components/TradeStatement.tsx:1917",
             "components/voucher/CashEntryModal.tsx:239",
             "components/voucher/CashEntryModal.tsx:261",
-            "components/voucher/VoucherComposer.tsx:774",
+            "components/voucher/VoucherComposer.tsx:781",
             "src/features/admin/cashLedger.ts:131",
             "src/features/admin/cashLedger.ts:277",
             "src/features/admin/cashLedger.ts:691",
@@ -174760,7 +174758,7 @@
             "components/voucher/CashEntryModal.tsx:240",
             "components/voucher/CashEntryModal.tsx:274",
             "components/voucher/CashEntryModal.tsx:286",
-            "components/voucher/VoucherComposer.tsx:1289",
+            "components/voucher/VoucherComposer.tsx:1285",
             "components/voucher/VoucherComposer.tsx:133",
             "src/features/admin/AdminApp.tsx:2205",
             "src/features/admin/cashLedger.ts:132",
@@ -174812,10 +174810,10 @@
             "components/TradeStatement.tsx:530",
             "components/TradeStatement.tsx:705",
             "components/voucher/CashEntryModal.tsx:239",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:774",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:781",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:693",
             "src/features/admin/cashLedger.ts:97",
             "src/features/admin/voucherMerge.ts:72",
@@ -174934,9 +174932,9 @@
             "components/TradeStatement.tsx:754",
             "components/TradeStatement.tsx:759",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:1287",
+            "components/voucher/VoucherComposer.tsx:1283",
             "components/voucher/VoucherComposer.tsx:131",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:688",
             "src/features/admin/voucherMerge.ts:71",
@@ -174968,9 +174966,9 @@
             "components/TradeStatement.tsx:2498",
             "components/voucher/CashEntryModal.tsx:233",
             "components/voucher/CashEntryModal.tsx:249",
-            "components/voucher/VoucherComposer.tsx:1286",
+            "components/voucher/VoucherComposer.tsx:1282",
             "components/voucher/VoucherComposer.tsx:130",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:133",
             "src/features/admin/cashLedger.ts:687",
             "src/features/statements/domain/statementHistoryRowView.ts:35",
@@ -175017,8 +175015,8 @@
             "components/ProfitAnalysis.tsx:1019",
             "components/voucher/CashEntryModal.tsx:236",
             "components/voucher/CashEntryModal.tsx:241",
-            "components/voucher/VoucherComposer.tsx:775",
-            "components/voucher/VoucherComposer.tsx:776",
+            "components/voucher/VoucherComposer.tsx:782",
+            "components/voucher/VoucherComposer.tsx:783",
             "src/features/admin/cashLedger.ts:132",
             "src/features/admin/cashLedger.ts:286",
             "src/features/statements/infrastructure/voucherIssuePending.ts:13",
@@ -175045,7 +175043,7 @@
             "components/ProfitAnalysis.tsx:1016",
             "components/TradeStatement.tsx:2520",
             "components/TradeStatement.tsx:2529",
-            "components/voucher/VoucherComposer.tsx:476",
+            "components/voucher/VoucherComposer.tsx:483",
             "src/features/admin/cashLedger.ts:290",
             "src/features/admin/cashLedger.ts:295",
             "src/features/statements/domain/statementHistoryRowView.ts:41",
@@ -216616,22 +216614,22 @@
         "reason": "connected"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:353",
+        "location": "src/shared/cashTemplates.tsx:343",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:343",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:355",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:353",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:354",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:354",
+        "location": "src/shared/cashTemplates.tsx:355",
         "syntax": "binding",
         "reason": "array-binding"
       },
@@ -216646,97 +216644,112 @@
         "reason": "array-binding"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:383",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:387",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:417",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:417",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:417",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:417",
-        "syntax": "binding",
-        "reason": "connected"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:446",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:446",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:502",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:502",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:503",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:503",
-        "syntax": "element",
-        "reason": "dynamic-key"
-      },
-      {
-        "location": "src/shared/cashTemplates.tsx:513",
+        "location": "src/shared/cashTemplates.tsx:358",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:513",
+        "location": "src/shared/cashTemplates.tsx:358",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:513",
-        "syntax": "binding",
-        "reason": "array-binding"
+        "location": "src/shared/cashTemplates.tsx:385",
+        "syntax": "element",
+        "reason": "dynamic-key"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:513",
-        "syntax": "binding",
-        "reason": "array-binding"
+        "location": "src/shared/cashTemplates.tsx:389",
+        "syntax": "element",
+        "reason": "dynamic-key"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:531",
+        "location": "src/shared/cashTemplates.tsx:419",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:531",
+        "location": "src/shared/cashTemplates.tsx:419",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "src/shared/cashTemplates.tsx:531",
+        "location": "src/shared/cashTemplates.tsx:419",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:419",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:419",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:449",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:449",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:505",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:505",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:506",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:506",
+        "syntax": "element",
+        "reason": "dynamic-key"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:516",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:516",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:516",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:516",
+        "syntax": "binding",
+        "reason": "array-binding"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:534",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:534",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "src/shared/cashTemplates.tsx:534",
         "syntax": "binding",
         "reason": "connected"
       },
@@ -217736,147 +217749,147 @@
         "reason": "array-binding"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:263",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/voucher/VoucherComposer.tsx:263",
-        "syntax": "binding",
-        "reason": "array-binding"
-      },
-      {
-        "location": "components/voucher/VoucherComposer.tsx:308",
+        "location": "components/voucher/VoucherComposer.tsx:315",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:309",
+        "location": "components/voucher/VoucherComposer.tsx:316",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:309",
+        "location": "components/voucher/VoucherComposer.tsx:316",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:318",
+        "location": "components/voucher/VoucherComposer.tsx:325",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:318",
+        "location": "components/voucher/VoucherComposer.tsx:325",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:318",
+        "location": "components/voucher/VoucherComposer.tsx:325",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:445",
+        "location": "components/voucher/VoucherComposer.tsx:452",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:476",
+        "location": "components/voucher/VoucherComposer.tsx:483",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:476",
+        "location": "components/voucher/VoucherComposer.tsx:483",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:476",
+        "location": "components/voucher/VoucherComposer.tsx:483",
         "syntax": "binding",
         "reason": "rest-binding"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:547",
+        "location": "components/voucher/VoucherComposer.tsx:554",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:547",
+        "location": "components/voucher/VoucherComposer.tsx:554",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:547",
+        "location": "components/voucher/VoucherComposer.tsx:554",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:578",
+        "location": "components/voucher/VoucherComposer.tsx:585",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:590",
+        "location": "components/voucher/VoucherComposer.tsx:597",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:591",
+        "location": "components/voucher/VoucherComposer.tsx:598",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:605",
+        "location": "components/voucher/VoucherComposer.tsx:612",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:690",
+        "location": "components/voucher/VoucherComposer.tsx:697",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:693",
+        "location": "components/voucher/VoucherComposer.tsx:700",
         "syntax": "binding",
         "reason": "connected"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:711",
+        "location": "components/voucher/VoucherComposer.tsx:718",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:735",
+        "location": "components/voucher/VoucherComposer.tsx:742",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:735",
+        "location": "components/voucher/VoucherComposer.tsx:742",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:793",
+        "location": "components/voucher/VoucherComposer.tsx:797",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/voucher/VoucherComposer.tsx:797",
+        "syntax": "binding",
+        "reason": "connected"
+      },
+      {
+        "location": "components/voucher/VoucherComposer.tsx:808",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:795",
+        "location": "components/voucher/VoucherComposer.tsx:810",
         "syntax": "element",
         "reason": "dynamic-key"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:989",
+        "location": "components/voucher/VoucherComposer.tsx:985",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:992",
+        "location": "components/voucher/VoucherComposer.tsx:988",
         "syntax": "element",
         "reason": "array-index"
       },
       {
-        "location": "components/voucher/VoucherComposer.tsx:1415",
+        "location": "components/voucher/VoucherComposer.tsx:1411",
         "syntax": "element",
         "reason": "array-index"
       },
@@ -229027,12 +229040,12 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 31395,
-      "dot:connected": 28302,
-      "binding:connected": 1674,
+      "dot:no-model-declaration": 31394,
+      "dot:connected": 28304,
+      "binding:connected": 1679,
       "binding:rest-binding": 53,
       "element:dynamic-key": 759,
-      "binding:array-binding": 3435,
+      "binding:array-binding": 3433,
       "dot:property-symbol-unresolved": 2156,
       "dot:ambiguous-union": 1293,
       "element:array-index": 755,

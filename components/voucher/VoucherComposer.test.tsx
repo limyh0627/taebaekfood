@@ -85,6 +85,7 @@ describe('거래처 템플릿 과세·면세 발행', () => {
   it('과세면 미리보기와 저장 전표 모두 공급가 100,000원·세액 10,000원이다', async () => {
     const u = userEvent.setup();
     const { onAddIssuedStatement } = 띄우기({ fixedCostTemplates: [비용템플릿(false)] });
+    await 갈래(u, '매입');
     await 템플릿고르기(u, '과세 기장료');
     expect(screen.getByText(/공급가 100,000 · 세액 10,000 · 합계 110,000/)).toBeTruthy();
     await 저장(u);
@@ -96,6 +97,7 @@ describe('거래처 템플릿 과세·면세 발행', () => {
   it('면세 설정을 가져오고, 이번 전표에서 과세로 바꾸면 저장값도 따라 바뀐다', async () => {
     const u = userEvent.setup();
     const { onAddIssuedStatement } = 띄우기({ fixedCostTemplates: [비용템플릿(true)] });
+    await 갈래(u, '매입');
     await 템플릿고르기(u, '면세 기장료');
     expect(screen.getByText(/공급가 110,000 · 세액 0 · 합계 110,000/)).toBeTruthy();
     await u.click(screen.getByRole('checkbox', { name: /면세/ }));
@@ -212,6 +214,16 @@ describe('한 번 나간 돈을 성격대로 가른다', () => {
 });
 
 describe('돈이 안 움직이는 갈래', () => {
+  it('대체의 통장 한 줄은 기존 정책대로 같은 금액의 자금전표로 저장한다', async () => {
+    const u = userEvent.setup();
+    const { onAddCashEntry, onAddIssuedStatement } = 띄우기({ initialDir: '대체', fixedCostTemplates: [템플릿({
+      name: '통장 대체', dir: '대체', mode: '일반', statementType: '비용', amount: 10000,
+      transferLines: [{ accountCode: '811', side: '차변' }, { accountCode: '103', side: '대변' }],
+    })] });
+    await 템플릿고르기(u, '통장 대체'); await 저장(u);
+    expect(onAddCashEntry).toHaveBeenCalledWith(expect.objectContaining({ dir: '출금', amount: 10000, cashAccountId: 'bank1', accountCode: '811' }));
+    expect(onAddIssuedStatement).not.toHaveBeenCalled();
+  });
   it('대체는 차·대가 안 맞으면 못 낸다', async () => {
     const u = userEvent.setup();
     const { onAddCashEntry } = 띄우기();

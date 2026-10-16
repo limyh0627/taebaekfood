@@ -340,10 +340,12 @@ export function activeTemplate(
  * 고를 때만 열고 고르면 닫는다.
  */
 export function CashTemplateModal({
-  templates, accountCodes, activeId, onPick, onDirect, onClose,
+  templates, accountCodes, activeId, onPick, onDirect, onClose, hideDirectionTabs = false, directionLabel,
 }: {
   templates: CashTemplate[];
   accountCodes: AccountCode[];
+  hideDirectionTabs?: boolean;
+  directionLabel?: string;
   activeId: string | null;
   onPick: (t: CashTemplate) => void;
   /** 템플릿을 안 쓰고 직접 입력 — 고른 템플릿을 푼다 */
@@ -378,7 +380,7 @@ export function CashTemplateModal({
               className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           </div>
           <div className="flex gap-1 flex-wrap">
-            {(['all', 'fav', ...VOUCHER_DIRS] as const).map(v => (
+            {(['all', 'fav', ...(hideDirectionTabs ? [] : VOUCHER_DIRS)] as const).map(v => (
               <button key={v} type="button" onClick={() => setTab(v)}
                 title={v === 'all' || v === 'fav' ? undefined : DIR_HINT[v]}
                 className={`px-2 py-1 rounded-lg text-[11px] font-black border transition-all ${tab === v
@@ -406,7 +408,7 @@ export function CashTemplateModal({
           {shown.length === 0 ? (
             <p className="h-full flex items-center justify-center text-xs font-bold text-slate-300">찾는 템플릿이 없습니다</p>
           ) : (
-            <CashTemplatePicker templates={shown} accountCodes={accountCodes} activeId={activeId} onPick={onPick} />
+            <CashTemplatePicker templates={shown} accountCodes={accountCodes} activeId={activeId} onPick={onPick} directionLabel={directionLabel} />
           )}
         </div>
     </ModalShell>
@@ -414,12 +416,13 @@ export function CashTemplateModal({
 }
 
 export function CashTemplatePicker({
-  templates, accountCodes, activeId, onPick,
+  templates, accountCodes, activeId, onPick, directionLabel,
 }: {
   templates: CashTemplate[];
   accountCodes: AccountCode[];
   activeId: string | null;
   onPick: (t: CashTemplate) => void;
+  directionLabel?: string;
 }) {
   const nameOf = (code?: string) => accountCodes.find(c => c.code === code)?.name ?? '';
   // 묶음별로 갈라 그린다 — 30개가 한 줄로 이어지면 눈으로 못 찾는다.
@@ -444,7 +447,7 @@ export function CashTemplatePicker({
         }`}>
         <span className="flex items-center gap-2 min-w-0">
           <span title={DIR_HINT[t.dir]} className={`shrink-0 w-11 text-center text-[10px] font-black px-1 py-1 rounded-md ${DIR_CHIP[t.dir] ?? 'bg-slate-100 text-slate-500'}`}>
-            {t.dir}
+            {directionLabel ?? t.dir}
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-black text-slate-800 leading-tight truncate">
