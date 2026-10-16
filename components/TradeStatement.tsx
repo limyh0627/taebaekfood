@@ -448,13 +448,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [issueAcknowledged,setIssueAcknowledged]=useState<Record<string,string>>({});
   const [issueFailureReasons,setIssueFailureReasons]=useState<Record<string,string>>({});
   const [recoveryOpen,setRecoveryOpen]=useState(false);
+  const [sendingPending,setSendingPending]=useState<TradeStatementPending|null>(null);
+  // 진행 중인 정확한 사본만 구분하고 다른 요청과 충돌·손상 사본은 보존한다.
+  const visibleIssuePendings=issuePendings.filter(entry=>!sendingPending||entry.invalid||entry.kind==='conflict'||!entry.pending||JSON.stringify(entry.pending)!==JSON.stringify(sendingPending));
   const [recoverySelection,setRecoverySelection]=useState<{key:string;text:string}|null>(null);
   const recoverySelectionRef=useRef(recoverySelection);
   recoverySelectionRef.current=recoverySelection;
   const [issuePendingError,setIssuePendingError]=useState('');
   const issueActor=auth.currentUser?.uid;
   const refreshIssuePendings=()=>{if(!issueActor)return;try{setIssuePendings(listTradeStatementRecoveryEntries({companyId,actorUid:issueActor}));setIssuePendingError('');}catch(error){setIssuePendingError((error as Error).message);}};
-  useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePendings([]);setRecoveryInspection(null);setIssueAcknowledged({});setIssueFailureReasons({});setIssuePendingError('');setRecoveryOpen(false);setRecoverySelection(null);setDetailStmt(null);refreshIssuePendings();const changed=()=>refreshIssuePendings();window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[companyId,issueActor]);
+  useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePendings([]);setRecoveryInspection(null);setIssueAcknowledged({});setIssueFailureReasons({});setIssuePendingError('');setRecoveryOpen(false);setRecoverySelection(null);setSendingPending(null);setDetailStmt(null);refreshIssuePendings();const changed=()=>refreshIssuePendings();window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[companyId,issueActor]);
   const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
 
   /**
@@ -1580,7 +1583,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const current=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&cashEditScope.current.companyId===companyId;
     const conflicts=findTradePendingConflicts(listTradePendings(companyId,uid),input);
     if(conflicts.length){refreshIssuePendings();setRecoveryOpen(true);setRecoverySelection({key:conflicts[0].key,text:conflicts[0].text});throw new Error(`같은 주문·발주의 미확인 전표 때문에 저장할 수 없습니다. ${conflicts.map(entry=>entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:'판독할 수 없는 요청').join(', ')}. 실패 작업 상세에서 이전 요청을 확인해 주세요.`);}
-    const entry=await storeTradePendingEntry(pending,current);if(!current())throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');refreshIssuePendings();
+    const entry=await storeTradePendingEntry(pending,current);if(!current())throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');setSendingPending(pending);refreshIssuePendings();
     let 결과:Awaited<ReturnType<NonNullable<typeof onApplyStatement>>>;
     try{결과=await onApplyStatement(input);}catch(error){if(current()&&tradeNoWriteProof(error,pending)){await clearTradePendingEntry(entry.key,entry.text,companyId,uid,current);if(current()){refreshIssuePendings();issueIdentityRef.current=null;}}throw error;}
     if(!cashEditScope.current.alive||cashEditScope.current.token!==token||auth.currentUser?.uid!==uid)throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');
@@ -1805,12 +1808,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if(!alive())return;
     saveBusyRef.current = true;
     setIsSaving(true);
+    let acknowledged:IssuedStatement|null=null;
+    let followup='전표 요청 사본 정리';
     try {
       const issued = await markIssued(registerInbound, skipLinkIds);
       if (!issued||!alive()) return;
-      const stmt=issued.statement;
+      const stmt=issued.statement;acknowledged=stmt;
       //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
       if (issuePay) {
+        followup='수금·지불 결과 확인';
         const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
         if (amt > 0) {
           await recordPayment([{ stmt, amount: amt }], {
@@ -1819,14 +1825,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
       if(!alive())return;
-      if(uid){const p=issued.pending;await completeTradeStatementRequest(companyId,uid,p.input.command.operationId);if(!alive())return;const entry=listTradePendings(companyId,uid).find(candidate=>candidate.text===JSON.stringify(p));if(entry)await clearTradePendingEntry(entry.key,entry.text,companyId,uid,alive);if(!alive())return;refreshIssuePendings();}
+      followup='전표 요청 사본 정리';
+      if(uid){
+        const p=issued.pending,operationId=p.input.command.operationId;
+        await completeTradeStatementRequest(companyId,uid,operationId);if(!alive())return;
+        const remaining=()=>listTradeStatementRecoveryEntries({companyId,actorUid:uid}).filter(entry=>entry.metadata.operationId===operationId||entry.metadata.statementId===stmt.id);
+        // 정상 반환만으로 CAS가 거절한 사본까지 정리됐다고 간주하지 않는다.
+        if(remaining().some(entry=>entry.lowerCopies.length||entry.kind==='conflict'||entry.invalid||entry.paymentOnly))throw Error('보존된 요청이 변경되었거나 결과 확인이 더 필요합니다. 실패 작업에서 처리결과를 확인해 주세요.');
+        const entry=listTradePendings(companyId,uid).find(candidate=>candidate.text===JSON.stringify(p));
+        if(entry)await clearTradePendingEntry(entry.key,entry.text,companyId,uid,alive);if(!alive())return;
+        if(remaining().length)throw Error('전표 사본 정리가 완료되지 않았습니다. 실패 작업에서 처리결과를 확인해 주세요.');
+        refreshIssuePendings();
+      }
+      setRecoveryOpen(false);setRecoverySelection(null);setRecoveryInspection(null);
       setIssuePay(false); setIssuePayAmount('');
       saveBusyRef.current = false;
       closeCreate();
     } catch (e: any) {
-      if(alive()){refreshIssuePendings();const own=uid?listTradePendings(companyId,uid).find(entry=>entry.pending?.input.statement.id===issueIdentityRef.current?.id):undefined;if(own?.pending){setIssueFailureReasons(previous=>({...previous,[own.pending!.input.statement.id]:e instanceof Error?e.message:String(e)}));setRecoveryOpen(true);}alert(저장실패문구(e));}
+      if(alive()){refreshIssuePendings();const own=uid?listTradePendings(companyId,uid).find(entry=>entry.pending?.input.statement.id===issueIdentityRef.current?.id):undefined;if(own?.pending){setIssueFailureReasons(previous=>({...previous,[own.pending!.input.statement.id]:e instanceof Error?e.message:String(e)}));setRecoveryOpen(true);}alert(acknowledged?`전표 ${acknowledged.docNo} 발행은 완료됐습니다. ${followup}에 문제가 있어 요청을 보존했습니다. 전표를 새로 발행하지 말고 실패 작업에서 처리결과를 확인해 주세요.\n${e instanceof Error?e.message:String(e)}`:저장실패문구(e));}
     } finally {
-      if(alive()){saveBusyRef.current = false;setIsSaving(false);}
+      if(alive()){setSendingPending(null);saveBusyRef.current = false;setIsSaving(false);}
     }
   };
 
@@ -2239,10 +2257,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
   const recoveryDialogs=()=> <>
     {recoveryOpen&&!recoverySelection&&<LargeModalShell title="실패 작업 목록" onClose={()=>{if(!isSaving)setRecoveryOpen(false);}}>
-      <p className="mb-4 text-sm text-slate-600">지난 저장 시도 중 결과 확인이 필요한 내용입니다. 항목을 선택한 뒤 처리결과 확인을 눌러 주세요. 작성 중인 다른 전표의 입력은 유지됩니다.</p>
+      <p className="mb-4 text-sm text-slate-600">처리 결과 확인이 필요한 요청입니다. 목록에 있다는 이유만으로 전표 발행 실패가 확정된 것은 아닙니다. 항목을 선택한 뒤 처리결과 확인을 눌러 주세요. 이미 발행된 전표는 다시 발행하지 않습니다. 작성 중인 다른 전표의 입력은 유지됩니다.</p>
       {issuePendingError&&<p>{issuePendingError}</p>}
-      {!issuePendings.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
-      {issuePendings.filter(entry=>!entry.deleted).map(entry=><button key={entry.key} type="button" className="flex w-full flex-wrap justify-between gap-2 border-b border-slate-200 px-2 py-4 text-left" onClick={()=>setRecoverySelection({key:entry.key,text:entry.text})}>
+      {!visibleIssuePendings.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+      {visibleIssuePendings.filter(entry=>!entry.deleted).map(entry=><button key={entry.key} type="button" className="flex w-full flex-wrap justify-between gap-2 border-b border-slate-200 px-2 py-4 text-left" onClick={()=>setRecoverySelection({key:entry.key,text:entry.text})}>
         <span>{entry.paymentOnly?recoveryPaymentLabel(entry):entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:entry.metadata.partnerName?`${entry.metadata.partnerName} · ${entry.metadata.tradeDate??''} · ${entry.metadata.totalAmount?.toLocaleString()??'금액 확인 필요'}원`:'원문 확인이 필요한 요청'}</span><span>{entry.paymentOnly?'수금·지불 결과 확인 필요':entry.invalid?'원문 확인 필요':entry.recoveryReason==='zero-total'?'지난 시도 0원 · 재시도 불가':entry.deleted?'이전 처리 확인 필요':'저장 결과 확인 필요'}</span>
       </button>)}
     </LargeModalShell>}
@@ -2267,7 +2285,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <p>{entry.reason}</p>
           {!entry.request&&<p>이 브라우저에 첫 송신 내용이 남아 있지 않습니다. 처리결과 확인으로 서버에 남은 첫 저장 시도 내용과 결과를 조회해 주세요.</p>}
           {entry.deleted&&<p>이 주문의 이전 발행 결과를 확인해야 합니다. 발행된 전표를 확인하거나 관리자에게 문의해 주세요.</p>}
-          <p>{entry.recoveryReason==='zero-total'?'이전 요청의 합계가 0원인 것은 지난 저장 시도 내용의 금액입니다. 실제 주문 금액이 0원이라는 뜻이 아닙니다. 이 내용으로 다시 발행하지 않습니다. 처리결과 확인으로 기존 전표를 확인한 뒤 입력 금액을 바로잡아 주세요.':issueAcknowledged[p.input.statement.id]&&p.payment?'전표 저장은 확인됐지만 수금·지불 완료는 아직 확인되지 않았습니다. 처리결과 확인을 눌러 주세요.':'서버 저장 결과를 아직 확인하지 못했습니다. 처리결과 확인을 눌러 주세요.'}</p>
+          <p>{entry.recoveryReason==='zero-total'?'이전 요청의 합계가 0원인 것은 지난 저장 시도 내용의 금액입니다. 실제 주문 금액이 0원이라는 뜻이 아닙니다. 이 내용으로 다시 발행하지 않습니다. 처리결과 확인으로 기존 전표를 확인한 뒤 입력 금액을 바로잡아 주세요.':issueAcknowledged[p.input.statement.id]?(p.payment?'전표 저장은 확인됐지만 수금·지불 완료와 사본 정리는 아직 확인되지 않았습니다. 처리결과 확인을 눌러 주세요.':'전표 발행은 완료됐지만 요청 사본 정리가 남아 있습니다. 전표를 새로 발행하지 말고 처리결과 확인을 눌러 주세요.'):'서버 저장 결과를 아직 확인하지 못했습니다. 처리결과 확인을 눌러 주세요.'}</p>
           <p>확인 대상 주문: {p.input.command.orderIds.join(', ')||'직접 작성'} · 발주: {p.input.poIds.join(', ')||'없음'}</p>
           {p.payment&&<p>함께 요청한 수금·지불: {p.payment.amount.toLocaleString()}원 · {p.payment.date} · 원래 계좌 {cashAccounts.find(account=>account.id===p.payment!.cashAccountId)?.name??'현재 계좌 목록에 없음'}{cashAccounts.find(account=>account.id===p.payment!.cashAccountId)?.active===false?' (비활성)':''}. 전표 저장과 별도로 결과를 확인합니다. 다른 계좌나 새 지급으로 바꾸지 않습니다.</p>}
           {issueFailureReasons[p.input.statement.id]&&<p>이번 시도에서 확인된 안내: {issueFailureReasons[p.input.statement.id]}</p>}
@@ -2308,14 +2326,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {recoveryDialogs()}
-      {composerOnly&&<button type="button" className={recoveryButtonClass} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {issuePendings.filter(entry=>!entry.deleted).length}</button>}
+      {composerOnly&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</button>}
       {!composerOnly && <>
       <PageHeader
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
         right={
           <div className="flex rounded-xl gap-2 overflow-x-auto no-scrollbar">
-            <button type="button" className={recoveryButtonClass} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {issuePendings.filter(entry=>!entry.deleted).length}</button>
+            <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</button>
             {([
               { id: 'history', icon: ClipboardList, label: '전표내역' },
             ] as const).map(t => (

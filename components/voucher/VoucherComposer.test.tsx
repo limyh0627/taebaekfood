@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
+import { auth } from '../../src/shared/firebase';
 import type { AccountCode, AccountGroup, CashAccount, Partner, IssuedStatement } from '../../src/shared/types';
 
 vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}}}));
@@ -293,6 +294,8 @@ describe('회사 계정표에 없는 템플릿', () => {
   try {
    띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry});
    await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(onIssueCashEntry).toHaveBeenCalledTimes(1));
+   expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('전표 저장 결과를 확인하지 못했습니다. 새로 발행하지 말고 이전 전표 재시도로 같은 요청 결과를 확인해 주세요.'));
+   expect(alertSpy).not.toHaveBeenCalledWith(expect.stringContaining('전표가 저장되지 않았습니다.'));
    screen.getByRole('button',{name:'저장'});
    // 실제 모달 닫기와 재열기는 인스턴스의 ref를 새로 만든다.
    const {cleanup}=await import('@testing-library/react');cleanup();
@@ -305,5 +308,32 @@ describe('회사 계정표에 없는 템플릿', () => {
 
 it('최초 명확한 쓰기0 거절은 원문 대기를 풀어 입력을 수정할 수 있다',async()=>{const u=userEvent.setup(),save=vi.fn().mockImplementationOnce(async(entry)=>{throw Object.assign(new Error('계좌 없음'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:entry.id}})}).mockResolvedValue({id:'saved'});const alertSpy=vi.spyOn(window,'alert').mockImplementation(()=>{});try{띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).toBeNull();const amount=screen.getByDisplayValue('10,000');await u.clear(amount);await u.type(amount,'20000');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(save.mock.calls[1][0].amount).toBe(20000);}finally{alertSpy.mockRestore();}});
 it('unknown 뒤에는 원문 입력이 잠기며 재시도 거절 proof도 이전 원문을 지우지 않는다',async()=>{const u=userEvent.setup(),save=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockImplementationOnce(async(entry)=>{throw Object.assign(new Error('권한'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:entry.id}})});const alertSpy=vi.spyOn(window,'alert').mockImplementation(()=>{});try{띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));expect(screen.getByDisplayValue('10,000')).toBeDisabled();await u.click(screen.getByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(screen.getByRole('button',{name:'이전 전표 재시도'})).toBeEnabled();expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);expect(localStorage.length).toBe(1);}finally{alertSpy.mockRestore();}});
+
+it('정상 발행 중에는 이전 실패 복구 대신 저장 중임을 표시하고 완료 뒤 닫는다', async () => {
+  const u = userEvent.setup(); let finish!: (value: unknown) => void;
+  const save = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+  const { onClose } = 띄우기({ fixedCostTemplates: [템플릿({ name: '차량비', mode: '일반', dir: '출금', accountCode: '811', amount: 10000 })], onIssueCashEntry: save });
+  await 템플릿고르기(u, '차량비'); await 저장(u);
+  expect(screen.getByRole('status')).toHaveTextContent('전표를 저장 중입니다.');
+  expect(screen.queryByRole('region', { name: '저장 중이던 전표' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '이전 전표 재시도' })).toBeNull();
+  expect(onClose).not.toHaveBeenCalled(); expect(localStorage.length).toBe(1);
+  await act(async () => finish({ id: 'saved' }));
+  expect(onClose).toHaveBeenCalledOnce(); expect(localStorage.length).toBe(0);
+  expect(screen.queryByRole('button', { name: '이전 전표 재시도' })).toBeNull();
+});
+
+it('이전 계정의 늦은 발행 완료는 새 계정 창이나 원문을 정리하지 않는다', async () => {
+  const u = userEvent.setup(); let finish!: (value: unknown) => void;
+  const save = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+  const { onClose } = 띄우기({ fixedCostTemplates: [템플릿({ name: '차량비', mode: '일반', dir: '출금', accountCode: '811', amount: 10000 })], onIssueCashEntry: save });
+  try {
+    await 템플릿고르기(u, '차량비'); await 저장(u);
+    (auth.currentUser as { uid: string }).uid = 'other-auth-uid';
+    await act(async () => finish({ id: 'saved' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).not.toBeNull();
+  } finally { (auth.currentUser as { uid: string }).uid = 'test-auth-uid'; }
+});
 
 it('이전 회사 발행 완료는 새 회사 창을 닫거나 대기 원문을 지우지 않는다',async()=>{const u=userEvent.setup();let finish!:(v:unknown)=>void;const save=vi.fn().mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const {rerenderCompany,onClose}=띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));rerenderCompany('punghoe');await act(async()=>finish({id:'saved'}));expect(onClose).not.toHaveBeenCalled();expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).not.toBeNull();});

@@ -29,7 +29,7 @@ function setup(statementType: '비용' | '매출' | '매입', overrides: Partial
     cashEntries={[]} statements={[]} partnerBalances={new Map()} getBalance={s => s.totalAmount}
     cashAccountId="" onCashAccountId={vi.fn()} onClose={vi.fn()} onAddIssuedStatement={onAddIssuedStatement}
     onAddFixedCostTemplate={onAddFixedCostTemplate} recordPayment={vi.fn()} renderJournal={() => null} />);
-  return { onAddIssuedStatement, onAddFixedCostTemplate };
+  return { onAddIssuedStatement, onAddFixedCostTemplate, template: t };
 }
 async function pick(u: ReturnType<typeof userEvent.setup>) {
   await u.click(screen.getByRole('button', { name: /템플릿 ▾/ }));
@@ -38,6 +38,18 @@ async function pick(u: ReturnType<typeof userEvent.setup>) {
 
 describe('종류와 거래처가 독립인 실제 전표 작성', () => {
   beforeEach(() => {localStorage.clear(); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
+  it('명시 종류 없는 옛 대체 양식은 거래처가 있어도 수동 대체로 저장하고 원양식을 바꾸지 않는다', async () => {
+    const u = userEvent.setup();
+    const legacy = { statementType: undefined, transferLines: [{ accountCode: '828', side: '차변' as const }, { accountCode: '253', side: '대변' as const }] };
+    const { onAddIssuedStatement, onAddFixedCostTemplate, template } = setup('비용', legacy);
+    const original = structuredClone(template);
+    await pick(u);
+    expect(screen.getByLabelText('전표종류')).toHaveValue('비용');
+    await u.click(screen.getByRole('button', { name: '저장' }));
+    expect(onAddIssuedStatement).toHaveBeenCalledWith(expect.objectContaining({ type: '비용', partnerId: 'bank', totalTax: 0, totalAmount: 110000,
+      items: [expect.objectContaining({ side: '차변', accountCode: '828' }), expect.objectContaining({ side: '대변', accountCode: '253' })] }));
+    expect(template).toEqual(original); expect(onAddFixedCostTemplate).not.toHaveBeenCalled();
+  });
   it('대체 양식에서 거래처를 바꿔도 종류와 양변이 바뀌지 않는다', async () => {
     const u = userEvent.setup(); const { onAddIssuedStatement } = setup('비용'); await pick(u);
     const search = screen.getByPlaceholderText('업체명 검색...');

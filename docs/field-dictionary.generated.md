@@ -4046,47 +4046,47 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | components/TradeStatement.tsx:391 | s.partnerId | any | any-receiver |
 | components/TradeStatement.tsx:406 | error?.message | any | any-receiver |
 | components/TradeStatement.tsx:407 | error?.code | any | any-receiver |
-| components/TradeStatement.tsx:761 | row.manual | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:761 | row.operationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:761 | row.returnOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:761 | row.transferOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:762 | row.issueOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:762 | row.serverOwned | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:1254 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
-| components/TradeStatement.tsx:1254 | (st as any).purchaseOrderIds | any | any-receiver |
-| components/TradeStatement.tsx:1254 | (st as any).confirmedProductIds | any | any-receiver |
-| components/TradeStatement.tsx:1285 | (s as any).itemId | any | any-receiver |
-| components/TradeStatement.tsx:1287 | (ps as any).partnerId | any | any-receiver |
-| components/TradeStatement.tsx:1696 | JSON.parse(entry.paymentRequestText).cashAccountId | any | any-receiver |
-| components/TradeStatement.tsx:1699 | payment.amount | any | any-receiver |
-| components/TradeStatement.tsx:1699 | payment.tradeDate | any | any-receiver |
-| components/TradeStatement.tsx:1699 | payment.cashAccountId | any | any-receiver |
-| components/TradeStatement.tsx:2030 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:764 | row.manual | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:764 | row.operationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:764 | row.returnOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:764 | row.transferOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:765 | row.issueOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:765 | row.serverOwned | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:1257 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
+| components/TradeStatement.tsx:1257 | (st as any).purchaseOrderIds | any | any-receiver |
+| components/TradeStatement.tsx:1257 | (st as any).confirmedProductIds | any | any-receiver |
+| components/TradeStatement.tsx:1288 | (s as any).itemId | any | any-receiver |
+| components/TradeStatement.tsx:1290 | (ps as any).partnerId | any | any-receiver |
+| components/TradeStatement.tsx:1699 | JSON.parse(entry.paymentRequestText).cashAccountId | any | any-receiver |
+| components/TradeStatement.tsx:1702 | payment.amount | any | any-receiver |
+| components/TradeStatement.tsx:1702 | payment.tradeDate | any | any-receiver |
+| components/TradeStatement.tsx:1702 | payment.cashAccountId | any | any-receiver |
 | components/TradeStatement.tsx:2048 | e?.message | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment?.tradeDate | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment.tradeDate | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment?.amount | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment.amount | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment.amount.toLocaleString | any | any-receiver |
-| components/TradeStatement.tsx:2237 | payment.amount | any | any-receiver |
-| components/TradeStatement.tsx:2288 | payment.cashAccountId | any | any-receiver |
-| components/TradeStatement.tsx:2288 | payment.amount | any | any-receiver |
-| components/TradeStatement.tsx:2288 | payment.tradeDate | any | any-receiver |
-| components/TradeStatement.tsx:2292 | first.statement | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.partnerName | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.tradeDate | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.totalAmount | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.docNo | any | any-receiver |
-| components/TradeStatement.tsx:2292 | first.orderIds?.join | any | any-receiver |
-| components/TradeStatement.tsx:2292 | first.orderIds | any | any-receiver |
-| components/TradeStatement.tsx:2292 | first.poIds?.join | any | any-receiver |
-| components/TradeStatement.tsx:2292 | first.poIds | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.items?.map | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.items | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.totalAmount | any | any-receiver |
-| components/TradeStatement.tsx:2292 | statement.totalAmount | any | any-receiver |
-| components/TradeStatement.tsx:2920 | error?.message | any | any-receiver |
-| components/TradeStatement.tsx:3095 | (purchaseOrder as any).id | any | any-receiver |
+| components/TradeStatement.tsx:2066 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment?.tradeDate | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment.tradeDate | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment?.amount | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment.amount | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment.amount.toLocaleString | any | any-receiver |
+| components/TradeStatement.tsx:2255 | payment.amount | any | any-receiver |
+| components/TradeStatement.tsx:2306 | payment.cashAccountId | any | any-receiver |
+| components/TradeStatement.tsx:2306 | payment.amount | any | any-receiver |
+| components/TradeStatement.tsx:2306 | payment.tradeDate | any | any-receiver |
+| components/TradeStatement.tsx:2310 | first.statement | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.partnerName | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.tradeDate | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.totalAmount | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.docNo | any | any-receiver |
+| components/TradeStatement.tsx:2310 | first.orderIds?.join | any | any-receiver |
+| components/TradeStatement.tsx:2310 | first.orderIds | any | any-receiver |
+| components/TradeStatement.tsx:2310 | first.poIds?.join | any | any-receiver |
+| components/TradeStatement.tsx:2310 | first.poIds | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.items?.map | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.items | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.totalAmount | any | any-receiver |
+| components/TradeStatement.tsx:2310 | statement.totalAmount | any | any-receiver |
+| components/TradeStatement.tsx:2938 | error?.message | any | any-receiver |
+| components/TradeStatement.tsx:3113 | (purchaseOrder as any).id | any | any-receiver |
 | components/ProfitAnalysis.tsx:396 | payload?.length | any | any-receiver |
 | components/ProfitAnalysis.tsx:400 | payload.map | any | any-receiver |
 | components/ProfitAnalysis.tsx:401 | p.name | any | any-receiver |
@@ -6683,7 +6683,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1136 | 1 |
 | StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1137 | 1 |
 | IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1141 | 9 |
-| IssuedStatement | id | 필수 | string | src/shared/types.ts:1142 | 174 |
+| IssuedStatement | id | 필수 | string | src/shared/types.ts:1142 | 175 |
 | IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1144 | 4 |
 | IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1146 | 0 |
 | IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1147 | 0 |
@@ -6694,7 +6694,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1153 | 84 |
 | IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1154 | 40 |
 | IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1155 | 9 |
-| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1156 | 46 |
+| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1156 | 47 |
 | IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1157 | 8 |
 | IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1158 | 9 |
 | IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1159 | 66 |

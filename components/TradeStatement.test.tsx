@@ -162,11 +162,11 @@ it('처리결과 확인 중 사용자가 바뀌었다 돌아와 같은 항목을
  expect(screen.queryByText('다른 사용자에게 보이면 안 되는 이전 결과')).not.toBeInTheDocument();
  expect(localStorage.getItem(lowerKey)).not.toBeNull();
 });
-const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn()}));
+const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn(),complete:vi.fn()}));
 const recoveryMocks=vi.hoisted(()=>({inspect:vi.fn(),backup:vi.fn(),clear:vi.fn(),resumePayment:vi.fn(),retry:vi.fn(),delete:vi.fn()}));
 vi.mock('../src/features/statements/infrastructure/tradeStatementRecoveryService',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/tradeStatementRecoveryService')>(),inspectTradeStatementRecovery:recoveryMocks.inspect,exportTradeStatementRecovery:recoveryMocks.backup,clearVerifiedTradeStatementRecovery:recoveryMocks.clear,resumeTradeStatementRecoveryPayment:recoveryMocks.resumePayment,retryTradeStatementRecovery:recoveryMocks.retry,deleteTradeStatementRecovery:recoveryMocks.delete}));
 vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
-vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment}));
+vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment,completeTradeStatementRequest:issueMocks.complete}));
 vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
 // 저장 콜백 시험의 빈 Firebase 핸들은 조회에도 쓰지 않는다. 신규 단위 동작은 별도 시험한다.
 vi.mock('../src/shared/services/itemPurchaseUnitService',()=>({subscribeItemPurchaseUnits:vi.fn((_companyId,onData)=>{onData([]);return vi.fn();})}));
@@ -302,6 +302,31 @@ it('수량 0은 원문 저장과 서버 요청 전에 행·품목을 안내하�
   fireEvent.change(screen.getByLabelText('1행 거래 수량'), { target: { value: '2' } });
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
   await waitFor(() => expect(onApplyStatement).toHaveBeenCalledOnce());
+});
+
+it('정상 송신 중인 사본은 실패로 세지 않고 복구 전환을 막은 뒤 완료 시 창을 닫는다',async()=>{
+ const gate=deferred(),close=vi.fn(),apply=vi.fn(async()=>{await gate.promise;return 'applied' as const;});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ expect(listTradePendings('taebaek','test-uid')).toHaveLength(1);
+ const recovery=screen.getByRole('button',{name:'실패 작업 0'});expect(recovery).toBeDisabled();fireEvent.click(recovery);
+ expect(screen.queryByRole('dialog',{name:'실패 작업 목록'})).not.toBeInTheDocument();
+ await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+ expect(listTradePendings('taebaek','test-uid')).toHaveLength(0);expect(screen.queryByRole('dialog',{name:'실패 작업 목록'})).not.toBeInTheDocument();
+});
+it('발행 확인 뒤 사본 정리 오류는 전표 실패가 아니라 후속 확인으로 안내하고 보존한다',async()=>{
+ issueMocks.complete.mockRejectedValueOnce(Error('정리 잠금 오류'));const close=vi.fn();
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:vi.fn().mockResolvedValue('applied'),onComposerClose:close});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('발행은 완료됐습니다. 전표 요청 사본 정리')));
+ expect(close).not.toHaveBeenCalled();expect(listTradePendings('taebaek','test-uid')).toHaveLength(1);
+ expect(screen.getByRole('dialog',{name:'실패 작업 목록'})).toBeInTheDocument();
+});
+it('발행 확인 후 하위 사본이 남으면 상위 원문도 삭제하지 않는다',async()=>{
+ const close=vi.fn(),apply=vi.fn(async(input)=>{localStorage.setItem('trade-statement-request-v2:taebaek:test-uid:'+encodeURIComponent(input.command.operationId),JSON.stringify({operationId:input.command.operationId,statement:input.statement,orderIds:[],poIds:[],costUpdates:[],releaseId:'fixture-release'}));return 'applied' as const;});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close});fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('발행은 완료됐습니다. 전표 요청 사본 정리')));
+ expect(close).not.toHaveBeenCalled();expect(listTradePendings('taebaek','test-uid')).toHaveLength(1);
 });
 
 it('작성창에는 실패 목록이 없고 메뉴 목록에서 상세 재시도 후 원문과 입력을 유지한다', async()=>{
@@ -773,7 +798,8 @@ it('최초 발행 늦은 완료는 다른 창의 저장 원문을 지우지 않�
  const key=pendingKey(),first=JSON.parse(localStorage.getItem(key)!);
  const other={...first,input:{...first.input,command:{...first.input.command,operationId:'other-operation',statementId:'other-statement'},statement:{...first.input.statement,id:'other-statement'}}};
  const encoded=JSON.stringify(other);localStorage.setItem(key,encoded);
- await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument());
+ await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('발행은 완료됐습니다. 전표 요청 사본 정리')));
+ expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();
  expect(localStorage.getItem(key)).toBe(encoded);
 });
 

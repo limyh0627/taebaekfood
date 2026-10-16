@@ -232,7 +232,12 @@ export default function VoucherComposer({
         clearVoucherPending(pendingKey, encoded); setIssuePending(null);
       }
       setIssueError(error instanceof Error ? error.message : String(error));
-      alert(`전표를 저장하지 못했습니다. ${sent ? '이전 전표를 재시도하면 같은 내용으로 확인합니다.' : '입력은 유지됩니다.'} ${error instanceof Error ? error.message : String(error)}`);
+      const detail = error instanceof Error ? error.message : String(error);
+      alert(sent
+        ? voucherNoWriteProof(error, pending)
+          ? `전표가 저장되지 않았습니다. ${retry ? '이전 요청은 보존했습니다. 이전 전표 재시도로 같은 요청 결과를 확인해 주세요.' : '입력을 수정한 뒤 다시 저장해 주세요.'} ${detail}`
+          : `전표 저장 결과를 확인하지 못했습니다. 새로 발행하지 말고 이전 전표 재시도로 같은 요청 결과를 확인해 주세요. ${detail}`
+        : `전표를 전송하기 전에 입력 또는 최초 요청 보관을 확인하지 못했습니다. 전송하지 않았으며 입력은 유지됩니다. ${detail}`);
     } finally { if(issueLock.current===lock){issueLock.current=null;if (alive()) setIssueSaving(false);} }
   };
   const saveCashEntry = async (entry: CashEntry) => {
@@ -270,8 +275,10 @@ export default function VoucherComposer({
    * **딴 전표 금액으로 끊긴다** — 없는 값은 비우는 것까지가 '가져오는' 것이다.
    */
   const pickTemplate = (t: CashTemplate) => {
+    // 수동으로 고른 대체 갈래를 옛 거래처 유무로 매입으로 바꾸지 않는다. 자동 발행의 원본 계약은 유지한다.
+    const manualTemplate = !t.statementType && t.dir === '대체' ? { ...t, statementType: '비용' as const } : t;
     setQpTemplateId(t.id);    // 고른 것을 id로 붙든다 — 계정만으로는 같은 계정 템플릿이 섞인다
-    setQpStatementType(templateStatementType(t));
+    setQpStatementType(templateStatementType(manualTemplate));
     setQpDir(t.dir);          // 방향은 템플릿이 정한다
     setQpMode(t.mode);
     //  자금 표는 이제 줄이 원천이다 — 템플릿 계정을 첫 줄에 넣는다. 안 넣으면 계정이 빈 채로 열린다.
@@ -286,8 +293,8 @@ export default function VoucherComposer({
      * 리스료·임대료처럼 대체로 끊는 템플릿이 여기 걸린다 — 이 줄을 안 채우면
      * 금액과 계정을 들고 있는 템플릿을 골라도 빈 양식이 떴다.
      */
-    setQpAccrRows(templateAccrRows(t));
-    setQpAccrTaxExempt(!isCashDir(t.dir) && templateStatementType(t) !== '비용' ? !!t.taxExempt : true);
+    setQpAccrRows(templateAccrRows(manualTemplate));
+    setQpAccrTaxExempt(!isCashDir(manualTemplate.dir) && templateStatementType(manualTemplate) !== '비용' ? !!manualTemplate.taxExempt : true);
     setQpShowSides(false);   // 템플릿이 차·대를 안다 — 손댈 일이 없다
     setQpLoanId(t.mode === '상환' ? t.loanId || '' : '');
     // 두 줄로 갈리는 갈래(보험·상환·급여·세금)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
@@ -761,7 +768,8 @@ export default function VoucherComposer({
 
         return (
           <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0">
-            {issuePending?.companyId === companyId && issuePending.userId === actorId && <section className="border-b bg-amber-50 p-4 space-y-2" aria-label="저장 중이던 전표">
+            {issueSaving && <p role="status" className="border-b border-slate-200 p-4 text-sm">전표를 저장 중입니다.</p>}
+            {!issueSaving && issuePending?.companyId === companyId && issuePending.userId === actorId && <section className="border-b bg-amber-50 p-4 space-y-2" aria-label="저장 중이던 전표">
               <p className="font-bold">이전 전표의 저장 결과를 확인해야 합니다.</p>
               <p>{issuePending.kind === 'cashEntries' ? issuePending.document.date : issuePending.document.tradeDate} · {issuePending.kind === 'cashEntries' ? issuePending.document.amount.toLocaleString() : issuePending.document.totalAmount.toLocaleString()}원</p>
               <p className="text-sm">{issuePending.kind === 'cashEntries' ? issuePending.document.note : issuePending.document.memo} 새 전표를 만들지 않고 이전 내용으로 재시도합니다.</p>
@@ -919,8 +927,7 @@ export default function VoucherComposer({
                 </>
               ) : !isCashDir(qpDir) ? (
                 <>
-                  {/* 발생 — 돈이 안 움직인다. 거래처를 고르면 매입전표(미지급금이 선다),
-                      안 고르면 대체전표(감가상각·퇴직충당). 어느 전표인지는 앱이 정한다. */}
+                  {/* 거래처 연결과 발행 종류는 독립이다. 대체는 선택한 차·대를 그대로 사용한다. */}
                   <div className="relative">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
                       거래처 <span className="normal-case text-slate-300">(매입·매출 전표에 필요)</span>
