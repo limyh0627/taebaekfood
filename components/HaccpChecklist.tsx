@@ -1,3 +1,5 @@
+import { downloadAsPDF } from '../src/features/haccp/infrastructure/downloadAsPDF';
+import { useDragReorder, arrayMove } from '../src/features/haccp/hooks/useDragReorder';
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { today } from '../src/shared/day';
@@ -16,27 +18,7 @@ const TD = 'border border-slate-400 p-1.5 text-xs text-center';
 const TDL = 'border border-slate-400 p-1.5 text-xs text-left';
 
 // ── PDF 다운로드 유틸 ──────────────────────────────────────────────────────────
-async function downloadAsPDF(element: HTMLElement, filename: string) {
-  const { default: jsPDF } = await import('jspdf') as any;
-  const { default: html2canvas } = await import('html2canvas') as any;
-  const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = 210;
-  const pageHeight = 297;
-  const imgWidth = pageWidth;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
-  let remainingHeight = imgHeight;
-  let currentY = 0;
-  let isFirstPage = true;
-  while (remainingHeight > 0) {
-    if (!isFirstPage) pdf.addPage();
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, -currentY, imgWidth, imgHeight);
-    currentY += pageHeight;
-    remainingHeight -= pageHeight;
-    isFirstPage = false;
-  }
-  pdf.save(filename);
-}
+
 
 // ── 공통 헬퍼 컴포넌트 ────────────────────────────────────────────────────────
 const FormHeader: React.FC<{ title: string; company?: string; date?: string }> = ({
@@ -65,45 +47,9 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
 // 핸들(GripVertical)만 draggable로 두어 행 안 input의 텍스트 선택과 충돌하지 않게 함.
 // 드래그 중 다른 행 위로 진입하면 즉시 순서를 바꿔 실시간 미리보기.
 // 터치 기기는 HTML5 드래그가 동작하지 않으므로 ↑↓ 버튼을 유지한다.
-function useDragReorder(move: (_from: number, _to: number) => void, onSettle?: () => void) {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const dragRef = useRef<number | null>(null);
 
-  const handleProps = (idx: number) => ({
-    draggable: true,
-    onDragStart: (e: React.DragEvent) => {
-      e.dataTransfer.setData('text/plain', ''); // Firefox는 데이터가 있어야 드래그 시작
-      e.dataTransfer.effectAllowed = 'move';
-      dragRef.current = idx;
-      setDragIdx(idx);
-    },
-    onDragEnd: () => {
-      dragRef.current = null;
-      setDragIdx(null);
-      onSettle?.();
-    },
-  });
 
-  const rowProps = (idx: number) => ({
-    onDragEnter: () => {
-      const from = dragRef.current;
-      if (from === null || from === idx) return;
-      dragRef.current = idx;
-      setDragIdx(idx);
-      move(from, idx);
-    },
-    onDragOver: (e: React.DragEvent) => e.preventDefault(),
-  });
 
-  return { dragIdx, handleProps, rowProps };
-}
-
-const arrayMove = <T,>(arr: T[], from: number, to: number): T[] => {
-  const next = [...arr];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next;
-};
 
 const DRAG_HANDLE_CLASS = 'cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0';
 
