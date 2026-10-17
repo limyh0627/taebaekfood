@@ -1,3 +1,6 @@
+import {queryDateKey} from '../src/features/orders/domain/deliveryQueryDate';
+import {queryFields,queryValuesFor as queryValuesForInputs,filterDeliverySearchOrders} from '../src/features/orders/domain/deliveryQuery';
+import {buildDeliverySchedules,buildDeliveredSchedules} from '../src/features/orders/domain/deliverySchedules';
 import DateRangeInputs from '../src/shared/components/DateRangeInputs';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -158,83 +161,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const [queryText, setQueryText] = useState('');
   const [queryField, setQueryField] = useState('');
   const [queryValue, setQueryValue] = useState('');
-  const queryFields = [
-    ['source', '판매 채널'], ['partner', '거래처'], ['address', '주소'],
-    ['completion', '작업완료 여부'], ['item', '주문 품목'], ['quantity', '주문 수량'],
-    ['label', '라벨 작업'], ['packaging', '포장'], ['pallet', '팔레트'],
-    ['shipment', '출고완료 여부'], ['invoice', '송장'], ['note', '비고'],
-    ['orderDate', '주문일'], ['deliveryDate', '출고예정일'],
-  ];
-  /**
-   * **출고예정일이 어느 날인가 — 한국시간으로 센다.**
-   *
-   * 2026-09-12 사장님: "배송캘린더에서 날짜 옮기는거 아직도 안되는거 같던데 날짜 선택해서
-   * 옮겨도 금일배송순서에만 들어오고 캘린더에서는 변화 없는거 같고".
-   *
-   * 맞다 — **저장과 읽기가 서로 다른 셈을 쓰고 있었다.** 출고 일정 수정 창은 한국시간 자정으로
-   * 적는데(`…T00:00:00+09:00` → 전날 15:00Z), 캘린더 칸은 그 글자를 그냥 `split('T')[0]` 로
-   * 잘라 **UTC 날짜**를 봤다. 9월 18일로 옮기면 캘린더는 9월 17일 칸에 넣었다.
-   * 금일 배송순서는 이 함수(한국시간)를 쓰고 있어서 제 날짜에 떴고 — 그래서 "배송순서에만
-   * 들어온다"로 보였다.
-   *
-   * 공장 기준은 한국시간이다. **읽는 쪽을 모두 이 함수로 모은다** — 글자를 자르면 적은 방식에
-   * 따라 하루가 밀린다. 자정 UTC 로 적힌 옛 주문도 한국시간으로는 같은 날 09:00 이라 그대로다.
-   */
-  const queryDateKey = (value: string) => {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
-  };
-  const queryValuesFor = (order: Order, field: string): string[] => {
-    const partner = partners.find(candidate => candidate.id === order.partnerId);
-    switch (field) {
-      case 'source': return [order.source];
-      case 'partner': return [order.partnerName || partner?.name || '이름 없음'];
-      case 'address': return [[partner?.address, partner?.addressDetail].filter(Boolean).join(' ')];
-      case 'completion': return order.items.map(item => item.checked ? '완료' : '미완료');
-      case 'item': return order.items.map(item => item.name);
-      case 'quantity': return order.items.map(item => item.isBoxUnit ? `${boxCountOf(item)}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`);
-      case 'label': return order.items.map(item => item.labelType && item.labelType !== '대기' ? item.labelType : '-');
-      case 'packaging': return order.items.map(item => item.boxType || '-');
-      case 'pallet': return (order.pallets ?? []).map(pallet => `${palletStocks.find(stock => stock.id === pallet.type)?.name || pallet.type} ${pallet.quantity}개`);
-      case 'shipment': return [order.status === OrderStatus.SHIPPED ? '완료' : '미완료'];
-      case 'invoice': return [(order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '완료' : '미완료') : '-'];
-      case 'note': return orderNotesForDisplay(order).map(entry => entry.text);
-      case 'orderDate': return [queryDateKey(order.createdAt)];
-      case 'deliveryDate': return [queryDateKey(order.deliveryDate)];
-      default: return [];
-    }
-  };
+  const queryValuesFor = (order: Order, field: string): string[] => queryValuesForInputs(order, field, { partners, items, palletStocks });
   const quickWeekDate = new Date(`${todayKey}T00:00:00+09:00`);
   const weekday = new Date(`${todayKey}T00:00:00Z`).getUTCDay();
   quickWeekDate.setTime(quickWeekDate.getTime() - ((weekday + 6) % 7) * 86400000);
   const quickWeekStart = queryDateKey(quickWeekDate.toISOString());
   const [queryStatus, setQueryStatus] = useState<'all' | OrderStatus>('all');
-  const deliverySearchOrders = useMemo(() => {
-    const normalized = queryText.trim().toLocaleLowerCase('ko-KR');
-    return sourceOrders.filter(order => {
-      /*  **배송 화면은 상태로 거르지 않는다**(2026-09-14 사장님: "배송캘린더에 작업완료
-       *  출고완료 주문만 뜨게 하지말고 대기중 작업중인 주문도 뜨게 해").
-       *
-       *  여기서 작업완료·출고완료만 들이고 있어서 **금일 배송순서와 캘린더가 어긋나 있었다** —
-       *  금일 배송순서(`deliverySequenceOrders`)는 이미 `sourceOrders` 를 바로 읽어
-       *  '배송완료가 아닌 것'을 다 담는데(2026-09-12 사장님: "금일배송순서가 배송캘린더
-       *  당일에 해당하는거랑 일치해야 하는데"), 캘린더만 좁아 대기중·작업중이 빠졌다.
-       *  **세는 곳이 둘이면 또 갈린다** — 그쪽 규칙에 맞춘다.
-       *
-       *  예전 주문(배송완료)도 들인다. 캘린더가 그걸 따로 모아(`deliveredSchedules`)
-       *  '이전 N건' 으로 접어 두기 때문이다 — 전에는 여기서 막혀 그 접힘이 늘 비어 있었다. */
-      if (order.partnerName === '생산기록') return false;
-      const orderDate = queryDateKey(order.createdAt);
-      if (queryDateFrom && orderDate < queryDateFrom) return false;
-      if (queryDateTo && orderDate > queryDateTo) return false;
-      if (!normalized) return true;
-      const partner = partners.find(candidate => candidate.id === order.partnerId);
-      return [
-        order.id, order.partnerName, partner?.name, partner?.address, partner?.addressDetail,
-        order.source, order.deliveryDate, order.note, ...order.items.map(item => item.name),
-      ].filter(Boolean).some(value => String(value).toLocaleLowerCase('ko-KR').includes(normalized));
-    });
-  }, [sourceOrders, partners, queryDateFrom, queryDateTo, queryText]);
+  const deliverySearchOrders = useMemo(() => filterDeliverySearchOrders(sourceOrders, partners, { queryDateFrom, queryDateTo, queryText }), [sourceOrders, partners, queryDateFrom, queryDateTo, queryText]);
   const queryOptions = [...new Set(deliverySearchOrders.flatMap(order => queryValuesFor(order, queryField)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
   const deliveryQueryOrders = deliverySearchOrders.filter(order => !queryField || !queryValue || queryValuesFor(order, queryField).includes(queryValue));
   const orders = useMemo(
@@ -368,42 +301,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
 
-  const deliverySchedules = useMemo(() => {
-    const schedules: Record<string, Order[]> = {};
-    orders.forEach(order => {
-      if (order.deliveryDate && order.partnerName !== '생산기록' && order.status !== OrderStatus.DELIVERED) {
-        const date = queryDateKey(order.deliveryDate);
-        if (!schedules[date]) schedules[date] = [];
-        schedules[date].push(order);
-      }
-    });
-    /*  **날짜 안의 차례도 검색조건의 정렬을 따른다**(2026-09-11 사장님).
-        재고 여유는 "재고 − 주문량"이 적은 것부터 — 모자랄 것 같은 주문을 먼저 본다. */
-    const 여유 = (order: Order) => Math.min(...order.items.map(line => {
-      const product = items.find(candidate => candidate.id === line.itemId);
-      return product ? (product.stock ?? 0) - line.quantity : Number.POSITIVE_INFINITY;
-    }));
-    for (const date of Object.keys(schedules)) {
-      schedules[date].sort((a, b) => {
-        if (sortMode === 'order') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        if (sortMode === 'stock') return 여유(a) - 여유(b);
-        return (a.partnerName || '').localeCompare(b.partnerName || '', 'ko');
-      });
-    }
-    return schedules;
-  }, [orders, items, sortMode]);
+  const deliverySchedules = useMemo(() => buildDeliverySchedules(orders, items, sortMode), [orders, items, sortMode]);
 
-  const deliveredSchedules = useMemo(() => {
-    const schedules: Record<string, Order[]> = {};
-    orders.forEach(order => {
-      if (order.deliveryDate && order.partnerName !== '생산기록' && order.status === OrderStatus.DELIVERED) {
-        const date = queryDateKey(order.deliveryDate);
-        if (!schedules[date]) schedules[date] = [];
-        schedules[date].push(order);
-      }
-    });
-    return schedules;
-  }, [orders]);
+  const deliveredSchedules = useMemo(() => buildDeliveredSchedules(orders), [orders]);
 
   // 로컬 날짜 문자열 (타임존 버그 방지)
   const toLocalDateStr = (d: Date) =>
