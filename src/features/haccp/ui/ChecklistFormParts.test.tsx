@@ -33,8 +33,8 @@ it('공통 부품·검사제품·위생 타입 원문 AST를 baseline aba5fc6와
     expect(text).not.toContain('HaccpChecklist');
   }
   expect(found).toEqual(expected);expect(CCP_PRODUCTS).toHaveLength(6);
-  const parent=readFileSync('components/HaccpChecklist.tsx','utf8');
-  expect(parent).toContain("import CCPHeatForm from '../src/features/haccp/ui/CCPHeatForm'");expect(parent).toContain("import CCPMetalForm from '../src/features/haccp/ui/CCPMetalForm'");
+  const parent=readFileSync('src/features/haccp/ui/HaccpChecklistShells.tsx','utf8');
+  expect(parent).toContain("import CCPHeatForm from './CCPHeatForm'");expect(parent).toContain("import CCPMetalForm from './CCPMetalForm'");
   expect(parent).toContain("{activeTab === 'ccp-heat'  && <CCPHeatForm />}");expect(parent).toContain("{activeTab === 'ccp-metal'   && <CCPMetalForm />}");
   expect(parent).not.toContain('const CCPHeatForm:');expect(parent).not.toContain('const CCPMetalForm:');
 });

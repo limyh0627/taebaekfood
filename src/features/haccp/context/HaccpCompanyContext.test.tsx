@@ -15,11 +15,12 @@ it('기본 태백과 같은 provider 객체의 회사 변경을 모든 소비자
 it('부모 provider2와 전체12 소비자가 같은 하위 context 모듈을 참조한다',()=>{
  const parent=readFileSync('components/HaccpChecklist.tsx','utf8'),temp=readFileSync('src/features/haccp/ui/TempForm.tsx','utf8'),incoming=readFileSync('src/features/haccp/ui/IncomingForm.tsx','utf8');
  const hygiene=['SanitationForm','CleaningForm','PersonalHygieneForm'].map(name=>readFileSync(`src/features/haccp/ui/${name}.tsx`,'utf8'));
- expect(parent.match(/<HaccpCompanyContext\.Provider /g)).toHaveLength(2);
+ const shell=readFileSync('src/features/haccp/ui/HaccpChecklistShells.tsx','utf8');
+ expect(shell.match(/<HaccpCompanyContext\.Provider /g)).toHaveLength(2);expect(parent).not.toContain('<HaccpCompanyContext.Provider');
  const files=(directory:string):string[]=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):/\.tsx?$/.test(entry.name)&&!entry.name.includes('.test.')?[`${directory}/${entry.name}`]:[]);
  const products=files('src/features/haccp').map(path=>readFileSync(path,'utf8'));
  expect([parent,...products].join('\n').match(/useHaccpCompany\(\)/g)).toHaveLength(12);
- expect(parent).toContain("from '../src/features/haccp/context/HaccpCompanyContext'");
+ expect(shell).toContain("from '../context/HaccpCompanyContext'");
  for(const source of [temp,incoming,...hygiene])expect(source).toContain("from '../context/HaccpCompanyContext'");
  expect(parent).not.toContain('createContext<CompanyId>');
  const path='src/features/haccp/context/HaccpCompanyContext.tsx',source=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);

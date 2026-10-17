@@ -43,5 +43,8 @@ it('HEAD6d4894a 함수 본문 원문과 같고 실제 16개 호출이 새 모듈
     function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(file)==='downloadAsPDF')calls++;if(path==='components/HaccpChecklist.tsx'&&ts.isFunctionDeclaration(node)&&node.name?.text==='downloadAsPDF')definitions++;ts.forEachChild(node,visit);}visit(file);
   }
   expect(calls).toBe(16);expect(definitions).toBe(0);
-  expect(parent.statements.some(node=>ts.isImportDeclaration(node)&&node.moduleSpecifier.getText(parent).includes('/haccp/infrastructure/downloadAsPDF'))).toBe(true);
+  expect(files('src/features/haccp').some(path=>{
+    const file=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,path.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+    return file.statements.some(node=>ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)&&node.moduleSpecifier.text.endsWith('/infrastructure/downloadAsPDF'));
+  })).toBe(true);
 });
