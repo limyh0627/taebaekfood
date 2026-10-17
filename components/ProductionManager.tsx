@@ -246,19 +246,19 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       <PageHeader
         title="생산 실적"
         subtitle="일자별 생산·출고 실적과 투입 원료(lot) 추적"
-        right={
-          <div className="flex items-center gap-2">
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm"
+              className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm"
             >
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
               주문 동기화
             </button>
             <button
               onClick={() => setShowForm(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-sm"
+              className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm"
             >
               <Plus size={14} />직접 입력
             </button>
@@ -380,44 +380,50 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       )}
 
       {/* 필터 */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap gap-3 items-center">
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="production-query-title">
+        <h3 id="production-query-title" className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
+      <div className="p-3 md:p-4 flex flex-wrap gap-3 items-end">
+        <div className="space-y-1"><span className="block text-[10px] font-bold text-slate-500">생산월</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowAll(v => !v)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${showAll ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+            className={`h-9 px-3 rounded-lg text-xs font-bold border transition-all ${showAll ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
           >
             전체 보기
           </button>
           {!showAll && <>
-            <button onClick={prevMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+            <button onClick={prevMonth} className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
               <ChevronLeft size={14} />
             </button>
             <span className="text-sm font-bold text-slate-700 w-24 text-center">{fmtMonth(filterMonth)}</span>
-            <button onClick={nextMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+            <button onClick={nextMonth} className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
               <ChevronRight size={14} />
             </button>
           </>}
         </div>
 
+        </div>
+        <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-500">품목
         <select
           value={filterProductId}
           onChange={e => setFilterProductId(e.target.value)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400 bg-white"
+          className="h-10 border border-slate-200 rounded-lg px-3 text-sm focus:outline-none focus:border-emerald-400 bg-white"
         >
           <option value="">전체 품목</option>
           {finishedProducts.map(p => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-
-        <div className="relative flex-1 min-w-[160px]">
+        </label>
+        <label className="flex-1 min-w-[160px] space-y-1 text-[10px] font-bold text-slate-500">전체 검색
+        <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             placeholder="품목명/메모 검색"
-            className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-400"
+            className="h-10 w-full bg-white pl-8 pr-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-emerald-400"
           />
           {searchText && (
             <button onClick={() => setSearchText('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
@@ -425,7 +431,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </button>
           )}
         </div>
+        </label>
       </div>
+      </section>
 
       {/* #5 로트 역추적 (리콜) — 소비 로트 → 투입된 주문(거래처·납품일) */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
@@ -446,7 +454,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 value={recallQuery}
                 onChange={e => setRecallQuery(e.target.value)}
                 placeholder="예: 깨분참기름 / 인천청정식품 / 로트번호"
-                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+                className="h-10 w-full bg-white pl-8 pr-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-amber-400"
               />
               {recallQuery && (
                 <button onClick={() => setRecallQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"><X size={14} /></button>

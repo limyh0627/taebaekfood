@@ -12,7 +12,7 @@ describe('공지 관리', () => {
   it('고정 공지를 먼저 보여 주고 관리자가 고정 해제·삭제할 수 있다', async () => {
     const update = vi.fn(async () => {}), remove = vi.fn(async () => {});
     render(<NoticeBoard posts={posts} onUpdatePost={update} onDeletePost={remove} />);
-    expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('고정 공지');
+    expect(screen.getAllByRole('heading', { level: 3, name: /고정 공지|최근 공지/ })[0]).toHaveTextContent('고정 공지');
     fireEvent.click(screen.getByText('고정 공지'));
     fireEvent.click(screen.getByRole('button', { name: '상단 고정 해제' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('old', { pinned: false }));
@@ -149,4 +149,9 @@ it('일반 텍스트 붙여넣기는 사진 업로드하지 않는다',()=>{
  expect(uploadNoticeImage).not.toHaveBeenCalled();
  expect(screen.getByRole('button',{name:'등록'}).closest('footer')).not.toBeNull();
  expect(screen.getByRole('button',{name:'취소'}).closest('footer')).not.toBeNull();
+});
+
+it('공지 작성은 검색 앞 행동 줄이며 검색은 권한 없이도 유지하고 관리자 진입만 노출한다',()=>{
+ const add=vi.fn(),view=render(<NoticeBoard posts={posts} onAddPost={add}/>),title=screen.getByRole('heading',{name:'공지사항'}),create=screen.getByRole('button',{name:'공지 추가'}),search=screen.getByRole('textbox',{name:'공지 검색'});
+ expect(title.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.closest('[data-page-header-slot="actions"]')).not.toBeNull();fireEvent.change(search,{target:{value:'최근'}});expect(screen.queryByText('고정 공지')).not.toBeInTheDocument();expect(screen.getByText('최근 공지')).toBeInTheDocument();fireEvent.click(create);expect(screen.getByRole('dialog',{name:'공지 작성'})).toBeInTheDocument();expect(add).not.toHaveBeenCalled();view.unmount();render(<NoticeBoard posts={posts}/>);expect(screen.queryByRole('button',{name:'공지 추가'})).not.toBeInTheDocument();expect(screen.getByRole('textbox',{name:'공지 검색'})).toBeInTheDocument();
 });

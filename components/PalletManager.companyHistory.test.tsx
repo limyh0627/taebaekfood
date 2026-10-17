@@ -12,6 +12,13 @@ const row = (companyId: CompanyId, note: string): PalletTransaction[] => [{ id: 
 const props = { pallets: [], orders: [], partners: [], palletTransactions: [], onUpdatePallet: vi.fn(), onAddPalletTransaction: vi.fn() };
 beforeEach(() => { vi.resetModules(); service.fetchDateRange.mockReset(); service.updateItem.mockClear(); service.deleteItem.mockClear(); });
 const openHistory = () => fireEvent.click(screen.getByRole('button', { name: /^이력$/ }));
+it('제목·보기탭·행동·검색을 분리하고 탭 변경으로 지급 입력이나 writer를 실행하지 않는다',async()=>{
+ service.fetchDateRange.mockResolvedValue([]);const {default:Manager}=await import('./PalletManager');render(<Manager {...props} companyId="taebaek"/>);
+ const title=screen.getByRole('heading',{name:'파렛트 관리'}),tab=screen.getByRole('button',{name:'거래처별'}),action=screen.getByRole('button',{name:'신규 입고'}),search=screen.getByPlaceholderText('거래처 검색...');
+ for(const [before,after] of [[title,tab],[tab,action],[action,search]])expect(before.compareDocumentPosition(after)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(action).toHaveClass('h-9');expect(search).toHaveClass('h-10');
+ expect(screen.getByRole('region',{name:'검색조건'})).toContainElement(search);expect(screen.getByLabelText('거래처')).toBe(search);
+ fireEvent.change(search,{target:{value:'검수'}});fireEvent.click(screen.getByRole('button',{name:'교체'}));expect(screen.getByRole('dialog',{name:'파렛트 교체'})).toBeInTheDocument();expect(screen.getByPlaceholderText('회수 예정')).toHaveValue(0);fireEvent.click(screen.getByRole('button',{name:'취소'}));expect(search).toHaveValue('검수');openHistory();expect(screen.queryByRole('button',{name:'신규 입고'})).toBeNull();expect(screen.getByPlaceholderText('거래처 검색').parentElement).toHaveClass('h-10');expect(props.onAddPalletTransaction).not.toHaveBeenCalled();expect(service.updateItem).not.toHaveBeenCalled();
+});
 
 it('과거 조회는 회사 조건을 서버에 전달한다', async () => {
   service.fetchDateRange.mockResolvedValue([]);

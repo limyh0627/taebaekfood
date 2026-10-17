@@ -194,18 +194,19 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
 
   return (
     <div className="space-y-4">
-      <PageHeader title="견적서" subtitle="팔기 전에 값을 적어 내미는 종이 — 회계엔 아무것도 안 남습니다" />
+      <PageHeader title="견적서" subtitle="팔기 전에 값을 적어 내미는 종이 — 회계엔 아무것도 안 남습니다" actions={        <ActionButton tone="primary" onClick={openNew}>
+          <Plus size={14} />견적서 작성
+        </ActionButton>} />
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처·품목·번호"
-            className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
+            aria-label="견적 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
         </div>
-        <ActionButton tone="primary" onClick={openNew} className="ml-auto">
-          <Plus size={14} />견적서 작성
-        </ActionButton>
-      </div>
+
+      </section>
 
       {quoteError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">

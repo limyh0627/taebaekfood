@@ -71,3 +71,8 @@ it.each([
   expect(addItem).not.toHaveBeenCalled();
   view.unmount();
 });
+
+it('견적 작성 행동은 검색보다 먼저 있고 검색 입력 후에도 새 작성 초안을 연다',()=>{
+ const view=render(<QuotationManager items={items} partners={[partner]} partnerItems={prices}/>),ui=within(view.container),title=ui.getByRole('heading',{name:'견적서'}),create=ui.getByRole('button',{name:'견적서 작성'}),search=ui.getByRole('textbox',{name:'견적 검색'});
+ expect(title.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.closest('[data-page-header-slot="actions"]')).not.toBeNull();fireEvent.change(search,{target:{value:'없는 견적'}});fireEvent.click(create);expect(ui.getByRole('dialog',{name:'견적서 작성'})).toBeInTheDocument();expect(addItem).not.toHaveBeenCalled();
+});

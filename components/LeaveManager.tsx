@@ -25,6 +25,7 @@ import { Employee, LeaveRequest, LeaveType, LeaveStatus, CompanyId } from '../ty
 import ModalShell from '../src/shared/components/ModalShell';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import ActionButton from '../src/shared/components/ActionButton';
 import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 관리자 화면과 같은 함수를 쓴다
@@ -362,37 +363,11 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       <PageHeader
         title="연차 신청 및 확인"
         subtitle="임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요."
-        right={<div className="flex items-center space-x-2 md:space-x-3">
-          <div className="bg-white p-1 md:p-1.5 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar">
-            <button
-              onClick={() => setActiveTab('my')}
-              className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              내 휴가
-            </button>
-            <button
-              onClick={() => setActiveTab('calendar')}
-              className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              임직원 캘린더
-            </button>
-            <button
-              onClick={() => setActiveTab('orgchart')}
-              className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'orgchart' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              조직도·연락망
-            </button>
-          </div>
-          {(activeTab === 'my' || activeTab === 'calendar') && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-indigo-600 text-white px-4 md:px-6 py-2.5 rounded-xl font-black shadow-sm hover:bg-indigo-700 transition-all flex items-center space-x-2"
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">신규 연차 신청</span>
-            </button>
-          )}
+        tabs={<div className="flex min-w-0 max-w-full flex-wrap gap-1" role="group" aria-label="연차 메뉴">
+          {([['my','내 휴가'],['calendar','임직원 캘린더'],['orgchart','조직도·연락망']] as const).map(([tab,label])=>
+            <ActionButton key={tab} aria-pressed={activeTab===tab} onClick={()=>setActiveTab(tab)} className={activeTab===tab?'!border-indigo-300 !text-indigo-700':''}>{label}</ActionButton>)}
         </div>}
+        actions={(activeTab === 'my' || activeTab === 'calendar') ? <ActionButton tone="primary" aria-label="신규 연차 신청" onClick={()=>setIsModalOpen(true)}><Plus size={16}/><span>신규 연차 신청</span></ActionButton> : undefined}
       />
 
       {activeTab === 'calendar' && (
@@ -600,12 +575,12 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                     <h3 className="text-sm md:text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600 w-4 md:w-[18px] h-4 md:h-[18px]" />내 신청 내역</h3>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">‹</button>
-                      <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
+                      <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="h-10 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
                       <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">›</button>
                     </div>
                     <div className="relative w-full sm:w-40">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
-                      <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
+                      <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
                     </div>
                   </div>
                   <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
@@ -853,7 +828,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               </div>
               <div className="relative w-40 md:w-52">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                <input value={dirSearch} onChange={e => setDirSearch(e.target.value)} placeholder="이름·부서·직급 검색" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input value={dirSearch} onChange={e => setDirSearch(e.target.value)} placeholder="이름·부서·직급 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
               </div>
             </div>
             <div className="p-4 md:p-6">

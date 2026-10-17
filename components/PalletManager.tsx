@@ -261,29 +261,36 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       <PageHeader
         title="파렛트 관리"
         subtitle="실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다."
-        right={<div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+        tabs={<div className="flex flex-wrap items-center gap-1">
           <button
             onClick={() => setActiveTab('partners')}
-            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'partners' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`h-9 px-4 rounded-lg flex items-center gap-1.5 transition-all ${activeTab === 'partners' ? 'bg-white text-indigo-600 border border-indigo-300' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <Users size={14} />
             <span className="text-xs font-black">거래처별</span>
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'history' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`h-9 px-4 rounded-lg flex items-center gap-1.5 transition-all ${activeTab === 'history' ? 'bg-white text-indigo-600 border border-indigo-300' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <Clock size={14} />
             <span className="text-xs font-black">이력</span>
           </button>
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`h-9 px-4 rounded-lg flex items-center gap-1.5 transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 border border-indigo-300' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <Layers size={14} />
             <span className="text-xs font-black">전체 재고</span>
           </button>
         </div>}
+        actions={activeTab === 'partners' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => { setSelectedClientForTrans(null); setTransType('out'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><Plus size={13} />지급</button>
+              <button onClick={() => { setSelectedClientForTrans(null); setTransType('exchange'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><RefreshCw size={13} />교체</button>
+              <button onClick={() => { setSelectedClientForTrans(null); setTransType('in'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1"><RefreshCw size={13} />신규 입고</button>
+            </div>
+        ) : undefined}
       />
 
       {activeTab === 'overview' ? (
@@ -334,9 +341,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         </div>
                         <div>
                           {isEditing ? (
-                            <input 
-                              type="text" 
-                              value={editForm?.name} 
+                            <input
+                              type="text"
+                              value={editForm?.name}
                               onChange={(e) => handleChange('name', e.target.value)}
                               className="text-xl font-bold text-slate-900 border-b border-indigo-200 outline-none w-full"
                             />
@@ -346,7 +353,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">자산 요약</p>
                         </div>
                       </div>
-                      
+
                       {isEditing ? (
                         <div className="flex items-center space-x-2">
                           <button onClick={handleSave} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-700">
@@ -367,9 +374,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       <div className="space-y-1">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">전체 자산</p>
                         {isEditing ? (
-                          <input 
-                            type="number" 
-                            value={editForm?.total} 
+                          <input
+                            type="number"
+                            value={editForm?.total}
                             onChange={(e) => handleChange('total', parseInt(e.target.value) || 0)}
                             className="text-2xl font-black text-slate-900 border-b border-indigo-200 outline-none w-full"
                           />
@@ -384,9 +391,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       <div className="space-y-1">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">파손/수리</p>
                         {isEditing ? (
-                          <input 
-                            type="number" 
-                            value={editForm?.damaged} 
+                          <input
+                            type="number"
+                            value={editForm?.damaged}
                             onChange={(e) => handleChange('damaged', parseInt(e.target.value) || 0)}
                             className="text-2xl font-black text-rose-600 border-b border-indigo-200 outline-none w-full"
                           />
@@ -415,18 +422,13 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </>
       ) : activeTab === 'history' ? (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Clock size={14} className="text-slate-400" />
-                <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">파렛트 거래 이력</h3>
-                <span className="text-[10px] font-black text-slate-300">{allPalletHistory.length}건</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="pallet-history-query-title">
+            <h3 id="pallet-history-query-title" className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
+              <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
+                <div className="space-y-1"><label htmlFor="pallet-history-search" className="block text-[10px] font-bold text-slate-500">거래처</label><div className="flex h-10 items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-3">
                   <Search size={12} className="text-slate-400 shrink-0" />
                   <input
-                    value={historySearch}
+                    id="pallet-history-search" value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
                     placeholder="거래처 검색"
                     className="w-24 sm:w-32 bg-transparent text-xs font-bold text-slate-700 outline-none"
@@ -435,17 +437,27 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                     <button onClick={() => setHistorySearch('')} className="shrink-0 text-slate-300 hover:text-slate-500"><X size={12} /></button>
                   )}
                 </div>
+                </div><label className="flex flex-col gap-1 text-[10px] font-bold text-slate-500">기간
                 <select
                   value={monthFilter}
                   onChange={(e) => setMonthFilter(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
                 >
                   <option value="">전체 기간</option>
                   {availableMonths.map(m => (
                     <option key={m} value={m}>{m.slice(0, 4)}년 {m.slice(5)}월</option>
                   ))}
-                </select>
+                </select></label>
               </div>
+          </section>
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Clock size={14} className="text-slate-400" />
+                <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">파렛트 거래 이력</h3>
+                <span className="text-[10px] font-black text-slate-300">{allPalletHistory.length}건</span>
+              </div>
+
             </div>
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-left">
@@ -491,13 +503,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </div>
       ) : (
         <div className="space-y-4 animate-in fade-in duration-300">
+          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="pallet-query-title">
+            <h3 id="pallet-query-title" className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
+            <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
           {/* 월 선택 — 요약 숫자(입고/지급/교체중)를 해당 월로 필터 */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-col gap-1">
             <span className="text-[11px] font-black text-slate-500">기간</span>
             <select
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+              className="h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value="">전체 기간</option>
               {availableMonths.map(m => (
@@ -508,6 +523,23 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               <span className="text-[10px] font-bold text-indigo-500">{monthFilter.slice(0, 4)}년 {monthFilter.slice(5)}월 기준</span>
             )}
           </div>
+          <div className="flex-1 min-w-40 space-y-1">
+            <label className="block text-[10px] font-bold text-slate-500" htmlFor="pallet-partner-search">거래처</label>
+            <div className="relative max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                id="pallet-partner-search" type="text"
+                placeholder="거래처 검색..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+
+          </div>
+
+            </div>
+          </section>
           {/* 전체 요약: 입고 / 지급 / 교체중 */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
@@ -526,24 +558,6 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               <p className="text-[10px] text-slate-400">입고 확인 대기 (교체 진행 중)</p>
             </div>
           </div>
-          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="거래처 검색..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('out'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors flex items-center gap-1"><Plus size={13} />지급</button>
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('exchange'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors flex items-center gap-1"><RefreshCw size={13} />교체</button>
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('in'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors flex items-center gap-1"><RefreshCw size={13} />신규 입고</button>
-            </div>
-          </div>
-
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <table className="w-full text-left">
               <thead className="bg-slate-50/50 border-b border-slate-100">
@@ -556,8 +570,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               <tbody className="divide-y divide-slate-50">
                 {pagedClientPalletStatus.length > 0 ? (
                   pagedClientPalletStatus.map((status, idx) => (
-                    <tr 
-                      key={idx} 
+                    <tr
+                      key={idx}
                       onClick={() => setSelectedClientIdForDetail(status.id)}
                       className="hover:bg-slate-50/30 transition-colors group cursor-pointer"
                     >
@@ -730,8 +744,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                   </h4>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       value={historyDateFilter}
                       onChange={(e) => {
                         setHistoryDateFilter(e.target.value);
@@ -740,7 +754,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     />
                     {historyDateFilter && (
-                      <button 
+                      <button
                         onClick={() => {
                           setHistoryDateFilter('');
                           setHistoryPage(1);

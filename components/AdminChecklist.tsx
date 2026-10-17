@@ -200,52 +200,55 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
       <PageHeader
-        title="관리자 확인사항"
-        subtitle="연차 신청, 재고 변동, 입고/반품 처리가 필요한 항목을 확인하세요."
-        right={(totalPending + pendingVoucherCount) > 0 ? (
-          <div className="bg-amber-50 border border-amber-100 px-4 py-2 rounded-xl flex items-center space-x-2">
-            <AlertCircle size={18} className="text-amber-500" />
-            <span className="text-sm font-bold text-amber-700">대기 중 {totalPending + pendingVoucherCount}건</span>
-          </div>
-        ) : undefined}
-      />
-
-      {/* 탭 */}
-      <div className="flex flex-wrap gap-2">
+        tabs={(
+      <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1">
         <button
-          onClick={() => setActiveTab('ops')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'ops' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          aria-pressed={activeTab === 'ops'} onClick={() => setActiveTab('ops')}
+          className={`flex h-9 items-center gap-2 px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold transition-colors ${activeTab === 'ops' ? '!border-indigo-300 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
         >
           <ClipboardList size={15} />거래명세서
           {(pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length) > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'ops' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center bg-amber-100 text-amber-700">
               {pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length}
             </span>
           )}
         </button>
         <button
-          onClick={() => setActiveTab('adjustment')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'adjustment' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          aria-pressed={activeTab === 'adjustment'} onClick={() => setActiveTab('adjustment')}
+          className={`flex h-9 items-center gap-2 px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold transition-colors ${activeTab === 'adjustment' ? '!border-indigo-300 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
         >
           <Package size={15} />재고
           {pendingAdjustments.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'adjustment' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center bg-amber-100 text-amber-700">
               {pendingAdjustments.length}
             </span>
           )}
         </button>
         <button
-          onClick={() => setActiveTab('leave')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'leave' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          aria-pressed={activeTab === 'leave'} onClick={() => setActiveTab('leave')}
+          className={`flex h-9 items-center gap-2 px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold transition-colors ${activeTab === 'leave' ? '!border-indigo-300 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
         >
           <CalendarDays size={15} />연차 신청
           {pendingLeaves.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'leave' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center bg-amber-100 text-amber-700">
               {pendingLeaves.length}
             </span>
           )}
         </button>
+        {(totalPending + pendingVoucherCount) > 0 ? (
+          <div className="ml-auto flex min-h-9 items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-1">
+            <AlertCircle size={18} className="text-amber-500" />
+            <span className="text-sm font-bold text-amber-700">대기 중 {totalPending + pendingVoucherCount}건</span>
+          </div>
+        ) : undefined}
       </div>
+        )}
+        title="관리자 확인사항"
+        subtitle="연차 신청, 재고 변동, 입고/반품 처리가 필요한 항목을 확인하세요."
+
+      />
+
+
 
       {/* 연차 신청 탭 */}
       {activeTab === 'leave' && (
@@ -443,9 +446,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               </thead>
               <tbody>
                 {/* ── 반품 그룹 ── */}
-                <tr><td colSpan={6} className="px-4 py-2 bg-rose-50 border-y border-rose-100">
-                  <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-600 uppercase tracking-widest">
-                    <RotateCcw size={11} /> 반품 {pendingReturns.length > 0 ? `(${pendingReturns.length}건)` : ''}
+                <tr><td colSpan={6} className="px-4 py-2 bg-white border-y border-slate-200">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <RotateCcw size={13} className="text-rose-600" /> 반품 {pendingReturns.length > 0 ? `(${pendingReturns.length}건)` : ''}
                   </span>
                 </td></tr>
                 {pendingReturns.length === 0 ? (
@@ -466,7 +469,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center">
                         {req.status === 'pending' ? (
-                          <button disabled={!onProcessReturn || !!processingReturnId} onClick={() => void processReturnRequest(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> {processingReturnId === req.id ? '처리 중...' : '반품 원자 처리'}</button>
+                          <button disabled={!onProcessReturn || !!processingReturnId} onClick={() => void processReturnRequest(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={13} className="text-violet-600" /> {processingReturnId === req.id ? '처리 중...' : '반품 원자 처리'}</button>
                         ) : (
                           <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 처리 이력</span>
                         )}
@@ -476,10 +479,10 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 ))}
 
                 {/* ── 선입고 이력 그룹 ── */}
-                <tr><td colSpan={6} className="px-4 py-2 bg-teal-50 border-y border-teal-100">
+                <tr><td colSpan={6} className="px-4 py-2 bg-white border-y border-slate-200">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="flex items-center gap-1.5 text-[10px] font-black text-teal-600 uppercase tracking-widest">
-                      <History size={11} /> 선입고 이력 {inboundFilter === 'pending_voucher' ? `(전표 미발행 ${pendingVoucherCount}건)` : `(전체 ${filteredReceipts.length}건)`}
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                      <History size={13} className="text-teal-600" /> 선입고 이력 {inboundFilter === 'pending_voucher' ? `(전표 미발행 ${pendingVoucherCount}건)` : `(전체 ${filteredReceipts.length}건)`}
                     </span>
                     <div className="flex items-center gap-0.5 bg-white rounded-lg p-0.5 border border-teal-100">
                       <button onClick={() => setInboundFilter('pending_voucher')} className={`px-2 py-1 rounded-md text-[10px] font-black transition-colors ${inboundFilter === 'pending_voucher' ? 'bg-teal-600 text-white' : 'text-teal-600 hover:bg-teal-50'}`}>전표 미발행만</button>
@@ -514,8 +517,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 ))}
 
                 {/* ── 전표 수정 그룹 ── */}
-                <tr><td colSpan={6} className="px-4 py-2 bg-violet-50 border-y border-violet-100">
-                  <span className="flex items-center gap-1.5 text-[10px] font-black text-violet-600 uppercase tracking-widest">
+                <tr><td colSpan={6} className="px-4 py-2 bg-white border-y border-slate-200">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                     <FileText size={11} /> 전표 수정 {pendingStmtEdits.length > 0 ? `(${pendingStmtEdits.length}건)` : ''}
                   </span>
                 </td></tr>
@@ -559,9 +562,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 ))}
 
                 {/* ── 발주 예정 그룹 ── */}
-                <tr><td colSpan={6} className="px-4 py-2 bg-orange-50 border-y border-orange-100">
-                  <span className="flex items-center gap-1.5 text-[10px] font-black text-orange-600 uppercase tracking-widest">
-                    <ShoppingCart size={11} /> 발주 예정 {orderRequests.length > 0 ? `(${orderRequests.length}건)` : ''}
+                <tr><td colSpan={6} className="px-4 py-2 bg-white border-y border-slate-200">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <ShoppingCart size={13} className="text-orange-600" /> 발주 예정 {orderRequests.length > 0 ? `(${orderRequests.length}건)` : ''}
                   </span>
                 </td></tr>
                 {orderGroups.length === 0 ? (

@@ -182,27 +182,29 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
       <PageHeader
         title="공지사항"
         subtitle="사내 주요 소식 및 긴급 공지를 확인하세요."
-        right={<div className="flex items-center gap-2">
-          <div className="relative">
+        actions={onAddPost ? <div className="flex items-center gap-2">
+            <button
+              disabled={busy || pendingCorrupt} onClick={() => {setBlocks([{type:'text',text:''}]);setShowForm(true);}}
+              className="flex h-9 items-center gap-1.5 px-4 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 whitespace-nowrap"
+            >
+              <Plus size={15} /> 공지 추가
+            </button>
+        </div> : undefined}
+      />
+      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
+          <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
             <input
               type="text"
               placeholder="공지 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm transition-all w-40 md:w-56"
+              aria-label="공지 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </div>
-          {onAddPost && (
-            <button
-              disabled={busy || pendingCorrupt} onClick={() => {setBlocks([{type:'text',text:''}]);setShowForm(true);}}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap"
-            >
-              <Plus size={15} /> 공지 추가
-            </button>
-          )}
-        </div>}
-      />
+      </section>
+
 
       <div className="grid grid-cols-1 gap-4">
         {filteredPosts.map((post) => (
