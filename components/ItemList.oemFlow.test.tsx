@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ItemList from './ItemList';
+import { oemReceiptDraftKey } from '../src/shared/oemReceiptPending';
 import type { Item, PurchaseOrder } from '../src/shared/types';
-vi.mock('../src/shared/firebase', () => ({ db: {}, storage: {}, functions: {}, auth: {}, authReady: Promise.resolve() }));
+vi.mock('../src/shared/firebase', () => ({ db: {}, storage: {}, functions: {}, auth: { currentUser: { uid: 'oem-test-uid' } }, authReady: Promise.resolve() }));
 vi.mock('../src/shared/services/firebaseService', () => ({fetchCollection: vi.fn().mockResolvedValue([]),subscribeToCollection: vi.fn(() => () => {}),addItem:vi.fn()}));
 const confirm = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: confirm }));
@@ -121,8 +122,15 @@ it('외주 취소 확인을 취소하면 원문을 유지하고 쓰지 않는다
  expect(cancel).not.toHaveBeenCalled();expect(screen.getByRole('heading',{name:'입고 상세'})).toBeInTheDocument();
 });
 
-afterEach(()=>sessionStorage.clear());
+const originalLocks=Object.getOwnPropertyDescriptor(navigator,'locks');
+beforeEach(()=>Object.defineProperty(navigator,'locks',{configurable:true,value:{request:vi.fn(async (_name:string,_options:unknown,work:()=>unknown)=>work())}}));
+afterEach(()=>{sessionStorage.clear();localStorage.clear();if(originalLocks)Object.defineProperty(navigator,'locks',originalLocks);else Reflect.deleteProperty(navigator,'locks');});
 
 const pendingReceipt=()=>({po:{id:'fumi-po',companyId:'taebaek',poType:'oem',status:'invoiced',partnerId:'fumi',partnerName:'푸미푸드',oemSent:[{rawItemId:'raw',material:'참깨',kg:1200}]},returns:[{itemId:'oem-product',qty:20}],bulk:[],unitPricePerKg:900,date:'2026-10-03',oemCostEvidence:{version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:1200,supplyAmount:2200000}],packaging:{confirmed:true,supplyAmount:0},capturedAt:'2026-10-03T01:00:00Z'}});
-it.each(['list','detail'])('완료 이력 %s에서 미확정 요청 원문 그대로 재개한다',async mode=>{const original=pendingReceipt();sessionStorage.setItem('oem-receipt-pending:taebaek:fumi-po',JSON.stringify(original));const {receive}=view('received',{oemReceivedKg:20,oemReceiptOperationId:'oem-receive:fumi-po'});fireEvent.click(screen.getByRole('button',{name:'이력'}));if(mode==='detail'){fireEvent.click(screen.getByText('푸미푸드').closest('tr')!);const detail=screen.getByRole('dialog',{name:'입고 상세'});expect(within(detail).queryByRole('button',{name:'외주 발주 취소'})).toBeNull();fireEvent.click(within(detail).getByRole('button',{name:'입고 요청 재개'}));}else fireEvent.click(screen.getByRole('button',{name:'입고 요청 재개'}));expect(screen.getByRole('heading',{name:'가공입고'})).toBeInTheDocument();fireEvent.click(screen.getAllByRole('button',{name:'입고 요청 재개'}).at(-1)!);await waitFor(()=>expect(receive).toHaveBeenCalledOnce());expect(receive.mock.calls[0][0]).toEqual(original);});
+it.each(['list','detail'])('완료 이력 %s의 과거 요청은 원문을 보존하고 최초 계정 불명으로 재입고를 막는다',async mode=>{const original=pendingReceipt();sessionStorage.setItem('oem-receipt-pending:taebaek:fumi-po',JSON.stringify(original));const {receive}=view('received',{oemReceivedKg:20,oemReceiptOperationId:'oem-receive:fumi-po'});fireEvent.click(screen.getByRole('button',{name:'이력'}));if(mode==='detail'){fireEvent.click(screen.getByText('푸미푸드').closest('tr')!);const detail=screen.getByRole('dialog',{name:'입고 상세'});expect(within(detail).queryByRole('button',{name:'외주 발주 취소'})).toBeNull();fireEvent.click(within(detail).getByRole('button',{name:'입고 요청 재개'}));}else fireEvent.click(screen.getByRole('button',{name:'입고 요청 재개'}));expect(screen.getByRole('heading',{name:'가공입고'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'OEM 실패 작업 1'}));const failures=await screen.findByRole('dialog',{name:'OEM 실패 작업 목록'});fireEvent.click(within(failures).getByRole('button',{name:/fumi-po.*과거 요청 확인 필요/}));await screen.findByText('과거 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 자동으로 다시 입고하지 않습니다.');expect(receive).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).toBeDisabled();expect(JSON.parse(sessionStorage.getItem('oem-receipt-pending:taebaek:fumi-po')!)).toEqual(original);});
 it.each(['foreign','cancelled','missing','malformed'])('완료 이력의 %s 요청은 재개 진입을 제공하지 않는다',mode=>{const original=pendingReceipt();if(mode==='foreign')original.po.companyId='punghoe';if(mode!=='missing')sessionStorage.setItem('oem-receipt-pending:taebaek:fumi-po',mode==='malformed'?'{':JSON.stringify(original));view('received',mode==='cancelled'?{oemCancelledAt:'2026-10-04'}:{});fireEvent.click(screen.getByRole('button',{name:'이력'}));expect(screen.queryByRole('button',{name:'입고 요청 재개'})).toBeNull();fireEvent.click(screen.getByText('푸미푸드').closest('tr')!);expect(screen.queryByRole('button',{name:'입고 요청 재개'})).toBeNull();});
+
+it('정확한 계정의 입고 원문은 실제 실패 목록 선택 뒤 같은 내용으로 한 번 재개한다',async()=>{
+ const original=pendingReceipt(),scope={companyId:'taebaek' as const,actorUid:'oem-test-uid',poId:'fumi-po'};localStorage.setItem(oemReceiptDraftKey(scope),JSON.stringify({version:1,...scope,input:original}));
+ const {receive}=view('received',{oemReceivedKg:20,oemReceiptOperationId:'oem-receive:fumi-po'});fireEvent.click(screen.getByRole('button',{name:'OEM 실패 작업 1'}));const list=await screen.findByRole('dialog',{name:'OEM 실패 작업 목록'});fireEvent.click(within(list).getByRole('button',{name:/푸미푸드.*가공 입고.*fumi-po.*처리 결과 미확인/}));const detail=await screen.findByRole('dialog',{name:'OEM 실패 작업 상세'});expect(within(detail).getByText('oem-product · 수량 20')).toBeInTheDocument();fireEvent.click(within(detail).getByRole('button',{name:'같은 내용 다시 시도'}));await waitFor(()=>expect(receive).toHaveBeenCalledOnce());expect(receive.mock.calls[0]).toEqual([original,'resume','oem-test-uid']);
+});

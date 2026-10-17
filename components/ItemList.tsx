@@ -1,3 +1,4 @@
+import { boxEquivalentLabel, inventoryNameSpec, withSpec, parseMakeLabel } from '../src/features/items/ui/itemListDisplay';
 import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
 import { isStockProduction } from '../src/shared/orderPurpose';
 
@@ -101,7 +102,7 @@ const normCat = (cat: string): string =>
 // 품목명 뒤에 용량(spec) 표시 — 이름에 이미 용량 표기("300ML-소주병")가 있으면 용량은 중복이라 생략.
 // 다만 **개입수는 언제나 붙인다** — 이름에서 '(10개입)'을 뺐으므로(2026-08-14)
 // 이게 없으면 낱개·10개입·12개입이 목록에서 똑같이 보인다.
-const hasVolumeInName = (name: string) => /\d+(\.\d+)?\s*(ml|kg|l|g)(?![a-z])/i.test(name);
+
 /**
  * 품목명과 규격을 **갈라** 그린다 — 이름에 용량을 붙여 버리면 규격 칸이 있으나 마나다.
  * 색은 안 쓴다(주문카드·품목관리와 같은 규칙). withSpec은 검색 haystack용으로만 남는다.
@@ -118,64 +119,15 @@ const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; classN
 };
 
 // 상품은 낱개로 주문하되, 입력값을 판단할 때 필요한 박스 환산치만 짧게 보여준다.
-const boxEquivalentLabel = (qty: number, unitsPerBox: number): string => {
-  const boxes = qty / unitsPerBox;
-  const value = Number.isInteger(boxes) ? String(boxes) : boxes.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-  return `${value}박스 분량`;
-};
 
-const inventoryNameSpec = (p: { name: string; spec?: string; subtype?: string }): { name: string; spec: string } => {
-  const { base, vol } = splitNameVolume(p);
-  const nameCount = p.name.match(/\(?\s*(\d+)\s*개입\s*\)?/i)?.[1];
-  const cleanName = base
-    .replace(/\/?\s*\d+(?:\.\d+)?\s*(?:ml|kg|g|l)\s*(?:\(\s*\d+\s*개입\s*\))?\s*$/i, '')
-    .replace(/\(\s*\d+\s*개입\s*\)\s*$/i, '')
-    .trim();
-  const baseSpec = specText(p.spec) || vol || '-';
-  const specCount = parseSpecCount(p.spec);
-  const count = specCount > 1 ? specCount : Number(nameCount || 0);
-  const countedSpec = count > 1 && !baseSpec.includes(String(count)) ? `${baseSpec} × ${count}` : baseSpec;
-  // 선물세트의 1호·2호는 규격이 아니라 품목 구분명이다. 규격 칸에는 포장 형태만 적는다.
-  const giftSpec = p.subtype === '선물세트' ? '선물세트' : countedSpec;
-  return { name: cleanName || base, spec: giftSpec };
-};
 
-const withSpec = (p: { name: string; spec?: string }): string => {
-  const sp = parseSpecUnit(p.spec);
-  const count = parseSpecCount(p.spec);
-  const base = sp && !hasVolumeInName(p.name)
-    ? `${p.name}/${sp.value}${sp.unit === 'l' ? 'L' : sp.unit}`
-    : p.name;
-  return count > 1 ? `${base} ×${count}` : base;
-};
+
+
+
 
 // 품목 추가 목록용 — 긴 슬래시 이름을 대표이름 + 구분요소(등급·용량·개입·거래처)로 분해해 배지로 보여준다.
-const MAKE_GRADE_WORDS = ['특골드', '골드A', '특A', '골드', '원액', '특', '분', 'A'];
-const parseMakeLabel = (p: { name: string; spec?: string }): { base: string; grade: string; size: string; pack: string; brand: string; container: string } => {
-  let nm = p.name;
-  // 개입수는 규격('1750ml * 10')에서 읽는다 — 이름에서 '(10개입)'을 뺐다(2026-08-14).
-  // 옛 이름이 남아 있을 수 있어 이름 쪽도 폴백으로 본다.
-  const packM = nm.match(/\((\d+)\s*개입\)/);
-  const cnt = parseSpecCount(p.spec);
-  const pack = cnt > 1 ? `${cnt}개입` : (packM ? `${packM[1]}개입` : '');
-  nm = nm.replace(/\(\s*\d+\s*개입\s*\)/g, '').trim();
-  const sizeM = String(p.spec ?? '').match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i) || nm.match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i);
-  const size = sizeM ? sizeM[0].replace(/\s+/g, '') : '';
-  const toks = nm.split('/').map(s => s.trim()).filter(Boolean);
-  const base = toks[0] ?? nm;
-  let grade = '', brand = '';
-  for (const raw of toks.slice(1)) {
-    const t = raw.replace(/\(.*?\)/g, '').trim();                 // "(스마트)" 같은 부기 제거
-    if (!t || t === '병') continue;
-    if (/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i.test(t)) continue;       // 용량 토큰은 size로 이미 뽑음
-    if (!grade && (MAKE_GRADE_WORDS.includes(t) || /골드|원액/.test(t))) grade = t;
-    else if (!brand) brand = t;
-  }
-  // 용기 타입 — 180/300/350ml=병, 1500/1750/1800ml=페트, 16.5kg(캔) 등은 표시 안 함
-  const sizeNum = parseFloat(size);
-  const container = (/kg/i.test(size) || !sizeNum) ? '' : sizeNum <= 350 ? '병' : sizeNum >= 1500 ? '페트' : '';
-  return { base, grade, size, pack, brand, container };
-};
+
+
 
 // 검색어 → 토큰들. '+'로 AND, 각 키워드는 한글↔영숫자 경계에서 쪼갠다(예: "참A" → ["참","A"]).
 // 초성열(ㄱ~ㅎ)은 통째로 남겨 초성 검색을 유지. 각 토큰은 모두 매칭돼야 한다(AND).
