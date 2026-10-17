@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import React from 'react';
+import React, {useState} from 'react';
+import ModalShell from '../src/shared/components/ModalShell';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ ask: vi.fn(), authChange: null as null | ((user: any) => void) }));
@@ -90,4 +91,30 @@ it('도움말을 닫으면 열었던 버튼으로 초점을 돌려준다', () =>
   const view = render(<HelpChat {...props} />);
   expect(screen.getByLabelText('질문')).toHaveFocus();
   view.unmount(); expect(outside).toHaveFocus(); outside.remove();
+});
+it('실제 작성 모달 위에서 질문·근거 차단·Escape 닫기를 해도 초안과 작성창을 보존한다',async()=>{
+ const parentEscape=vi.fn(),writingClose=vi.fn(),navigate=vi.fn(()=>false);
+ const rects=vi.spyOn(HTMLElement.prototype,'getClientRects').mockReturnValue([{}] as any);
+ function Host(){const [open,setOpen]=useState(false);return <div onKeyDown={event=>{if(event.key==='Escape')parentEscape();}}><ModalShell title="작성창" layer={1090} onClose={writingClose}><input aria-label="작성 원문" defaultValue="보존할 초안"/></ModalShell><button onClick={()=>setOpen(true)}>공통 도움말</button>{open&&<HelpChat {...props} onClose={()=>setOpen(false)} onNavigate={navigate}/>}</div>;}
+ try{
+  m.ask.mockResolvedValue(answer);render(<Host/>);const writing=screen.getByLabelText('작성 원문');writing.focus();
+  fireEvent.click(screen.getByRole('button',{name:'공통 도움말'}));const input=screen.getByLabelText('질문');expect(input).toHaveFocus();
+  expect(screen.getByRole('dialog',{name:'사용법 도움말'}).parentElement).toHaveStyle({zIndex:2110});enter();
+  fireEvent.click(await screen.findByRole('button',{name:'전표 열기'}));expect(navigate).toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent('현재 열려 있는 창을 유지했습니다');
+  expect(writing).toHaveValue('보존할 초안');expect(writingClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(input,{key:'Escape'});expect(screen.queryByRole('dialog',{name:'사용법 도움말'})).toBeNull();expect(screen.getByRole('dialog',{name:'작성창'})).toBeInTheDocument();expect(writing).toHaveFocus();expect(parentEscape).not.toHaveBeenCalled();
+ }finally{rects.mockRestore();}
+});
+it('다음 답변 대기 중 근거 이동을 거절해도 답변과 전송 상태를 정상 완료한다', async () => {
+ let finish!: (value: typeof answer) => void;
+ m.ask.mockResolvedValueOnce(answer).mockImplementationOnce(() => new Promise(done => { finish = done; }));
+ render(<HelpChat {...props} onNavigate={() => false} />); enter();
+ await screen.findByText(answer.answer); enter();
+ fireEvent.click(screen.getByRole('button', { name: '전표 열기' }));
+ expect(screen.getByRole('status')).toHaveTextContent('현재 열려 있는 창을 유지했습니다');
+ await act(async () => finish({ ...answer, answer: '두 번째 답변' }));
+ expect(screen.getByText('두 번째 답변')).toBeInTheDocument();
+ expect(screen.getByLabelText('질문')).not.toBeDisabled();
+ fireEvent.change(screen.getByLabelText('질문'), { target: { value: '다음 질문' } });
+ expect(screen.getByRole('button', { name: '질문 보내기' })).not.toBeDisabled();
 });

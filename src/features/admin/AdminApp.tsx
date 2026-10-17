@@ -2330,6 +2330,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const menuDefaults = normalizeMenuPreferences(null,menuGroups,menuCatalog);
   const helpSessionKey = menuKey ? `${menuKey}:${currentView}` : null;
   useEffect(()=>{setHelpOpen(null);},[helpSessionKey]);
+  useEffect(()=>{
+    const openHelp=(event:KeyboardEvent)=>{
+      if(event.altKey&&!event.ctrlKey&&!event.metaKey&&(event.key==='/'||event.code==='Slash')&&helpSessionKey){event.preventDefault();setHelpOpen(helpSessionKey);}
+    };
+    window.addEventListener('keydown',openHelp);
+    return()=>window.removeEventListener('keydown',openHelp);
+  },[helpSessionKey]);
   const menuValue = normalizeMenuPreferences(menuSaved?.key === menuKey && menuKey ? menuSaved.value : null,menuGroups,menuCatalog);
   const menuCatalogSignature = JSON.stringify({groups:menuGroups,items:menuCatalog});
   useEffect(() => { setMenuSaved({key:menuKey,value:loadMenuPreferences(menuKey,menuGroups,menuCatalog)});setMenuError(''); },[menuKey,menuCatalogSignature]);
@@ -2346,12 +2353,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
+      {!(helpOpen && helpOpen === helpSessionKey) && <button type="button" aria-label="사용법 도움말 열기" aria-keyshortcuts="Alt+/" title={helpSessionKey?'사용법 도움말 · Alt+/':'로그인 계정을 확인한 뒤 도움말을 열 수 있습니다.'} disabled={!helpSessionKey} onClick={()=>setHelpOpen(helpSessionKey)} className="fixed z-[2100] min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 shadow-sm disabled:opacity-50" style={{right:'calc(16px + env(safe-area-inset-right))',bottom:'calc(96px + env(safe-area-inset-bottom))'}}>사용법 도움말</button>}
       {helpOpen && helpOpen === helpSessionKey && menuIdentity && <React.Suspense fallback={<p role="status">도움말을 여는 중입니다.</p>}><HelpChat key={helpSessionKey} companyId={companyId} userId={menuIdentity.uid} mode={isAdmin?'admin':'staff'} currentView={currentView} onClose={()=>setHelpOpen(null)} onNavigate={id=>{
-        if(menuIdentity.uid!==auth.currentUser?.uid)return;
-        if(id==='mypage'){setCurrentView('mypage');setHelpOpen(null);return;}
+        if(menuIdentity.uid!==auth.currentUser?.uid)return false;
+        const editingDialog=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')).some(node=>node.isConnected&&node.getAttribute('aria-labelledby')!=='help-chat-title'&&!node.closest('[hidden], [aria-hidden="true"]')&&getComputedStyle(node).display!=='none'&&getComputedStyle(node).visibility!=='hidden'&&node.getClientRects().length>0);
+        if(editingDialog)return false;
+        if(id==='mypage'){setCurrentView('mypage');setHelpOpen(null);return true;}
         const entry=menuEntries.find(row=>row.id===id);
-        if(!entry)return;
-        entry.element.props.onClick();setHelpOpen(null);
+        if(!entry)return false;
+        entry.element.props.onClick();setHelpOpen(null);return true;
       }}/></React.Suspense>}
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
@@ -4835,7 +4845,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {currentView === 'mypage' && (
             <React.Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-300">불러오는 중…</div>}>
-              <MyPage key={menuKey ?? `pending:${companyId}:${currentUser.id}:${isAdmin}`} currentUser={currentUser} onLogout={onLogout} onOpenHelp={()=>setHelpOpen(helpSessionKey)} helpAvailable={!!helpSessionKey} menuSettings={{groups:menuGroups,items:menuCatalog,value:menuValue,enabled:!!menuKey,error:menuError,onChange:changeMenu,onReset:resetMenu}} />
+              <MyPage key={menuKey ?? `pending:${companyId}:${currentUser.id}:${isAdmin}`} currentUser={currentUser} onLogout={onLogout} menuSettings={{groups:menuGroups,items:menuCatalog,value:menuValue,enabled:!!menuKey,error:menuError,onChange:changeMenu,onReset:resetMenu}} />
             </React.Suspense>
           )}
 
