@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import {createHash} from 'crypto';
 import {onCall,HttpsError} from 'firebase-functions/v2/https';
 import {defineSecret} from 'firebase-functions/params';
-import {HELP_KNOWLEDGE_VERSION,helpKnowledgeFor,type HelpKnowledge} from './helpKnowledge';
+import {HELP_KNOWLEDGE_VERSION,helpKnowledgeFor,exactOrderPasteHelp,type HelpKnowledge} from './helpKnowledge';
 export interface HelpChatRequest { question:string; history:{role:'user'|'assistant';text:string}[]; mode:'admin'|'staff'; currentView?:string }
 export interface HelpChatResponse { answer:string; sources:{id:string;title:string;navId?:string}[]; knowledgeVersion:string }
 type Actor={uid:string;token:Record<string,unknown>};
@@ -49,6 +49,8 @@ export async function executeHelpChat(auth:Actor|undefined,input:unknown,deps:De
   const request=normalizeHelpRequest(input),actor=await authorizeHelp(auth,request,deps.employee);
   await deps.reserve(actor.uid);
   const knowledge=helpKnowledgeFor(request.mode),controller=new AbortController();
+  const fixed=exactOrderPasteHelp(request.question,request.mode);
+  if(fixed)return validateHelpAnswer({answer:fixed.answer,sourceIds:[fixed.sourceId]},knowledge);
   let timer:ReturnType<typeof setTimeout>|undefined;
   try {
     const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new HttpsError('deadline-exceeded','도움말 응답이 늦습니다. 잠시 후 다시 이용해 주세요.'));},deps.timeoutMs??25000);});

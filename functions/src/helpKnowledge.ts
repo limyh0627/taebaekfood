@@ -1,4 +1,5 @@
-export const HELP_KNOWLEDGE_VERSION = '2026-10-17.1';
+import {getHelpMenuGuides, getHelpMenuGuide} from './shared/helpGuides';
+export const HELP_KNOWLEDGE_VERSION = '2026-10-17.2';
 export interface HelpKnowledge { id:string; title:string; navId?:string; modes:readonly ('admin'|'staff')[]; text:string }
 // 실제 동선만 고정하고 운영 자료·직원 이름을 문맥에 넣지 않는다.
 export const HELP_KNOWLEDGE: readonly HelpKnowledge[] = [
@@ -15,4 +16,19 @@ export const HELP_KNOWLEDGE: readonly HelpKnowledge[] = [
   {id:'partner-delivery',title:'거래처 기본 배송방식',navId:'partners',modes:['admin'],text:'거래처 관리에서 거래처를 편집하고 기본 배송방식을 배송·화물·수령·택배 중 고릅니다. 개별 주문의 배송지를 바꾸는 것과 거래처 기본값 편집은 별개입니다.'},
   {id:'scope',title:'도움말의 범위',modes:['admin','staff'],text:'앱 사용법만 안내합니다. 재고·원가·전표·급여·회계·세무·법률 판단, 데이터 조회·저장·삭제·승인·복구 실행은 할 수 없습니다. 근거가 없는 내용은 확인할 수 없다고 안내합니다.'},
 ];
-export function helpKnowledgeFor(mode:'admin'|'staff'):HelpKnowledge[] { return HELP_KNOWLEDGE.filter(row=>row.modes.includes(mode)); }
+export function helpKnowledgeFor(mode:'admin'|'staff'):HelpKnowledge[] {
+  const guides = getHelpMenuGuides(mode).flatMap(({viewId,guide}) => guide.features.map(feature => ({
+    id:`guide:${viewId}:${feature.id}`,title:`${guide.menuTitle} · ${feature.title}`,navId:viewId,modes:[mode],
+    text:[feature.title,...feature.steps.map((step,index)=>`${index+1}. ${step}`),feature.note?`안내: ${feature.note}`:'',feature.recovery?`복구: ${feature.recovery}`:''].filter(Boolean).join('\n'),
+  })));
+  return [...HELP_KNOWLEDGE.filter(row=>row.modes.includes(mode)),...guides];
+}
+
+/** 정의·사용법만 문장 전체로 확인한다. 취소·중복·실제 자료·복합 질문은 모델의 근거 검증 경로에 둔다. */
+export function exactOrderPasteHelp(question:string,mode:'admin'|'staff'): {answer:string;sourceId:string}|undefined {
+  const normalized=question.trim().replace(/[?？.!。]+$/u,'').replace(/\s+/gu,'');
+  if(!/^(?:복사주문넣기|복사주문|복사해서주문|주문내역붙여넣기|주문내용붙여넣기)(?:(?:는|은|이|가)?(?:뭔가요|뭐예요|무엇인가요|뜻)|(?:는|은)?(?:어떻게하나요|사용법|하는방법))$/u.test(normalized))return undefined;
+  const feature=getHelpMenuGuide('orders',mode).features.find(row=>row.id==='order-paste');
+  if(!feature)return undefined;
+  return {answer:[feature.title,...feature.steps.map((step,index)=>`${index+1}. ${step}`),feature.note??'',feature.recovery??''].filter(Boolean).join('\n'),sourceId:'guide:orders:order-paste'};
+}

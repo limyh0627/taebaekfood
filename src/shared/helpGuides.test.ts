@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {getHelpMenuGuide} from './helpGuides';
+import {getHelpMenuGuide,getHelpMenuGuides} from './helpGuides';
 
 // 실제 부모의 두 메뉴 배열을 읽는다. 테스트용 가짜 메뉴를 유지해 누락을 숨기지 않는다.
 function actualMenuIds() {
@@ -19,6 +19,15 @@ function actualMenuIds() {
   return {admin:ids(branch.whenTrue),staff:ids(branch.whenFalse)};
 }
 describe('현재 메뉴별 실제 기능 안내',()=>{
+ it('서버와 화면이 같은 역할별 단일 원본을 사용한다',()=>{
+   expect(readFileSync('src/shared/helpGuides.ts','utf8')).toContain("export * from '../../functions/src/shared/helpGuides'");
+   const menus=actualMenuIds();
+   for(const mode of ['admin','staff'] as const)for(const {viewId,guide} of getHelpMenuGuides(mode)){
+     expect(guide).toEqual(getHelpMenuGuide(viewId,mode));
+     expect([...menus[mode],'mypage']).toContain(viewId);
+   }
+   expect(getHelpMenuGuide('orders','staff').features.find(f=>f.id==='order-paste')?.steps.join(' ')).toContain('주문 생성 (N건)');
+ });
  it('실제 관리자29/직원12 메뉴의 view 경로를 빠짐없이 안내하고 action은 별도다',()=>{
    const menus=actualMenuIds();expect(menus.admin).toHaveLength(29);expect(menus.staff).toHaveLength(12);
    for(const mode of ['admin','staff'] as const)for(const id of [...menus[mode],'mypage']){

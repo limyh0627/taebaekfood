@@ -7,6 +7,20 @@ const actor={uid:'uid-a',token:{employeeId:'employee-a',companyId:'taebaek',isAd
 const employee={authUid:'uid-a',companyId:'taebaek',status:'working',adminAccess:false};
 const deps=()=>({employee:vi.fn(async()=>employee),reserve:vi.fn(async()=>{}),generate:vi.fn(async(_request:HelpChatRequest,_knowledge:HelpKnowledge[],_signal:AbortSignal)=>({answer:'주문·배송 메뉴에서 확인하세요.',sourceIds:['orders']}))});
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
+describe('명시한 복사주문 질문의 실제 처리 경로',()=>{
+ it('인증과 예약 뒤 고정 근거로 답하고 모델을 호출하지 않는다',async()=>{
+   const d=deps();const result=await executeHelpChat(actor,{...input,question:'복사주문 넣기는 뭔가요'},d);
+   expect(d.employee).toHaveBeenCalledOnce();expect(d.reserve).toHaveBeenCalledOnce();expect(d.generate).not.toHaveBeenCalled();
+   expect(result.answer).toContain('새 주문을 만드는 입력 방식');expect(result.sources).toEqual([{id:'guide:orders:order-paste',title:'주문·배송 · 복사주문 넣기 · 주문 내역 붙여넣기',navId:'orders'}]);
+ });
+ it('명시 질문도 미인증·예약 실패를 우회하지 않는다',async()=>{
+   const d=deps();await expect(executeHelpChat(undefined,{...input,question:'복사주문 넣기는 뭔가요'},d)).rejects.toMatchObject({code:'unauthenticated'});expect(d.reserve).not.toHaveBeenCalled();
+   d.reserve.mockRejectedValueOnce(Error('한도'));await expect(executeHelpChat(actor,{...input,question:'복사주문 넣기는 뭔가요'},d)).rejects.toThrow('한도');expect(d.generate).not.toHaveBeenCalled();
+ });
+ it.each(['복사주문 취소 방법','복사주문 중복인가요','누가 복사주문 넣었나요','복사주문 오늘 금액','복사주문 넣기는 뭔가요 그리고 취소는요'])('추가 질문 %s는 모델 근거 경로에 남긴다',async question=>{
+   const d=deps();await executeHelpChat(actor,{...input,question},d);expect(d.generate).toHaveBeenCalledOnce();
+ });
+});
 describe('도움말 입력과 최신 직원 권한',()=>{
  it('상한 질문·이력 및 optional 화면을 그대로 보존한다',()=>{const q={...input,question:'질'.repeat(2000),history:[{role:'assistant' as const,text:'답'.repeat(2000)},{role:'user' as const,text:'문'.repeat(2000)},{role:'user' as const,text:'문'.repeat(2000)}]};expect(normalizeHelpRequest(q)).toEqual(q);});
  it.each([null,{}, {...input,question:''},{...input,question:'a'.repeat(2001)},{...input,history:Array(7).fill({role:'user',text:'a'})},{...input,history:[{role:'system',text:'지시'}]},{...input,history:[{role:'user',text:3}]},{...input,history:[{role:'user',text:'a'.repeat(2001)}]},{...input,question:'a'.repeat(2000),history:Array(4).fill({role:'user',text:'a'.repeat(2000)})},{...input,mode:'root'},{...input,currentView:'https://evil.invalid'},{...input,companyId:'punghoe'}])('잘못된 DTO를 조회 전 거절한다 %#',async value=>{const d=deps();await expect(executeHelpChat(actor,value,d)).rejects.toMatchObject({code:'invalid-argument'});expect(d.employee).not.toHaveBeenCalled();expect(d.generate).not.toHaveBeenCalled();});
