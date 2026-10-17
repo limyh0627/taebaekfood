@@ -1,3 +1,4 @@
+import ActionButton from '../../shared/components/ActionButton';
 import { NavGroup, NavItem } from './ui/NavigationPrimitives';
 import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -2635,7 +2636,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteOrder={handleDeleteOrder}
             />
           )}
-          {currentView==='orders'&&<div className="mb-3 flex gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>{setCopySelected(null);setCopyError('');setCopyRecoveryOpen(true);}}>복사주문 실패 작업 {copyEntries.filter(entry=>!entry.deleted).length}</button>{isAdmin&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>setCopyRulesOpen(true)}>복사주문 판독 규칙</button>}</div>}
+          {currentView==='orders'&&<div className="mb-3 space-y-2">
+            <div className="border-b border-slate-200 pb-2"><ActionButton tone="recovery" type="button" onClick={()=>{setCopySelected(null);setCopyError('');setCopyRecoveryOpen(true);}}>복사주문 실패 작업 {copyEntries.filter(entry=>!entry.deleted).length}</ActionButton></div>
+            {isAdmin&&<div><ActionButton tone="normal" type="button" onClick={()=>setCopyRulesOpen(true)}>복사주문 판독 규칙</ActionButton></div>}
+          </div>}
           {currentView === 'orders' && (
             <OrdersList
               renderOrderRecovery={renderOrderRecovery}
