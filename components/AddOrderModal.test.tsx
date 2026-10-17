@@ -1,10 +1,14 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import AddOrderModal from './AddOrderModal';
 import { OrderStatus, type Item, type Order, type Partner, type PartnerItem } from '../src/shared/types';
 import { buildPackIndex, resetPackIndex, setPackIndex } from '../src/shared/packIndex';
+
+const oldScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype,'scrollIntoView');
+beforeAll(()=>Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()}));
+afterAll(()=>{if(oldScroll)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',oldScroll);else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;});
 
 const items = [
   { id: 'oil', name: '생들기름 300ml', unit: '병', type: 'product', category: '들기름' },
@@ -190,12 +194,12 @@ describe('신규 주문 창의 거래처 진행 주문', () => {
 
 it('생산 거래처 필터는 복수 ID로 품목만 거르고 판매상대를 지정하지 않는다', () => {
  render(<AddOrderModal mode="stock" items={items} partners={partners} partnerItems={partnerItems} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
- const choices = screen.getAllByRole('checkbox').filter(box => box.closest('label')?.textContent === '가을식품');
- fireEvent.click(choices[0]);
+ fireEvent.click(screen.getByRole('button',{name:'거래처 추가 선택'}));
+ fireEvent.click(screen.getByRole('option',{name:'가을식품'}));
  expect(screen.getByText('거래처 필터 전체 해제 (1곳 선택)')).toBeInTheDocument();
  expect(screen.queryByText('주문 일정')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button', { name: /거래처 필터 전체 해제/ }));
- expect(choices[0]).not.toBeChecked();
+ expect(screen.queryByRole('button',{name:'가을식품 선택 해제'})).not.toBeInTheDocument();
 });
 
 describe('주문 수량 입력 단위',()=>{
@@ -224,4 +228,26 @@ it('수동 방식을 고른 뒤 배송지 A→B→A로 전환하면 각 기본�
  const p={...partners[0],shipTos:[{id:'a',name:'합성 A',defaultShipMethod:'택배'},{id:'b',name:'합성 B',defaultShipMethod:'화물'}]} as Partner;
  const save=vi.fn().mockRejectedValue(new Error('합성 저장 오류'));vi.spyOn(window,'alert').mockImplementation(()=>{});vi.spyOn(console,'error').mockImplementation(()=>{});
  render(<AddOrderModal items={items} partners={[p]} orders={[]} partnerItems={partnerItems} palletStocks={[]} onClose={vi.fn()} onSave={save}/>);fireEvent.click(screen.getByRole('button',{name:/가을식품/}));const method=()=>within(screen.getByRole('group',{name:'출고 방식'}));fireEvent.click(method().getByRole('button',{name:'수령'}));fireEvent.click(screen.getByRole('button',{name:'합성 B'}));expect(method().getByRole('button',{name:'화물'})).toHaveAttribute('aria-pressed','true');fireEvent.click(screen.getByRole('button',{name:'합성 A'}));expect(method().getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');fireEvent.change(screen.getAllByPlaceholderText('0')[0],{target:{value:'2'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenCalledOnce();expect(method().getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');expect(screen.getAllByPlaceholderText('0')[0]).toHaveValue('2');
+});
+
+function chooseFilter(label:string,option:RegExp|string,search?:string){fireEvent.click(screen.getByRole('button',{name:label}));if(search!==undefined)fireEvent.change(screen.getByRole('listbox').parentElement!.querySelector('input')!,{target:{value:search}});fireEvent.click(screen.getByRole('option',{name:option}));}
+const filterItems:Item[]=[{id:'qa-a',name:'참기름/300ml',spec:'300ml',category:'참기름',type:'product',unit:'병',stock:0,minStock:0,image:''},{id:'qa-b',name:'들기름/500ml',spec:'500ml',category:'들기름',type:'product',unit:'병',stock:0,minStock:0,image:''},{id:'qa-c',name:'들기름/1L',spec:'1L',category:'들기름',type:'product',unit:'병',stock:0,minStock:0,image:''}];
+const filterPartners:Partner[]=[{id:'qa-pa',name:'가을식품',type:'일반'},{id:'qa-pb',name:'바다유통',type:'일반'}] as Partner[];
+const filterLinks:PartnerItem[]=[{id:'qa-la',itemId:'qa-a',partnerId:'qa-pa',Direction:'out',price:0},{id:'qa-lb',itemId:'qa-b',partnerId:'qa-pb',Direction:'in',price:0}];
+it('거래처를 초성검색으로 추가해 OR 필터하고 중복선택 없이 개별 및 전체 해제한다',()=>{
+ render(<AddOrderModal mode="stock" items={filterItems} partners={filterPartners} partnerItems={filterLinks} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()}/>);expect(screen.getAllByPlaceholderText('0')).toHaveLength(3);
+ chooseFilter('거래처 추가 선택','가을식품','ㄱㅇ');expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'거래처 추가 선택'}));expect(screen.queryByRole('option',{name:'가을식품'})).not.toBeInTheDocument();fireEvent.change(screen.getByRole('listbox').parentElement!.querySelector('input')!,{target:{value:'ㅂㄷ'}});fireEvent.click(screen.getByRole('option',{name:'바다유통'}));expect(screen.getAllByPlaceholderText('0')).toHaveLength(2);expect(screen.getByText('거래처 필터 전체 해제 (2곳 선택)')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'가을식품 선택 해제'}));expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:/거래처 필터 전체 해제/}));expect(screen.getAllByPlaceholderText('0')).toHaveLength(3);
+});
+it('제품유형 개수와 용량 검색·전체 선택을 유지하고 유형 변경은 용량을 초기화한다',()=>{
+ render(<AddOrderModal mode="stock" items={filterItems} partners={filterPartners} partnerItems={filterLinks} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()}/>);expect(screen.getByRole('button',{name:'제품 유형'})).toHaveTextContent('전체 3');chooseFilter('용량 유형','500ml 1','500');expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);chooseFilter('제품 유형','들기름 2','들');expect(screen.getByRole('button',{name:'용량 유형'})).toHaveTextContent('전체');expect(screen.getAllByPlaceholderText('0')).toHaveLength(2);chooseFilter('용량 유형','1l 1');expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);chooseFilter('용량 유형','전체');expect(screen.getAllByPlaceholderText('0')).toHaveLength(2);chooseFilter('제품 유형','참기름 1');expect(screen.queryByRole('button',{name:'용량 유형'})).not.toBeInTheDocument();expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);
+});
+it('선택 유형이 거래처 후보에서 사라져도 사실 fallback을 보여주며 자동 전체로 바꾸지 않는다',()=>{
+ render(<AddOrderModal mode="stock" items={filterItems} partners={filterPartners} partnerItems={filterLinks} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()}/>);chooseFilter('제품 유형','들기름 2');chooseFilter('거래처 추가 선택','가을식품');expect(screen.getByRole('button',{name:'제품 유형'})).toHaveTextContent('들기름 · 현재 목록에 없음');expect(screen.queryByPlaceholderText('0')).not.toBeInTheDocument();
+});
+
+it('거래처 제거로 선택 용량이 후보에서 사라져도 현재값을 보여주고 전체로 해제할 수 있다',()=>{
+ const rows:Item[]=[{...filterItems[0],id:'oil-large',name:'참기름/1800ml',spec:'1800ml'},{...filterItems[0],id:'oil-small',name:'참기름/350ml',spec:'350ml'}];
+ const links:PartnerItem[]=[{id:'large-link',itemId:'oil-large',partnerId:'qa-pa',Direction:'out',price:0},{id:'small-link',itemId:'oil-small',partnerId:'qa-pb',Direction:'out',price:0}];
+ render(<AddOrderModal mode="stock" items={rows} partners={filterPartners} partnerItems={links} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()}/>);
+ chooseFilter('거래처 추가 선택','가을식품');chooseFilter('거래처 추가 선택','바다유통');chooseFilter('제품 유형','참기름 2');chooseFilter('용량 유형','1800ml 1');expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'가을식품 선택 해제'}));expect(screen.getByRole('button',{name:'용량 유형'})).toHaveTextContent('1800ml · 현재 목록에 없음');expect(screen.queryByPlaceholderText('0')).not.toBeInTheDocument();chooseFilter('용량 유형','전체');expect(screen.getAllByPlaceholderText('0')).toHaveLength(1);expect(screen.getByText('350ml')).toBeInTheDocument();
 });

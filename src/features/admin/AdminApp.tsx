@@ -4830,7 +4830,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <span className="mt-1 block text-xs font-bold text-slate-500">문자나 메신저로 받은 주문 내용을 붙여넣습니다.</span>
                 </span>
               </button>
-              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('stock'); setIsAddOrderOpen(true); }} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-indigo-50"><strong className="block text-sm">재고 만들기</strong><span className="text-xs text-slate-500">판매 주문 없이 필요한 수량을 추가 생산합니다.</span></button>
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('stock'); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><Package size={19} /></span><span className="min-w-0"><strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">재고 만들기</strong><span className="mt-1 block text-xs font-bold text-slate-500">판매 주문 없이 필요한 수량을 추가 생산합니다.</span></span></button>
             </div>
         </ModalShell>
       )}

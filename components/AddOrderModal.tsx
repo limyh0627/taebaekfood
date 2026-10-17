@@ -1,3 +1,4 @@
+import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { isGoodsItem } from '../src/shared/itemTaxonomy';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today, addDays, dateOfLocal } from '../src/shared/day';
@@ -273,7 +274,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
   //  주문을 받는 화면이 창고 재고를 직접 바꾸면, 주문을 취소해도 개봉은 남고
   //  실제로 박스를 뜯는 시점(출고 작업)보다 한참 앞서 장부만 움직인다.
 
-  // 용량 필터 — 거래처 품목에 존재하는 용량들만 버튼으로 노출
+  // 용량 필터 — 거래처 품목에 존재하는 용량들만 드롭다운으로 노출
   const [volumeFilter, setVolumeFilter] = useState<string | null>(null);
   useEffect(() => {
     setProductCategoryFilter('전체');
@@ -699,7 +700,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
             )}
           </section>}
 
-          {stockProduction && <section className="space-y-2"><h3 className="text-sm font-black">거래처로 품목 찾기 · 매입/매출 연결 · 선택 사항</h3><input aria-label="품목 거래처 검색" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처 검색" className="w-full rounded-lg border p-2" /><button type="button" onClick={() => setStockPartnerIds([])} className="text-xs text-slate-500">거래처 필터 전체 해제 ({stockPartnerIds.length}곳 선택)</button><div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">{partners.filter(partner => !searchTerm || matchesSearch(partner.name, searchTerm)).filter(partner => (partnerItems ?? []).some(link => link.partnerId === partner.id)).map(partner => <label key={partner.id} className="flex items-center gap-1 text-xs"><input type="checkbox" checked={stockPartnerIds.includes(partner.id)} onChange={event => setStockPartnerIds(ids => event.target.checked ? [...ids, partner.id] : ids.filter(id => id !== partner.id))} />{partner.name}</label>)}</div></section>}
+          {stockProduction && <section className="space-y-2"><h3 className="text-sm font-black">거래처로 품목 찾기 · 매입/매출 연결 · 선택 사항</h3>
+            <SearchableSelect ariaLabel="거래처 추가 선택" value="" searchThreshold={0} className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              options={[{value:'',label:'거래처 추가 선택'},...partners.filter(partner => (partnerItems ?? []).some(link => link.partnerId === partner.id) && !stockPartnerIds.includes(partner.id)).map(partner=>({value:partner.id,label:partner.name}))]}
+              onChange={id=>{if(id && partners.some(partner=>partner.id===id && (partnerItems ?? []).some(link=>link.partnerId===id)))setStockPartnerIds(ids=>[...new Set([...ids,id])]);}} />
+            <div className="flex flex-wrap items-center gap-2">{stockPartnerIds.map(id=><span key={id} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">{partners.find(partner=>partner.id===id)?.name ?? '현재 목록에 없는 거래처'}<button type="button" aria-label={(partners.find(partner=>partner.id===id)?.name ?? '현재 목록에 없는 거래처')+' 선택 해제'} onClick={()=>setStockPartnerIds(ids=>ids.filter(value=>value!==id))} className="p-1"><X size={12}/></button></span>)}
+              <button type="button" onClick={() => setStockPartnerIds([])} className="text-xs text-slate-500">거래처 필터 전체 해제 ({stockPartnerIds.length}곳 선택)</button>
+            </div></section>}
 
           {!stockProduction && selectedPartner && (
             <section aria-labelledby="active-client-orders-title" className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
@@ -771,43 +778,19 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
                   <input type="search" value={productSearch} onChange={event => setProductSearch(event.target.value)} placeholder={usingCatalogFallback ? '전체 활성 품목명 검색' : '품목명 검색'} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                 </span>
               </label>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70">
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="flex flex-col gap-2.5 p-3 sm:flex-row sm:items-start">
                   <span className="w-16 shrink-0 pt-2 text-[11px] font-bold text-slate-500">제품 유형</span>
-                  <div className="flex flex-1 flex-wrap gap-1.5" aria-label="제품 유형">
-                    {categoryOptions.map(([category, count]) => (
-                      <button
-                        type="button"
-                        key={category}
-                        onClick={() => {
-                          setProductCategoryFilter(category);
-                          setVolumeFilter(null);
-                        }}
-                        aria-pressed={productCategoryFilter === category}
-                        className={`min-h-9 rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 ${
-                          productCategoryFilter === category
-                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        {category} <span className={productCategoryFilter === category ? 'text-indigo-400' : 'text-slate-400'}>{count}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <div className="min-w-0 flex-1"><SearchableSelect ariaLabel="제품 유형" value={productCategoryFilter} searchThreshold={0} className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                    options={[...categoryOptions.map(([category,count])=>({value:category,label:category+' '+count})),...(!categoryOptions.some(([category])=>category===productCategoryFilter)?[{value:productCategoryFilter,label:productCategoryFilter+' · 현재 목록에 없음'}]:[])]}
+                    onChange={category=>{setProductCategoryFilter(category);setVolumeFilter(null);}} /></div>
                 </div>
-                {volumeOptions.length > 1 && (
+                {(volumeOptions.length > 1 || volumeFilter !== null) && (
                   <div className="flex flex-col gap-2.5 border-t border-slate-200/80 px-3 py-2.5 sm:flex-row sm:items-start">
                     <span className="w-16 shrink-0 pt-1.5 text-[11px] font-medium text-slate-400">용량</span>
-                    <div className="flex flex-1 flex-wrap gap-1.5" aria-label="용량 유형">
-                      <button type="button" onClick={() => setVolumeFilter(null)} aria-pressed={volumeFilter === null}
-                        className={`min-h-8 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${volumeFilter === null ? 'border-slate-400 bg-white text-slate-800' : 'border-transparent bg-transparent text-slate-500 hover:bg-white hover:text-slate-700'}`}>전체</button>
-                      {volumeOptions.map(([vol, cnt]) => (
-                        <button type="button" key={vol} onClick={() => setVolumeFilter(v => v === vol ? null : vol)} aria-pressed={volumeFilter === vol}
-                          className={`min-h-8 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${volumeFilter === vol ? 'border-slate-400 bg-white text-slate-800' : 'border-transparent bg-transparent text-slate-500 hover:bg-white hover:text-slate-700'}`}>
-                          {vol} <span className="text-slate-400">{cnt}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <div className="min-w-0 flex-1"><SearchableSelect ariaLabel="용량 유형" value={volumeFilter ?? ''} searchThreshold={0} className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                      options={[{value:'',label:'전체'},...volumeOptions.map(([vol,count])=>({value:vol,label:vol+' '+count})),...(volumeFilter && !volumeOptions.some(([vol])=>vol===volumeFilter)?[{value:volumeFilter,label:volumeFilter+' · 현재 목록에 없음'}]:[])]}
+                      onChange={volume=>setVolumeFilter(volume || null)} /></div>
                   </div>
                 )}
               </div>

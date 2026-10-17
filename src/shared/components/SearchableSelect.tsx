@@ -44,6 +44,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const 단추 = useRef<HTMLButtonElement>(null);
   const 검색칸 = useRef<HTMLInputElement>(null);
   const 목록 = useRef<HTMLDivElement>(null);
+  const 포털 = useRef<HTMLElement | null>(null);
   const [열림, set열림] = useState(false);
   const [찾는말, set찾는말] = useState('');
   const [커서, set커서] = useState(0);
@@ -86,6 +87,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   const 열기 = () => {
     if (disabled) return;
+    // 모달의 초점 경계 안에 있어야 검색칸을 눌러도 닫기 단추로 초점이 되돌아가지 않는다.
+    포털.current = 단추.current?.closest<HTMLElement>('[role="dialog"]') ?? document.body;
     set찾는말('');
     set커서(Math.max(0, options.findIndex(option => option.value === value)));
     set열림(true);
@@ -115,7 +118,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       if (걸린것[커서]) 고르기(걸린것[커서].value);
-    } else if (event.key === 'Escape' || event.key === 'Tab') {
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      닫기();
+    } else if (event.key === 'Tab') {
       set열림(false);
     }
   };
@@ -133,7 +140,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
       {열림 && createPortal(
         <>
-          <div className="fixed inset-0 z-[900]" onMouseDown={닫기} />
+          <div className="fixed inset-0 z-[900]" onMouseDown={닫기} onClick={event => event.stopPropagation()} />
           <div
             style={{
               left: 자리.left, width: Math.max(자리.width, 150),
@@ -145,6 +152,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               <div className="border-b border-slate-100 px-2.5 py-1.5">
                 <input
                   ref={검색칸} type="text" value={찾는말}
+                  placeholder="검색어 입력" aria-label={ariaLabel ? ariaLabel + ' 검색' : '선택 항목 검색'}
                   onChange={event => { set찾는말(event.target.value); set커서(0); }}
                   onKeyDown={글쇠}
                   className="h-6 w-full bg-transparent text-xs font-bold text-slate-700 outline-none placeholder:font-bold placeholder:text-slate-400"
@@ -174,7 +182,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             </div>
           </div>
         </>,
-        document.body,
+        포털.current ?? document.body,
       )}
     </>
   );
