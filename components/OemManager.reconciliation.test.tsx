@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import OemManager from './OemManager';
+import {beginOemIssueAttempt,acknowledgeOemIssueAttempt,clearOemIssueAttempt} from '../src/shared/oemIssuePending';
 import type { Item, PurchaseOrder } from '../src/shared/types';
 import { buildOemBatchCostPreview, finalizeOemBatchCost, type OemBatchCost } from '../src/shared/oemBatchCost';
 
@@ -70,17 +71,31 @@ it('타회사 품목으로 현재 제품 중량을 환산하지 않는다', () =
 });
 
 it('외주 발주가 현재 진행 중이면 이전 미완료 안내와 구분한다', async () => {
- sessionStorage.setItem('oem-issue-pending:taebaek',JSON.stringify({jobId:'pending',oemPartnerId:'fumi',partnerName:'푸미푸드',date:'2026-10-08',sent:[{material:'참깨',kg:100}]}));
- let finish!: () => void;
- const onIssue=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
- render(<OemManager companyId="taebaek" items={[]} partners={[]} rawStockKg={()=>100} issueDrafts={[]}
- issueOpen receiveTarget={null} feeTarget={null} onClose={vi.fn()} onIssue={onIssue} onReceive={vi.fn()} onIssueFee={vi.fn()} />);
- fireEvent.click(screen.getByRole('button',{name:'재개'}));
- expect(screen.getByText('외주 발주 처리 중입니다. 완료될 때까지 기다려 주세요.')).toBeInTheDocument();
- expect(screen.queryByText('완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.')).toBeNull();
- await act(async()=>{finish();});
- expect(sessionStorage.getItem('oem-issue-pending:taebaek')).toBeNull();
+ const locks=Object.getOwnPropertyDescriptor(navigator,'locks');
+ Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async(_key:unknown,_opts:unknown,fn:()=>unknown)=>fn()}});
+ let first:Awaited<ReturnType<typeof beginOemIssueAttempt>>|undefined;
+ try {
+  first=await beginOemIssueAttempt({jobId:'pending',companyId:'taebaek',partnerId:'fumi',partnerName:'푸미푸드',date:'2026-10-08',sent:[{rawItemId:'raw',material:'참깨',kg:100}]},'actor',()=>true);
+  let finish!:()=>void;
+  const onIssue=vi.fn(async()=>{await new Promise<void>(resolve=>{finish=resolve;});acknowledgeOemIssueAttempt(first!);await clearOemIssueAttempt(first!,()=>true);});
+  const onClose=vi.fn();
+  render(<OemManager companyId="taebaek" actorUid="actor" items={[]} partners={[]} rawStockKg={()=>100} issueDrafts={[]}
+   issueOpen receiveTarget={null} feeTarget={null} onClose={onClose} onIssue={onIssue} onReceive={vi.fn()} onIssueFee={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button',{name:'OEM 실패 작업 1'}));
+  fireEvent.click(screen.getByRole('button',{name:/외주 출고 처리 결과 미확인/}));
+  const retry=screen.getByRole('button',{name:'같은 내용 다시 시도'});
+  expect(retry).toBeEnabled();expect(screen.getByText('참깨 · 100kg')).toBeInTheDocument();
+  fireEvent.click(retry);fireEvent.click(retry);
+  expect(retry).toBeDisabled();expect(screen.getByText('처리 중…').closest('button')).toBeDisabled();
+  expect(screen.getByRole('button',{name:'실패 요청 삭제'})).toBeDisabled();
+  expect(onIssue).toHaveBeenCalledExactlyOnceWith({jobId:'pending',oemPartnerId:'fumi',partnerName:'푸미푸드',date:'2026-10-08',sent:[{material:'참깨',kg:100}]},'resume','actor',first);
+  expect(localStorage.getItem(first.key)).toBe(first.encoded);expect(onClose).not.toHaveBeenCalled();
+  await act(async()=>finish());
+  await waitFor(()=>expect(screen.getByRole('button',{name:'OEM 실패 작업 0'})).toBeInTheDocument());
+  expect(localStorage.getItem(first.key)).toBeNull();expect(onIssue).toHaveBeenCalledOnce();expect(onClose).not.toHaveBeenCalled();
+ } finally {if(first)localStorage.removeItem(first.key);if(locks)Object.defineProperty(navigator,'locks',locks);else Reflect.deleteProperty(navigator,'locks');}
 });
+
 const savedEvidence={version:1 as const,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:100000}],packaging:{confirmed:true as const,supplyAmount:0},capturedAt:'2026-10-12T00:00:00Z'};
 function savedBatch(){return po({oemCostEvidence:savedEvidence,oemBatchCost:{version:1,status:'pending-fee',evidenceSnapshot:savedEvidence,ownerCompanyId:'taebaek',sentKg:100,receivedKg:20,lossKg:80,rawSupplyAmount:100000,packagingSupplyAmount:0,rows:[{itemId:'product',kg:20}]},oemReceivedKg:20,oemReceiptOperationId:'receipt',items:[{itemId:'product',name:'입고 당시 제품',quantity:2,unit:'개'}]});}
 it('현재 규격이 바뀌어도 조회는 저장 원입고 중량으로 표시한다',()=>{

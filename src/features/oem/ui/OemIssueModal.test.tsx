@@ -1,0 +1,16 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {beforeEach,expect,it,vi} from 'vitest';
+import {IssueModal,OemExternalEvidenceRows} from './OemIssueModal';
+import {OemExternalEvidenceRows as LegacyRows} from '../../../../components/OemManager';
+import {formatNumberKo} from '../../../shared/numberDisplay';
+import {fmt} from '../../statements/ui/cashEntryDisplay';
+const m=vi.hoisted(()=>({read:vi.fn()}));
+vi.mock('../../../shared/services/oemExternalStockEvidence',()=>({readOemExternalStockEvidence:m.read}));
+const props=()=>({companyId:'taebaek' as const,partners:[{id:'factory',name:'합성 공장',companyId:'taebaek'}] as any,rawItems:[{id:'raw',name:'참깨',type:'raw',companyId:'taebaek'}] as any,rawStockKg:()=>100,issueDrafts:[],busy:false,onClose:vi.fn(),onSubmit:vi.fn()});
+const evidence=(id:string)=>[{poId:id,partnerName:id,state:'unknown',rows:[],reason:'합성근거'}] as any;
+beforeEach(()=>{m.read.mockReset().mockResolvedValue([]);});
+it('공용 숫자 binding을 재사용하고 최초 발주 값·메모·busy 잠금을 보존한다',()=>{expect(fmt).toBe(formatNumberKo);expect(fmt(1234.5)).toBe('1,234.5');const p=props(),v=render(<IssueModal {...p}/>);fireEvent.change(screen.getByRole('option',{name:'합성 공장'}).parentElement!,{target:{value:'factory'}});fireEvent.change(screen.getByRole('option',{name:'참깨'}).parentElement!,{target:{value:'참깨'}});fireEvent.change(screen.getByPlaceholderText('kg'),{target:{value:'20.5'}});fireEvent.change(screen.getByPlaceholderText('메모 (선택)'),{target:{value:'  원문 메모  '}});fireEvent.click(screen.getByRole('button',{name:'발주 (원료 내보내기)'}));expect(p.onSubmit).toHaveBeenCalledWith(expect.objectContaining({jobId:expect.stringMatching(/^oem-/),oemPartnerId:'factory',partnerName:'합성 공장',sent:[{material:'참깨',kg:20.5}],note:'원문 메모'}));v.rerender(<IssueModal {...p} busy/>);expect(screen.getByRole('button',{name:'처리 중…'})).toBeDisabled();});
+it.each(['company','orders'])('근거 조회 중 %s 변경은 이전 결과를 폐기하고 새 조회만 표시한다',async kind=>{let finish!:(v:any)=>void;m.read.mockImplementationOnce(()=>new Promise(r=>finish=r)).mockResolvedValueOnce(evidence('new-evidence'));const p=props(),v=render(<IssueModal {...p}/>);const button=screen.getByRole('button',{name:'송출 근거 조회'});fireEvent.click(button);fireEvent.click(button);expect(m.read).toHaveBeenCalledTimes(1);v.rerender(<IssueModal {...p} companyId={kind==='company'?'punghoe':'taebaek'} purchaseOrders={kind==='orders'?[{id:'other'} as any]:undefined}/>);await act(async()=>finish(evidence('stale-evidence')));expect(screen.queryByText(/stale-evidence/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'송출 근거 조회'}));await waitFor(()=>expect(screen.getByText(/new-evidence/)).toBeInTheDocument());expect(m.read).toHaveBeenCalledTimes(2);});
+it('공개 근거 행은 미확인을 확정 재고로 바꾸지 않고 원문 이유를 표시한다',()=>{expect(LegacyRows).toBe(OemExternalEvidenceRows);render(<OemExternalEvidenceRows rows={evidence('original-po')}/>);expect(screen.getByText(/original-po.*미확인/)).toBeInTheDocument();expect(screen.getByText('합성근거')).toBeInTheDocument();});

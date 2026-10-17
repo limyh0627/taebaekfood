@@ -1,1 +1,1 @@
-export const fmt = (n: number) => n.toLocaleString('ko-KR');
+export {formatNumberKo as fmt} from '../../../shared/numberDisplay';
