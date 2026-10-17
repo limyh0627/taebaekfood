@@ -23,4 +23,3 @@ export function VoucherDateChip({ value, onApply }: { value: string; onApply: (d
     </>}
   </span>;
 }
-

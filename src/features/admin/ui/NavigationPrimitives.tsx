@@ -54,4 +54,3 @@ export const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge, 
   </button>
   )
 );
-
