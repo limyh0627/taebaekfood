@@ -152,11 +152,11 @@ export default function CashLedger({
             <span className="font-black text-sm text-slate-800">{active?.name}</span>
             <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{active?.type}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <DateRangeFilter from={from} to={to} quick={rangeQuick} label="자금 조회"
               onChange={(nextFrom, nextTo, quick) => { setFrom(nextFrom); setTo(nextTo); setRangeQuick(quick); }} />
             <button onClick={() => setShowEntry(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 text-white text-[11px] font-black hover:bg-slate-900">
+              className="flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-bold hover:bg-slate-900">
               <Plus size={12} strokeWidth={3} />일반전표
             </button>
           </div>

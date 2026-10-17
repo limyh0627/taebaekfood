@@ -209,6 +209,7 @@ it.each([
   } as IssuedStatement;
   const original = structuredClone(stmt), update = vi.fn();
   const writes = setup(undefined, undefined, { pendingInvoice: null, issuedStatements: [stmt], onUpdateIssuedStatement: update });
+  fireEvent.click(screen.getByRole('button', { name: /^ALL$/ }));
   fireEvent.click((await screen.findAllByText(partner.name)).find(el => el.closest('tr'))!);
   const dialog = await screen.findByRole('dialog', { name: `발행 전표 상세 — ${partner.name}` });
   const cells = within(within(dialog).getByText('상세 수량 검증').closest('tr')!).getAllByRole('cell');
