@@ -1,14 +1,13 @@
-import {projectProductionRecords,hasProductionRecordIndex,productionRecordOrderId} from '../src/shared/productionRecordProjection';
+import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
+import {projectProductionRecords,hasProductionRecordIndex} from '../src/shared/productionRecordProjection';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
-import { PRODUCT_FORMULA, toKg } from '../src/constants/formula';
 import { dateOfLocal } from '../src/shared/day';
-import { docName } from '../src/shared/docName';
 
-type ItemFormulaRow = { parent_key: string; child_name: string; ratio: number; yield_rate?: number };
+
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
@@ -72,83 +71,25 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   // 정방향 추적: 주문 문서의 rawConsumedLots 스냅샷 → 생산실적 행에서 조회(추가 읽기 0)
   const consumedByOrderId = useMemo(() => {
-    const m = new Map<string, NonNullable<Order['rawConsumedLots']>>();
-    for (const o of orders) if (o.rawConsumedLots && o.rawConsumedLots.length) m.set(o.id, o.rawConsumedLots);
-    return m;
+    return buildConsumedByOrderId(orders);
   }, [orders]);
   // 폴백: 원료수불부 자동전표(orderId별) — lot 스냅샷이 아직 없는 과거/최근 건에 사용
   const ledgerByOrderId = useMemo(() => {
-    const m = new Map<string, RawMaterialEntry[]>();
-    for (const e of ledger) {
-      const oid = (e as { orderId?: string }).orderId;
-      if (!oid || !((Number(e.used) || 0) > 0)) continue;
-      if (!m.has(oid)) m.set(oid, []);
-      m.get(oid)!.push(e);
-    }
-    return m;
+    return buildLedgerByOrderId(ledger);
   }, [ledger]);
   // 생산기록 id = `pr-{orderId}-{...}` (뒤에 itemId/타임스탬프가 가변적으로 붙음) → 접두어 매칭으로 orderId 확정
   const orderIdsWithData = useMemo(
-    () => [...new Set([...consumedByOrderId.keys(), ...ledgerByOrderId.keys()])].sort((a, b) => b.length - a.length),
+    () => buildOrderIdsWithData(consumedByOrderId, ledgerByOrderId),
     [consumedByOrderId, ledgerByOrderId],
   );
   // #5 역추적: 소비된 로트 → 이 로트가 들어간 주문 목록. 주문 rawConsumedLots 스냅샷 재사용(추가 읽기 0).
   const lotConsumption = useMemo(() => {
-    const map = new Map<string, { key: string; material: string; supplierName: string; lotNo?: string; receivedDate?: string; totalKg: number; entries: { order: Order; kg: number }[] }>();
-    for (const o of orders) {
-      for (const c of (o.rawConsumedLots ?? [])) {
-        const key = c.lotId || `${c.material}|${c.supplierName}|${c.lotNo ?? c.receivedDate ?? ''}`;
-        let g = map.get(key);
-        if (!g) { g = { key, material: c.material, supplierName: c.supplierName, lotNo: c.lotNo, receivedDate: c.receivedDate, totalKg: 0, entries: [] }; map.set(key, g); }
-        g.entries.push({ order: o, kg: c.kg });
-        g.totalKg += c.kg || 0;
-      }
-    }
-    return [...map.values()].sort((a, b) => (b.receivedDate ?? '').localeCompare(a.receivedDate ?? ''));
+    return buildLotConsumption(orders);
   }, [orders]);
   const recallResults = useMemo(() => {
-    const q = recallQuery.trim().toLowerCase();
-    if (!q) return lotConsumption;
-    return lotConsumption.filter(g =>
-      g.material.toLowerCase().includes(q) ||
-      (g.supplierName ?? '').toLowerCase().includes(q) ||
-      (g.lotNo ?? '').toLowerCase().includes(q));
+    return filterRecallResults(lotConsumption, recallQuery);
   }, [lotConsumption, recallQuery]);
-  const traceOf = (r: ProductionRecord): { material: string; kg: number; detail: string }[] | undefined => {
-    // 제품(BOM) 단위로 투입 원료 계산 → 같은 주문의 다른 제품 원료가 섞이지 않음
-    const product = items.find(p => p.id === r.itemId);
-    if (!product) return undefined;
-    const prodKey = docName(product);
-    const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
-    const formula = bomRows.length > 0
-      ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
-      : PRODUCT_FORMULA[prodKey];
-    if (!formula || formula.length === 0) return undefined;
-
-    // 원료별 lot 출처(공급처·입고일) — 주문 단위 소비 스냅샷/수불부에서 material로 매칭
-    const orderId = productionRecordOrderId(r) ?? (r.id.startsWith('pr-') ? orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o) : undefined);
-    const lotByMat = new Map<string, string>();
-    if (orderId) {
-      const structured = consumedByOrderId.get(orderId);
-      if (structured && structured.length) {
-        for (const d of structured) {
-          const det = [d.supplierName, d.receivedDate && `(${d.receivedDate})`, d.lotNo && `lot ${d.lotNo}`].filter(Boolean).join(' ');
-          if (det) lotByMat.set(d.material, lotByMat.has(d.material) ? `${lotByMat.get(d.material)} + ${det}` : det);
-        }
-      } else {
-        const es = ledgerByOrderId.get(orderId);
-        if (es) for (const e of es) { const det = (e.note || '').split('▸')[1]?.trim(); if (det) lotByMat.set(e.material, det); }
-      }
-    }
-
-    return formula
-      .map(f => ({
-        material: f.raw,
-        kg: Math.round(toKg(product.spec || '', f.raw, r.finishedQty) * f.ratio * 10) / 10,
-        detail: lotByMat.get(f.raw) || '',
-      }))
-      .filter(x => x.kg > 0);
-  };
+  const traceOf = (r: ProductionRecord) => productionTraceOf(r, items, itemFormulas, consumedByOrderId, ledgerByOrderId, orderIdsWithData);
 
   const [form, setForm] = useState({
     date: today,
