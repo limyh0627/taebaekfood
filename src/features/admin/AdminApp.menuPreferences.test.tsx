@@ -71,13 +71,13 @@ it('도움말 화면 이동은 현재 역할의 실메뉴·마이페이지로만
  expect(evaluate(initializer('helpSessionKey'),{menuKey:'scope',currentView:'mypage'})).toBe('scope:mypage');
  expect(evaluate(initializer('helpSessionKey'),{menuKey:null,currentView:'mypage'})).toBeNull();
 });
-it('상단 챗봇은 종 바로 앞에 있고 desktop 공통 표시와 모바일 메뉴 버튼을 유지한다',()=>{
- let header='';const visit=(node:ts.Node)=>{if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(parsed)==='header'&&node.getText(parsed).includes('aria-label="챗봇 열기"'))header=node.getText(parsed);ts.forEachChild(node,visit);};visit(parsed);if(!header)throw Error('상단 챗봇 없음');
- const open=vi.fn();const build=(key:string|null)=>evaluate(header,{React,helpSessionKey:key,setHelpOpen:open,setIsSidebarCollapsed:vi.fn(),Menu:()=>null,Bell:()=>null,currentView:'mypage',appNotifications:[],currentUser:{id:'u',name:'직원'},accountProfileImageUrl:()=>'/profile.png',setNotifPanelPos:vi.fn(),setShowNotifPanel:vi.fn()});
- const view=render(build('scope'));const button=screen.getByRole('button',{name:'챗봇 열기'});
- expect(button).toHaveTextContent('챗봇');expect(button).toHaveAttribute('aria-keyshortcuts','Alt+/');expect(button).toHaveClass('min-h-11');expect(button).not.toHaveClass('fixed');expect(button.nextElementSibling).toBe(screen.getByRole('button',{name:'알림'}));
- expect(button.closest('header')).not.toHaveClass('xl:hidden');expect(screen.getByRole('button',{name:'메뉴 열기'})).toHaveClass('xl:hidden');fireEvent.click(button);expect(open).toHaveBeenCalledWith('scope');
- view.rerender(build(null));expect(screen.getByRole('button',{name:'챗봇 열기'})).toBeDisabled();expect(source).not.toContain('z-[2100]');
+it('상단 연결은 현재 도움말 세션과 메뉴·알림 대상 및 좌표 원콜백을 유지한다',()=>{
+ let expression='';const visit=(node:ts.Node)=>{if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(parsed)==='AppTopBar')expression=node.getText(parsed);ts.forEachChild(node,visit);};visit(parsed);if(!expression)throw Error('실제 상단 연결 없음');
+ const help=vi.fn(),menu=vi.fn(),position=vi.fn(),panel=vi.fn();
+ const build=(key:string|null,notifications:{readBy:string[];targetId?:string}[])=>evaluate(expression,{React,AppTopBar:()=>null,currentView:'mypage',currentUser:{id:'u'},helpSessionKey:key,appNotifications:notifications,setHelpOpen:help,setIsSidebarCollapsed:menu,setNotifPanelPos:position,setShowNotifPanel:panel,window}) as React.ReactElement<any>;
+ const e=build('current-scope',[{readBy:[],targetId:'other'}]);expect(e.props.helpAvailable).toBe(true);expect(e.props.hasUnreadNotifications).toBe(false);e.props.onOpenHelp();expect(help).toHaveBeenCalledWith('current-scope');e.props.onOpenMenu();expect(menu).toHaveBeenCalledWith(false);
+ expect(build(null,[{readBy:[]}]).props.helpAvailable).toBe(false);expect(build('scope',[{readBy:[],targetId:'u'}]).props.hasUnreadNotifications).toBe(true);expect(build('scope',[{readBy:['u']}]).props.hasUnreadNotifications).toBe(false);
+ e.props.onOpenNotifications({currentTarget:{getBoundingClientRect:()=>({bottom:42})}});expect(position).toHaveBeenCalledWith({top:50,left:Math.max(8,window.innerWidth-368)});expect(panel.mock.calls[0][0](true)).toBe(false);expect(panel.mock.calls[0][0](false)).toBe(true);
 });
 it('공통 단축키는 현재 scope만 열며 보이는 작성창이 있으면 근거 화면 이동을 차단한다',()=>{
  let effect:ts.ArrowFunction|undefined,callback='';const visit=(node:ts.Node)=>{
