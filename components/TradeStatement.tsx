@@ -98,6 +98,7 @@ import { buildCashEditPatch, cashEditPartner, cashPartnerChangeError, type CashE
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
+import ActionButton from '../src/shared/components/ActionButton';
 import { completeTradeStatementRequest, recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
@@ -2306,23 +2307,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {recoveryDialogs()}
-      {composerOnly&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</button>}
+      {composerOnly&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2"><ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton></div>}
       {!composerOnly && <>
       <PageHeader
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
+        recovery={<ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton>}
         right={
-          <div className="flex rounded-xl gap-2 overflow-x-auto no-scrollbar">
-            <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 작업 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</button>
+          <div className="flex min-w-0 flex-wrap gap-2">
             {([
               { id: 'history', icon: ClipboardList, label: '전표내역' },
             ] as const).map(t => (
-              <button key={t.id}
+              <ActionButton key={t.id}
                 onClick={() => setMainTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainTab === t.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                aria-pressed={mainTab === t.id}
               >
                 <t.icon size={13}/>{t.label}
-              </button>
+              </ActionButton>
             ))}
           </div>
         }

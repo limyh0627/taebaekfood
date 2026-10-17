@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 import RetirementBenefitPanel from './hr/RetirementBenefitPanel';
 import { readRetirement, retirementActor } from '../src/shared/services/retirementBenefitCommands';
 import PayrollLineEditor from './hr/PayrollLineEditor';
@@ -286,40 +287,45 @@ const HRManager: React.FC<HRManagerProps> = ({
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
+    <div className="min-w-0 max-w-full space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
       <PageHeader
         title="인사 관리"
         subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
-        right={<div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
-            <button
+        right={<div className="flex min-w-0 max-w-full flex-col items-start gap-2">
+          <div role="group" aria-label="인사 메뉴" className="flex max-w-full shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap">
+            <ActionButton
               onClick={() => setActiveTab('employees')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'employees' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              aria-pressed={activeTab === 'employees'}
+              className={activeTab === 'employees' ? '!text-indigo-600 !border-indigo-200' : ''}
             >
               <Users size={14} /><span>임직원</span>
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton
               onClick={() => setActiveTab('leave-approval')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 relative ${activeTab === 'leave-approval' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              aria-pressed={activeTab === 'leave-approval'}
+              className={activeTab === 'leave-approval' ? '!text-amber-600 !border-amber-200' : ''}
             >
               <ClipboardCheck size={14} /><span>승인 대기</span>
-              {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[10px]">{pendingRequests.length}</span>}
-            </button>
-            <button
+              {pendingRequests.length > 0 && <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] text-white">{pendingRequests.length}</span>}
+            </ActionButton>
+            <ActionButton
               onClick={() => setActiveTab('leave-balance')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'leave-balance' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              aria-pressed={activeTab === 'leave-balance'}
+              className={activeTab === 'leave-balance' ? '!text-emerald-600 !border-emerald-200' : ''}
             >
               <Settings2 size={14} /><span>연차 관리</span>
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton
               onClick={() => setActiveTab('payroll')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'payroll' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              aria-pressed={activeTab === 'payroll'}
+              className={activeTab === 'payroll' ? '!text-violet-600 !border-violet-200' : ''}
             >
               <Wallet size={14} /><span>급여대장</span>
-            </button>
+            </ActionButton>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'employees' && (
-            <button
+            <ActionButton
               onClick={() => {
                 setEditingEmployee(null);
                 setFormData({
@@ -332,23 +338,21 @@ const HRManager: React.FC<HRManagerProps> = ({
                 });
                 setIsModalOpen(true);
               }}
-              className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm"
+              tone="primary"
             >
               <Plus size={15} /><span>직원 등록</span>
-            </button>
+            </ActionButton>
           )}
           {activeTab === 'leave-balance' && (
             <>
-              <button
+              <ActionButton
                 onClick={() => setIsEditMode(!isEditMode)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm transition-all ${
-                  isEditMode ? 'bg-rose-600 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
+                tone="primary" className={isEditMode ? '!bg-rose-600 !text-white !border-rose-600 hover:!bg-rose-600' : '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-700'}
               >
                 {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
                 <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
-              </button>
-              <button
+              </ActionButton>
+              <ActionButton
                 onClick={() => {
                   setVacationExcluded(new Set());
                   setVacationRange({ start: today.toISOString().slice(0, 10), end: today.toISOString().slice(0, 10) });
@@ -356,12 +360,13 @@ const HRManager: React.FC<HRManagerProps> = ({
                   setVacationDeducts(true);
                   setShowVacation(true);
                 }}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
+                tone="primary"
               >
                 <CalendarCheck size={14} /><span>휴가</span>
-              </button>
+              </ActionButton>
             </>
           )}
+          </div>
         </div>}
       />
 
@@ -433,15 +438,15 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-[10px] text-slate-300 font-bold">미등록</span>
                         )}
                       </td>
-                      <td className="px-4 sm:px-5 py-4 sm:py-6 text-right">
-                        <div className="flex justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
-                          <button type="button" onClick={() => setRetirementEmployee(emp)} className="px-2 text-sm text-slate-600">퇴직금</button>
-                          <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
-                          <button onClick={() => setConfirmModal({
+                      <td className="min-w-[192px] whitespace-nowrap px-4 sm:px-5 py-4 sm:py-6 text-right">
+                        <div className="flex shrink-0 flex-nowrap justify-end gap-2 whitespace-nowrap opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
+                          <ActionButton type="button" onClick={() => setRetirementEmployee(emp)} tone="normal">퇴직금</ActionButton>
+                          <ActionButton onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} aria-label={`${emp.name} 정보 수정`} className="w-9 !px-0 hover:!text-indigo-600"><Edit2 size={14} /></ActionButton>
+                          <ActionButton onClick={() => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
                               subMessage: '퇴직금 관리 등록 여부를 먼저 확인합니다. 이력이 있으면 삭제 대신 퇴사 처리하세요.',
                               onConfirm: () => { void deleteEmployeeSafely(emp); },
-                            })} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                            })} aria-label={`${emp.name} 삭제`} className="w-9 !px-0 hover:!text-rose-600"><Trash2 size={14} /></ActionButton>
                         </div>
                       </td>
                     </tr>

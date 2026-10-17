@@ -23,3 +23,11 @@ it('우측 조작이 있으면 모바일에도 조작을 유지하고 원래 콜
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
   expect(screen.queryByText('기간별 내역을 확인합니다')).not.toBeInTheDocument();
 });
+it('복구 조작은 우측 조작과 별도 줄에 두고 자손 버튼 크기는 강제하지 않는다',()=>{
+  const click=vi.fn();
+  const {container}=render(<PageHeader title="전표" right={<button>전표내역</button>} recovery={<button onClick={click}>실패 2</button>}/>);
+  const normal=screen.getByRole('button',{name:'전표내역'}),recovery=screen.getByRole('button',{name:'실패 2'});
+  expect(normal.parentElement).not.toBe(recovery.parentElement);expect(recovery.parentElement).toHaveClass('w-full','border-t');
+  expect(container.innerHTML).not.toContain('[&_button]');expect(container.innerHTML).not.toContain('[&>div]');
+  fireEvent.click(recovery);expect(click).toHaveBeenCalledOnce();
+});

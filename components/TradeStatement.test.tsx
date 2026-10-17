@@ -13,7 +13,7 @@ import {auth} from '../src/shared/firebase';
 
 async function recoveryAction(name:string){
  if(!screen.queryByRole('dialog',{name:'실패 작업 상세'})){
-  if(!screen.queryByRole('dialog',{name:'실패 작업 목록'}))fireEvent.click(screen.getByRole('button',{name:/^실패 작업 \d+$/}));
+  if(!screen.queryByRole('dialog',{name:'실패 작업 목록'}))fireEvent.click(screen.getByRole('button',{name:/^실패 \d+$/}));
   const list=await screen.findByRole('dialog',{name:'실패 작업 목록'});
   const rows=within(list).getAllByRole('button').filter(button=>button.textContent?.includes('원')||button.textContent?.includes('원문 확인이 필요한 요청')||button.textContent?.includes('수금·지불 확인'));
   fireEvent.click(rows[0]);
@@ -119,7 +119,7 @@ it('전표일자 입력 오류는 저장 시도와 실패목록을 만들지 않
  fireEvent.click(screen.getByRole('button',{name:'저장'}));
  await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('전표일자를 확인해 주세요')));
  expect(onApplyStatement).not.toHaveBeenCalled();expect(listTradePendings('taebaek','test-uid')).toHaveLength(0);
- expect(screen.getByRole('button',{name:'실패 작업 0'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'실패 0'})).toBeInTheDocument();
  expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('전표 저장에 실패'));
  fireEvent.change(date,{target:{value:'2026-10-15'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));
  await waitFor(()=>expect(onApplyStatement).toHaveBeenCalledOnce());
@@ -310,7 +310,7 @@ it('정상 송신 중인 사본은 실패로 세지 않고 복구 전환을 막�
  setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close});
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
  expect(listTradePendings('taebaek','test-uid')).toHaveLength(1);
- const recovery=screen.getByRole('button',{name:'실패 작업 0'});expect(recovery).toBeDisabled();fireEvent.click(recovery);
+ const recovery=screen.getByRole('button',{name:'실패 0'});expect(recovery).toBeDisabled();fireEvent.click(recovery);
  expect(screen.queryByRole('dialog',{name:'실패 작업 목록'})).not.toBeInTheDocument();
  await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(close).toHaveBeenCalledOnce());
  expect(listTradePendings('taebaek','test-uid')).toHaveLength(0);expect(screen.queryByRole('dialog',{name:'실패 작업 목록'})).not.toBeInTheDocument();
@@ -682,7 +682,7 @@ it('사본 삭제 뒤 별도로 남은 결제 항목은 전표 재발행과 재�
  const request=lowerOnlyFixture(),paymentKey='partner-payment-pending:taebaek:partner:test-uid',paymentText=JSON.stringify({version:2,request:{operationId:'pay-only',amount:10,cashAccountId:'old-bank',tradeDate:'2026-10-15'}});localStorage.setItem(paymentKey,paymentText);
  const service=await import('../src/features/statements/infrastructure/tradeStatementRecoveryService');const entry=service.listTradeStatementRecoveryEntries({companyId:'taebaek',actorUid:'test-uid'})[0];localStorage.removeItem(lowerKey);
  localStorage.setItem('trade-statement-payment-recovery:taebaek:test-uid:pay-only',JSON.stringify({...entry,pending:null,paymentCopy:{key:paymentKey,text:paymentText},paymentRequestText:JSON.stringify({operationId:'pay-only',amount:10,cashAccountId:'old-bank',tradeDate:'2026-10-15'}),paymentRequired:true,paymentOnly:true}));
- setup(undefined,undefined,{composerOnly:true});fireEvent.click(screen.getByRole('button',{name:'실패 작업 1'}));const paymentList=await screen.findByRole('dialog',{name:'실패 작업 목록'});expect(within(paymentList).getByText('수금·지불 확인 · 진단 거래처 · 2026-10-15 · 10원')).toBeInTheDocument();expect(within(paymentList).queryByText(/6,600원/)).not.toBeInTheDocument();await recoveryAction('처리결과 확인');expect(screen.queryByText(/원래 결제 요청을 재개해 주세요/)).not.toBeInTheDocument();expect(screen.getByText(/전표 실패 사본은 삭제됐습니다/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'실패 요청 삭제'})).not.toBeInTheDocument();expect(localStorage.getItem(paymentKey)).toBe(paymentText);
+ setup(undefined,undefined,{composerOnly:true});fireEvent.click(screen.getByRole('button',{name:'실패 1'}));const paymentList=await screen.findByRole('dialog',{name:'실패 작업 목록'});expect(within(paymentList).getByText('수금·지불 확인 · 진단 거래처 · 2026-10-15 · 10원')).toBeInTheDocument();expect(within(paymentList).queryByText(/6,600원/)).not.toBeInTheDocument();await recoveryAction('처리결과 확인');expect(screen.queryByText(/원래 결제 요청을 재개해 주세요/)).not.toBeInTheDocument();expect(screen.getByText(/전표 실패 사본은 삭제됐습니다/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'실패 요청 삭제'})).not.toBeInTheDocument();expect(localStorage.getItem(paymentKey)).toBe(paymentText);
 });
 it('작성창이 없을 때 삭제가 확정되면 검증된 원작성 품목으로 새 작성창을 연다',async()=>{
  const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={vi.fn().mockRejectedValue(Error('응답 유실'))}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(listTradePendings('taebaek','test-uid')).toHaveLength(1));const entry=listTradePendings('taebaek','test-uid')[0];first.unmount();
@@ -712,7 +712,14 @@ it('외부 상세 ID의 최초 열기는 회사 초기화 뒤에도 유지한다
 });
 
 it('실패 작업이 없어도 메뉴에서 빈 목록을 확인한다',async()=>{
- setup(undefined,undefined,{pendingInvoice:null});fireEvent.click(screen.getByRole('button',{name:'실패 작업 0'}));expect(await screen.findByText('확인할 실패 작업이 없습니다.')).toBeInTheDocument();
+ setup(undefined,undefined,{pendingInvoice:null});fireEvent.click(screen.getByRole('button',{name:'실패 0'}));expect(await screen.findByText('확인할 실패 작업이 없습니다.')).toBeInTheDocument();
+});
+it('실패 진입은 전표내역과 별도 보조줄에 두고 짧은 명칭으로 개수를 표시한다',()=>{
+ setup(undefined,undefined,{pendingInvoice:null});
+ const recovery=screen.getByRole('button',{name:'실패 0'});
+ expect(recovery.parentElement).toHaveClass('w-full','border-t');
+ expect(recovery.parentElement).not.toBe(screen.getByRole('button',{name:'전표내역'}).parentElement);
+ expect(screen.queryByRole('button',{name:'실패 작업 0'})).not.toBeInTheDocument();
 });
 
 it('보관 요청 상세 탐색과 완료 재시도는 새 작성 수량을 보존한다',async()=>{

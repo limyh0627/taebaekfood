@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Download, Plus, RotateCw, Save } from 'lucide-react';
+import ActionButton from '../../../shared/components/ActionButton';
 
 /** 조회 결과의 발행 도구. 드롭다운의 열림/바깥 클릭 상태는 이 UI 안에서 끝낸다. */
 /*  **단추는 바탕색 없이 테두리로**(2026-09-15 사장님: "버튼 바탕색 빼") — 셋이 나란히
@@ -35,49 +36,46 @@ export default function StatementHistoryActions(props: {
         {fetching && <span className="ml-2 animate-pulse text-[11px] text-indigo-400">불러오는 중…</span>}
       </h3>
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
-        {onExport && <button type="button" onClick={onExport} disabled={fetching || resultCount === 0}
-          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        {onExport && <ActionButton onClick={onExport} disabled={fetching || resultCount === 0}
           title="현재 조회 조건의 전표내역 전체를 엑셀로 저장">
-          <Download size={13}/>엑셀 저장
-        </button>}
+          <Download size={13}/>엑셀
+        </ActionButton>}
         <div className="relative" ref={menuRef}>
-          <button
+          <ActionButton tone="primary" aria-expanded={menuOpen}
             onClick={() => setMenuOpen(open => !open)}
-            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-600 transition-all hover:bg-indigo-50"
           >
             <Plus size={13} strokeWidth={3}/>거래명세서<ChevronDown size={12} strokeWidth={3} className="-ml-0.5 opacity-80"/>
-          </button>
+          </ActionButton>
           {menuOpen && (
             <div className="absolute left-0 top-full z-20 mt-1 w-28 rounded-xl border border-slate-100 bg-white p-1 shadow-xl">
-              <button onClick={() => { setMenuOpen(false); onCreateSale(); }} className="w-full rounded-lg px-3 py-2 text-left text-xs font-black text-blue-600 hover:bg-blue-50">매출전표</button>
-              <button onClick={() => { setMenuOpen(false); onCreatePurchase(); }} className="w-full rounded-lg px-3 py-2 text-left text-xs font-black text-rose-600 hover:bg-rose-50">매입전표</button>
+              <ActionButton onClick={() => { setMenuOpen(false); onCreateSale(); }} className="w-full !text-blue-600 !border-blue-200 hover:!bg-blue-50">매출전표</ActionButton>
+              <ActionButton onClick={() => { setMenuOpen(false); onCreatePurchase(); }} className="mt-1 w-full !text-rose-600 !border-rose-200 hover:!bg-rose-50">매입전표</ActionButton>
             </div>
           )}
         </div>
-        <button
+        <ActionButton
           onClick={onCreateCash}
-          className="flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-black text-teal-600 transition-all hover:bg-teal-50"
+          className="!border-teal-200 !text-teal-600 hover:!bg-teal-50"
           title="일반전표 — 돈이 실제로 오간 것. 전기·임대 같은 비용, 수금·지불(미수/미지급 상계), 대출상환·급여"
         >
           <Plus size={13} strokeWidth={3}/>일반전표
-        </button>
+        </ActionButton>
         {onOpenRecurring && (
-          <button
+          <ActionButton
             onClick={onOpenRecurring}
-            className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-600 transition-all hover:bg-violet-50"
+            className="!border-violet-200 !text-violet-600 hover:!bg-violet-50"
             title="전표 템플릿 — 목록 관리 · 매달 자동 발행 설정"
           >
             <RotateCw size={13} strokeWidth={3}/>템플릿
-          </button>
+          </ActionButton>
         )}
         <div className="mx-1 h-6 w-px self-center bg-slate-200"/>
-        <button
+        <ActionButton
           onClick={onOpenCompany}
-          className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-3 py-2 text-xs font-black text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700"
           title="회사 정보 설정"
         >
           <Save size={13}/>회사정보
-        </button>
+        </ActionButton>
       </div>
     </div>
   );

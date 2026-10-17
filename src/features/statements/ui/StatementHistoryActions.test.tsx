@@ -22,7 +22,7 @@ describe('전표 조회 결과 작업', () => {
     fireEvent.click(screen.getByRole('button', { name: '일반전표' }));
     fireEvent.click(screen.getByRole('button', { name: '템플릿' }));
     fireEvent.click(screen.getByRole('button', { name: '회사정보' }));
-    fireEvent.click(screen.getByRole('button', { name: '엑셀 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '엑셀' }));
 
     expect(onCreateSale).toHaveBeenCalledTimes(1);
     expect(onCreatePurchase).not.toHaveBeenCalled();
@@ -40,5 +40,13 @@ describe('전표 조회 결과 작업', () => {
     expect(screen.getByRole('button', { name: '매입전표' })).toBeInTheDocument();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('button', { name: '매입전표' })).not.toBeInTheDocument();
+  });
+  it('조회중이거나 결과가 없으면 엑셀을 막고 준비되면 같은 내보내기만 실행한다',()=>{
+    const onExport=vi.fn();const props={resultCount:0,fetching:false,onExport,onCreateSale:vi.fn(),onCreatePurchase:vi.fn(),onCreateCash:vi.fn(),onOpenCompany:vi.fn()};
+    const view=render(<StatementHistoryActions {...props}/>);
+    const button=screen.getByRole('button',{name:'엑셀'});expect(button).toBeDisabled();fireEvent.click(button);expect(onExport).not.toHaveBeenCalled();
+    view.rerender(<StatementHistoryActions {...props} resultCount={3} fetching/>);expect(button).toBeDisabled();
+    view.rerender(<StatementHistoryActions {...props} resultCount={3}/>);expect(button).not.toBeDisabled();fireEvent.click(button);expect(onExport).toHaveBeenCalledOnce();
+    expect(button).toHaveAttribute('title','현재 조회 조건의 전표내역 전체를 엑셀로 저장');
   });
 });
