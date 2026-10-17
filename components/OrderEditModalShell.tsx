@@ -29,7 +29,7 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
 }) => (
   <ModalShell
     title={title}
-    subtitle={`${partnerName} · ${context}`}
+    subtitle={<span className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-normal"><span className="min-w-0 break-words">{partnerName} · {context}</span><span className="shrink-0">{headerAction}</span></span>}
     onClose={onClose}
     footer={<ModalActionFooter
         onCancel={onClose}
@@ -38,7 +38,6 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
         primaryDisabled={saveDisabled}
       />}
   >
-    {headerAction && <div className="mb-3 flex justify-end">{headerAction}</div>}
     {children}
   </ModalShell>
 );

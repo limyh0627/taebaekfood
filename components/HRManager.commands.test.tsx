@@ -51,3 +51,5 @@ describe('격리 급여 명령 화면 후보',()=>{
    v.rerender(<HRManager {...props} cashAccounts={accounts.map(a=>({...a,active:a.id!=='other-bank'}))} companyId="taebaek"/>);expect(screen.getByLabelText('급여 지급 계좌')).toHaveValue('cashacct-temp-main');
    await u.click(screen.getByRole('button',{name:'지급 전표'}));expect(issuePayrollVoucher).toHaveBeenCalledWith('taebaek',expect.any(Object),'cash','cashacct-temp-main');
  });});
+
+it('연차 관리에는 장문 설명 박스 대신 기존 표와 편집 기능만 남긴다',async()=>{render(<HRManager {...props} companyId="taebaek"/>);await userEvent.click(screen.getByRole('button',{name:'연차 관리'}));expect(screen.getByRole('button',{name:'연차 편집'})).toBeInTheDocument();expect(screen.getByText('월차')).toBeInTheDocument();expect(screen.queryByText(/연차 정보는 인사팀/)).toBeNull();expect(screen.queryByText(/사용 개수에 바로 차감/)).toBeNull();});

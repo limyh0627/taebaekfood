@@ -316,6 +316,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
+  const [mergeConfirming, setMergeConfirming] = useState(false);
+  const [mergeError, setMergeError] = useState('');
   const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
   const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
@@ -699,15 +701,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
     <div className="flex flex-col gap-3 min-w-0">
       {isAdmin && referenceProblems.length > 0 && <details className="rounded-xl border border-gray-200 bg-white p-3" aria-label="확인 필요한 품목 연결">
         <summary className="cursor-pointer text-sm font-bold">확인 필요한 품목 연결 {referenceProblems.length}건</summary>
-        <p className="mt-2 text-xs text-gray-600">현재 회사의 전달된 목록과 연결을 대조한 결과입니다. 조회가 끝났는지 또는 서버에서 삭제됐는지는 확정하지 않습니다. 원품목과 거래처를 확인하세요.</p>
-        <p className="mt-1 text-xs text-gray-600">기존 연결 해제는 이 목록에 적용하지 않습니다. 확인 전 품목을 복원하거나 다른 품목으로 추정 연결하지 마세요.</p>
+        <p className="mt-2 text-xs text-gray-600">현재 목록에서 확인하지 못한 연결입니다. 서버에서 삭제됐는지는 확정하지 않습니다. 연결 상태를 확인해 다음 할 일을 확인하세요.</p>
+        <p className="mt-1 text-xs text-gray-600">품목이나 거래처 자체를 삭제하는 기능은 아닙니다.</p>
         <div className="mt-2 max-h-72 overflow-auto">
           {referenceProblems.map(({ link, itemName, partnerName, reasons }, index) => <div key={`${link.id}:${index}`} className="space-y-1 border-t border-gray-200 py-3 text-xs break-all">
-            <p className="font-bold">{reasons.join(' · ')}</p>
-            <p>연결 ID: {link.id || '현재 목록 미확인'} · 방향: {link.Direction === 'in' ? '매입' : link.Direction === 'out' ? '매출' : '현재 목록 미확인'}</p>
-            <p>품목 ID: {link.itemId || '현재 목록 미확인'}{itemName ? ` · 품목명: ${itemName}` : ''}</p>
-            {onPartnerItemCleanupChanged && <button type="button" className="min-h-10 rounded border border-gray-300 px-3" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(link.id); setCleanupOpen(true); }}>서버 확인 · {link.id}</button>}
-            <p>거래처 ID: {link.partnerId || '현재 목록 미확인'}{partnerName ? ` · 거래처명: ${partnerName}` : ''}</p>
+            <p className="font-bold">{itemName || '품목 이름 미확인'} · {partnerName || '거래처 이름 미확인'}</p>
+            <p>{reasons.join(' · ')}</p>
+            {onPartnerItemCleanupChanged && <button type="button" className="min-h-10 rounded border border-gray-300 px-3" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(link.id); setCleanupOpen(true); }}>연결 상태 확인</button>}
+            <details><summary className="cursor-pointer">연결 번호 자세히</summary><p>연결 ID: {link.id || '현재 목록 미확인'} · 방향: {link.Direction === 'in' ? '매입' : link.Direction === 'out' ? '매출' : '현재 목록 미확인'}</p><p>품목 ID: {link.itemId || '현재 목록 미확인'}{itemName ? ` · 품목명: ${itemName}` : ''}</p><p>거래처 ID: {link.partnerId || '현재 목록 미확인'}{partnerName ? ` · 거래처명: ${partnerName}` : ''}</p></details>
           </div>)}
         </div>
       </details>}
@@ -1390,6 +1391,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
         )}
       </div>
 
+      {mergeError && <p role="alert" className="text-sm text-red-700">{mergeError}</p>}
       {/* 중복 품목 패널 */}
       {showDuplicates && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
@@ -1515,21 +1517,22 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                             )}
 
                             <button
-                              disabled={merging || !canMerge}
+                              disabled={merging || mergeConfirming || !canMerge}
                               onClick={async () => {
-                                if (!await appConfirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
-                                setMerging(true);
+                                setMergeError(''); setMergeConfirming(true);
                                 try {
+                                  if (!await appConfirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
+                                  setMergeConfirming(false); setMerging(true);
                                   await onMergeItems(keepId, deleteIds);
                                   setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
-                                } finally {
-                                  setMerging(false);
-                                }
+                                } catch (error) {
+                                  setMergeError(`통합 결과를 확인하지 못했습니다. 선택한 품목은 유지했습니다. 목록을 다시 확인한 뒤 담당자에게 문의하세요. ${error instanceof Error ? error.message : ''}`);
+                                } finally { setMergeConfirming(false); setMerging(false); }
                               }}
                               className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-[11px] font-black rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <GitMerge size={13} />
-                              {merging ? '통합 중...' : `선택 품목 통합 (${selectedList.length}개)`}
+                              {mergeConfirming ? '확인 대기 중...' : merging ? '통합 중...' : `선택 품목 통합 (${selectedList.length}개)`}
                             </button>
                           </div>
                         );

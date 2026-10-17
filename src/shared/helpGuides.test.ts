@@ -77,3 +77,5 @@ describe('현재 메뉴별 실제 기능 안내',()=>{
    const a=getHelpMenuGuide('orders','admin');a.features[0].steps[0]='변경';a.features.pop();expect(getHelpMenuGuide('orders','admin').features).toHaveLength(4);expect(getHelpMenuGuide('orders','admin').features[0].steps[0]).not.toBe('변경');
  });
 });
+
+it('인사 안내 네 기능은 실제 편집과 시작일 기준 사용·이월 절차를 안내한다',()=>{const guide=getHelpMenuGuide('hr','admin');expect(guide.features).toHaveLength(4);expect(guide.features.map(f=>f.id)).toEqual(['hr-find','hr-leave-balance','hr-group-leave','hr-retirement']);const text=JSON.stringify(guide);for(const phrase of ['연차 편집','미래 예정 휴가는 아직 잔여에서 차감하지 않습니다','시작일부터','직접 조정'])expect(text).toContain(phrase);expect(text).not.toContain('바로 차감');});

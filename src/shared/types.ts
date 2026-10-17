@@ -150,6 +150,8 @@ export interface PartnerItem {
 
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
 export interface Partner {
+  /** 보관된 거래처는 새 관리 목록에서 숨기며 과거 거래·배송지 연결은 보존한다. */
+  archived?: boolean;
   /** 새 주문의 기본 배송방식. 과거 주문의 선택값을 바꾸지는 않는다. */
   defaultShipMethod?: ShipMethod;
   /**

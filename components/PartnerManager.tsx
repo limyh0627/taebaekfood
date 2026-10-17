@@ -78,10 +78,12 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
     { id: '스마트스토어', label: '스마트스토어', icon: Store, color: 'bg-lime-100 text-lime-600' },
   ];
 
+  const activePartners = useMemo(() => partners.filter(partner => partner.archived !== true), [partners]);
+
   const getEffectivePartnerType = (c: Partner): PartnerType => c.partnerType ?? '매출처';
 
   const filteredClients = useMemo(() => {
-    let result = partners;
+    let result = activePartners;
     if (activeTab !== '전체') result = result.filter(c => getEffectivePartnerType(c) === activeTab);
     if (activeTypeTab !== '전체' && (activeTab === '매출처' || activeTab === '전체')) {
       result = result.filter(c => c.type === activeTypeTab);
@@ -90,7 +92,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
       result = result.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [partners, activeTab, activeTypeTab, searchTerm]);
+  }, [activePartners, activeTab, activeTypeTab, searchTerm]);
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -139,7 +141,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
               >
                 <span className="font-bold text-sm">{tab.label}</span>
                 <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">
-                  {tab.id === '전체' ? partners.length : partners.filter(c => getEffectivePartnerType(c) === tab.id).length}
+                  {tab.id === '전체' ? activePartners.length : activePartners.filter(c => getEffectivePartnerType(c) === tab.id).length}
                 </span>
               </button>
             );
@@ -151,7 +153,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
             {partnerChannelTypes.filter(t => t.id !== '전체').map(t => {
               const Icon = t.icon;
               const isActive = activeTypeTab === t.id;
-              const count = partners
+              const count = activePartners
                 .filter(c => activeTab === '전체' || getEffectivePartnerType(c) === activeTab)
                 .filter(c => c.type === t.id).length;
               return (

@@ -25,7 +25,6 @@ import {
   ClipboardCheck, 
   CalendarCheck, 
   Settings2, 
-  AlertCircle, 
   Gift, 
   Lock, 
   Unlock,
@@ -390,15 +389,6 @@ const HRManager: React.FC<HRManagerProps> = ({
 
         {activeTab === 'leave-balance' && (
           <div className="flex-1 overflow-auto custom-scrollbar">
-            <div className="p-4 sm:p-8 bg-indigo-50 border-b border-indigo-100 flex items-start sm:items-center space-x-3">
-              <AlertCircle className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" size={20} />
-              <div className="text-xs font-bold text-indigo-700 leading-relaxed">
-                <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
-                <p>총 부여 = [월차 + 연차 + 보너스 + 이월], 잔여 = [총 부여 − 사용 개수]. <b>회사 단체 휴가는 위 &apos;휴가&apos; 버튼으로 등록하면 사용 개수에 바로 차감</b>됩니다.</p>
-                <p>사용 개수는 <b>총 / 당월</b>로 보여줍니다(당월은 신청 시작일 기준). 월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
-                <p><b>연차는 입사 응당일에 발생</b>합니다. 아직 안 지났으면 <span className="text-amber-600 font-black">MM-DD 예정</span>으로 표시되고 <b>잔여에 더해지지 않습니다</b> — 그때까지는 이월분으로 사용합니다.</p>
-              </div>
-            </div>
             <table className="w-full text-left min-w-[640px]">
               <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
