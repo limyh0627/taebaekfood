@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import * as ts from 'typescript';
 const m=vi.hoisted(()=>({imports:[] as string[],events:[] as string[],render:vi.fn(),construct:vi.fn(),pdf:{addPage:vi.fn(),addImage:vi.fn(),save:vi.fn()}}));
@@ -36,7 +36,12 @@ it('HEAD6d4894a 함수 본문 원문과 같고 실제 16개 호출이 새 모듈
   const fn=source.statements.find(ts.isFunctionDeclaration)!;
   expect(createHash('sha256').update(fn.body!.getText(source).replace(/\r\n/g,'\n')).digest('hex')).toBe('b1231655433bba4e250a58963858d493e3da98fbb0e47be43acf452d67c93af0');
   const parent=ts.createSourceFile('HaccpChecklist.tsx',readFileSync('components/HaccpChecklist.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  let calls=0,definitions=0;function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(parent)==='downloadAsPDF')calls++;if(ts.isFunctionDeclaration(node)&&node.name?.text==='downloadAsPDF')definitions++;ts.forEachChild(node,visit);}visit(parent);
+  let calls=0,definitions=0;
+  const files=(directory:string):string[]=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):/\.tsx?$/.test(entry.name)&&!entry.name.includes('.test.')?[`${directory}/${entry.name}`]:[]);
+  for(const path of ['components/HaccpChecklist.tsx',...files('src/features/haccp')]){
+    const file=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,path.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+    function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(file)==='downloadAsPDF')calls++;if(path==='components/HaccpChecklist.tsx'&&ts.isFunctionDeclaration(node)&&node.name?.text==='downloadAsPDF')definitions++;ts.forEachChild(node,visit);}visit(file);
+  }
   expect(calls).toBe(16);expect(definitions).toBe(0);
   expect(parent.statements.some(node=>ts.isImportDeclaration(node)&&node.moduleSpecifier.getText(parent).includes('/haccp/infrastructure/downloadAsPDF'))).toBe(true);
 });
