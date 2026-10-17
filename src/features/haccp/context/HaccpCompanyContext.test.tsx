@@ -2,7 +2,7 @@
 import React from 'react';
 import {render,screen} from '@testing-library/react';
 import {expect,it} from 'vitest';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import * as ts from 'typescript';
 import {HaccpCompanyContext,useHaccpCompany} from './HaccpCompanyContext';
@@ -16,7 +16,9 @@ it('부모 provider2와 전체12 소비자가 같은 하위 context 모듈을 �
  const parent=readFileSync('components/HaccpChecklist.tsx','utf8'),temp=readFileSync('src/features/haccp/ui/TempForm.tsx','utf8'),incoming=readFileSync('src/features/haccp/ui/IncomingForm.tsx','utf8');
  const hygiene=['SanitationForm','CleaningForm','PersonalHygieneForm'].map(name=>readFileSync(`src/features/haccp/ui/${name}.tsx`,'utf8'));
  expect(parent.match(/<HaccpCompanyContext\.Provider /g)).toHaveLength(2);
- expect([parent,temp,incoming,...hygiene].join('\n').match(/useHaccpCompany\(\)/g)).toHaveLength(12);
+ const files=(directory:string):string[]=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):/\.tsx?$/.test(entry.name)&&!entry.name.includes('.test.')?[`${directory}/${entry.name}`]:[]);
+ const products=files('src/features/haccp').map(path=>readFileSync(path,'utf8'));
+ expect([parent,...products].join('\n').match(/useHaccpCompany\(\)/g)).toHaveLength(12);
  expect(parent).toContain("from '../src/features/haccp/context/HaccpCompanyContext'");
  for(const source of [temp,incoming,...hygiene])expect(source).toContain("from '../context/HaccpCompanyContext'");
  expect(parent).not.toContain('createContext<CompanyId>');

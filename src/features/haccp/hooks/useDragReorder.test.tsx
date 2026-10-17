@@ -2,7 +2,7 @@
 import React from 'react';
 import {act,renderHook} from '@testing-library/react';
 import {expect,it,vi} from 'vitest';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import * as ts from 'typescript';
 import {arrayMove,useDragReorder} from './useDragReorder';
@@ -36,6 +36,8 @@ it('훅과 arrayMove 원문 동치·실제 7개 에디터 연결을 보존한다
   const hash=(node:ts.Node)=>createHash('sha256').update(node.getText(source).replace(/\r\n/g,'\n')).digest('hex');
   expect(hash(fn.body!)).toBe('0c3a74b289e4d263ad8ea7a45c775f83483fa25f97840286eca25b99c28a7bfa');expect(hash(array.initializer!)).toBe('2a466a4e94d813ab706b740e2f1a562828d540fb49ca82d975f06e18aa5a11eb');
   const parent=ts.createSourceFile('HaccpChecklist.tsx',readFileSync('components/HaccpChecklist.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  let calls=0,definitions=0;function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(parent)==='useDragReorder')calls++;if(ts.isFunctionDeclaration(node)&&node.name?.text==='useDragReorder')definitions++;ts.forEachChild(node,visit);}visit(parent);
+  let calls=0,definitions=0;
+  const files=(directory:string):string[]=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):/\.tsx?$/.test(entry.name)&&!entry.name.includes('.test.')?[`${directory}/${entry.name}`]:[]);
+  for(const path of ['components/HaccpChecklist.tsx',...files('src/features/haccp')]){const file=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,path.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(file)==='useDragReorder')calls++;if(path==='components/HaccpChecklist.tsx'&&ts.isFunctionDeclaration(node)&&node.name?.text==='useDragReorder')definitions++;ts.forEachChild(node,visit);}visit(file);}
   expect(calls).toBe(7);expect(definitions).toBe(0);expect(text).not.toContain('HaccpChecklist');
 });
