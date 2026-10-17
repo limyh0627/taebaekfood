@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { CashTemplateModal, CashTemplatePicker } from './CashTemplateSelection';
 import type { CashTemplate } from '../domain/cashTemplateCatalog';
@@ -18,4 +18,13 @@ it('검색·그룹·즐겨찾기·갈래 탭을 조합하되 직접입력과 닫
 });
 it('갈래 탭을 숨겨도 전체·즐겨찾기와 빈 검색 안내를 유지한다',()=>{
  render(<CashTemplateModal templates={templates} accountCodes={accounts} activeId={null} onPick={vi.fn()} onDirect={vi.fn()} onClose={vi.fn()} hideDirectionTabs/>);expect(screen.queryByRole('button',{name:/^출금$/})).toBeNull();expect(screen.getByRole('button',{name:'전체'})).toBeInTheDocument();expect(screen.getByRole('button',{name:'★'})).toBeInTheDocument();fireEvent.change(screen.getByPlaceholderText('이름·거래처·계정 검색'),{target:{value:'없는검색어'}});expect(screen.getByText('찾는 템플릿이 없습니다')).toBeInTheDocument();expect(screen.getByRole('button',{name:/직접입력/})).toBeInTheDocument();
+});
+
+it('카드는 0원에도 차변 대변과 거래처를 독립 줄에 표시한다',()=>{
+ render(<CashTemplatePicker templates={[templates[0]]} accountCodes={accounts} activeId={null} onPick={vi.fn()}/>);
+ const card=screen.getByRole('button',{name:/임차료/}),view=within(card);
+ expect(view.getByText('차변')).toBeInTheDocument();expect(view.getByText('대변')).toBeInTheDocument();
+ expect(view.getByText('820 지급임차료')).toBeInTheDocument();expect(view.getByText('103 보통예금')).toBeInTheDocument();
+ expect(view.getByText('거래처 · 합성임대인')).toHaveClass('border-t');expect(view.getByText('0원')).toBeInTheDocument();
+ expect(view.getByText('임차료')).toHaveClass('break-words');expect(card.parentElement).toHaveClass('gap-2');
 });

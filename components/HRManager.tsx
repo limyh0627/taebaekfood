@@ -304,8 +304,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       <PageHeader
         title="인사 관리"
         subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
-        right={<div className="flex min-w-0 max-w-full flex-col items-start gap-2">
-          <div role="group" aria-label="인사 메뉴" className="flex max-w-full shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap">
+        tabs={<div role="group" aria-label="인사 메뉴" className="flex w-full min-w-0 max-w-full shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap">
             <ActionButton
               onClick={() => setActiveTab('employees')}
               aria-pressed={activeTab === 'employees'}
@@ -316,7 +315,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             <ActionButton
               onClick={() => setActiveTab('leave-approval')}
               aria-pressed={activeTab === 'leave-approval'}
-              className={activeTab === 'leave-approval' ? '!text-amber-600 !border-amber-200' : ''}
+              className={activeTab === 'leave-approval' ? '!text-indigo-600 !border-indigo-200' : ''}
             >
               <ClipboardCheck size={14} /><span>승인 대기</span>
               {pendingRequests.length > 0 && <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] text-white">{pendingRequests.length}</span>}
@@ -324,19 +323,19 @@ const HRManager: React.FC<HRManagerProps> = ({
             <ActionButton
               onClick={() => setActiveTab('leave-balance')}
               aria-pressed={activeTab === 'leave-balance'}
-              className={activeTab === 'leave-balance' ? '!text-emerald-600 !border-emerald-200' : ''}
+              className={activeTab === 'leave-balance' ? '!text-indigo-600 !border-indigo-200' : ''}
             >
               <Settings2 size={14} /><span>연차 관리</span>
             </ActionButton>
             <ActionButton
               onClick={() => setActiveTab('payroll')}
               aria-pressed={activeTab === 'payroll'}
-              className={activeTab === 'payroll' ? '!text-violet-600 !border-violet-200' : ''}
+              className={activeTab === 'payroll' ? '!text-indigo-600 !border-indigo-200' : ''}
             >
               <Wallet size={14} /><span>급여대장</span>
             </ActionButton>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+          </div>}
+        actions={(activeTab === 'employees' || activeTab === 'leave-balance') ? <>
           {activeTab === 'employees' && (
             <ActionButton
               onClick={() => {
@@ -360,7 +359,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             <>
               <ActionButton
                 onClick={() => setIsEditMode(!isEditMode)}
-                tone="primary" className={isEditMode ? '!bg-rose-600 !text-white !border-rose-600 hover:!bg-rose-600' : '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-700'}
+                tone="primary"
               >
                 {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
                 <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
@@ -379,8 +378,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               </ActionButton>
             </>
           )}
-          </div>
-        </div>}
+          </> : undefined}
       />
 
       {/* Main Content Area */}

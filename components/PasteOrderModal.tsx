@@ -79,13 +79,18 @@ interface PasteOrderModalProps {
   initialText?: string;
   onClose: () => void;
   onBack?: () => void;
+  onOpenRules?: () => void;
+  saveRecovery?: React.ReactNode;
+  recoveryBusy?: boolean;
+  saveBlocked?:boolean;
+  onSourceTextChange?: (text:string)=>void;
   onSave: (_order: Omit<Order, 'id' | 'status'>,evidence?:OrderCopyEvidence) => Promise<void>;
 }
 
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  companyId,actorUid,suspended=false,isCurrentActor,items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,
+  companyId,actorUid,suspended=false,isCurrentActor,items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,onOpenRules,saveRecovery,recoveryBusy=false,saveBlocked=false,onSourceTextChange,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -94,17 +99,17 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const savingRef = useRef(false);
   const aiRequest = useRef({ generation: 0, sequence: 0, inFlight: 0, snapshot: '', open: true });
   const invalidateAiRead = () => { aiRequest.current.generation += 1; };
-  const closeModal = () => { aiRequest.current.open = false; invalidateAiRead(); onClose(); };
-  const backModal = () => { aiRequest.current.open = false; invalidateAiRead(); onBack?.(); };
+  const closeModal = () => { if(recoveryBusy)return;aiRequest.current.open = false; invalidateAiRead(); onClose(); };
+  const backModal = () => { if(recoveryBusy)return;aiRequest.current.open = false; invalidateAiRead(); onBack?.(); };
   useEffect(() => {
     aiRequest.current.open = true;
     return () => { aiRequest.current.open = false; invalidateAiRead(); };
   }, []);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current && !suspended) closeModal(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current && !suspended && !recoveryBusy) closeModal(); };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [isSaving, onClose,suspended]);
+  }, [isSaving, onClose,suspended,recoveryBusy]);
 
   const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,6 +124,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       ? current : defaultShipToId(selectedClient ?? undefined));
   }, [selectedClient]);
   const [pasteText, setPasteText] = useState(initialText);
+  useEffect(()=>{onSourceTextChange?.(pasteText);},[pasteText,onSourceTextChange]);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   const sourceGeneration=useRef(0);
   const interpretationRules=useRef<OrderInterpretationRule[]>([]);
@@ -330,7 +336,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
   const handleSubmit = async () => {
-    if (savingRef.current || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
+    if (savingRef.current || recoveryBusy || saveBlocked || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
     invalidateAiRead();
     const draft = buildNewOrderDraft({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
@@ -430,6 +436,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   return (
     <ModalShell title="주문 등록 · 주문 내역 붙여넣기" onClose={() => { if (!savingRef.current) closeModal(); }} bodyClassName="!p-0">
+        {(onOpenRules||saveRecovery)&&<div className="space-y-3 border-b border-slate-200 px-5 py-3">{onOpenRules&&<div className="flex justify-end"><button type="button" disabled={isSaving||recoveryBusy} onClick={onOpenRules} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold">판독 규칙</button></div>}{saveRecovery}</div>}
         {onBack && <button type="button" onClick={() => { if (!savingRef.current) backModal(); }} className="mx-5 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         {/* 스텝 인디케이터 */}
@@ -726,7 +733,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
               onCancel={() => { if (!savingRef.current) closeModal(); }}
               onPrimary={handleSubmit}
               primaryLabel={isSaving ? '저장 중…' : `주문 생성 (${parsedLines.filter(line => line.selectedProductId).length}건)`}
-              primaryDisabled={isSaving || !orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}
+              primaryDisabled={isSaving || recoveryBusy || saveBlocked || !orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}
             />
           )}
         </div>

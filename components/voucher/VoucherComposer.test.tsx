@@ -351,3 +351,18 @@ it('이전 계정의 늦은 발행 완료는 새 계정 창이나 원문을 정�
 it('이전 회사 발행 완료는 새 회사 창을 닫거나 대기 원문을 지우지 않는다',async()=>{const u=userEvent.setup();let finish!:(v:unknown)=>void;const save=vi.fn().mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const {rerenderCompany,onClose}=띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));rerenderCompany('punghoe');await act(async()=>finish({id:'saved'}));expect(onClose).not.toHaveBeenCalled();expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).not.toBeNull();});
 
 it('일반 현금전표는 거래처 계좌 금액 순서로 입력하고 금액 형식을 유지한다',async()=>{띄우기();const partner=screen.getByRole('textbox',{name:'거래처'}),bank=screen.getByRole('combobox',{name:'계좌'}),amount=screen.getByRole('textbox',{name:'금액'});expect(partner.compareDocumentPosition(bank)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(bank.compareDocumentPosition(amount)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.getAllByRole('combobox',{name:'계좌'})).toHaveLength(1);await userEvent.type(amount,'12345');expect(amount).toHaveValue('12,345');});
+
+it.each(['출금','입금'] as const)('일반 %s는 금액 입력 전에도 자동 반대편 계정을 표시하고 저장은 막는다',dir=>{
+ 띄우기({initialDir:dir});const dialog=screen.getByRole('dialog',{name:'일반전표 발행'});
+ expect(within(dialog).getByText('103 보통예금')).toBeInTheDocument();
+ const bankRow=within(dialog).getByText('103 보통예금').parentElement!;
+ expect(bankRow).toHaveTextContent(dir==='출금'?'대변':'차변');expect(bankRow).toHaveTextContent('0');
+ expect(within(dialog).getByRole('button',{name:/^저장$/})).toBeDisabled();
+});
+it('주문 수정과 같은 하단 푸터에 취소와 저장만 두고 취소 콜백을 유지한다',async()=>{
+ const {onClose}=띄우기({onAddFixedCostTemplate:vi.fn()});const footer=screen.getByRole('button',{name:/^저장$/}).closest('footer')!;
+ expect(footer).not.toBeNull();expect(within(footer).getAllByRole('button')).toHaveLength(2);
+ expect(within(footer).getByRole('button',{name:/^저장$/})).toHaveClass('bg-indigo-600');
+ expect(screen.getByRole('button',{name:'템플릿 저장'}).closest('footer')).toBeNull();
+ await userEvent.click(within(footer).getByRole('button',{name:'취소'}));expect(onClose).toHaveBeenCalledOnce();
+});

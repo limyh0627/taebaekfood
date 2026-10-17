@@ -452,6 +452,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   // Compute derived variables
   const products = items;
   const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [savedOrderNotice,setSavedOrderNotice]=useState('');
   // 배송 관리에 삽입되는 목록은 외부의 '리스트' 선택 결과이므로 내부 기본 뷰도 리스트여야 한다.
   /*  **보기 축에 '이력'이 하나 더 있다**(2026-09-11 사장님: "보드 우측에 이력 탭 추가하고
     전처럼 예전 주문은 이력 탭에서 확인할거고").
@@ -708,10 +709,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
   // 신규 주문은 목록에서 보여준다. 편집창은 주문을 직접 선택할 때만 연다.
   useEffect(() => {
     if (!newOrderId) return;
+    setSavedOrderNotice('');
     setActiveTab('active');
+    setActiveView('kanban');
+    setListStatusTab('all');setListFilterField('');setListFilterValue('');setListPartnerFilter('');setSearchTerm('');
+    setOperationDateFrom('');setOperationDateTo('');setActiveDateFrom('');setActiveDateTo('');
     const timer = setTimeout(() => {
       const el = document.getElementById(`order-card-${newOrderId}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else setSavedOrderNotice('저장된 주문을 현재 목록에서 찾지 못했습니다. 주문 이력에서 확인해 주세요. 같은 주문을 다시 생성하지 마세요.');
       onNewOrderIdClear?.();
     }, 150);
     return () => clearTimeout(timer);
@@ -1108,9 +1114,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   };
   const renderOrderManagementControls = () => embeddedListOnly ? null : (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6">
-        <h2 className="text-lg font-black text-slate-900">전체 주문 관리</h2>
-          <div className="flex items-center rounded-2xl bg-slate-100 p-1" aria-label="주문 보기 방식">
+      <PageHeader title={title} subtitle={subtitle} tabs={<div className="w-full min-w-0 space-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1" aria-label="주문 보기 방식">
             {([
               //  보기 순서는 사장님이 정한다(2026-09-11): 보드 → 리스트 → 배송 캘린더 → 이력.
               { value: 'kanban' as const, label: '보드', icon: LayoutDashboard },
@@ -1119,10 +1124,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
               { value: 'history' as const, label: '이력', icon: History },
             ]).map(view => {
               const Icon = view.icon;
-              return <button key={view.value} type="button" onClick={() => setActiveView(view.value)} aria-pressed={activeView === view.value} className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black transition-all ${activeView === view.value ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><Icon size={13} /><span>{view.label}</span></button>;
+              return <button key={view.value} type="button" onClick={() => setActiveView(view.value)} aria-pressed={activeView === view.value} className={`flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-bold transition-colors ${activeView === view.value ? 'border-indigo-300 bg-white text-indigo-600' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}><Icon size={13} /><span>{view.label}</span></button>;
             })}
           </div>
-      </div>
+          {activeView !== 'history' && <div className="flex items-center gap-1 overflow-x-auto" aria-label="주문 상태 선택">
+            {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
+              <button key={tab.value} type="button" onClick={() => setListStatusTab(tab.value)} className={`flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-bold ${listStatusTab === tab.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><span>{tab.label}</span><span className="text-[10px] tabular-nums">{tab.count}</span></button>
+            ))}
+          </div>}
+        </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
           <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="active-view-query-title">
             <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
               <h3 id="active-view-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
@@ -1134,10 +1144,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
                      날짜칸·단추의 여백과 글씨를 좁은 화면에서만 줄인다 — 넓은 화면은 그대로다. */}
                 <span className="flex flex-nowrap items-center gap-1 sm:gap-2">
-                  <input aria-label="완료일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <input aria-label="완료일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
                   <span className="shrink-0 text-xs text-slate-400">~</span>
-                  <input aria-label="완료일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
-                  <span className="flex h-9 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <input aria-label="완료일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <span className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
                     {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
                          써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
                          날짜 칸을 86px 까지 좁히고 나니 제 이름이 다 들어간다. */}
@@ -1148,9 +1158,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </span>
               </label> : <div className="order-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
                 <span>{operationDateFrom || operationDateTo ? '주문일 기간 조회' : '진행 중 주문 전체 · 날짜 제한 없음'}</span>
-                <input aria-label="진행 주문일 시작" type="date" value={operationDateFrom} max={operationDateTo || undefined} onChange={e => setOperationDateFrom(e.target.value)} className="h-9 border rounded-md px-2" />
+                <input aria-label="진행 주문일 시작" type="date" value={operationDateFrom} max={operationDateTo || undefined} onChange={e => setOperationDateFrom(e.target.value)} className="h-10 border rounded-md px-2" />
                 <span>~</span>
-                <input aria-label="진행 주문일 종료" type="date" value={operationDateTo} min={operationDateFrom || undefined} onChange={e => setOperationDateTo(e.target.value)} className="h-9 border rounded-md px-2" />
+                <input aria-label="진행 주문일 종료" type="date" value={operationDateTo} min={operationDateFrom || undefined} onChange={e => setOperationDateTo(e.target.value)} className="h-10 border rounded-md px-2" />
                 <button onClick={() => { setOperationDateFrom(''); setOperationDateTo(''); }}>기간 전체</button>
               </div>}
               {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
@@ -1161,7 +1171,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
                      거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
                 <SearchableSelect
-                  ariaLabel="검색 필드" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="검색 필드" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                   value={listFilterField}
                   onChange={value => { setListFilterField(value as typeof listFilterField); setListFilterValue(''); }}
                   options={검색필드목록}
@@ -1171,7 +1181,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 조건 값
                 <SearchableSelect
-                  ariaLabel="조건 값" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  ariaLabel="조건 값" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                   value={listFilterValue} onChange={setListFilterValue} disabled={!listFilterField}
                   options={[{ value: '', label: '전체' }, ...activeViewFilterValues.map(value => ({ value, label: value }))]}
                 />
@@ -1181,7 +1191,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
                 <SearchableSelect
-                  ariaLabel="거래처" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="거래처" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                   value={listPartnerFilter} onChange={setListPartnerFilter}
                   options={[{ value: '', label: '전체' }, ...[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
                     .sort((a, b) => a.localeCompare(b, 'ko'))
@@ -1195,7 +1205,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-4 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 정렬
                 <SearchableSelect
-                  ariaLabel="정렬" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="정렬" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                   value={listSort} onChange={value => setListSort(value as typeof listSort)}
                   options={정렬목록}
                 />
@@ -1204,19 +1214,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 전체 검색
                 <span className="relative block">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
-                  <input type="search" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처, 품목, 제조, 라벨, 포장, 팔레트 검색" className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+                  <input type="search" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처, 품목, 제조, 라벨, 포장, 팔레트 검색" className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
                 </span>
               </label>
             </div>
           </section>
           {/*  이력 탭에는 상태 고르개를 안 둔다(2026-09-11 사장님) — 거긴 예전 주문 하나뿐이라 고를 게 없다. */}
-          <div className={`items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1 ${activeView === 'history' ? 'hidden' : 'flex'}`} aria-label="주문 상태 선택">
-            {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
-              <button key={tab.value} type="button" onClick={() => setListStatusTab(tab.value)} className={`flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-black transition-colors ${listStatusTab === tab.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}>
-                <span>{tab.label}</span><span className={`text-[9px] tabular-nums ${listStatusTab === tab.value ? 'text-indigo-500' : 'text-slate-400'}`}>{tab.count}</span>
-              </button>
-            ))}
-          </div>
 
     </div>
   );
@@ -1229,6 +1232,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
+      {savedOrderNotice&&<p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">{savedOrderNotice}</p>}
       {orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {/*  **최상단 헤더는 없앴다**(2026-09-11 사장님: "주문배송 메뉴의 최상단 헤더도 중복되니까
            제거하고"). 바로 아래에 '전체 주문 관리' 제목이 또 있어 같은 말이 두 번 나왔다.
@@ -2518,6 +2522,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
              컬럼이 5개로 늘어난 뒤로는 그 240px가 컬럼 하나에 해당해서 위아래로 나눴다.
              대신 항목을 가로로 흘려야 상단이 세로로 길어지지 않는다. */
           <div className="flex flex-col gap-5 pb-4">
+            {!embeddedListOnly && <div className="order-2">{renderOrderManagementControls()}</div>}
             <section className="hidden" aria-labelledby="active-query-title">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
                 <CalendarDays size={15} className="text-indigo-600" aria-hidden="true" />
@@ -2655,14 +2660,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  캘린더·이력에서는 패널이 숨어도 단추는 남는다(주문은 어느 화면에서나 만든다). */}
             {/*  주문 생성은 **보드·리스트에만**(2026-09-11 사장님) — 배송 캘린더는 일정 보는 자리고
                  이력은 지나간 것을 보는 자리라, 거기서 새 주문을 만들 일이 없다. */}
-            {!embeddedListOnly && (activeView === 'kanban' || activeView === 'list') && (
-              <div className="order-3 flex flex-wrap items-center justify-end gap-2">
-                <button onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-md bg-indigo-600 px-4 text-xs font-black text-white transition-colors hover:bg-indigo-700">
-                  <Plus size={13} /><span>주문 생성</span>
-                </button>
-              </div>
-            )}
-            {!embeddedListOnly && <div className="order-2">{renderOrderManagementControls()}</div>}
             {activeView === 'calendar' && (
               <div className="order-4">
                 {calendarSlot?.(listSort) ?? (

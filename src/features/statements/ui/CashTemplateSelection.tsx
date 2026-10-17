@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { AccountCode } from '../../../shared/types';
 import ModalShell from '../../../shared/components/ModalShell';
+import TemplateAccountSummary from './TemplateAccountSummary';
 import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, type CashTemplate, type VoucherDir } from '../domain/cashTemplateCatalog';
 
 export function CashTemplateModal({
@@ -37,11 +38,11 @@ export function CashTemplateModal({
             템플릿 화면과 목록이 달라 보이고, 방향을 잘못 잡으면 찾던 게 안 뜬다. */}
         <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2.5 md:px-5">
           <div className="flex items-center gap-3 flex-wrap">
-            <select aria-label="템플릿 그룹" value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)} className="max-w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs">
+            <select aria-label="템플릿 그룹" value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)} className="h-10 max-w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">
               <option value="">전체 그룹</option>{groupNames.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
             <input type="text" autoFocus placeholder="이름·거래처·계정 검색" value={q} onChange={e => setQ(e.target.value)}
-              className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+              className="h-10 flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           </div>
           <div className="flex gap-1 flex-wrap">
             {(['all', 'fav', ...(hideDirectionTabs ? [] : VOUCHER_DIRS)] as const).map(v => (
@@ -57,12 +58,12 @@ export function CashTemplateModal({
             ))}
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2">
           {/* 직접입력은 템플릿이 아니라 '템플릿 없음'이라 목록 밖에 둔다 */}
           <button type="button" onClick={onDirect}
             className={`w-full px-3 py-2.5 rounded-xl border text-left transition-all flex items-baseline justify-between gap-2 ${
               activeId === null
-                ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                ? 'bg-white text-indigo-700 border-indigo-500 ring-1 ring-indigo-500'
                 : 'bg-white text-slate-600 border-dashed border-slate-300 hover:border-slate-500'}`}>
             <span className="text-sm font-black leading-tight">직접입력</span>
             <span className={`text-[10px] font-bold leading-tight shrink-0 ${activeId === null ? 'opacity-70' : 'opacity-60'}`}>
@@ -106,30 +107,26 @@ export function CashTemplatePicker({
     return (
       <button key={t.id} type="button" disabled={unavailable} onClick={() => onPick(t)}
         title={unavailable ? `현재 회사 계정표에 없는 계정: ${t.unavailableCodes!.join(', ')}` : t.accountCode ? `${t.dir} · ${t.accountCode} ${nameOf(t.accountCode)}` : t.hint}
-        className={`w-full px-3 py-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 ${
-          unavailable ? 'bg-amber-50 border-amber-200 cursor-not-allowed' : on ? 'bg-white border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-400'
+        className={`w-full px-3 py-2.5 rounded-xl border text-left transition-all flex items-start justify-between gap-3 ${
+          unavailable ? 'bg-white border-slate-300 cursor-not-allowed' : on ? 'bg-white border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-400'
         }`}>
-        <span className="flex items-center gap-2 min-w-0">
+        <span className="flex items-start gap-2 min-w-0 flex-1">
           <span title={DIR_HINT[t.dir]} className={`shrink-0 w-11 text-center text-[10px] font-black px-1 py-1 rounded-md ${DIR_CHIP[t.dir] ?? 'bg-slate-100 text-slate-500'}`}>
             {directionLabel ?? t.dir}
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-black text-slate-800 leading-tight truncate">
+            <span className="block break-words text-sm font-bold text-slate-800 leading-5">
               {t.label}
               {t.mode !== '일반' && <span className="ml-1.5 text-[9px] font-black px-1 py-0.5 rounded bg-indigo-50 text-indigo-600">{t.mode}</span>}
             </span>
-            {(t.partnerName || t.accountCode || t.hint) && (
-              <span className="block text-[10px] font-bold text-slate-400 leading-tight truncate">
-                {t.accountCode ? `${t.accountCode} ${nameOf(t.accountCode)}` : t.hint}
-                {t.partnerName && ` · ${t.partnerName}`}
-              </span>
-            )}
+            <span className="mt-2 block"><TemplateAccountSummary template={{...t,name:t.label,amount:t.amount??0,category:'기타',active:false}} accountCodes={accountCodes}/></span>
+            {t.partnerName && <span className="mt-2 block break-words border-t border-slate-100 pt-2 text-xs text-slate-500">거래처 · {t.partnerName}</span>}
             {unavailable && <span className="block text-[10px] font-bold text-amber-700 leading-tight">현재 회사 계정표에 {t.unavailableCodes!.join(', ')} 없음 · 템플릿에서 계정 확인</span>}
           </span>
         </span>
-        {t.amount ? (
-          <span className="shrink-0 text-xs font-black text-slate-700 tabular-nums">{t.amount.toLocaleString('ko-KR')}</span>
-        ) : null}
+        {(
+          <span className="shrink-0 text-xs font-black text-slate-700 tabular-nums">{(t.amount ?? 0).toLocaleString('ko-KR')}원</span>
+        )}
       </button>
     );
   };
@@ -137,7 +134,7 @@ export function CashTemplatePicker({
     // 한 행에 하나 — 이름과 계정이 한눈에 같이 읽혀야 잘못 고르지 않는다
     <div className="flex flex-col gap-3">
       {groups.map(g => (
-        <div key={g.name} className="flex flex-col gap-1">
+        <div key={g.name} className="flex flex-col gap-2">
           <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">{g.name}</span>
           {g.items.map(t => <React.Fragment key={t.id}>{card(t)}</React.Fragment>)}
         </div>

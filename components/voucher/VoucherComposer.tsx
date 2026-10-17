@@ -776,16 +776,20 @@ export default function VoucherComposer({
 
         const cashAccountField = (
           <div className="w-full">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계좌</label>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1.5">계좌</label>
                   <select aria-label="계좌" value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                    className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300">
                     {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
         );
 
         return (
-          <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0">
+          <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0"
+            footer={<fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => { onClose(); }} className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-50">취소</button>
+              <button type="button" onClick={handleQuickPaySave} disabled={!canSave || loanSaving} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"><Save size={12}/>{loanSaving ? '저장 중…' : '저장'}</button>
+            </fieldset>}>
             {issueSaving && <p role="status" className="border-b border-slate-200 p-4 text-sm">전표를 저장 중입니다.</p>}
             {!issueSaving && issuePending?.companyId === companyId && issuePending.userId === actorId && <section className="border-b bg-amber-50 p-4 space-y-2" aria-label="저장 중이던 전표">
               <p className="font-bold">이전 전표의 저장 결과를 확인해야 합니다.</p>
@@ -798,10 +802,10 @@ export default function VoucherComposer({
             <fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="contents">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
-              <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100 shrink-0">
+              <div className="flex flex-wrap items-center gap-3 px-4 py-4 md:px-5 border-b border-slate-200 shrink-0">
                 {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
                 <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
-                  className="h-10 min-w-0 max-w-full shrink-0 border border-slate-200 rounded-lg bg-white px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                  className="h-10 min-w-0 max-w-full shrink-0 border border-slate-200 rounded-lg bg-white px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                 {/* 출금·입금은 돈이 움직인 것, 발생은 안 움직인 것(채무 발생·대체).
                     표준 전표 체계의 출금·입금·대체와 같은 갈래다. */}
                 <div className="grid w-full grid-cols-3 gap-1 sm:ml-auto sm:w-auto sm:grid-cols-6">
@@ -826,7 +830,7 @@ export default function VoucherComposer({
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-5 space-y-4">
 
               {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다 —
                   늘 펼쳐 두면 정작 금액 칸이 아래로 밀린다. */}
@@ -838,7 +842,7 @@ export default function VoucherComposer({
                     className={`w-full h-10 flex items-center gap-2 px-3 rounded-lg border text-left transition-all ${
                       picked ? 'bg-white border-indigo-200 hover:border-indigo-400' : 'bg-white border-slate-200 hover:border-slate-400'
                     }`}>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">전표</span>
+                    <span className="text-[10px] font-bold text-slate-500 shrink-0">전표</span>
                     <span className={`text-sm font-black truncate ${picked ? 'text-indigo-700' : 'text-slate-600'}`}>{cur?.label ?? '직접입력'}</span>
                     {cur && <span className="text-[10px] font-bold text-slate-400 truncate">{cur.hint ?? `${cur.accountCode} ${codeName.get(cur.accountCode ?? '') ?? ''}`}</span>}
                     <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">템플릿 ▾</span>
@@ -853,14 +857,14 @@ export default function VoucherComposer({
                   {/* 회사 간 이체 — 별도 사업자끼리 돈을 옮기는 것. 비용이 아니라 빌려주는 것이다.
                       그 돈으로 뭘 샀는지는 **받은 회사 장부에서 평범한 출금**으로 따로 적는다. */}
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">보내는 곳 → 받는 곳</label>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1.5">보내는 곳 → 받는 곳</label>
                     <div className="flex items-center gap-2">
                       <span className="flex-1 px-3 py-2.5 rounded-xl bg-slate-100 text-sm font-black text-slate-600 text-center">
                         {COMPANIES.find(c => c.id === companyId)?.name}
                       </span>
                       <span className="text-slate-300 font-black">→</span>
                       <select value={qpAdvCompany} onChange={e => setQpAdvCompany(e.target.value as CompanyId)}
-                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-300">
+                        className="h-10 bg-white flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300">
                         {COMPANIES.filter(c => c.id !== companyId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
@@ -871,32 +875,32 @@ export default function VoucherComposer({
                   {hasPendingTransfer(companyId) && <button type="button" onClick={()=>void doTransferSave(true)} className="text-xs text-indigo-600">이전 이체 저장 재시도</button>}
                   {transferReady && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="text-xs font-bold">보내는 통장
-                      <select aria-label="보내는 통장" value={quickPayAccountId} onChange={event=>setQuickPayAccountId(event.target.value)} className="w-full border rounded-lg p-2">
+                      <select aria-label="보내는 통장" value={quickPayAccountId} onChange={event=>setQuickPayAccountId(event.target.value)} className="h-10 bg-white w-full border rounded-lg p-2">
                         <option value="">계좌 선택</option>{transferReady.from.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}
                       </select>
                     </label>
                     <label className="text-xs font-bold">받는 통장
-                      <select aria-label="받는 통장" value={transferToAccount} onChange={event=>setTransferToAccount(event.target.value)} className="w-full border rounded-lg p-2">
+                      <select aria-label="받는 통장" value={transferToAccount} onChange={event=>setTransferToAccount(event.target.value)} className="h-10 bg-white w-full border rounded-lg p-2">
                         <option value="">계좌 선택</option>{transferReady.to.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}
                       </select>
                     </label>
                     <label className="text-xs font-bold">보낸 회사의 상대 거래처
-                      <select aria-label="보낸 회사의 상대 거래처" value={transferFromPartner} onChange={event=>setTransferFromPartner(event.target.value)} className="w-full border rounded-lg p-2">
+                      <select aria-label="보낸 회사의 상대 거래처" value={transferFromPartner} onChange={event=>setTransferFromPartner(event.target.value)} className="h-10 bg-white w-full border rounded-lg p-2">
                         <option value="">거래처 선택</option>{transferReady.from.partners.map(partner=><option key={partner.id} value={partner.id}>{partner.name}</option>)}
                       </select>
                     </label>
                     <label className="text-xs font-bold">받은 회사의 상대 거래처
-                      <select aria-label="받은 회사의 상대 거래처" value={transferToPartner} onChange={event=>setTransferToPartner(event.target.value)} className="w-full border rounded-lg p-2">
+                      <select aria-label="받은 회사의 상대 거래처" value={transferToPartner} onChange={event=>setTransferToPartner(event.target.value)} className="h-10 bg-white w-full border rounded-lg p-2">
                         <option value="">거래처 선택</option>{transferReady.to.partners.map(partner=><option key={partner.id} value={partner.id}>{partner.name}</option>)}
                       </select>
                     </label>
                   </div>}
                   <div>
-                    <label htmlFor="qp-amount" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+                    <label htmlFor="qp-amount" className="text-[10px] font-bold text-slate-500 block mb-1.5">금액</label>
                       <div className="relative">
                       <input id="qp-amount" inputMode="numeric" placeholder="0" value={formatMoneyInput(qpAdvAmount)}
                         onChange={e => changeMoneyInput(e.currentTarget, setQpAdvAmount)}
-                        className="w-full border border-slate-200 rounded-lg bg-white h-10 pl-3 pr-9 text-right text-sm font-bold tabular-nums outline-none focus:ring-2 focus:ring-purple-300"/>
+                        className="w-full border border-slate-200 rounded-lg bg-white h-10 pl-3 pr-9 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-300 pointer-events-none">원</span>
                     </div>
                   </div>
@@ -945,7 +949,7 @@ export default function VoucherComposer({
                 <>
                   {/* 거래처 연결과 발행 종류는 독립이다. 대체는 선택한 차·대를 그대로 사용한다. */}
                   <div className="relative">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1.5">
                       거래처 <span className="normal-case text-slate-300">(매입·매출 전표에 필요)</span>
                     </label>
                     <input aria-label="거래처" type="text" placeholder="업체명 검색..."
@@ -953,7 +957,7 @@ export default function VoucherComposer({
                       onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
-                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                     {quickPayDropOpen && dropClients.length > 0 && (
                       <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
                         {dropClients.map(c => (
@@ -981,7 +985,7 @@ export default function VoucherComposer({
 
                   <div className="space-y-2">
                     {qpAccrRows.length <= 2 && <div className="w-1/2 pr-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1.5">금액</label>
                       <input type="text" inputMode="numeric" placeholder="0"
                         value={formatMoneyInput(qpAccrRows[0]?.price ?? '')}
                         onChange={e => changeMoneyInput(e.currentTarget, price => setQpAccrRows(prev => {
@@ -989,9 +993,9 @@ export default function VoucherComposer({
                           if (prev.length === 1) return [{ ...prev[0], price }, { name: '', price, side: '대변' }];
                           return prev.map(row => ({ ...row, price }));
                         }))}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-3 text-right text-xl font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-3 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>}
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">계정 · 금액</label>
+                    <label className="text-[10px] font-bold text-slate-500 block">계정 · 금액</label>
                     {qpAccrRows.map((r, idx) => (
                       <div key={idx} className="flex items-center gap-1.5">
                         {/* 차·대는 **대체전표에만** 있다. 매입전표(거래처 있음)는 갈래가 이미 정한다
@@ -1012,16 +1016,16 @@ export default function VoucherComposer({
                         )}
                         <input value={r.name} placeholder="적요 (비우면 계정명)"
                           onChange={e => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
-                          className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                          className="h-10 bg-white flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                         <select value={r.accountCode || ''}
                           onChange={e => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
-                          className="w-36 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-amber-300">
+                          className="h-10 bg-white w-36 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-white outline-none focus:ring-1 focus:ring-slate-300">
                           <option value="">계정 —</option>
                           {(accrType !== '비용' ? expenseCodes : expCodes).map(ac => <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>)}
                         </select>
                         <input value={formatMoneyInput(r.price)} placeholder="금액" inputMode="numeric"
                           onChange={e => changeMoneyInput(e.currentTarget, price => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, price } : x)))}
-                          className="w-28 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right tabular-nums outline-none focus:ring-2 focus:ring-amber-300"/>
+                          className="h-10 bg-white w-28 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold text-right tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                         {qpAccrRows.length > 1 && (
                           <button type="button" onClick={() => setQpAccrRows(prev => prev.filter((_, i) => i !== idx))}
                             className="shrink-0 text-slate-300 hover:text-rose-400"><X size={14}/></button>
@@ -1058,13 +1062,13 @@ export default function VoucherComposer({
                 <>
                   {/* 거래처 (선택) */}
                   <div className="relative">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">거래처 <span className="normal-case text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1.5">거래처 <span className="normal-case text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
                     <input aria-label="거래처" type="text" placeholder="업체명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
                       onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
-                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                     {quickPayDropOpen && dropClients.length > 0 && (
                       <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
                         {dropClients.map(c => {
@@ -1102,11 +1106,11 @@ export default function VoucherComposer({
 
                   {/* 거래처·계좌와 같은 규격으로 입력 순서를 이어 간다. */}
                   <div className="w-full">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1.5">금액</label>
                     <div className="relative">
                       <input aria-label="금액" type="text" inputMode="numeric" placeholder="0" value={formatMoneyInput(quickPayAmount)}
                         onChange={e => changeMoneyInput(e.currentTarget, setQuickPayAmount)}
-                        className="w-full border border-slate-200 rounded-lg bg-white h-10 pl-3 pr-9 text-right text-sm font-bold tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="w-full border border-slate-200 rounded-lg bg-white h-10 pl-3 pr-9 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-300 pointer-events-none">원</span>
                     </div>
                   </div>
@@ -1130,7 +1134,7 @@ export default function VoucherComposer({
                   ) : (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <label className="text-[10px] font-bold text-slate-500">
                           계정 · 금액 <span className="text-rose-400">*</span>
                           <span className="normal-case text-slate-300 ml-1">(통장 반대편 — 성격이 둘이면 행을 더한다)</span>
                         </label>
@@ -1156,16 +1160,16 @@ export default function VoucherComposer({
                               </button>
                               <input value={r.note} placeholder="적요 (비우면 계정명)"
                                 onChange={e => setQpCashRows(prev => prev.map((x, i) => i === idx ? { ...x, note: e.target.value } : x))}
-                                className="col-span-2 min-w-0 h-10 bg-white border border-slate-200 rounded-lg px-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300 sm:col-span-1"/>
+                                className="col-span-2 min-w-0 h-10 bg-white border border-slate-200 rounded-lg px-2.5 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300 sm:col-span-1"/>
                               <select value={r.accountCode || ''}
                                 onChange={e => setQpCashRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
-                                className={`col-span-2 col-start-1 row-start-2 min-w-0 w-full h-10 border rounded-lg px-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300 sm:col-span-1 sm:col-start-auto sm:row-start-1 ${r.accountCode ? 'border-slate-200 bg-white' : 'border-amber-300 bg-amber-50'}`}>
+                                className={`col-span-2 col-start-1 row-start-2 min-w-0 w-full h-10 border rounded-lg px-1.5 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300 sm:col-span-1 sm:col-start-auto sm:row-start-1 ${r.accountCode ? 'border-slate-200 bg-white' : 'border-amber-300 bg-amber-50'}`}>
                                 <option value="">계정 —</option>
                                 {expenseCodes.map(c => <option key={c.id} value={c.code}>{c.code} {c.name}</option>)}
                               </select>
                               <input value={formatMoneyInput(r.price)} placeholder={qpCashRows.length === 1 ? fmt(plainAmt) : '금액'} inputMode="numeric"
                                 onChange={e => changeMoneyInput(e.currentTarget, price => setQpCashRows(prev => prev.map((x, i) => i === idx ? { ...x, price } : x)))}
-                                className="col-start-3 row-start-2 min-w-0 w-full h-10 bg-white border border-slate-200 rounded-lg px-2 text-sm font-bold text-right tabular-nums outline-none focus:ring-2 focus:ring-emerald-300 sm:col-start-4 sm:row-start-1"/>
+                                className="col-start-3 row-start-2 min-w-0 w-full h-10 bg-white border border-slate-200 rounded-lg px-2 text-sm font-bold text-right tabular-nums outline-none focus:ring-1 focus:ring-slate-300 sm:col-start-4 sm:row-start-1"/>
                               {qpCashRows.length > 1 ? (
                                 <button type="button" onClick={() => setQpCashRows(prev => prev.filter((_, i) => i !== idx))}
                                   className="col-start-4 row-start-1 flex h-10 items-center justify-center text-slate-300 hover:text-rose-400 sm:col-start-5"><X size={14}/></button>
@@ -1176,7 +1180,7 @@ export default function VoucherComposer({
                         {/* 통장 줄 — **앱이 채우는 줄이라 못 고친다.** 그래도 표 안에 같이 보여야
                             분개 전체가 한자리에서 읽힌다. 출금이면 대변, 입금이면 차변으로 고정이고
                             금액은 위 금액칸을 그대로 따라간다. */}
-                        {plainAmt > 0 && (
+                        {(
                           <div className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_20px] items-center gap-1.5 sm:grid-cols-[44px_minmax(0,1fr)_minmax(0,144px)_112px_20px]">
                             <span className={`col-start-1 row-start-1 flex h-10 w-11 items-center justify-center rounded-lg text-[11px] font-black text-center text-white opacity-60 ${
                               qpDir === '입금' ? 'bg-slate-700' : 'bg-amber-500'}`}>
@@ -1225,16 +1229,16 @@ export default function VoucherComposer({
                       전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다. */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="qp-ins-corp" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">회사부담 <span className="normal-case text-slate-300">(비용)</span></label>
+                      <label htmlFor="qp-ins-corp" className="text-[10px] font-bold text-slate-500 block mb-1.5">회사부담 <span className="normal-case text-slate-300">(비용)</span></label>
                       <input id="qp-ins-corp" inputMode="numeric" value={formatMoneyInput(qpInsCorp)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpInsCorp)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2.5 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                     <div>
-                      <label htmlFor="qp-ins-emp" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">근로자부담 <span className="normal-case text-slate-300">(예수금)</span></label>
+                      <label htmlFor="qp-ins-emp" className="text-[10px] font-bold text-slate-500 block mb-1.5">근로자부담 <span className="normal-case text-slate-300">(예수금)</span></label>
                       <input id="qp-ins-emp" inputMode="numeric" value={formatMoneyInput(qpInsEmp)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpInsEmp)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2.5 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                   </div>
                   {/* 아직 안 낸 원천공제 — 근로자부담분은 보통 이 잔액만큼 나간다 */}
@@ -1265,16 +1269,16 @@ export default function VoucherComposer({
                       비용으로 몰면 이익이 그만큼 줄어 보이고 부가세예수금이 영영 안 줄어든다. */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="qp-vat" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">부가세 <span className="normal-case text-slate-300">(부가세예수금)</span></label>
+                      <label htmlFor="qp-vat" className="text-[10px] font-bold text-slate-500 block mb-1.5">부가세 <span className="normal-case text-slate-300">(부가세예수금)</span></label>
                       <input id="qp-vat" inputMode="numeric" value={formatMoneyInput(qpVat)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpVat)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2.5 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                     <div>
-                      <label htmlFor="qp-income-tax" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">소득세 <span className="normal-case text-slate-300">(인출금)</span></label>
+                      <label htmlFor="qp-income-tax" className="text-[10px] font-bold text-slate-500 block mb-1.5">소득세 <span className="normal-case text-slate-300">(인출금)</span></label>
                       <input id="qp-income-tax" inputMode="numeric" value={formatMoneyInput(qpIncomeTax)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpIncomeTax)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2.5 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                   </div>
                   {/* 아직 안 낸 부가세 — 맡아둔 예수금 잔액. 보통 이 금액만큼 나간다 */}
@@ -1313,7 +1317,7 @@ export default function VoucherComposer({
                       onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
-                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                      className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                     {quickPayDropOpen && dropClients.length > 0 && (
                       <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
                         {dropClients.map(c => (
@@ -1329,7 +1333,7 @@ export default function VoucherComposer({
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 계정 <span className="text-rose-400">*</span></label>
                     <select value={qpLoanCode} onChange={e => { setQpLoanCode(e.target.value); setQpLoanId(''); }}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                      className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300">
                       {(loanAccounts.length ? loanAccounts : [{ id: '293', code: '293', name: '장기차입금' }, { id: '260', code: '260', name: '단기차입금' }]).map(c => (
                         <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
                       ))}
@@ -1338,7 +1342,7 @@ export default function VoucherComposer({
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 건 연결</label>
                     <select aria-label="대출 건 연결" value={qpLoanId} onChange={e => { setQpLoanId(e.target.value); const loan = loans.find(row => row.id === e.target.value && row.companyId === companyId); if (loan) setQpLoanCode(loan.accountCode); if (loan?.partnerId) setQuickPayClientId(loan.partnerId); }}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold">
+                      className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold">
                       <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
                       {qpLoanId && !matchingLoan(loans, companyId, qpLoanId, qpLoanCode) && <option value={qpLoanId}>기존 연결 확인 필요 · 다시 선택</option>}
                       {loans.filter(loan => loan.companyId === companyId).map(loan => <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>)}
@@ -1350,13 +1354,13 @@ export default function VoucherComposer({
                       <label htmlFor="qp-principal" className="text-[10px] font-black text-slate-400 uppercase block mb-1">원금</label>
                       <input id="qp-principal" inputMode="numeric" value={formatMoneyInput(qpPrincipal)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpPrincipal)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                     <div>
                       <label htmlFor="qp-interest" className="text-[10px] font-black text-slate-400 uppercase block mb-1">이자</label>
                       <input id="qp-interest" inputMode="numeric" value={formatMoneyInput(qpInterest)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpInterest)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                   </div>
                   <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3 py-2 text-[11px] font-black text-slate-500">
@@ -1372,13 +1376,13 @@ export default function VoucherComposer({
                       <label htmlFor="qp-gross" className="text-[10px] font-black text-slate-400 uppercase block mb-1">총급여</label>
                       <input id="qp-gross" inputMode="numeric" value={formatMoneyInput(qpGross)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpGross)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                     <div>
                       <label htmlFor="qp-deduction" className="text-[10px] font-black text-slate-400 uppercase block mb-1">공제 <span className="text-slate-300">(원천·4대보험)</span></label>
                       <input id="qp-deduction" inputMode="numeric" value={formatMoneyInput(qpDeduction)} placeholder="0"
                         onChange={e => changeMoneyInput(e.currentTarget, setQpDeduction)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        className="h-10 bg-white w-full border border-slate-200 rounded-lg px-3 py-2 text-right text-sm font-bold tabular-nums outline-none focus:ring-1 focus:ring-slate-300"/>
                     </div>
                   </div>
                   <div className={`flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black ${net < 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>
@@ -1394,10 +1398,10 @@ export default function VoucherComposer({
                   안 남는 칸을 띄워 두면 적어 놓고 사라진 줄 모른다. */}
               {(isCashDir(qpDir) || qpDir === '회사이체') && (
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1.5">비고</label>
                   <input type="text" placeholder={qpMode === '일반' ? '예: 7월 전기요금' : qpMode === '상환' ? '예: 기업은행 시설자금' : '예: 7월 급여'}
                     value={quickPayNote} onChange={e => setQuickPayNote(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    className="w-full border border-slate-200 rounded-lg bg-white h-10 px-3 text-sm font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
                 </div>
               )}
 
@@ -1476,12 +1480,7 @@ export default function VoucherComposer({
                   <Save size={11}/>템플릿 저장
                 </button>
               )}
-                <button onClick={() => { onClose(); }}
-                  className="shrink-0 px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-                <button onClick={handleQuickPaySave} disabled={!canSave || loanSaving}
-                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
-                  <Save size={12}/>{loanSaving ? '저장 중…' : '저장'}
-                </button>
+
               </div>
 
               </div>

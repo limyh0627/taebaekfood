@@ -97,7 +97,7 @@ const matchKo = (name: string, q: string) => matchesSearch(name, q);
  * 재고관리(ItemList)와 같은 모양이다 — 화면마다 다르게 생기면 같은 일을 두 번 배운다.
  */
 /*  검색조건 칸은 주문·배송과 **같은 모양**이다(인수인계.md "같은 줄에 선 칸은 같은 모양"). */
-const 질의칸 = 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300';
+const 질의칸 = 'h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300';
 
 const FilterDrop: React.FC<{
   label: string; summary: string; active: boolean; width?: string;
@@ -712,7 +712,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
           </div>)}
         </div>
       </details>}
-      {isAdmin && onPartnerItemCleanupChanged && <button type="button" className="min-h-10 self-start rounded border border-gray-300 px-3 text-sm" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(null); setCleanupOpen(true); }}>연결 정리 요청·복구</button>}
+
       {isAdmin && cleanupOpen && cleanupCompany === companyId && onPartnerItemCleanupChanged && <PartnerItemCleanupDialog key={companyId} companyId={companyId} initialLinkId={cleanupLinkId} onClose={() => setCleanupOpen(false)} onChanged={onPartnerItemCleanupChanged} />}
       {/* 모바일 — 신규 등록은 아래 탭 줄에 이미 있다(중복이라 뺐다).
           거래처를 고른 상태에서는 여기에 '품목 연결'을 둔다. */}
@@ -890,7 +890,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                       type="search" value={searchTerm}
                       onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
                       placeholder="품목명 검색"
-                      className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                      className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                     />
                   </span>
                 </label>
@@ -1341,47 +1341,43 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
       <PageHeader
         title="품목 정보 관리"
         subtitle="거래처를 선택하거나 전체 품목을 조회하세요."
-        right={isAdmin ? (
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+        tabs={isAdmin ? (
+          <div role="group" aria-label="품목 보기" className="flex w-full min-w-0 flex-wrap items-center gap-1">
             {([['flat', '품목 목록'], ['by-partner', '거래처별 품목']] as const).map(([v, label]) => (
-              <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
-                className={`px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+              <ActionButton tone="normal" key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
+                aria-pressed={mainView === v} className={mainView === v ? '!border-indigo-300 !text-indigo-700' : ''}>
                 {label}
-              </button>
+              </ActionButton>
             ))}
           </div>
         ) : undefined}
-      />
-
-      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
+        actions={<>
+        <ActionButton tone="normal"
           onClick={() => setShowDuplicates(p => !p)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm transition-all whitespace-nowrap ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
+          aria-pressed={showDuplicates} className={showDuplicates ? '!border-indigo-300 !text-indigo-700' : ''}
         >
           <Copy size={13} />
           중복 품목
           {duplicateGroups.length > 0 && (
             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
           )}
-        </button>
+        </ActionButton>
         {isAdmin && (
-          <button
+          <ActionButton tone="normal"
             onClick={() => setCategoryManagerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm whitespace-nowrap bg-white text-slate-500 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 transition-all"
           >
             <Settings size={13} />
             분류 관리
-          </button>
+          </ActionButton>
         )}
         {isAdmin && onCalcCost && (
-          <button
+          <ActionButton tone="normal"
             onClick={() => { setCalcOpen(true); setCalcRows(r => (r.length ? r : [{ itemId: '', qty: '1' }])); }}
-            className="flex items-center gap-1.5 bg-white text-emerald-600 border border-emerald-200 px-3 py-2 rounded-xl font-black text-xs hover:bg-emerald-50 transition-all active:scale-95 whitespace-nowrap"
+
           >
             <Calculator size={14} />
             원가계산기
-          </button>
+          </ActionButton>
         )}
         {isAdmin && (
           <ActionButton tone="primary" onClick={onAddItem}>
@@ -1389,7 +1385,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
             신규 품목
           </ActionButton>
         )}
-      </div>
+      </>}
+        recovery={isAdmin && (mainView === 'flat' || mainView === 'by-partner' && !!selectedClientId) && onPartnerItemCleanupChanged ? <ActionButton tone="recovery" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(null); setCleanupOpen(true); }}>연결 정리 요청·복구</ActionButton> : undefined}
+      />
+
 
       {mergeSelection?.companyId === companyId && <ItemMergeDialog key={companyId + ':' + mergeSelection.keepId + ':' + mergeSelection.donorIds.join(',')} companyId={companyId} keepId={mergeSelection.keepId} donorIds={mergeSelection.donorIds} itemName={mergeSelection.itemName} onClose={() => setMergeSelection(null)} onApplied={async request => {
         await onMergeItems?.(request?.keepId ?? mergeSelection.keepId, request?.donorIds ?? mergeSelection.donorIds);
@@ -1573,7 +1572,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     placeholder="거래처 검색..."
                     value={partnerSearch}
                     onChange={e => setPartnerSearch(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
+                    className="h-10 w-full bg-white border border-slate-200 rounded-md pl-10 pr-4 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-400 transition-all"
                   />
                 </div>
               </div>

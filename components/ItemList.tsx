@@ -1382,7 +1382,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   return (
     <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
-      <ActionButton tone="recovery" className="self-start" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 {pendingInventory.filter(entry=>!entry.deleted).length}</ActionButton>
       {inventoryRecoveryOpen&&<ModalShell title={inventorySelection?'재고 실패 작업 상세':'재고 실패 작업 목록'} layer={1300} onClose={()=>{if(!inventoryBusy){if(inventorySelection)setInventorySelection(null);else setInventoryRecoveryOpen(false);}}}>
         {!inventorySelection?<>
           <p>처리 결과를 확인하지 못한 요청입니다. 항목을 선택해 최초 품목과 수량을 확인하세요.</p>
@@ -1399,31 +1398,58 @@ const ItemListContent: React.FC<ItemListProps> = ({
       </ModalShell>}      <PageHeader
         title={mode === 'lots' ? '생산 관리' : '재고 관리'}
         subtitle={mode === 'lots' ? '원료 사용과 활성·완료 로트를 한곳에서 관리하세요.' : '실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.'}
-        right={mode === 'inventory' ? (
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+        tabs={mode === 'inventory' ? (
+          <div className="flex max-w-full flex-wrap gap-1">
             <button
               onClick={() => setActiveTab('master')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`inline-flex min-h-9 items-center gap-1.5 border border-slate-200 bg-white px-3 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab === 'master' ? 'border-indigo-200 bg-white text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Box size={13} /><span>재고 현황</span>
             </button>
             <button
               onClick={() => setActiveTab('inbound')}
-              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`relative inline-flex min-h-9 items-center gap-1.5 border border-slate-200 bg-white px-3 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab === 'inbound' ? 'border-indigo-200 bg-white text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Inbox size={13} /><span>입고/반품</span>
               {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
             </button>
           </div>
-        ) : undefined}
+        ) : (
+        <div className="flex max-w-full flex-wrap items-center gap-1">
+          <button onClick={() => { setLotStatus('all'); setActiveTab('lots'); }} className={`rounded-lg border border-slate-200 bg-white min-h-9 px-3 py-2 text-xs font-bold transition-colors ${activeTab === 'lots' ? 'border-indigo-200 bg-white text-indigo-600' : 'text-slate-400'}`}><Layers size={13} className="mr-1.5 inline" />로트</button>
+          <button onClick={() => { setLotStatus('complete'); setActiveTab('lot-history'); }} className={`rounded-lg border border-slate-200 bg-white min-h-9 px-3 py-2 text-xs font-bold transition-colors ${activeTab === 'lot-history' ? 'border-indigo-200 bg-white text-indigo-600' : 'text-slate-400'}`}><History size={13} className="mr-1.5 inline" />로트 이력</button>
+        </div>
+        )}
+        actions={((mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound') || activeTab === 'inbound') ? <>
+          {mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound' && (
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                // 열 때마다 '재고' 뷰로 — 평소 보고 세는 숫자가 작업완료 제외한 가용 재고라서.
+                onClick={() => { setClosingView('stock'); setClosingPage(0); setEditingClosingId(null); setShowClosingModal(true); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg min-h-9 text-xs font-bold hover:bg-indigo-700 transition-colors"
+              >
+                <Box size={13} /> 재고 현황
+              </button>
+              {/* 분류 관리는 품목 관리(관리자)로 이동 */}
+            </div>
+          )}
+        {/* 입고처리/반품처리 버튼 행 (입고/반품 탭에서만) */}
+        {activeTab === 'inbound' && (
+          <div className="flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setShowReceiptPicker(true)} className="min-h-9 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white">입고 처리</button>
+            {returnContent && (
+              <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg min-h-9 text-xs font-bold transition-colors relative">
+                <RotateCcw size={13} /><span>반품 처리</span>
+                {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
+              </button>
+            )}
+          </div>
+        )}
+        </> : undefined}
+        recovery={<ActionButton tone="recovery" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 {pendingInventory.filter(entry=>!entry.deleted).length}</ActionButton>}
       />
 
-      {mode === 'lots' && (
-        <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
-          <button onClick={() => { setLotStatus('all'); setActiveTab('lots'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lots' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}><Layers size={13} className="mr-1.5 inline" />로트</button>
-          <button onClick={() => { setLotStatus('complete'); setActiveTab('lot-history'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lot-history' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}><History size={13} className="mr-1.5 inline" />로트 이력</button>
-        </div>
-      )}
+
 
       {/* 장바구니 FAB (fixed — 위치 무관하므로 헤더 뒤에 두어 space-y 마진 영향 제거) */}
       {activeTab === 'master' && (
@@ -1460,43 +1486,26 @@ const ItemListContent: React.FC<ItemListProps> = ({
               ))}
             </div>
             {activeTab === 'master' && (
-              <div className="relative w-36 md:w-48">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
-                <input
-                  type="text"
-                  placeholder="품목명 · 거래처 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
-                />
-              </div>
+              <section className="w-full border-b border-slate-200 bg-white px-3 py-2" aria-labelledby="inventory-query-title">
+                <div className="flex min-h-9 items-center gap-2">
+                  <h3 id="inventory-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
+                  <button type="button" onClick={() => setSearchTerm('')} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
+                </div>
+                <label className="flex max-w-md flex-col gap-1 pb-1 pt-1.5 text-[10px] font-bold text-slate-500">
+                  품목명 또는 거래처
+                  <span className="relative block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                    <input type="text" placeholder="품목명 · 거래처 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                      className="h-10 w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 text-xs font-bold outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+                  </span>
+                </label>
+              </section>
             )}
-            {/* 재고 화면은 조회·실사만 맡는다. 원료 사용 기록은 생산 관리로 옮겼다. */}
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                // 열 때마다 '재고' 뷰로 — 평소 보고 세는 숫자가 작업완료 제외한 가용 재고라서.
-                onClick={() => { setClosingView('stock'); setClosingPage(0); setEditingClosingId(null); setShowClosingModal(true); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                <Box size={13} /> 재고 현황
-              </button>
-              {/* 분류 관리는 품목 관리(관리자)로 이동 */}
-            </div>
+
           </div>
         )}
 
-        {/* 입고처리/반품처리 버튼 행 (입고/반품 탭에서만) */}
-        {activeTab === 'inbound' && (
-          <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={() => setShowReceiptPicker(true)} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white">입고 처리</button>
-            {returnContent && (
-              <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
-                <RotateCcw size={13} /><span>반품 처리</span>
-                {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
-              </button>
-            )}
-          </div>
-        )}
+
 
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
             서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}

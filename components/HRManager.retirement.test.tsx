@@ -33,3 +33,8 @@ it('상단 탭 선택과 직원 등록·휴가 액션은 기존 화면을 연다
  fireEvent.click(screen.getByRole('button',{name:'신규 직원 등록 닫기'}));fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));expect(screen.getByRole('button',{name:'연차 관리'})).toHaveAttribute('aria-pressed','true');
  const vacation=screen.getByRole('button',{name:'휴가'});expect(vacation).toHaveClass('h-9','text-xs','font-semibold','bg-indigo-600');fireEvent.click(vacation);expect(screen.getByRole('dialog')).toBeInTheDocument();
 });
+it('실제 인사 화면은 전폭 탭 다음 우측 행동과 검색을 두고 탭 선택색을 통일한다',()=>{
+ render(<HRManager {...props()} companyId="taebaek"/>);
+ const tabs=screen.getByRole('group',{name:'인사 메뉴'}),actions=screen.getByRole('group',{name:'인사 관리 작업'}),search=screen.getByPlaceholderText('이름 또는 부서 검색...');expect(tabs.compareDocumentPosition(actions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(actions.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tabs.parentElement).toHaveClass('w-full','justify-start');expect(actions).toHaveClass('w-full','justify-end','flex-wrap');expect(search).toHaveClass('h-10','bg-white');
+ fireEvent.click(within(tabs).getByRole('button',{name:'승인 대기'}));expect(within(tabs).getByRole('button',{name:'승인 대기'})).toHaveClass('!text-indigo-600');expect(screen.queryByRole('group',{name:'인사 관리 작업'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'직원 등록'})).not.toBeInTheDocument();fireEvent.click(within(tabs).getByRole('button',{name:'임직원'}));expect(screen.getByRole('button',{name:'직원 등록'})).toHaveClass('h-9');
+});

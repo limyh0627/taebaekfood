@@ -46,3 +46,10 @@ it('조합 필터, 공백 있는 값, 이름/규격 검색, 초기화, 0건과 �
   dialog = screen.getByRole('dialog', { name: '품목 연결' });
   expect(within(dialog).getByRole('status').textContent).toContain('3개');
 });
+it('실제 품목 화면은 탭→행동→독립 복구→검색 순서와 기존 진입·검색을 유지한다',()=>{
+ const add=vi.fn();render(<ItemManager companyId="taebaek" items={items} partners={partners} onEditProduct={vi.fn()} onAddItem={add} onDeleteItem={vi.fn()} onLinkItem={vi.fn()} onUnlinkItem={vi.fn()} onPartnerItemCleanupChanged={vi.fn()} />);
+ const tabs=screen.getByRole('group',{name:'품목 보기'}),actions=screen.getByRole('group',{name:'품목 정보 관리 작업'}),recovery=screen.getByRole('button',{name:'연결 정리 요청·복구'}),search=screen.getByPlaceholderText('품목명 검색');
+ expect(tabs.compareDocumentPosition(actions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(actions.compareDocumentPosition(recovery)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(recovery.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tabs.parentElement).toHaveClass('w-full','justify-start');expect(actions).toHaveClass('w-full','justify-end','flex-wrap');expect(recovery.closest('[data-page-header-slot="recovery"]')).toHaveClass('border-t');expect(search).toHaveClass('h-10','bg-white');
+ fireEvent.click(within(actions).getByRole('button',{name:'신규 품목'}));expect(add).toHaveBeenCalledOnce();fireEvent.click(within(actions).getByRole('button',{name:/중복 품목/}));expect(screen.getByText('중복 품목 목록')).toBeInTheDocument();fireEvent.change(search,{target:{value:'없는 품목'}});expect(search).toHaveValue('없는 품목');
+ fireEvent.click(within(tabs).getByRole('button',{name:'거래처별 품목'}));expect(screen.queryByRole('button',{name:'연결 정리 요청·복구'})).not.toBeInTheDocument();expect(screen.getByPlaceholderText('거래처 검색...')).toHaveClass('h-10','bg-white');fireEvent.click(within(tabs).getByRole('button',{name:'품목 목록'}));expect(screen.getByPlaceholderText('품목명 검색')).toHaveValue('');expect(screen.getByRole('button',{name:'연결 정리 요청·복구'})).toBeInTheDocument();
+});

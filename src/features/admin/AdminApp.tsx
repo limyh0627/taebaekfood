@@ -931,16 +931,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [pasteOrderInitialText, setPasteOrderInitialText] = useState('');
   const [pasteOrderSourceMessageId, setPasteOrderSourceMessageId] = useState<string | null>(null);
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
+  const [copyDraftSource,setCopyDraftSource]=useState(''),[copyDraftVersion,setCopyDraftVersion]=useState(0);
+  const copyDraftSourceRef=useRef('');
+  const updateCopyDraftSource=useCallback((text:string)=>{copyDraftSourceRef.current=text;setCopyDraftSource(text);},[]);
   const directOrderCreation = useRef(newOrderCreationSession());
   const pasteOrderCreation = useRef(newOrderCreationSession());
   const copyPrepared=useRef<{body:string;request:OrderInterpretationRequest}|null>(null);
   const copyBusy=useRef(false);
-  const [copyRecoveryOpen,setCopyRecoveryOpen]=useState(false),[copySelected,setCopySelected]=useState<PendingOrderCopy|null>(null),[copyError,setCopyError]=useState(''),[copyWorking,setCopyWorking]=useState(false),[copyRulesOpen,setCopyRulesOpen]=useState(false);
+  const [copySelected,setCopySelected]=useState<(PendingOrderCopy&{outcome?:'rejected'})|null>(null),[copyError,setCopyError]=useState(''),[copyWorking,setCopyWorking]=useState(false),[copyRulesOpen,setCopyRulesOpen]=useState(false);
   const [,setCopyRevision]=useState(0);
   const copyActor=auth.currentUser?.uid??'';
   const copyScope=useRef({companyId,actorUid:copyActor});
   if(copyScope.current.companyId!==companyId||copyScope.current.actorUid!==copyActor)copyScope.current={companyId,actorUid:copyActor};
-  useEffect(()=>{copyPrepared.current=null;copyBusy.current=false;setCopyWorking(false);setIsPasteOrderOpen(false);setCopySelected(null);setCopyRecoveryOpen(false);setCopyRulesOpen(false);setCopyError('');},[companyId,copyActor]);
+  useEffect(()=>{copyPrepared.current=null;copyBusy.current=false;copyDraftSourceRef.current='';setCopyDraftSource('');setCopyWorking(false);setIsPasteOrderOpen(false);setCopySelected(null);setCopyRulesOpen(false);setCopyError('');},[companyId,copyActor]);
   useEffect(()=>{const update=()=>setCopyRevision(value=>value+1);window.addEventListener('storage',update);return()=>window.removeEventListener('storage',update);},[]);
   const copyEntries=copyActor?listPendingOrderCopies(companyId,copyActor):[];
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -1469,6 +1472,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if(!scope.actorUid||!evidence)throw Error('최초 주문 원문과 로그인 계정을 확인해 주세요.');
     const body=JSON.stringify({draft,evidence,sourceChatMessageId:pasteOrderSourceMessageId});
     let first=copyPrepared.current;
+    const unresolved=listPendingOrderCopies(companyId,scope.actorUid).find(row=>row.request?.sourceText===evidence.sourceText);
+    if(unresolved&&(!first||first.body!==body||first.request.requestId!==unresolved.request?.requestId)){
+      setCopySelected(unresolved);setCopyError('이 내용으로 저장하던 주문이 있습니다. 결과를 확인하거나 같은 내용으로 다시 시도해 주세요.');return;
+    }
     if(!first||first.body!==body){
       const requestId=crypto.randomUUID();
       const request=validateOrderInterpretation({version:1,requestId,companyId,actorUid:scope.actorUid,createdAt:new Date().toISOString(),sourceText:evidence.sourceText,firstAnalysis:evidence.firstAnalysis,
@@ -1479,27 +1486,44 @@ const AdminApp: React.FC<AdminAppProps> = ({
     try{
       const result=await submitOrderCopy(first.request);if(!current())return;
       if(result.status==='unknown')throw Error(result.reason??'주문 처리 결과를 아직 확인하지 못했습니다.');
-      if(result.status==='rejected'){if(copyPrepared.current===first)copyPrepared.current=null;throw Error(result.reason??'주문이 저장되지 않았습니다. 입력을 확인해 주세요.');}
+      if(result.status==='rejected'){if(copyPrepared.current===first)copyPrepared.current=null;const message=`이번 요청으로 주문을 저장하지 않았습니다. ${result.reason??'내용을 확인하고 다시 작성해 주세요.'}`;setCopySelected({key:'rejected:'+first.request.requestId,text:'',request:first.request,deleted:false,error:message,outcome:'rejected'});throw Error(message);}
       setNewOrderId(result.orderId);
       if(copyPrepared.current===first){copyPrepared.current=null;setIsPasteOrderOpen(false);setPasteOrderInitialText('');setPasteOrderSourceMessageId(null);}
       setCopyRevision(value=>value+1);
     }catch(error){if(current()){
       const message=error instanceof Error?error.message:String(error),own=listPendingOrderCopies(companyId,scope.actorUid).find(row=>row.request?.requestId===first!.request.requestId);
       setCopyError(message);setCopyRevision(value=>value+1);
-      if(own){setCopySelected(own);setCopyRecoveryOpen(true);}else throw error;
+      if(own){setCopySelected(own);}else throw error;
     }}finally{if(current()){copyBusy.current=false;setCopyWorking(false);}}
   };
-  const actCopiedOrder=async(entry:PendingOrderCopy,action:'retry'|'inspect'|'delete')=>{
+  const actCopiedOrder=async(entry:PendingOrderCopy,action:'retry'|'inspect'|'delete',currentDraftSource?:string)=>{
     if(copyBusy.current)return;const scope=copyScope.current,current=()=>copyScope.current===scope&&auth.currentUser?.uid===scope.actorUid;
     const fresh=listPendingOrderCopies(companyId,scope.actorUid).find(row=>row.key===entry.key);
-    if(!fresh||fresh.text!==entry.text){setCopyError('다른 창에서 최초 원문이 변경되었습니다. 목록에서 다시 선택해 주세요.');return;}
+    if(!fresh||fresh.text!==entry.text){setCopyError('다른 창에서 저장 정보가 변경되었습니다. 해당 주문을 다시 선택해 주세요.');return;}
     copyBusy.current=true;setCopyWorking(true);
     try{
       if(action==='delete')await deletePendingOrderCopy(entry);
-      else {if(!entry.request)throw Error(entry.error);const result=await(action==='inspect'?inspectOrderCopy(entry.request):submitOrderCopy(entry.request));if(result.status==='unknown')throw Error(result.reason??'처리 결과를 아직 확인하지 못했습니다. 주문 이력과 최초 내용을 확인해 주세요.');}
+      else {
+        if(!entry.request)throw Error(entry.error);
+        const result=await(action==='inspect'?inspectOrderCopy(entry.request):submitOrderCopy(entry.request));if(!current())return;
+        if(result.status==='unknown')throw Error('주문이 저장됐는지 아직 확인되지 않았습니다. 결과를 확인하거나 같은 내용으로 다시 시도해 주세요.');
+        if(result.status==='rejected'){
+          if(copyPrepared.current?.request.requestId===entry.request.requestId)copyPrepared.current=null;
+          setCopySelected({...entry,outcome:'rejected'});setCopyError(`이번 요청으로 주문을 저장하지 않았습니다. ${result.reason??'내용을 확인하고 다시 작성해 주세요.'}`);setCopyRevision(value=>value+1);return;
+        }
+        setNewOrderId(result.orderId);
+        const latestSource=copyDraftSourceRef.current;
+        if(latestSource===''||latestSource===entry.request.sourceText){setIsPasteOrderOpen(false);setPasteOrderInitialText('');setPasteOrderSourceMessageId(null);}
+      }
       if(current()){if(copyPrepared.current?.request.requestId===entry.request?.requestId)copyPrepared.current=null;setCopySelected(null);setCopyError('');setCopyRevision(value=>value+1);}
     }catch(error){if(current())setCopyError(error instanceof Error?error.message:String(error));}
     finally{if(current()){copyBusy.current=false;setCopyWorking(false);}}
+  };
+  const rewriteCopiedOrder=(entry:PendingOrderCopy&{outcome?:'rejected'})=>{
+    if(copyBusy.current||entry.outcome!=='rejected'||!entry.request)return;
+    const sourceMessageId=entry.request.confirmed.orderDraft.sourceChatMessageId;
+    setPasteOrderInitialText(entry.request.sourceText);setPasteOrderSourceMessageId(typeof sourceMessageId==='string'?sourceMessageId:null);
+    copyPrepared.current=null;setCopySelected(null);setCopyError('');setCopyDraftVersion(value=>value+1);
   };
 
   const saveNewOrder = async (kind: 'direct' | 'paste', draft: NewOrderDraft) => {
@@ -1572,12 +1596,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const closeOrderCreation = (kind: 'direct' | 'paste', goBack = false) => {
+    if(kind==='paste'&&copyBusy.current)return;
     const session = kind === 'direct' ? directOrderCreation.current : pasteOrderCreation.current;
     if (session.busy) return;
     resetOrderCreationSession(session);
     if (kind === 'direct') setIsAddOrderOpen(false);
     else {
       setIsPasteOrderOpen(false);
+      setCopySelected(null);setCopyError('');setCopyRulesOpen(false);
+      setCopyDraftSource('');
       setPasteOrderInitialText('');
       setPasteOrderSourceMessageId(null);
     }
@@ -2556,10 +2583,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteOrder={handleDeleteOrder}
             />
           )}
-          {currentView==='orders'&&<div className="mb-3 space-y-2">
-            <div className="border-b border-slate-200 pb-2"><ActionButton tone="recovery" type="button" onClick={()=>{setCopySelected(null);setCopyError('');setCopyRecoveryOpen(true);}}>복사주문 실패 작업 {copyEntries.filter(entry=>!entry.deleted).length}</ActionButton></div>
-            {isAdmin&&<div><ActionButton tone="normal" type="button" onClick={()=>setCopyRulesOpen(true)}>복사주문 판독 규칙</ActionButton></div>}
-          </div>}
           {currentView === 'orders' && (
             <OrdersList
               renderOrderRecovery={renderOrderRecovery}
@@ -4850,12 +4873,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         />
       )}
       {copyRulesOpen&&<OrderInterpretationRules key={JSON.stringify([companyId,copyActor])} companyId={companyId} actorUid={copyActor} isAdmin={isAdmin} isCurrentActor={()=>auth.currentUser?.uid===copyActor&&copyScope.current.companyId===companyId} onClose={()=>setCopyRulesOpen(false)}/>}
-      {copyRecoveryOpen&&<ModalShell title={copySelected?'복사주문 실패 작업 상세':'복사주문 실패 작업 목록'} layer={1450} onClose={()=>{if(!copyWorking){if(copySelected)setCopySelected(null);else setCopyRecoveryOpen(false);}}}>
-        {copyError&&<p role="alert">{copyError}</p>}
-        {!copySelected?<><p>최초 주문 내용을 선택해 처리 결과를 확인해주세요.</p>{!copyEntries.some(entry=>!entry.deleted)&&<p>실패 작업이 없습니다.</p>}{copyEntries.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.key} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setCopySelected(entry);setCopyError(entry.error);}}>{entry.request?`${entry.request.confirmed.orderDraft.partnerName} · ${entry.request.confirmed.orderDraft.deliveryDate} · 처리 결과 미확인`:entry.error}</button>)}</>:<div className="space-y-3"><p>{String(copySelected.request?.confirmed.orderDraft.partnerName??'최초 원문 확인 필요')}</p><p>주문 처리 결과를 아직 확인하지 못했습니다. 주문 이력과 최초 거래처·품목·수량·출고예정일을 확인해주세요.</p><pre className="whitespace-pre-wrap">{copySelected.request?.sourceText??copySelected.error}</pre><div className="flex flex-wrap gap-2"><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'inspect')}>처리 결과 확인</button><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'retry')}>같은 내용 다시 시도</button><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'delete')}>실패 요청 삭제</button></div><p>실패 목록에서 요청을 삭제합니다. 실제 주문·재고·전표는 바뀌지 않습니다.</p></div>}
-      </ModalShell>}
-      {isPasteOrderOpen && (<div hidden={copyRecoveryOpen||copyRulesOpen}>
-        <PasteOrderModal key={JSON.stringify([companyId,copyActor])}
+      {isPasteOrderOpen && (<div hidden={copyRulesOpen}>
+        <PasteOrderModal key={JSON.stringify([companyId,copyActor,copyDraftVersion])}
           orderUnitInputs={appData.orderUnitInputs}
           items={allItems}
           partners={partners}
@@ -4864,7 +4883,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
           palletStocks={pallets}
           companyId={companyId}
           actorUid={copyActor}
-          suspended={copyRecoveryOpen||copyRulesOpen}
+          suspended={copyRulesOpen}
+          onOpenRules={isAdmin?()=>setCopyRulesOpen(true):undefined}
+          recoveryBusy={copyWorking}
+          onSourceTextChange={updateCopyDraftSource}
+          saveBlocked={copySelected?.outcome==='rejected'&&copySelected.request?.sourceText===copyDraftSource}
+          saveRecovery={(copyEntries.length>0||copySelected||copyError)?<section aria-label="주문 저장 확인" className="space-y-2 text-sm">
+            {copyError&&<p role="alert">{copyError}</p>}
+            {copyEntries.length>0&&<><p>저장 결과를 확인할 주문이 있습니다.</p><div className="space-y-1">{copyEntries.map(entry=><button type="button" key={entry.key} disabled={copyWorking} onClick={()=>{setCopySelected(entry);setCopyError(entry.request?'주문이 저장됐는지 결과를 확인해 주세요.': '저장 정보를 읽을 수 없습니다. 주문 이력을 확인해 주세요.');}} className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs">{entry.request?`${entry.request.confirmed.orderDraft.partnerName} · ${(typeof entry.request.confirmed.orderDraft.deliveryDate==='string'?entry.request.confirmed.orderDraft.deliveryDate.slice(0,10):'날짜 확인 필요')}`:'저장 정보 확인 필요'}{entry.deleted?' · 이전에 닫은 확인 건':''}</button>)}</div></>}
+            {copySelected&&<div className="space-y-2 border-t border-slate-200 pt-2"><p>{String(copySelected.request?.confirmed.orderDraft.partnerName??'주문 정보 확인 필요')}</p><details><summary>저장하던 주문 내용</summary><pre className="whitespace-pre-wrap break-words text-xs">{copySelected.request?.sourceText??'주문 이력에서 저장 여부를 확인해 주세요.'}</pre></details>
+              {copySelected.outcome==='rejected'?<button type="button" disabled={copyWorking} onClick={()=>rewriteCopiedOrder(copySelected)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold">선택한 주문 내용으로 다시 작성</button>:<div className="flex flex-wrap gap-2"><button type="button" disabled={copyWorking||!copySelected.request} onClick={()=>void actCopiedOrder(copySelected,'inspect',copyDraftSource)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold">결과 확인</button><button type="button" disabled={copyWorking||!copySelected.request} onClick={()=>void actCopiedOrder(copySelected,'retry',copyDraftSource)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold">같은 내용 다시 시도</button></div>}
+            </div>}
+          </section>:undefined}
           isCurrentActor={()=>auth.currentUser?.uid===copyActor&&copyScope.current.companyId===companyId}
           initialText={pasteOrderInitialText}
           onClose={() => closeOrderCreation('paste')}
