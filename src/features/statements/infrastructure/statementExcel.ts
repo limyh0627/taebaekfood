@@ -1,4 +1,5 @@
 import * as ExcelJS from 'exceljs';
+import { previewWorkbookOutput } from '../../../shared/workbookOutput';
 import type { LineItem, StatementType } from '../../../shared/statementLines';
 
 interface Input {
@@ -12,7 +13,13 @@ interface Input {
 }
 
 /** 전표를 엑셀 파일로 만들고 브라우저 다운로드를 시작한다. */
-export async function downloadStatementExcel(input: Input): Promise<void> {
+export async function downloadStatementExcel(input: Input & {signal: AbortSignal}): Promise<void> {
+  if (input.signal.aborted) return;
+  const workbook = buildStatementWorkbook(input);
+  await previewWorkbookOutput({workbook, fileName:`${input.type}전표_${input.partnerName}_${input.tradeDate}.xlsx`,signal:input.signal});
+}
+
+export function buildStatementWorkbook(input: Input): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(`${input.type}전표`);
   const border: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} };
@@ -41,9 +48,5 @@ export async function downloadStatementExcel(input: Input): Promise<void> {
   const sum=sheet.addRow(['합계','','','','',input.totals.supply,input.totals.tax,input.totals.amount]);
   sum.height=18; sum.eachCell((cell,column)=>{cell.border=border;cell.font={bold:true,size:9};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF6FF'}};cell.alignment={horizontal:column<=3?'center':'right',vertical:'middle'};if(column>=5)cell.numFmt='#,##0';});
   sheet.mergeCells(`A${sum.number}:E${sum.number}`);
-  const buffer=await workbook.xlsx.writeBuffer();
-  const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url=URL.createObjectURL(blob);
-  const anchor=document.createElement('a'); anchor.href=url; anchor.download=`${input.type}전표_${input.partnerName}_${input.tradeDate}.xlsx`; anchor.click();
-  URL.revokeObjectURL(url);
+  return workbook;
 }

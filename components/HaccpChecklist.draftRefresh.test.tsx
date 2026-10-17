@@ -4,7 +4,7 @@ import {act,fireEvent,render,screen,waitFor,cleanup} from '@testing-library/reac
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import HaccpChecklist from './HaccpChecklist';
 const state=vi.hoisted(()=>({subscriptions:[] as any[],confirm:vi.fn(),add:vi.fn(),update:vi.fn(),remove:vi.fn()}));
-vi.mock('../src/shared/firebase',()=>({db:{}}));
+vi.mock('../src/shared/firebase',()=>({db:{},auth:{currentUser:{uid:'output-test'},onAuthStateChanged:()=>()=>{}}}));
 vi.mock('../src/shared/components/appDialog',()=>({appConfirm:(...args:any[])=>state.confirm(...args)}));
 vi.mock('../src/shared/services/firebaseService',()=>({addItem:(...args:any[])=>state.add(...args),updateItem:(...args:any[])=>state.update(...args),deleteItem:(...args:any[])=>state.remove(...args),setDocument:vi.fn()}));
 vi.mock('firebase/firestore',()=>({collection:(_db:any,name:string)=>({name}),doc:(_db:any,name:string,id:string)=>({name,id}),where:(field:string,op:string,value:string)=>({field,op,value}),query:(ref:any,...constraints:any[])=>({...ref,constraints}),onSnapshot:(ref:any,...args:any[])=>{const next=typeof args[0]==='function'?args[0]:args[1],error=typeof args[0]==='function'?args[1]:args[2];const sub={ref,next,error,options:typeof args[0]==='function'?undefined:args[0],unsubscribe:vi.fn()};state.subscriptions.push(sub);if(ref.id)next({exists:()=>false});else if(!['haccp_periodic_sanitation','haccp_closing_checklist'].includes(ref.name))next({docs:[]});return sub.unsubscribe;}}));

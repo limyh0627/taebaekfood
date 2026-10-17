@@ -1,3 +1,4 @@
+import { previewHtmlPrint } from '../../../shared/htmlPrintOutput';
 import type { CompanyInfo, IssuedStatement, Item, Partner } from '../../../../types';
 import type { LineItem, StatementType } from '../../../shared/statementLines';
 import { withDocNames } from '../../../shared/docName';
@@ -231,26 +232,14 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 </div>`;
   };
 
-export const printStatementViaIframe = (html: string, title: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) { document.body.removeChild(iframe); return; }
-    doc.open();
-    doc.write(`<html><head><title>${title}</title>
+export const buildStatementPrintDocument = (html: string, title: string) => `<html><head><title>${esc(title)}</title>
       <style>
         @page{size:A4 portrait;margin:0;}
         *{margin:0;padding:0;box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
         body{font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;font-size:8px;color:#172033;}
         table{border-collapse:collapse;}
-      </style></head><body>${html}</body></html>`);
-    doc.close();
-    setTimeout(() => {
-      iframe.contentWindow?.print();
-      setTimeout(() => { document.body.removeChild(iframe); }, 1000);
-    }, 400);
-};
+      </style></head><body>${html}</body></html>`;
+export const printStatementViaIframe = (html: string, title: string, signal: AbortSignal) => previewHtmlPrint({ html: buildStatementPrintDocument(html, title), title, signal });
 
 export function buildReceiptHtml(input: {
   companyInfo?: CompanyInfo | null;

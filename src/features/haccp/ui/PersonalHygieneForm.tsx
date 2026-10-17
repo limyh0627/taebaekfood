@@ -1,3 +1,4 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save, Plus, Trash2, User } from 'lucide-react';
 import { TH, TD, TDL } from './ChecklistFormParts';
@@ -50,6 +51,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   const companyId = useHaccpCompany();
   const [records, setRecords] = useState<PersonalHygieneRecord[]>([]);
   const [selected, setSelected] = useState<PersonalHygieneRecord | null>(null);
+  const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.checkDate ?? ""}`);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -222,7 +224,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
             </span>
             <span className="text-xs text-slate-500">{selected.checkDate}</span>
             <div className="ml-auto flex gap-2 flex-wrap justify-end">
-              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `개인위생점검표_${selected.checkDate}.pdf`)} className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
+              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `개인위생점검표_${selected.checkDate}.pdf`, outputSignal())} className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
                 <FileDown size={12} /> PDF
               </button>
               {canConfirm && (

@@ -1,3 +1,5 @@
+import { useHaccpCompany } from '../context/HaccpCompanyContext';
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useRef, useState } from 'react';
 import { FileDown } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -21,7 +23,9 @@ interface CCPHeatRow {
 }
 
 const CCPHeatForm: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const outputSignal = useOutputScope(companyId, month);
   const [rows, setRows] = useState<CCPHeatRow[]>([
     { date: '', product: CCP_PRODUCTS[0], batch: '', startTime: '', endTime: '', setTemp: '', measuredTemp: '', duration: '', coreTemp: '', result: '', corrective: '', operator: '', verifier: '' },
   ]);
@@ -39,7 +43,7 @@ const CCPHeatForm: React.FC = () => {
         </label>
         <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
         <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_CCP가열살균모니터링일지_${month}.pdf`)}
+          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_CCP가열살균모니터링일지_${month}.pdf`, outputSignal())}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
         >
           <FileDown size={13} /> PDF 저장

@@ -1,3 +1,4 @@
+import {prepareWorkbookOutput,previewPreparedWorkbookOutput,downloadWorkbookArtifact,type WorkbookOutputArtifact} from './workbookOutput';
 import type * as ExcelJSType from 'exceljs';
 
 /**
@@ -172,15 +173,36 @@ export function buildSalesJournalWorkbook(
 }
 
 /** 워크북을 만들어 브라우저에서 내려받기까지. 파일명은 서류 날짜 기준. */
-export async function downloadSalesJournal(data: SalesJournalData): Promise<void> {
-  const ExcelJS = (await import('exceljs')).default;
-  const wb = buildSalesJournalWorkbook(ExcelJS as unknown as typeof import('exceljs'), data);
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `생산작업판매일지_${data.date}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+export async function prepareSalesJournal(data:SalesJournalData):Promise<WorkbookOutputArtifact>{
+  const ExcelJS=(await import('exceljs')).default;
+  return prepareWorkbookOutput(buildSalesJournalWorkbook(ExcelJS as unknown as typeof import('exceljs'),data));
+}
+export async function downloadSalesJournal(data:SalesJournalData,signal:AbortSignal):Promise<void>{
+  if(signal.aborted)return;const snapshot=JSON.parse(JSON.stringify(data)) as SalesJournalData;
+  const artifact=await prepareSalesJournal(snapshot);if(signal.aborted)return;
+  await previewPreparedWorkbookOutput({artifact,fileName:`생산작업판매일지_${snapshot.date}.xlsx`,signal});
+}
+
+export interface SalesJournalProgress { log:'new'|'unknown'|'ack'; file:boolean; ordersAttempted:boolean; done:boolean; busy:boolean }
+export const newSalesJournalProgress=():SalesJournalProgress=>({log:'new',file:false,ordersAttempted:false,done:false,busy:false});
+/** 없음은 늦은 최초 저장의 취소 증거가 아니므로 확인되지 않은 로그는 다시 쓰지 않는다. */
+export async function completeSalesJournalOutput(input:{progress:SalesJournalProgress;signal:AbortSignal;writeLog:()=>Promise<unknown>;verifyLog:()=>Promise<boolean>;saveFile:()=>Promise<boolean>;closeOrders:()=>Promise<void>}):Promise<'busy'|'cancelled'|'log-unknown'|'file-pending'|'orders-pending'|'done'>{
+ const p=input.progress;if(p.done)return 'done';if(p.busy)return 'busy';if(input.signal.aborted)return 'cancelled';p.busy=true;
+ try{
+  if(p.log==='unknown'){try{if(!await input.verifyLog())return 'log-unknown';p.log='ack';}catch{return 'log-unknown';}}
+  if(input.signal.aborted)return 'cancelled';
+  if(p.log==='new'){p.log='unknown';try{await input.writeLog();p.log='ack';}catch{return 'log-unknown';}}
+  if(input.signal.aborted)return 'cancelled';
+  if(!p.file){try{if(!await input.saveFile())return 'file-pending';p.file=true;}catch{return 'file-pending';}}
+  if(input.signal.aborted)return 'cancelled';
+  if(p.ordersAttempted)return 'orders-pending';p.ordersAttempted=true;
+  try{await input.closeOrders();p.done=true;return 'done';}catch{return 'orders-pending';}
+ }finally{p.busy=false;}
+}
+export async function saveSalesJournalArtifact(artifact:WorkbookOutputArtifact,fileName:string,signal:AbortSignal):Promise<boolean>{
+ try{return downloadWorkbookArtifact(artifact,fileName,signal);}catch{return previewPreparedWorkbookOutput({artifact,fileName,signal});}
+}
+export function salesJournalLogMatches(expected:Record<string,unknown>,actual:Record<string,unknown>):boolean{
+ const normalize=(value:unknown):unknown=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>[key,normalize(value)])):value;
+ return JSON.stringify(normalize(Object.fromEntries(Object.entries(expected).filter(([key])=>key!=='id'))))===JSON.stringify(normalize(Object.fromEntries(Object.entries(actual).filter(([key])=>key!=='id'))));
 }

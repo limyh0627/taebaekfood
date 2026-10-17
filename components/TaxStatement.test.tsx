@@ -403,3 +403,36 @@ describe('한국 달력과 회사별 과거 전표 조회',()=>{
   await act(async()=>{work.resolve([전표('late',거래처A.id,'LATE-UNMOUNT')]);});expect(screen.queryByText(/LATE-UNMOUNT/)).not.toBeInTheDocument();
  });
 });
+
+const outputMocks=vi.hoisted(()=>({html:vi.fn().mockResolvedValue(undefined),pdf:vi.fn().mockResolvedValue(undefined),capture:vi.fn(),notice:vi.fn().mockResolvedValue(undefined)}));
+vi.mock('../src/shared/components/appDialog',()=>({appNotice:outputMocks.notice}));
+vi.mock('../src/shared/htmlPrintOutput',()=>({previewHtmlPrint:outputMocks.html}));
+vi.mock('../src/shared/rasterPdfOutput',()=>({previewRasterPdf:outputMocks.pdf,snapshotOutputElement:(el:HTMLElement)=>{const element=el.cloneNode(true) as HTMLElement;document.body.append(element);return{element,dispose:()=>element.remove()};}}));
+vi.mock('html2canvas',()=>({default:outputMocks.capture}));
+describe('세금계산서 명시적 출력',()=>{
+ beforeEach(()=>{outputMocks.html.mockClear();outputMocks.pdf.mockClear();outputMocks.capture.mockReset().mockResolvedValue({width:100,height:100,toDataURL:()=> 'data:image/png;base64,QA'});});
+ it.each([['현재',100],['내역',300]] as const)('%s 문서만 HTML/PDF 미리보기로 보내고 회사전환이 출력을 취소한다',async (mode,height)=>{
+  outputMocks.capture.mockResolvedValue({width:100,height,toDataURL:()=> 'data:image/png;base64,QA'});
+  const issue=vi.fn(),st=전표('OUTPUT',거래처A.id,'OUTPUT',mode==='내역'?이번달+'-09T10:00:00+09:00':undefined);
+  const view=render(<TaxStatement issuedStatements={[st]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue}/>);
+  if(mode==='내역'){fireEvent.click(screen.getByRole('button',{name:'조회'}));fireEvent.click(within(screen.getByText(/OUTPUT/).parentElement!.parentElement!).getByRole('button'));}
+  else{fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/OUTPUT/}));}
+  fireEvent.click(screen.getByRole('button',{name:'인쇄'}));expect(outputMocks.html).toHaveBeenCalledOnce();const html=outputMocks.html.mock.calls[0][0];expect(html.html).toContain('참기름');expect(html.html).toContain('<style>');expect(html.signal.aborted).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'PDF'}));await waitFor(()=>expect(outputMocks.pdf).toHaveBeenCalledOnce());const pdf=outputMocks.pdf.mock.calls[0][0];expect(pdf.pages).toEqual([{width:210,height:297,draws:[{image:'data:image/png;base64,QA',x:10,y:height===100?53.5:10,width:190,height:height*1.9}]}]);expect(issue).not.toHaveBeenCalled();
+  view.rerender(<TaxStatement companyId="punghoe" issuedStatements={[]} partners={[]} companyInfo={회사}/>);expect(html.signal.aborted).toBe(true);expect(pdf.signal.aborted).toBe(true);
+ });
+ it('캡처대기중 unmount하면 PDF전달 없이 복제문서를 정리한다',async()=>{
+  let finish!:(value:unknown)=>void;outputMocks.capture.mockReturnValue(new Promise(r=>finish=r));
+  const view=render(<TaxStatement issuedStatements={[전표('LATE',거래처A.id,'LATE')]} partners={[거래처A]} companyInfo={회사}/>);fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/LATE/}));fireEvent.click(screen.getByRole('button',{name:'PDF'}));await waitFor(()=>expect(outputMocks.capture).toHaveBeenCalledOnce());const snapshot=outputMocks.capture.mock.calls[0][0];view.unmount();await act(async()=>finish({width:100,height:300,toDataURL:()=>''}));expect(outputMocks.pdf).not.toHaveBeenCalled();expect(snapshot.isConnected).toBe(false);
+ });
+});
+
+it('PDF 캡처 실패는 저장하지 않고 재시도 안내 후 같은 작성내용을 유지한다',async()=>{
+ outputMocks.capture.mockRejectedValueOnce(new Error('capture'));outputMocks.pdf.mockClear();outputMocks.notice.mockClear();
+ render(<TaxStatement issuedStatements={[전표('FAILPDF',거래처A.id,'FAILPDF')]} partners={[거래처A]} companyInfo={회사}/>);fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/FAILPDF/}));fireEvent.click(screen.getByRole('button',{name:'PDF'}));await waitFor(()=>expect(outputMocks.notice).toHaveBeenCalledOnce());expect(outputMocks.pdf).not.toHaveBeenCalled();expect(taxDocument()).toHaveTextContent('참기름');expect(screen.getByRole('button',{name:'PDF'})).toBeEnabled();
+});
+
+it('발행 월 변경은 이전 출력 수명을 중단한다',()=>{
+ outputMocks.html.mockClear();const now=전표('MONTHNOW',거래처A.id,'MONTHNOW'),previous=전표('MONTHPREV',거래처A.id,'MONTHPREV');const d=new Date(이번달+'-15T12:00:00Z');d.setUTCMonth(d.getUTCMonth()-1);const month=d.toISOString().slice(0,7);previous.tradeDate=month+'-09';
+ render(<TaxStatement issuedStatements={[now,previous]} partners={[거래처A]} companyInfo={회사}/>);fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/MONTHNOW/}));fireEvent.click(screen.getByRole('button',{name:'인쇄'}));const input=outputMocks.html.mock.calls[0][0];expect(input.signal.aborted).toBe(false);fireEvent.change(screen.getByRole('combobox'),{target:{value:month}});expect(input.signal.aborted).toBe(true);
+});

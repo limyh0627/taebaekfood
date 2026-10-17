@@ -1,6 +1,8 @@
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useOutputScope } from '../src/shared/hooks/useOutputScope';
+import { appNotice } from '../src/shared/components/appDialog';
 import { monthStart, today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
@@ -169,6 +171,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [statsScope, setStatsScope] = useState<'year' | 'month'>('year');
   const [statsMonth, setStatsMonth] = useState(() => new Date().getMonth() + 1);
   const [pdfMonth, setPdfMonth] = useState(() => today().slice(0, 7));
+  const monthlyOutputSignal=useOutputScope(companyId,`${mainTab}:${pdfMonth}`);
+  const monthlyOutputBusy=useRef(false);
   // 미수 ↔ 미지급 상계 (같은 거래처에 받을 돈과 줄 돈이 같이 있을 때)
   const [offsetForm, setOffsetForm] = useState<{ id: string; name: string; max: number; amount: string; date: string } | null>(null);
 
@@ -1110,10 +1114,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         //   거래처 잔액은 '전표 합계 − 자금원장 108/251'로 나오므로 여기 한 줄이면 충분하다.
 
         const generateMonthlySummaryPdf = async () => {
+          const signal=monthlyOutputSignal();if(signal.aborted||monthlyOutputBusy.current)return;
+          monthlyOutputBusy.current=true;
+          try{
           const rows = partnerMonthlySettlement(pdfMonth, issuedStatements, cashEntries, journalEntries)
             .map(row => ({ ...row, name: resolveName(row.partnerId) }))
             .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-          await savePartnerMonthlyPdf(pdfMonth, rows);
+          await savePartnerMonthlyPdf(pdfMonth, rows,signal);
+          }catch{if(!signal.aborted)await appNotice('PDF 미리보기를 준비하지 못했습니다. 다시 시도해 주세요.');}
+          finally{monthlyOutputBusy.current=false;}
         };
 
         return (

@@ -124,8 +124,8 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
-                   'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit'];
+      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+                   'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
     // 미반영·요청 폐기 근거는 서버만 판독한다. 관리자 조회도 열면 최초 원문이 노출된다.
@@ -153,7 +153,7 @@ service cloud.firestore {
     // 매입 단위는 별도 등록표다. 직원은 회사 안에서 선택하고 관리자만 표를 수정한다.
     function purchaseUnitCatalogOk(id) {
       let data = request.resource.data;
-      let item = get(/databases/$(database)/documents/items/$(data.itemId)).data;
+      let item = getAfter(/databases/$(database)/documents/items/$(data.itemId)).data;
       return data.keys().hasOnly(['id', 'companyId', 'itemId', 'partnerId', 'purchaseUnit', 'unitKg', 'isDefault', 'active', 'createdAt', 'updatedAt'])
         && data.keys().hasAll(['id', 'companyId', 'itemId', 'purchaseUnit', 'unitKg', 'isDefault', 'active', 'createdAt', 'updatedAt'])
         && data.id == id && data.itemId is string && data.itemId.size() > 0
@@ -177,6 +177,31 @@ service cloud.firestore {
         && request.resource.data.itemId == resource.data.itemId
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin() && deleteOk();
+    }
+    function catalogLiveItemAfter(id, company) {
+      let path = /databases/$(database)/documents/items/$(id);
+      return existsAfter(path) && getAfter(path).data.get('companyId', 'taebaek') == company;
+    }
+    function catalogChangedReferenceOk(before, next, field) {
+      return resource != null && before.get(field, null) == next.get(field, null)
+        || (next.get(field, null) is string && next.get(field, '').size() > 0
+          && catalogLiveItemAfter(next[field], next.companyId));
+    }
+    function catalogLinkReferencesOk(c) {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      let epoch = /databases/$(database)/documents/catalogItemMergeState/$(next.companyId);
+      return !existsAfter(epoch)
+        || (c == 'partner_item' && catalogChangedReferenceOk(before, next, 'itemId'))
+        || (c == 'item_pack' && catalogChangedReferenceOk(before, next, 'item_id'))
+        || (c == 'item_bom' && catalogChangedReferenceOk(before, next, 'parent_id') && catalogChangedReferenceOk(before, next, 'child_id'));
+    }
+    match /{catalogCollection}/{id} {
+      allow get: if catalogCollection in ['partner_item', 'item_bom', 'item_pack'] && isEmployee() && getOk();
+      allow list: if catalogCollection in ['partner_item', 'item_bom', 'item_pack'] && isEmployee() && readOk();
+      allow create, update: if catalogCollection in ['partner_item', 'item_bom', 'item_pack'] && isEmployee()
+        && createUpdateOk() && catalogLinkReferencesOk(catalogCollection);
+      allow delete: if catalogCollection in ['partner_item', 'item_bom', 'item_pack'] && isEmployee() && deleteOk();
     }
     // 현금 내역은 서버 원자 명령만 저장한다. 기존 회사별 관리자 조회는 유지한다.
     match /cashEntries/{id} {
@@ -488,10 +513,10 @@ service cloud.firestore {
       let next = request.resource.data;
       let tomb = itemTombstone(next.companyId, id);
       let floor = resource == null && exists(tomb) ? get(tomb).data.lastDeletedItemRevision : writerRevision(before);
-      return resource == null
+      return !(exists(tomb) && get(tomb).data.get('mergedIntoItemId', null) != null) && (resource == null
         ? writerAdvanced(before, next, floor)
         : next.diff(before).affectedKeys().hasAny(['stock', 'lots', 'inventoryReservations', 'stocktakeAnchors', 'allocated', 'inventoryAllocations'])
-          ? writerAdvanced(before, next, writerRevision(before)) : writerPreserved(before, next);
+          ? writerAdvanced(before, next, writerRevision(before)) : writerPreserved(before, next));
     }
     function itemDeleteOk(id) {
       let tomb = itemTombstone(resource.data.companyId, id);
@@ -511,6 +536,9 @@ service cloud.firestore {
       allow get: if getOk();
       allow list: if readOk();
       allow create, update: if createUpdateOk()
+        && request.resource.data.get('mergedIntoItemId', null) == null
+        && request.resource.data.get('mergeOperationId', null) == null
+        && (resource == null || resource.data.get('mergedIntoItemId', null) == null)
         && request.resource.data.itemId is string && request.resource.data.itemId.size() > 0
         && id == request.resource.data.companyId + '__' + request.resource.data.itemId
         && exists(/databases/$(database)/documents/items/$(request.resource.data.itemId))
@@ -534,6 +562,62 @@ service cloud.firestore {
         && (resource == null || next.diff(before).affectedKeys().hasAny(sensitive)
           ? writerAdvanced(before, next, writerRevision(before)) : writerPreserved(before, next));
     }
+    function catalogOrderReferenceOk(id) {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      let epoch = /databases/$(database)/documents/catalogItemMergeState/$(next.companyId);
+      let active = ['PENDING', 'PROCESSING', 'DISPATCHED', 'SHIPPED', 'ON_HOLD'];
+      let required = next.get('status', '') in active && (resource == null || !(before.get('status', '') in active) || next.get('items', []) != before.get('items', []));
+      let proofId = next.get('catalogReferenceProofId', '');
+      let proofPath = /databases/$(database)/documents/catalogOrderReferenceProofs/$(proofId);
+      return !required || !existsAfter(epoch) || (proofId is string && proofId.size() > 0 && existsAfter(proofPath)
+        && getAfter(proofPath).data.companyId == next.companyId
+        && getAfter(proofPath).data.actorUid == request.auth.uid
+        && getAfter(proofPath).data.orderId == id
+        && getAfter(proofPath).data.orderExists == (resource != null)
+        && getAfter(proofPath).data.beforeRevision == writerRevision(before)
+        && getAfter(proofPath).data.catalogRevision == getAfter(epoch).data.revision
+        && getAfter(proofPath).data.status == next.status
+        && getAfter(proofPath).data.items == next.items);
+    }
+    function catalogPurchaseProjectionMatches(projection, value) {
+      let fields = ['itemId', 'items', 'oemSent', 'status', 'oemIssueStatus', 'oemCancelledAt'];
+      return projection.keys().toSet() == value.keys().toSet().intersection(fields.toSet())
+        && !projection.diff(value).affectedKeys().hasAny(fields);
+    }
+    function catalogPurchaseActive(value) {
+      return value.get('status', '') != 'cancelled' && value.get('oemCancelledAt', null) in [null, false, '', 0]
+        && (value.get('status', '') in ['pending', 'invoiced'] || value.get('oemIssueStatus', '') in ['processing', 'failed']);
+    }
+    function catalogPurchaseReferenceOk(id) {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      let fields = ['itemId', 'items', 'oemSent', 'status', 'oemIssueStatus', 'oemCancelledAt'];
+      let required = catalogPurchaseActive(next) && (resource == null || !catalogPurchaseActive(before) || next.diff(before).affectedKeys().hasAny(fields));
+      let epoch = /databases/$(database)/documents/catalogItemMergeState/$(next.companyId);
+      let proofId = next.get('catalogReferenceProofId', '');
+      let proofPath = /databases/$(database)/documents/catalogOrderReferenceProofs/$(proofId);
+      return !required || !existsAfter(epoch) || (proofId is string && proofId.size() > 0 && existsAfter(proofPath)
+        && getAfter(proofPath).data.collection == 'purchaseOrders'
+        && getAfter(proofPath).data.companyId == next.companyId
+        && getAfter(proofPath).data.actorUid == request.auth.uid
+        && getAfter(proofPath).data.orderId == id
+        && getAfter(proofPath).data.orderExists == (resource != null)
+        && getAfter(proofPath).data.catalogRevision == getAfter(epoch).data.revision
+        && catalogPurchaseProjectionMatches(getAfter(proofPath).data.beforeProjection, before)
+        && catalogPurchaseProjectionMatches(getAfter(proofPath).data.nextProjection, next));
+    }
+    match /catalogItemMergeReceipts/{id} {
+      allow read, write: if false;
+    }
+    match /catalogItemMergeState/{id} {
+      allow get: if isEmployee() && id == request.auth.token.companyId;
+      allow list, write: if false;
+    }
+    match /catalogOrderReferenceProofs/{id} {
+      allow get: if isEmployee() && resource.data.companyId == request.auth.token.companyId && resource.data.actorUid == request.auth.uid;
+      allow list, write: if false;
+    }
     function orderDeleteOk(id) {
       let operation = resource.data.get('inventoryOperation', {});
       let audit = /databases/$(database)/documents/orderStatusAudits/$(operation.id);
@@ -547,8 +631,15 @@ service cloud.firestore {
     match /orders/{id} {
       allow get: if getOk();
       allow list: if readOk();
-      allow create, update: if createUpdateOk() && orderWriteOk();
+      allow create, update: if createUpdateOk() && orderWriteOk() && catalogOrderReferenceOk(id);
       allow delete: if deleteOk() && orderDeleteOk(id);
+    }
+    match /purchaseOrders/{id} {
+      allow get: if isEmployee() && getOk();
+      allow list: if isEmployee() && readOk();
+      allow create, update: if isEmployee() && createUpdateOk() && inventoryQuantityOk('purchaseOrders')
+        && rawWriterOk('purchaseOrders') && oemCostFieldsOk('purchaseOrders') && catalogPurchaseReferenceOk(id) && payrollWriteAllowed('purchaseOrders');
+      allow delete: if isEmployee() && deleteOk() && resource.data.get('oemBatchCost', null) == null && payrollWriteAllowed('purchaseOrders');
     }
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
     //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워

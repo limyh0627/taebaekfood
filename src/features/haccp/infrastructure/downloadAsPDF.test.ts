@@ -1,50 +1,26 @@
+/** @vitest-environment jsdom */
 import {beforeEach,expect,it,vi} from 'vitest';
-import {readFileSync,readdirSync} from 'node:fs';
-import {createHash} from 'node:crypto';
-import * as ts from 'typescript';
-const m=vi.hoisted(()=>({imports:[] as string[],events:[] as string[],render:vi.fn(),construct:vi.fn(),pdf:{addPage:vi.fn(),addImage:vi.fn(),save:vi.fn()}}));
-vi.mock('jspdf',()=>{m.imports.push('jspdf');return {default:class {constructor(...args:unknown[]){m.construct(...args);m.events.push('construct');return m.pdf;}}};});
-vi.mock('html2canvas',()=>{m.imports.push('html2canvas');return {default:m.render};});
+import {snapshotOutputElement} from '../../../shared/rasterPdfOutput';
+const m=vi.hoisted(()=>({render:vi.fn(),preview:vi.fn()}));
+vi.mock('html2canvas',()=>({default:m.render}));
+vi.mock('../../../shared/rasterPdfOutput',async importOriginal=>({...await importOriginal<typeof import('../../../shared/rasterPdfOutput')>(),previewRasterPdf:m.preview}));
 import {downloadAsPDF} from './downloadAsPDF';
-beforeEach(()=>{m.render.mockReset();m.construct.mockReset();m.pdf.addPage.mockReset();m.pdf.addImage.mockReset();m.pdf.save.mockReset();m.events=[];});
-
-it('PDF 동적 import 순서·캡처 옵션·A4 규격과 원본 파일명을 보존한다',async()=>{
-  const canvas={width:100,height:100,toDataURL:vi.fn(()=> 'original-png')};
-  m.render.mockImplementation(async()=>{m.events.push('capture');return canvas;});
-  const element={} as HTMLElement;await downloadAsPDF(element,'원본_일일점검.pdf');
-  expect(m.imports).toEqual(['jspdf','html2canvas']);expect(m.events).toEqual(['capture','construct']);
-  expect(m.render).toHaveBeenCalledWith(element,{scale:2,backgroundColor:'#ffffff',useCORS:true});
-  expect(m.construct).toHaveBeenCalledWith('p','mm','a4');
-  expect(m.pdf.addImage).toHaveBeenCalledWith('original-png','PNG',0,-0,210,210);
-  expect(m.pdf.addPage).not.toHaveBeenCalled();expect(m.pdf.save).toHaveBeenCalledWith('원본_일일점검.pdf');
+beforeEach(()=>{m.render.mockReset();m.preview.mockReset();m.preview.mockResolvedValue(undefined);});
+it('긴 캔버스의 A4 절단 좌표·축척과 전체 페이지를 미리보기에 전달한다',async()=>{
+ const source=document.createElement('div');source.innerHTML='<input value="처음">';document.body.appendChild(source);
+ const canvas={width:100,height:300,toDataURL:vi.fn(()=> 'same-image')};m.render.mockResolvedValue(canvas);const signal=new AbortController().signal;
+ await downloadAsPDF(source,'long.pdf',signal);
+ expect(m.render).toHaveBeenCalledWith(expect.any(HTMLElement),{scale:2,backgroundColor:'#ffffff',useCORS:true});expect(m.render.mock.calls[0][0]).not.toBe(source);
+ expect(m.preview).toHaveBeenCalledWith({fileName:'long.pdf',signal,pages:[-0,-297,-594].map(y=>({width:210,height:297,draws:[{image:'same-image',x:0,y,width:210,height:630}]}))});expect(canvas.toDataURL).toHaveBeenCalledTimes(3);expect(m.render.mock.calls[0][0].isConnected).toBe(false);source.remove();
 });
-it('긴 캔버스를 자르거나 재캡처하지 않고 같은 이미지를 음수 Y로 반복한다',async()=>{
-  const canvas={width:100,height:300,toDataURL:vi.fn(()=> 'same-image')};m.render.mockResolvedValue(canvas);
-  await downloadAsPDF({} as HTMLElement,'long.pdf');
-  expect(m.render).toHaveBeenCalledOnce();expect(m.pdf.addPage).toHaveBeenCalledTimes(2);
-  expect(m.pdf.addImage.mock.calls).toEqual([['same-image','PNG',0,-0,210,630],['same-image','PNG',0,-297,210,630],['same-image','PNG',0,-594,210,630]]);
-  expect(canvas.toDataURL).toHaveBeenCalledTimes(3);expect(m.pdf.save).toHaveBeenCalledOnce();
+it('복사한 입력·체크·선택·textarea는 원폼의 뒤늦은 수정과 분리된다',()=>{
+ const source=document.createElement('div');source.innerHTML='<input value="이전"><input type="checkbox"><textarea>이전</textarea><select><option>a</option><option>b</option></select>';
+ const input=source.querySelector('input')!,check=source.querySelectorAll('input')[1],text=source.querySelector('textarea')!,select=source.querySelector('select')!;input.value='현재';check.checked=true;text.value='현재 메모';select.value='b';
+ const snapshot=snapshotOutputElement(source);input.value='뒤 변경';check.checked=false;text.value='뒤 변경';select.value='a';
+ expect(snapshot.element.querySelector('input')!.value).toBe('현재');expect(snapshot.element.querySelectorAll('input')[1].checked).toBe(true);expect(snapshot.element.querySelector('textarea')!.value).toBe('현재 메모');expect(snapshot.element.querySelector('select')!.value).toBe('b');snapshot.dispose();expect(snapshot.element.isConnected).toBe(false);
 });
-it('캡처와 PDF 기록의 오류를 원래 그대로 호출자에게 전달한다',async()=>{
-  const error=new Error('캡처 실패');m.render.mockRejectedValueOnce(error);
-  await expect(downloadAsPDF({} as HTMLElement,'failed.pdf')).rejects.toBe(error);expect(m.pdf.save).not.toHaveBeenCalled();
-  m.render.mockResolvedValue({width:100,height:100,toDataURL:()=> 'png'});m.pdf.addImage.mockImplementationOnce(()=>{throw error;});
-  await expect(downloadAsPDF({} as HTMLElement,'failed.pdf')).rejects.toBe(error);expect(m.pdf.save).not.toHaveBeenCalled();
-});
-it('HEAD6d4894a 함수 본문 원문과 같고 실제 16개 호출이 새 모듈에 연결된다',()=>{
-  const text=readFileSync('src/features/haccp/infrastructure/downloadAsPDF.ts','utf8'),source=ts.createSourceFile('downloadAsPDF.ts',text,ts.ScriptTarget.Latest,true);
-  const fn=source.statements.find(ts.isFunctionDeclaration)!;
-  expect(createHash('sha256').update(fn.body!.getText(source).replace(/\r\n/g,'\n')).digest('hex')).toBe('b1231655433bba4e250a58963858d493e3da98fbb0e47be43acf452d67c93af0');
-  const parent=ts.createSourceFile('HaccpChecklist.tsx',readFileSync('components/HaccpChecklist.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  let calls=0,definitions=0;
-  const files=(directory:string):string[]=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):/\.tsx?$/.test(entry.name)&&!entry.name.includes('.test.')?[`${directory}/${entry.name}`]:[]);
-  for(const path of ['components/HaccpChecklist.tsx',...files('src/features/haccp')]){
-    const file=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,path.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
-    function visit(node:ts.Node){if(ts.isCallExpression(node)&&node.expression.getText(file)==='downloadAsPDF')calls++;if(path==='components/HaccpChecklist.tsx'&&ts.isFunctionDeclaration(node)&&node.name?.text==='downloadAsPDF')definitions++;ts.forEachChild(node,visit);}visit(file);
-  }
-  expect(calls).toBe(16);expect(definitions).toBe(0);
-  expect(files('src/features/haccp').some(path=>{
-    const file=ts.createSourceFile(path,readFileSync(path,'utf8'),ts.ScriptTarget.Latest,true,path.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
-    return file.statements.some(node=>ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)&&node.moduleSpecifier.text.endsWith('/infrastructure/downloadAsPDF'));
-  })).toBe(true);
+it('캡처 대기 중 취소나 오류는 미리보기를 열지 않고 복사 DOM을 정리한다',async()=>{
+ let finish!:(value:unknown)=>void;m.render.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const source=document.createElement('div'),controller=new AbortController();
+ const pending=downloadAsPDF(source,'cancel.pdf',controller.signal);await vi.waitFor(()=>expect(m.render).toHaveBeenCalledOnce());controller.abort();finish({width:100,height:100,toDataURL:()=> 'png'});await pending;expect(m.preview).not.toHaveBeenCalled();expect(m.render.mock.calls[0][0].isConnected).toBe(false);
+ m.render.mockRejectedValueOnce(Error('캡처 실패'));await expect(downloadAsPDF(source,'failed.pdf',new AbortController().signal)).rejects.toThrow('캡처 실패');expect(m.preview).not.toHaveBeenCalled();
 });

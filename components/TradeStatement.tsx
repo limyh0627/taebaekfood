@@ -440,6 +440,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   recoverySelectionRef.current=recoverySelection;
   const [issuePendingError,setIssuePendingError]=useState('');
   const issueActor=auth.currentUser?.uid;
+  const excelScope = useRef<{ companyId: string; uid: string | undefined; controller: AbortController } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController(), uid = auth.currentUser?.uid;
+    excelScope.current = { companyId, uid, controller };
+    const stop = auth.onAuthStateChanged?.(user => { if (user?.uid !== uid) controller.abort(); });
+    return () => { controller.abort(); stop?.(); };
+  }, [companyId, issueActor]);
   const refreshIssuePendings=()=>{if(!issueActor)return;try{setIssuePendings(listTradeStatementRecoveryEntries({companyId,actorUid:issueActor}));setIssuePendingError('');}catch(error){setIssuePendingError((error as Error).message);}};
   useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePendings([]);setRecoveryInspection(null);setIssueAcknowledged({});setIssueFailureReasons({});setIssuePendingError('');setRecoveryOpen(false);setRecoverySelection(null);setSendingPending(null);setDetailStmt(null);refreshIssuePendings();const changed=()=>refreshIssuePendings();window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[companyId,issueActor]);
   const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
@@ -1907,31 +1914,41 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return { previous, currentTrade: amount, received, closing: previous + amount - received };
   };
 
+  const printSignal = () => {
+    const scope=excelScope.current;
+    return scope?.uid && auth.currentUser?.uid === scope.uid && scope.companyId === companyId && !scope.controller.signal.aborted ? scope.controller.signal : null;
+  };
   const handlePrint = () => {
+    const signal=printSignal();if(!signal)return;
     if (editingStmt && !isEditMode) { handleDetailPrint(editingStmt); return; }
     const balance = printBalance(stmtType, selectedClient?.id || '', totalAmount, editingStmt ?? undefined);
     const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems, balance });
-    printStatementViaIframe(html, `${stmtType}전표`);
+    void printStatementViaIframe(html, `${stmtType}전표`, signal);
     // 인쇄는 '출력'만 — 발행(저장)은 '저장' 버튼(markIssued) 한 곳에서만. 저장된 전표만 인쇄 가능.
   };
 
   const handleDetailPrint = (stmt: IssuedStatement) => {
+    const signal=printSignal();if(!signal)return;
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
     const balance = printBalance(stmt.type, stmt.partnerId, stmt.totalAmount, stmt);
     const html = buildStatementPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId, stmt.partySnapshot, { companyInfo, partners, allItems, balance });
-    printStatementViaIframe(html, `${stmt.type}전표`);
+    void printStatementViaIframe(html, `${stmt.type}전표`, signal);
   };
 
-  const handleReceipt = () => printStatementViaIframe(buildReceiptHtml({
+  const handleReceipt = () => { const signal=printSignal();if(!signal)return;return printStatementViaIframe(buildReceiptHtml({
     companyInfo, tradeDate, docNo, partnerName: selectedClient?.name || '', items: lineItems,
     totals: { supply: totalSupply, tax: totalTax, amount: totalAmount },
-  }), '영수증');
-  const handleExcel = () => downloadStatementExcel({
+  }), '영수증', signal); };
+  const handleExcel = () => {
+    const scope = excelScope.current;
+    if (!scope || !scope.uid || !auth.currentUser?.uid || scope.companyId !== companyId || scope.uid !== auth.currentUser.uid || scope.controller.signal.aborted) return;
+    return downloadStatementExcel({ signal: scope.controller.signal,
     type: stmtType, docNo, dateLabel: dateStr, tradeDate,
     partnerName: selectedClient?.name || '', items: lineItems,
     totals: { supply: totalSupply, tax: totalTax, amount: totalAmount },
   });
+  };
   // ── 단가 패널 / 등록 품목 ──
   // 매출 전표용: partnerOut 테이블 기반 (거래처별 단가 포함)
   const partnerItemRows = useMemo(() =>
@@ -2368,6 +2385,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         resultCount={filteredHistory.length}
         fetching={isFetchingHistory}
         onExport={() => {
+          const scope = excelScope.current;
+          if (!scope || !scope.uid || !auth.currentUser?.uid || scope.companyId !== companyId || scope.uid !== auth.currentUser.uid || scope.controller.signal.aborted) return;
           const rows = sortedHistory.map(row => {
             const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
             const portion = row.kind === 'pay' ? null : accountPortion(row);
@@ -2377,6 +2396,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               docNo ?? '', view.detail, amount, view.cumulative ?? '', view.note];
           });
           void downloadListExcel({
+            signal: scope.controller.signal,
             title: '전표내역',
             subtitle: `조회 기간 ${histFrom || '전체'} ~ ${histTo || '전체'} · 구분 ${histKind} · ${rows.length}건`,
             fileName: `전표내역_${histFrom || '전체'}_${histTo || '전체'}`,

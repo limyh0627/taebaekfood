@@ -1,3 +1,5 @@
+import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
+import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import { EmployeeDirectory } from './hr/EmployeeDirectory';
 import { LeaveApprovalList } from './hr/LeaveApprovalList';
 import ActionButton from '../src/shared/components/ActionButton';
@@ -148,6 +150,16 @@ const HRManager: React.FC<HRManagerProps> = ({
   React.useEffect(() => setPaySaving(false), [companyId, payYm]);
   const [payMsg, setPayMsg] = useState('');
   const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
+  const paySlipDocumentScope = React.useRef({companyId, yearMonth:payYm});
+  const paySlipRef = React.useRef<HTMLDivElement>(null);
+  const paySlipSignal = useOutputScope(companyId, JSON.stringify([activeTab,payYm,payDate,paySlipEmp?.employeeId]));
+  const printPaySlip = () => {
+    if (!paySlipRef.current || paySlipDocumentScope.current.companyId !== companyId || paySlipDocumentScope.current.yearMonth !== payYm) return;
+    const signal = paySlipSignal(); if (signal.aborted) return;
+    const heading = document.createElement('h1'); heading.textContent = `급여명세서 · ${paySlipEmp?.employeeName ?? ''}`;
+    const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(node=>node.outerHTML).join('');
+    void previewHtmlPrint({title:'급여명세서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>급여명세서</title>${styles}<style>body{background:white;padding:24px;font-family:'Malgun Gothic',sans-serif;}@page{size:A4;margin:10mm;}</style></head><body>${heading.outerHTML}${paySlipRef.current.innerHTML}</body></html>`});
+  };
   const [payrolls, setPayrolls] = useState<Array<Payroll & { revision?: number; issueOperationId?: string; issueExpectedRevision?: number }>>([]);
   React.useEffect(() => {
     // 권한 규칙은 목록을 걸러 주지 않는다. 서버 질의에 회사 조건이 없으면 관리자도 구독이 거부된다.
@@ -578,7 +590,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             {payLines.length === 0 ? (
               <p className="py-16 text-center text-xs font-bold text-slate-300">재직 중인 임직원이 없습니다</p>
             ) : (
-              <PayrollLineEditor lines={payLines} onCell={setCell} onPrint={setPaySlipEmp} />
+              <PayrollLineEditor lines={payLines} onCell={setCell} onPrint={line => { paySlipDocumentScope.current={companyId,yearMonth:payYm}; setPaySlipEmp(line); }} />
             )}
 
             <div className="p-4 space-y-2">
@@ -623,8 +635,9 @@ const HRManager: React.FC<HRManagerProps> = ({
       </div>
 
       {/* 급여명세서 — 사원 한 명분. 근로기준법상 교부 의무 항목(지급·공제 내역)을 담는다. */}
-      {paySlipEmp && (
+      {paySlipEmp && paySlipDocumentScope.current.companyId === companyId && paySlipDocumentScope.current.yearMonth === payYm && (
         <ModalShell title={`급여명세서 · ${paySlipEmp.employeeName}`} onClose={() => setPaySlipEmp(null)}>
+            <div ref={paySlipRef}>
             <p className="mb-4 text-[11px] font-bold text-slate-400">
               {paySlipEmp.department} {paySlipEmp.position} · {payYm} · 지급일 {payDate}
             </p>
@@ -653,7 +666,8 @@ const HRManager: React.FC<HRManagerProps> = ({
               <span className="text-xs font-black text-violet-700">실지급액</span>
               <span className="text-lg font-black text-violet-700 tabular-nums">{won(payrollNet(paySlipEmp))}</span>
             </div>
-            <button onClick={() => window.print()}
+            </div>
+            <button onClick={printPaySlip}
               className="mt-4 w-full py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 transition-all">
               인쇄
             </button>

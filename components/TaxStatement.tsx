@@ -1,3 +1,7 @@
+import { appNotice } from '../src/shared/components/appDialog';
+import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
+import { previewRasterPdf, snapshotOutputElement } from '../src/shared/rasterPdfOutput';
+import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
@@ -289,24 +293,27 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     finally{if(active()){taxBusyRef.current=false;setTaxBusy(false);try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}}}
   };
 
+  const outputSignal = useOutputScope(companyId, JSON.stringify([activeTab, selectedMonth, taxClientId, taxStmtIds]));
   const handleTaxPdf = async () => {
     if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
-    const html2canvas = (await import('html2canvas')).default;
-    const jsPDF = (await import('jspdf')).default;
-    const canvas = await html2canvas(taxPrintRef.current, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
-    const imgW = pageW - 20, imgH = canvas.height * imgW / canvas.width;
-    pdf.addImage(imgData, 'PNG', 10, imgH < pageH ? (pageH - imgH) / 2 : 10, imgW, imgH);
-    pdf.save(`세금계산서_${selectedClient?.name}_${tradeMonth}.pdf`);
+    const signal = outputSignal(); if (signal.aborted) return;
+    const snapshot = snapshotOutputElement(taxPrintRef.current);
+    const fileName = `세금계산서_${selectedClient?.name}_${tradeMonth}.pdf`;
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      if (signal.aborted) return;
+      const canvas = await html2canvas(snapshot.element, { scale: 2, useCORS: true });
+      if (signal.aborted) return;
+      const imgW = 190, imgH = canvas.height * imgW / canvas.width;
+      await previewRasterPdf({pages:[{width:210,height:297,draws:[{image:canvas.toDataURL('image/png'),x:10,y:imgH<297?(297-imgH)/2:10,width:imgW,height:imgH}]}],fileName,signal});
+    } catch { if (!signal.aborted) await appNotice('PDF 미리보기를 준비하지 못했습니다. 내용을 확인한 뒤 다시 시도해 주세요.'); }
+    finally { snapshot.dispose(); }
   };
 
   const handleTaxPrint = () => {
     if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
-    const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
+    const signal = outputSignal(); if (signal.aborted) return;
+    void previewHtmlPrint({title:'세금계산서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
       <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10px;background:#fff;padding:12px;}
       .wrap{border:2px solid #000;width:100%;}.title-row{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #000;padding:6px 10px;}
       .title-row h1{font-size:18px;font-weight:900;letter-spacing:6px;}.info-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #000;}
@@ -318,11 +325,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       .items-table td{border:1px solid #ccc;padding:4px 6px;text-align:right;}.items-table td.left{text-align:left;}.items-table td.center{text-align:center;}
       .section-header{background:#e8f0fe;font-weight:900;font-size:9px;padding:3px 6px;border:1px solid #ccc;}
       .total-row{display:flex;justify-content:flex-end;gap:16px;padding:8px 10px;border-top:2px solid #000;font-size:11px;font-weight:900;}
-      @media print{body{padding:0;}@page{margin:8mm;}}</style></head><body>`);
-    win.document.write(taxPrintRef.current.innerHTML);
-    win.document.write('</body></html>');
-    win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
+      @media print{body{padding:0;}@page{margin:8mm;}}</style></head><body>${taxPrintRef.current.innerHTML}</body></html>`});
   };
 
   // ── 조회 탭 로직 ──
@@ -378,31 +381,30 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     [previewGroup]);
   const previewPrintRef = useRef<HTMLDivElement>(null);
 
+  const historyOutputSignal = useOutputScope(companyId, JSON.stringify([activeTab, selectedMonth, histClientId, histPreviewGroupKey]));
   const handleHistPrint = () => {
     if (!previewPrintRef.current) return;
-    const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
+    const signal = historyOutputSignal(); if (signal.aborted) return;
+    void previewHtmlPrint({title:'세금계산서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
       <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10px;background:#fff;padding:12px;}
       table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 8px;}th{background:#f5f5f5;font-weight:900;text-align:center;}
-      @media print{body{padding:0;}@page{margin:8mm;}}</style></head><body>`);
-    win.document.write(previewPrintRef.current.innerHTML);
-    win.document.write('</body></html>');
-    win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
+      @media print{body{padding:0;}@page{margin:8mm;}}</style></head><body>${previewPrintRef.current.innerHTML}</body></html>`});
   };
 
   const handleHistPdf = async () => {
     if (!previewPrintRef.current || !previewGroup) return;
-    const html2canvas = (await import('html2canvas')).default;
-    const jsPDF = (await import('jspdf')).default;
-    const canvas = await html2canvas(previewPrintRef.current, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
-    const imgW = pageW - 20, imgH = canvas.height * imgW / canvas.width;
-    pdf.addImage(imgData, 'PNG', 10, imgH < pageH ? (pageH - imgH) / 2 : 10, imgW, imgH);
-    pdf.save(`세금계산서_${previewClient?.name}_${previewGroup.stmts[0].tradeDate.slice(0, 7)}.pdf`);
+    const signal = historyOutputSignal(); if (signal.aborted) return;
+    const snapshot = snapshotOutputElement(previewPrintRef.current);
+    const fileName = `세금계산서_${previewClient?.name}_${previewGroup.stmts[0].tradeDate.slice(0, 7)}.pdf`;
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      if (signal.aborted) return;
+      const canvas = await html2canvas(snapshot.element, { scale: 2, useCORS: true });
+      if (signal.aborted) return;
+      const imgW = 190, imgH = canvas.height * imgW / canvas.width;
+      await previewRasterPdf({pages:[{width:210,height:297,draws:[{image:canvas.toDataURL('image/png'),x:10,y:imgH<297?(297-imgH)/2:10,width:imgW,height:imgH}]}],fileName,signal});
+    } catch { if (!signal.aborted) await appNotice('PDF 미리보기를 준비하지 못했습니다. 내용을 확인한 뒤 다시 시도해 주세요.'); }
+    finally { snapshot.dispose(); }
   };
 
   return (

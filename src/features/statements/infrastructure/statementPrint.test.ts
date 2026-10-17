@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { buildStatementPrintHtml, buildReceiptHtml } from './statementPrint';
+import { previewHtmlPrint } from '../../../shared/htmlPrintOutput';
+vi.mock('../../../shared/htmlPrintOutput',()=>({previewHtmlPrint:vi.fn().mockResolvedValue(undefined)}));
+import { describe, expect, it, vi } from 'vitest';
+import { buildStatementPrintHtml, buildReceiptHtml, printStatementViaIframe, buildStatementPrintDocument } from './statementPrint';
 
 describe('거래명세서 인쇄 계좌정보', () => {
   it('기존 태백식품 설정이어도 비고 아래 양쪽 용지에 계좌를 한 줄씩 표시한다', () => {
@@ -52,3 +54,5 @@ it('저장된 kgml 규격은 명세서·영수증에 kg로만 표시하고 원�
   expect(JSON.stringify(line)).toBe(original);
   expect(line.spec).toBe('16.5kgml');
 });
+
+it('명세서와영수증HTML은기존A4CSS를포함한한원문으로미리보기에위임하며signal을전달한다',async()=>{const html='<div>원문299원</div>',signal=new AbortController().signal;await printStatementViaIframe(html,'매입<전표>',signal);expect(previewHtmlPrint).toHaveBeenCalledWith({html:buildStatementPrintDocument(html,'매입<전표>'),title:'매입<전표>',signal});const output=vi.mocked(previewHtmlPrint).mock.calls.at(-1)![0].html;expect(output).toContain('@page{size:A4 portrait;margin:0;}');expect(output).toContain('print-color-adjust:exact');expect(output).toContain('<title>매입&lt;전표&gt;</title>');expect(output).toContain('<body>'+html+'</body>');});

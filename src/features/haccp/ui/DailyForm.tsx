@@ -1,3 +1,5 @@
+import { useHaccpCompany } from '../context/HaccpCompanyContext';
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useState, useRef } from 'react';
 import { FileDown } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -49,7 +51,9 @@ const DAILY_ITEMS: DailyCheckItem[] = [
 ];
 
 export const DailyForm: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const outputSignal = useOutputScope(companyId, month);
   const [results, setResults] = useState<Record<string, DailyCheckResult>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const ref = useRef<HTMLDivElement>(null);
@@ -65,7 +69,7 @@ export const DailyForm: React.FC = () => {
           점검월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
         </label>
         <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_일반위생관리점검표_${month}.pdf`)}
+          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_일반위생관리점검표_${month}.pdf`, outputSignal())}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
         >
           <FileDown size={13} /> PDF 저장

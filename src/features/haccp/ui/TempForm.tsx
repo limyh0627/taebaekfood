@@ -1,3 +1,4 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, {useState,useRef,useEffect} from 'react';
 import {FileDown,Thermometer,Save,Trash2,BadgeCheck,Plus} from 'lucide-react';
 import {collection,doc,onSnapshot,query,where} from 'firebase/firestore';
@@ -38,6 +39,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
   const today = todayStr();
   const [records, setRecords] = useState<TempRecord[]>([]);
   const [selected, setSelected] = useState<TempRecord | null>(null);
+  const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.date ?? ""}`);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -179,7 +181,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
             </span>
             <span className="text-xs text-slate-500">{selected.date} · 측정시간 12:30</span>
             <div className="ml-auto flex gap-2 flex-wrap justify-end">
-              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_온도관리일지_${selected.date}.pdf`)}
+              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_온도관리일지_${selected.date}.pdf`, outputSignal())}
                 className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
                 <FileDown size={12} /> PDF
               </button>

@@ -10,10 +10,10 @@ const hash=(value:any)=>createHash('sha256').update(JSON.stringify(canonical(val
 vi.mock('firebase/functions',()=>({httpsCallable:()=>async(input:any)=>{
  state.calls.push(structuredClone(input));await state.gate;
  if(state.mode==='unknown')throw new Error('응답 유실');
- const before=state.docs.get('issuedStatements/s1');
- const receipt={companyId:'taebaek',createdBy:'uid',kind:'issuedStatements',action:'delete',status:'applied',voucherId:'s1',command:input,requestHash:hash({companyId:'taebaek',actorId:'uid',...input}),beforeSnapshot:before,beforeHash:before?hash(before):null,afterHash:null};
+ const before=state.docs.get('issuedStatements/'+input.statementId);
+ const receipt={companyId:'taebaek',createdBy:'uid',kind:'issuedStatements',action:'delete',status:'applied',voucherId:input.statementId,command:input,requestHash:hash({companyId:'taebaek',actorId:'uid',...input}),beforeSnapshot:before,beforeHash:before?hash(before):null,afterHash:null};
  if(state.mode==='rejected'){state.docs.set(`voucherMutationOperations/${input.operationId}`,{...receipt,status:'rejected',failureCode:'failed-precondition',failureMessage:'전표 변경'});throw new Error('전표 변경');}
- if(before){state.docs.set(`voucherMutationOperations/${input.operationId}`,receipt);state.docs.delete('issuedStatements/s1');}
+ if(before){state.docs.set(`voucherMutationOperations/${input.operationId}`,receipt);state.docs.delete('issuedStatements/'+input.statementId);}
  if(state.mode==='tampered')state.docs.get(`voucherMutationOperations/${input.operationId}`).createdBy='foreign';
  if(state.mode==='tamperedCommand')state.docs.get(`voucherMutationOperations/${input.operationId}`).command={...input,expectedRevision:99};
  if(state.mode==='lateActor')state.uid='other';
@@ -35,3 +35,5 @@ it('같은 키에 새 요청이 있으면 오래된 완료가 삭제하지 않�
 it('적용 전표 삭제는 원문을 보존하고 전용 취소만 호출한다',async()=>{const original=state.docs.get('issuedStatements/s1');original.noncashApplication={kind:'advance-application'};original.tradeDate='2026-10-08';await deleteIssuedStatement('taebaek','s1');expect(state.calls).toHaveLength(0);expect(state.cancels).toHaveLength(1);expect(state.cancels[0]).toMatchObject({applicationStatementId:'s1',partnerId:'p',expectedRevision:3,releaseId:'release'});expect(state.docs.get('issuedStatements/s1')).toEqual(original);});
 it('적용 취소 응답 유실은 같은 전용 요청을 재개한다',async()=>{Object.assign(state.docs.get('issuedStatements/s1'),{noncashApplication:{kind:'advance-application'},tradeDate:'2026-10-08'});state.mode='unknown';await expect(deleteIssuedStatement('taebaek','s1')).rejects.toThrow('유실');state.mode='success';await deleteIssuedStatement('taebaek','s1');expect(state.cancels[1]).toEqual(state.cancels[0]);expect(state.calls).toHaveLength(0);});
 it('취소 기록은 삭제나 재취소하지 않는다',async()=>{state.docs.get('issuedStatements/s1').noncashApplication={kind:'advance-cancellation'};await expect(deleteIssuedStatement('taebaek','s1')).rejects.toThrow('취소 기록');expect(state.calls).toHaveLength(0);expect(state.cancels).toHaveLength(0);});
+
+it('한글 전표 ID도 응답 유실 뒤 같은 원문으로 재시도하고 감사 확인 후 해제한다',async()=>{const id='stmt-open-합성-매출';state.docs.set('issuedStatements/'+id,state.docs.get('issuedStatements/s1'));state.mode='unknown';await expect(deleteIssuedStatement('taebaek',id)).rejects.toThrow('유실');const first=structuredClone(state.calls[0]);expect(first.statementId).toBe(id);expect(state.saved.size).toBe(1);state.mode='success';await deleteIssuedStatement('taebaek',id);expect(state.calls[1]).toEqual(first);expect(state.saved.size).toBe(0);expect(state.docs.has('issuedStatements/'+id)).toBe(false);});

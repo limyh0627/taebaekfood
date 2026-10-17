@@ -1,4 +1,4 @@
-import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {runInventoryWriterTransaction,captureInventoryWriterContext,prepareCatalogOrderCommit} from '../inventoryWriterProtocol';
 import {readOemReceiptEntry,pinOemReceiptPacket,acknowledgeOemReceiptPacket,markOemReceiptPreCallFailure,
  withOemReceiptLock,type OemReceiptScope} from '../oemReceiptPending';
 import {advanceOrderInventoryStage,assertOrderInventoryGeneration,generationFromOrder,hasOrderInventoryGenerationCompletion,validateOrderInventoryGeneration,type OrderInventoryGeneration} from '../orderInventoryGeneration';
@@ -68,6 +68,7 @@ const protocolCollections=new Set<string>(['items','orders','rawInventories','ra
 const orderInventoryFields=['status','items','inventoryOperation','inventoryGenerationCompletion','productionRecordIndex','producedAt','shippedOut','productConsumedLots','rawConsumedLots','itemInventory','inventorySnapshots','rawInventoryAttempt','deliveredAt'];
 const tombstoneRef=(store:Firestore,companyId:string,itemId:string)=>doc(store,COL.inventoryWriterDeletions,companyId+'__'+itemId);
 function assertTombstone(data:Record<string,any>|undefined,companyId:string,itemId:string):void{
+ if(data?.mergedIntoItemId!==undefined)throw Error('통합된 품목은 다시 만들 수 없습니다. 남긴 품목을 선택해 주세요.');
  if(data&&(data.companyId!==companyId||data.itemId!==itemId||data.inventoryWriterProtocolVersion!==1||!Number.isSafeInteger(data.deletionRevision)||data.deletionRevision<1||!Number.isSafeInteger(data.lastDeletedItemRevision)||data.lastDeletedItemRevision<0||data.beforeRevision!==data.lastDeletedItemRevision))throw Error('품목 삭제의 회사·버전 기록이 다릅니다.');
 }
 function protocolWriteData(name:string,before:Record<string,any>|undefined,data:Record<string,any>,tombstone?:Record<string,any>):Record<string,any>{
@@ -102,14 +103,15 @@ async function protocolGatewayWrite(store:Firestore,name:CollectionName,ref:Retu
   if(before&&companyOf(before)!==data.companyId)throw Error('다른 회사 문서를 수정할 수 없습니다.');
   if(tomb)assertTombstone(tomb.exists()?tomb.data():undefined,String(data.companyId),ref.id);
   if(mode==='update'&&!snap.exists())throw Error('수정할 문서를 찾을 수 없습니다.');
-  const scoped=protocolWriteData(name,before,data,tomb?.exists()?tomb.data():undefined);
+  const scoped=name==='purchaseOrders'?data:protocolWriteData(name,before,data,tomb?.exists()?tomb.data():undefined);
   // 사용자가 저장한 체크값을 옛 채널 표식이 다시 켜지 않게 한다. 최신 배열의 다른 연결은 보존한다.
   if(options?.reconcileSmartStoreMarker===true&&name==='items'&&mode==='update'&&before?.type==='product'
     &&Object.hasOwn(data,'isSmartStore')&&typeof data.isSmartStore==='boolean'
     &&Array.isArray(before.partnerIds)&&before.partnerIds.every(value=>typeof value==='string')&&before.partnerIds.includes('SMARTSTORE')){
     scoped.partnerIds=arrayRemove('SMARTSTORE');
   }
-  if(mode==='update')tx.update(ref,scoped);else tx.set(ref,scoped,mode==='merge'?{merge:true}:{});
+  const commitData=name==='orders'||name==='purchaseOrders'?await prepareCatalogOrderCommit(store,tx,ref.id,before,scoped,mode==='set',name):scoped;
+  if(mode==='update')tx.update(ref,commitData);else tx.set(ref,commitData,mode==='merge'?{merge:true}:{});
  });
 }
 
@@ -255,7 +257,7 @@ export const subscribeToDocument = <T>(
 
 export const setDocument = async (collectionName: CollectionName, docId: string, data: any) => {
   const scoped = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(data)));
-  if(protocolCollections.has(collectionName)){await protocolGatewayWrite(db,collectionName,doc(db,collectionName,docId),scoped,'merge');return;}
+  if(protocolCollections.has(collectionName)||collectionName==='purchaseOrders'){await protocolGatewayWrite(db,collectionName,doc(db,collectionName,docId),scoped,'merge');return;}
   await setDoc(doc(db, collectionName, docId), scoped, { merge: true });
 };
 
@@ -492,7 +494,7 @@ export const addItem = async (collectionName: CollectionName, item: any, options
       throw error;
     });
   }
-  if(protocolCollections.has(collectionName)){
+  if(protocolCollections.has(collectionName)||collectionName==='purchaseOrders'){
     const ref=id?doc(db,collectionName,id):doc(collection(db,collectionName));
     await protocolGatewayWrite(db,collectionName,ref,data,'set');return ref.id;
   }
@@ -537,7 +539,7 @@ export const updateItem = async (collectionName: CollectionName, id: string, dat
   // 수정도 로그인 claim의 회사를 함께 보낸다. 생성만 회사 경계를 지나고 수정은 화면값에 맡기면
   // 오피스톡 초대처럼 강화된 규칙에서 저장 경로마다 동작이 갈린다.
   const scoped = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(data)));
-  if(protocolCollections.has(collectionName)){await protocolGatewayWrite(db,collectionName,docRef,scoped,'update',options);return;}
+  if(protocolCollections.has(collectionName)||collectionName==='purchaseOrders'){await protocolGatewayWrite(db,collectionName,docRef,scoped,'update',options);return;}
   await updateDoc(docRef, scoped);
 };
 
@@ -704,7 +706,7 @@ export type CompanyWriteOperation =
 /** 배치 생성도 단건 생성과 같은 claim 회사 경계를 반드시 통과한다. */
 export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise<void> => {
   if (!ops.length) return;
-  if(ops.some(op=>protocolCollections.has(op.collection))){
+  if(ops.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders')){
     if(new Set(ops.map(op=>op.collection+'/'+op.id)).size!==ops.length)throw Error('같은 문서의 중복 저장은 한 원자 요청으로 합쳐 주세요.');
     const scoped=await Promise.all(ops.map(op=>companyScopedWriteData(op.collection,op.kind==='set'?itemWritePayload(op.collection,stripUndefined(op.data)):{})));
     if(ops.length+ops.filter(op=>op.kind==='delete'&&op.collection==='items').length>500)throw Error('연결 품목 삭제·저장은 한 거래의 저장 한도를 초과합니다.');
@@ -712,6 +714,7 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
       const refs=ops.map(op=>doc(db,op.collection,op.id));
       const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
       const tombs=await Promise.all(ops.map((op,index)=>op.collection==='items'&&(op.kind==='delete'||!snaps[index].exists())?tx.get(tombstoneRef(db,String(scoped[index].companyId),op.id)):Promise.resolve(undefined)));
+      const commits=await Promise.all(ops.map((op,index)=>op.kind==='set'&&(op.collection==='orders'||op.collection==='purchaseOrders')?prepareCatalogOrderCommit(db,tx,op.id,snaps[index].exists()?snaps[index].data():undefined,scoped[index],!(op.merge??false),op.collection):Promise.resolve(scoped[index])));
       ops.forEach((op,index)=>{
         const before=snaps[index].exists()?snaps[index].data():undefined;
         if(before&&companyOf(before)!==scoped[index].companyId)throw Error('다른 회사 문서를 수정할 수 없습니다.');
@@ -726,7 +729,7 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
             tx.set(tombstoneRef(db,String(scoped[index].companyId),op.id),{companyId:scoped[index].companyId,itemId:op.id,inventoryWriterProtocolVersion:1,deletionRevision,beforeRevision,lastDeletedItemRevision:beforeRevision,deletedAt:new Date().toISOString()});
           }
           tx.delete(refs[index]);
-        }else tx.set(refs[index],protocolCollections.has(op.collection)?protocolWriteData(op.collection,before,scoped[index],tomb):scoped[index],{merge:op.merge??false});
+        }else tx.set(refs[index],protocolCollections.has(op.collection)?protocolWriteData(op.collection,before,commits[index],tomb):commits[index],{merge:op.merge??false});
       });
     });
     return;
@@ -1024,7 +1027,7 @@ export const claimOrderInventoryOperation = async (
 export async function guardedUpdateOrderInventoryGeneration(generation:OrderInventoryGeneration,patch:Record<string,unknown>):Promise<void>{
  if(Object.keys(patch).some(key=>['inventoryOperation','inventoryGenerationCompletion','productionRecordIndex','id','companyId'].some(prefix=>key===prefix||key.startsWith(prefix+'.'))))throw Error('재고 작업 표식은 임의 패치할 수 없습니다.');
  await assertOrderInventoryGenerationActor(generation);
- await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(generation),companyId:generation.companyId,getCurrentUser:()=>auth?.currentUser,ready:authReady,isStillCurrent:async()=>{await assertOrderInventoryGenerationActor(generation);return true;}}),async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');assertOrderInventoryGeneration({...snap.data(),id:generation.orderId} as Order,generation);await assertOrderInventoryGenerationActor(generation);tx.update(ref,protectInventoryWriterPatch(snap.data(),patch,Object.keys(patch)));});
+ await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(generation),companyId:generation.companyId,getCurrentUser:()=>auth?.currentUser,ready:authReady,isStillCurrent:async()=>{await assertOrderInventoryGenerationActor(generation);return true;}}),async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');assertOrderInventoryGeneration({...snap.data(),id:generation.orderId} as Order,generation);await assertOrderInventoryGenerationActor(generation);const commitPatch=await prepareCatalogOrderCommit(db,tx,generation.orderId,snap.data(),patch);tx.update(ref,protectInventoryWriterPatch(snap.data(),commitPatch,Object.keys(patch)));});
  await assertOrderInventoryGenerationActor(generation);
 }
 export async function markOrderInventoryGenerationFailed(generation:OrderInventoryGeneration,error:string,stage:NonNullable<Order['inventoryOperation']>['stage']):Promise<void>{

@@ -1,3 +1,5 @@
+import RawDocUsageDetailModal from '../../../components/RawDocUsageDetailModal';
+import {collectRawDocOilUsage,rawDocNoteSummary,rawDocProductionReplacement,type RawDocLedgerRecord,type RawDocUsageSelection,type RawDocUsageContribution} from '../../shared/rawDocUsageDetail';
 import { useMenuPreferencesController } from './hooks/useMenuPreferencesController';
 import { AppTopBar } from './ui/AppTopBar';
 import { useMenuIdentity } from './hooks/useMenuIdentity';
@@ -140,7 +142,9 @@ const HRManager = React.lazy(() => import('../../../components/HRManager'));
 import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
-import { downloadSalesJournal } from '../../shared/salesJournal';
+import { downloadSalesJournal,prepareSalesJournal,completeSalesJournalOutput,newSalesJournalProgress,saveSalesJournalArtifact,salesJournalLogMatches,type SalesJournalProgress,type SalesJournalData } from '../../shared/salesJournal';
+import {confirmWorkbookOutput,previewPreparedWorkbookOutput,type WorkbookOutputArtifact} from '../../shared/workbookOutput';
+import {useOutputScope} from '../../shared/hooks/useOutputScope';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { classifyOrderEdit, editBlockMessage } from '../../shared/orderEditGuard';
 import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
@@ -244,7 +248,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, doc, deleteField, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDocFromServer, doc, deleteField, onSnapshot, query, where } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -258,7 +262,7 @@ import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIss
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
 import DataIntegrityMonitor from './DataIntegrityMonitor';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
-import { rawLedgerExcelRows } from './rawLedgerExcel';
+import { downloadRawLedgerExcel } from './rawLedgerExcel';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -515,6 +519,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
   const [openChatRoomId, setOpenChatRoomId] = useState<string | null>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
+  const [rawUsageDetail, setRawUsageDetail] = useState<RawDocUsageSelection | null>(null);
+  useEffect(() => { setRawUsageDetail(null); }, [companyId, docYearMonth, rmActiveMaterial, currentView, docTab]);
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   // mode: 'neg'|'pos' = 사용량 정정, 'stocktake' = 실사(잔량을 입력값으로 리셋). 수불부 전용 — 로트·재고는 안 건드림.
   const [rmCorrectionForm, setRmCorrectionForm] = useState<{ date: string; amount: string; isNegative: boolean; note: string; mode?: 'neg' | 'pos' | 'stocktake' }>(
@@ -522,6 +528,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
+  const documentOutputSignal=useOutputScope(companyId,`${currentView}:${docTab}:${docYearMonth}:${bulkMfgDate}:${selectedLog?.id??''}`);
+  const salesOutputBusy=useRef(false);
+  const salesOutputSessions=useRef(new Map<string,{artifact:WorkbookOutputArtifact;logId:string;logPayload:Record<string,unknown>;journal:SalesJournalData;orders:{id:string;partnerName:string}[];progress:SalesJournalProgress}>());
 
   // 거래처 가입승인 대기 카운트 (web 홈페이지에서 가입한 users 중 status='pending')
   const [pendingSignupCount, setPendingSignupCount] = useState(0);
@@ -892,34 +901,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 서류(원료수불부)용 기름 사용량 — 재고(BOM)와 **별개**로 판매분에서 다시 구한다.
   //   참기름: 아래 하드코딩 비율 (품목 원료식과 다른 값이 있어 손대지 않음)
   //   들기름: 품목 원료식(item_formula) 그대로 — 시골향들기름1=통들깨 100, 2=수입 9:통들깨 1 …
-  const oilOutflowByDate = useMemo<Record<string, Record<string, number>>>(() => {
-    const dayCat: Record<string, Record<string, number>> = {};
-    for (const o of allOrders) {
-      if (![OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus)) continue;
-      const ds = docDateOf(o);   // 판매기록부를 찍은 날 = 네 서류 공통 기준일
-      if (!ds) continue;
-      for (const item of o.items) {
-        const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-        /*  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
-         *  **수량은 stockUnits 를 지난다**(2026-09-09 사장님: "전표는 쓰고 재고는 안 쓸 수가 있나").
-         *  docUnpack 이 박스를 낱개로 푸는데, 박스 수가 아니라 낱개 수를 주면 **또 풀어서 열 배**가 된다.
-         *  재고·전표와 같은 함수를 지나야 세 숫자가 안 갈린다. */
-        for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs, ds)) {
-          const kg = docOilKg(line.spec, line.qty);
-          if (kg <= 0) continue;
-          (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
-        }
-      }
-    }
-    // 품목 → 원료 배분은 docOil(=PRODUCT_FORMULA) 한 곳에서만 온다.
-    const out: Record<string, Record<string, number>> = {};
-    for (const ds in dayCat) {
-      const row: Record<string, number> = {};
-      for (const [품목, kg] of Object.entries(dayCat[ds])) addOilByRaw(row, 품목, kg);
-      out[ds] = row;
-    }
-    return out;
-  }, [allOrders, allItems, appData.orderUnitInputs]);
+  const oilUsageDetail = useMemo(() => collectRawDocOilUsage(allOrders, allItems, appData.orderUnitInputs, productionRecords, companyId), [allOrders, allItems, appData.orderUnitInputs, productionRecords, companyId]);
+  const oilOutflowByDate = oilUsageDetail.totals;
 
   // 서류용 통깨/깨분 **압착 입고** — rawMaterialLedger의 통깨참기름/깨분참기름 received(압착 rm-yield + 수동입고, 정정 제외).
   //  생산작업기록부/2의 입고를 sesameInputLedger(수동) 대신 자동 압착 입고로 채운다 = 원료수불부 입고와 같은 소스.
@@ -2950,7 +2933,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         date: selectedLog.date,
                         oilRows: selectedLog.productionRows,
                         seedRows, salesRows, extraRows,
-                      })}
+                      }, documentOutputSignal())}
                       className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[11px] font-black hover:bg-emerald-600 transition-colors"
                     >엑셀로 저장</button>
                   </div>
@@ -3420,7 +3403,47 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }).map(item => item.name)
             );
 
-            const exportExcel = async () => {
+            const finishSalesOutput = async (session: {artifact:WorkbookOutputArtifact;logId:string;logPayload:Record<string,unknown>;journal:SalesJournalData;orders:{id:string;partnerName:string}[];progress:SalesJournalProgress},signal:AbortSignal) => {
+              const result=await completeSalesJournalOutput({progress:session.progress,signal,
+                writeLog:()=>addItem('productionSalesLogs',session.logPayload),
+                verifyLog:async()=>{const snap=await getDocFromServer(doc(db,'productionSalesLogs',session.logId));return snap.exists()&&salesJournalLogMatches(session.logPayload,snap.data());},
+                saveFile:()=>saveSalesJournalArtifact(session.artifact,`생산작업판매일지_${session.journal.date}.xlsx`,signal),
+                closeOrders:async()=>{
+              const deductFailures: string[] = [];
+              for (const o of session.orders) {
+                try {
+                  // **여기서 고른 날짜(docDate)가 네 서류의 공통 기준일이다.**
+                  //   deliveredAt에 그 날짜를 박으면 원료수불부·작업기록부 1·2가 같은 날에 잡힌다(docDateOf).
+                  //   시각은 언제나 00:00:00.000Z — '처리한 순간'이 아니라 '어느 날짜 서류에 실렸나'를 담는다.
+                  //   상태·재고·로트·수불부와 같은 작업 단위의 마지막 주문 패치에서 함께 저장한다.
+                  //   예전엔 새벽에 뽑으면 서류는 8/10인데 deliveredAt은 8/11로 찍혀 하루씩 갈렸다.
+                  await changeOrderStatus(o.id, OrderStatus.DELIVERED, undefined, {
+                    approvedBy: currentUser?.name,
+                    orderPatch: { deliveredAt: `${session.journal.date}T00:00:00.000Z` },
+                  });
+                } catch (e) {
+                  console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
+                  deductFailures.push(o.partnerName || o.id);
+                }
+              }
+
+                  if(deductFailures.length)throw Error('일부 주문의 이력 이동 결과를 확인해 주세요.');
+                }});
+              if(signal.aborted)return;
+              if(result==='log-unknown')alert('판매일지 저장 결과를 확인하지 못했습니다. 같은 요청 번호로 서버 기록을 다시 확인합니다. 새 기록을 만들지 않습니다.');
+              if(result==='orders-pending')alert('판매일지는 저장되었지만 일부 주문의 이력 이동 결과를 확인해야 합니다. 해당 주문 상태를 확인해 주세요. 자동으로 다시 전환하지 않습니다.');
+            };
+                        const exportExcel = async () => {
+              if(salesOutputBusy.current)return;const signal=documentOutputSignal();if(signal.aborted)return;
+              const actorUid=auth.currentUser?.uid;if(!actorUid)return;const key=companyId+':'+actorUid;
+              salesOutputBusy.current=true;
+              try{
+                const prior=salesOutputSessions.current.get(key);
+                if(prior){
+                  if(!prior.progress.done){await finishSalesOutput(prior,signal);return;}
+                  if(JSON.stringify(prior.orders.map(o=>o.id))===JSON.stringify(shippedOrders.map(o=>o.id))){await previewPreparedWorkbookOutput({artifact:prior.artifact,fileName:`생산작업판매일지_${prior.journal.date}.xlsx`,signal});return;}
+                  salesOutputSessions.current.delete(key);
+                }
               const docDate = bulkMfgDate || today();
               const farOrders = ordersFarFromJournalDate(shippedOrders, docDate);
               if (farOrders.length > 0) {
@@ -3445,58 +3468,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 salesRows: rightRows.map(r => ({ 상호: r.상호, 품목: r.품목, 용량: r.spec, 수량: r.수량, 소비기한: r.소비기한 })),
                 extraRows: extraSalesRows.map(r => ({ 품목: r.품목, 용량: r.용량, 수량: r.qty, 거래처: r.거래처 })),
               };
-              // 생산판매기록 로그 저장 (관리자 서류 조회용)
-              const logId = `psl-${Date.now()}`;
-              await addItem('productionSalesLogs', {
-                id: logId,
-                // 회사 분리 규칙은 새 문서에 companyId가 없으면 관리자도 저장을 거절한다.
-                // 파일을 먼저 내려받으면 사용자는 처리가 끝난 줄 알지만 주문은 출고에 남으므로,
-                // 로그 저장을 먼저 확정하고 성공한 뒤에만 파일을 내려받는다.
-                companyId,
-                date: docDate,
-                createdAt: new Date().toISOString(),
-                createdBy: currentUser.name,
-                orderCount: shippedOrders.length,
-                // 서류 네 덩어리를 그대로 남긴다 — 이력 보기가 실물 서류와 같은 모양으로 뜨고,
-                // 거기서 [엑셀로 저장]을 누르면 원본과 같은 파일이 다시 나온다.
-                productionRows: leftRows,
-                seedRows: journalSeedRows,
-                salesRows: rightRows.map(r => ({ 상호: r.상호, 품목: r.품목, 용량: r.spec, 수량: r.수량, 소비기한: r.소비기한 })),
-                extraRows: extraSalesRows.map(r => ({ 품목: r.품목, 용량: r.용량, 수량: r.qty, 거래처: r.거래처 })),
-                orderSummaries: shippedOrders.map(o => ({
-                  partnerName: o.partnerName,
-                  items: o.items.map(i => ({ name: i.name, qty: i.quantity ?? 1 })),
-                })),
-              });
-              await downloadSalesJournal(journal);
 
-              // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동.
-              // 재고 조정(생산/출고)은 이미 각 상태 전환 때 반영됨 — 여기선 상태만 이동하되,
-              // 혹시 생산/출고 미반영 주문(레거시·스킵)이면 changeOrderStatus가 그때 정리한다(부수효과).
-              const deductFailures: string[] = [];
-              for (const o of shippedOrders) {
-                try {
-                  // **여기서 고른 날짜(docDate)가 네 서류의 공통 기준일이다.**
-                  //   deliveredAt에 그 날짜를 박으면 원료수불부·작업기록부 1·2가 같은 날에 잡힌다(docDateOf).
-                  //   시각은 언제나 00:00:00.000Z — '처리한 순간'이 아니라 '어느 날짜 서류에 실렸나'를 담는다.
-                  //   상태·재고·로트·수불부와 같은 작업 단위의 마지막 주문 패치에서 함께 저장한다.
-                  //   예전엔 새벽에 뽑으면 서류는 8/10인데 deliveredAt은 8/11로 찍혀 하루씩 갈렸다.
-                  await changeOrderStatus(o.id, OrderStatus.DELIVERED, undefined, {
-                    approvedBy: currentUser?.name,
-                    orderPatch: { deliveredAt: `${docDate}T00:00:00.000Z` },
-                  });
-                } catch (e) {
-                  console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
-                  deductFailures.push(o.partnerName || o.id);
-                }
-              }
-              // 참고: 향미유/고춧가루만 있는 출고 주문도 위 shippedOrders 루프가 이미 처리한다
-              // (SUB_ONLY_CATS에 향미유/고춧가루가 없으므로 some(...) 조건을 만족).
-              // 과거에는 SUB_ONLY_CATS에 향미유가 포함돼 별도 루프가 필요했으나, 영문 카테고리
-              // 전환(e237fc4) 이후 중복 차감을 유발해 제거함.
-              if (deductFailures.length > 0) {
-                alert(`주문 ${deductFailures.length}건은 재고/원료 처리 오류로 이력 이동이 중단되었습니다:\n${[...new Set(deductFailures)].join(', ')}\n\n상태는 변경되지 않았습니다. 해당 주문의 재고·원료 로트·수불부를 확인해 주세요.`);
-              }
+                const snapshot=JSON.parse(JSON.stringify(journal)) as SalesJournalData;
+                const orderSnapshot=JSON.parse(JSON.stringify(shippedOrders)) as typeof shippedOrders;
+                const artifact=await prepareSalesJournal(snapshot);if(signal.aborted)return;
+                if(!await confirmWorkbookOutput({artifact,fileName:`생산작업판매일지_${docDate}.xlsx`,signal})||signal.aborted)return;
+                const logId=`psl-${crypto.randomUUID()}`;
+                const logPayload={id:logId,companyId,date:docDate,createdAt:new Date().toISOString(),createdBy:currentUser.name,orderCount:orderSnapshot.length,productionRows:snapshot.oilRows,seedRows:snapshot.seedRows,salesRows:snapshot.salesRows,extraRows:snapshot.extraRows,orderSummaries:orderSnapshot.map(o=>({partnerName:o.partnerName,items:o.items.map(i=>({name:i.name,qty:i.quantity??1}))}))};
+                const session={artifact,logId,logPayload,journal:snapshot,orders:orderSnapshot.map(o=>({id:o.id,partnerName:o.partnerName})),progress:newSalesJournalProgress()};
+                salesOutputSessions.current.set(key,session);await finishSalesOutput(session,signal);
+              }catch(error){if(!signal.aborted)alert(error instanceof Error?error.message:'출력을 준비하지 못했습니다. 다시 시도해 주세요.');}finally{salesOutputBusy.current=false;}
             };
 
             return (
@@ -3808,7 +3789,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 {docTab === '원료수불부' && (() => {
                   //  addedBy·orderId 를 여기서 떨어뜨리면 서류에도 '누가·어디'가 영영 안 뜬다
                   //  (2026-09-07 사장님: "원료수불부도 그렇고"). 원장 줄이 들고 온 것을 그대로 나른다.
-                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number; addedBy?: string; orderId?: string };
+                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number; addedBy?: string; orderId?: string; material?: string; source?: unknown; reportedDeltaKg?: number; appliedDeltaKg?: number; replacement?: 'replace'|'keep'|'unconfirmed'; excluded?: boolean };
                   //  자동 줄이 어느 주문 때문인지 푸는 표. 원료 11개를 도는 엑셀 저장에서도 한 번만 만든다.
                   const orderById = orderIndex(allOrders);
 
@@ -3836,10 +3817,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       //   서류 쪽 정정이 필요하면 원료수불부 화면에서 따로 넣는다 — 재고 정정과 서류 정정은 별개다.
                       .filter(e => !/^rm-stocktake-/.test(e.id ?? ''))
                       .map(e => {
+                        const evidence = e as RawDocLedgerRecord;
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
                         const received = isLegacyL ? Math.round(e.received * density * 1000) / 1000 : e.received;
                         const used     = isLegacyL ? Math.round(e.used     * density * 1000) / 1000 : e.used;
-                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id, createdAt: e.createdAt, targetKg: e.targetKg, addedBy: e.addedBy, orderId: e.orderId };
+                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id, createdAt: e.createdAt, targetKg: e.targetKg, addedBy: e.addedBy, orderId: e.orderId, material: e.material, source: evidence.source, reportedDeltaKg: evidence.reportedDeltaKg, appliedDeltaKg: evidence.appliedDeltaKg, replacement:rawDocProductionReplacement(evidence,mergedRawMaterialLedger,companyId) };
                       });
                     const derivedEntries = calcDerivedReceived(material);
                     // 같은 날짜 안에서는 기록 시각 순 — 실사(targetKg 앵커)와 당일 입출고의 순서가 잔량에 영향
@@ -3869,8 +3851,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     //  배합표에 나오는 원료는 전부 판매에서 되계산한다 — 그래야 판매기록부와 같은 날·같은 양이 된다.
                     //  (원장 자동차감은 생산처리 시점에 찍혀 날짜가 다르다. 입고·실사는 원장 그대로 쓴다)
                     const isGradeMat = DOC_RECALC_RAWS.has(material);
-                    const monthEntries = [
-                      ...allEntries.filter(e => e.date.startsWith(docYearMonth) && !(isGradeMat && (e.id ?? '').startsWith('rm-auto-') && e.used > 0)),
+                    const monthEntries: UsageRow[] = [
+                      ...allEntries.filter(e => e.date.startsWith(docYearMonth) && !(isGradeMat && (e.id ?? '').startsWith('rm-auto-') && e.used > 0)).map(e=>isGradeMat&&e.replacement==='replace'?{...e,received:0,used:0,excluded:true}:e),
                       ...(isGradeMat
                         ? Object.entries(oilOutflowByDate)
                             .filter(([ds]) => ds.startsWith(docYearMonth))
@@ -3880,7 +3862,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     ].sort((a, b) => a.date === b.date ? (a.createdAt ?? '').localeCompare(b.createdAt ?? '') : a.date.localeCompare(b.date));
                     let balance = prevBalance;
                     const r3 = (n: number) => Math.round(n * 1000) / 1000;
-                    const groups = new Map<string, { date: string; received: number; used: number; adj: number; prevBalance: number; currentBalance: number; notes: string[]; who: Set<string>; wheres: Set<string>; types: Set<string>; delIds: string[] }>();
+                    const groups = new Map<string, { date: string; received: number; used: number; adj: number; prevBalance: number; currentBalance: number; notes: string[]; who: Set<string>; wheres: Set<string>; types: Set<string>; delIds: string[]; usage: RawDocUsageContribution[] }>();
                     // 같은 날이라도 **정정을 만나면 줄을 끊는다.**
                     //   정정 전 입고·사용과 정정 후 입고·사용이 한 줄에 섞이면 무엇이 정정 대상이었는지 알 수 없다.
                     //   → [정정 전 묶음] [정정 줄] [정정 후 묶음] 순으로 따로 남는다.
@@ -3893,10 +3875,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       if (e.date !== segDate) { segDate = e.date; seg = 0; }
                       const key = isCorrCol ? `${e.date}#adj${seg}` : `${e.date}#${seg}`;
                       let g = groups.get(key);
-                      if (!g) { g = { date: e.date, received: 0, used: 0, adj: 0, prevBalance: prev, currentBalance: balance, notes: [], who: new Set(), wheres: new Set(), types: new Set(), delIds: [] }; groups.set(key, g); }
+                      if (!g) { g = { date: e.date, received: 0, used: 0, adj: 0, prevBalance: prev, currentBalance: balance, notes: [], who: new Set(), wheres: new Set(), types: new Set(), delIds: [], usage: [] }; groups.set(key, g); }
                       if (!isCorrCol) {
                         g.received = r3(g.received + e.received);
                         g.used = r3(g.used + e.used);
+                        if (e.excluded) g.usage.push({kind:'excluded',itemName:e.material??material,rawKg:0,sources:[],recordId:e.id,material:e.material,source:e.source,note:e.note,orderId:e.orderId,reportedDeltaKg:e.reportedDeltaKg,appliedDeltaKg:e.appliedDeltaKg});
+                        if (e.used !== 0 || e.replacement === 'unconfirmed') {
+                          if (e.id === `oil-${material}-${e.date}`) g.usage.push(...(oilUsageDetail.contributions[e.date]?.[material] ?? []));
+                          else g.usage.push({kind:'ledger',itemName:e.material ?? material,rawKg:e.used,sources:[],recordId:e.id,material:e.material,source:e.source,note:e.note,orderId:e.orderId,reportedDeltaKg:e.reportedDeltaKg,appliedDeltaKg:e.appliedDeltaKg,unconfirmed:e.replacement==='unconfirmed'});
+                        }
                       } else {
                         // 정정·실사는 입고·사용이 아니다 — '정정' 칸에 실제 잔량 변화량으로 남긴다
                         const target = (e as { targetKg?: number }).targetKg;
@@ -3906,6 +3893,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       //  누가·어디는 재고 원장 화면(RawLedgerList)과 **같은 함수**가 푼다
                       const tr = ledgerTrace(e, orderById, linesUsingRaw);
                       if (tr.note) g.notes.push(tr.note);
+                      if (e.replacement === 'unconfirmed') g.notes.push('취소 원본 미확인 — 상세에서 확인');
                       if (tr.who) g.who.add(tr.who);
                       if (tr.where) g.wheres.add(tr.where);
                       g.types.add(isCorrCol ? 'correction' : e.type);
@@ -3914,6 +3902,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     }
                     const rows = Array.from(groups.entries()).map(([key, g]) => ({
                       date: g.date,
+                      usage: [...g.usage, ...(Math.abs(Math.round(g.used)-g.usage.reduce((sum,entry)=>sum+entry.rawKg,0))>1e-9?[{kind:'rounding' as const,itemName:'표시 반올림 조정',rawKg:Math.round(g.used)-g.usage.reduce((sum,entry)=>sum+entry.rawKg,0),sources:[]}]:[])],
                       received: Math.round(g.received),
                       used: Math.round(g.used),
                       adj: Math.round(g.adj),
@@ -3937,50 +3926,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                   // 원료수불부 Excel 저장
                   const exportRmExcel = async () => {
-                    const ExcelJS = (await import('exceljs')).default;
-                    const wb = new ExcelJS.Workbook();
-                    for (const mat of RM_TABS) {
-                      const ws = wb.addWorksheet(mat);
-                      ws.columns = [
-                        { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
-                      ];
-                      // 수불부는 모든 원료를 kg로 통일 표시 (L 입력 데이터는 buildRawDocSheet에서 환산됨)
-                      const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '정정량(kg)', '현재고(kg)', '비고']);
-                      hRow.font = { bold: true, size: 9 };
-                      const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
-                      hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
-                      const sheet = buildRawDocSheet(mat);
-                      const excelRows = rawLedgerExcelRows(docYearMonth, sheet);
-                      // 전월이월 행 — 전달 마지막 현재고를 전재고로 (매달 1일)
-                      const openRow = ws.addRow(excelRows.opening);
-                      openRow.font = { size: 9, bold: true };
-                      openRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
-                      excelRows.details.forEach((values) => {
-                        const r = ws.addRow(values);
-                        r.font = { size: 9 };
-                        r.eachCell(c => { c.border = border; });
-                        r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-                        r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-                      });
-                      // 합계 행 — 당월 총 입고·사용
-                      const sumRow = ws.addRow(excelRows.total);
-                      sumRow.font = { size: 9, bold: true };
-                      sumRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
-                    }
-                    const buf = await wb.xlsx.writeBuffer();
-                    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `원료수불부_${docYearMonth}.xlsx`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    const signal=documentOutputSignal();if(signal.aborted)return;
+                    await downloadRawLedgerExcel(RM_TABS.map(material=>({material,sheet:buildRawDocSheet(material)})),docYearMonth,signal);
                   };
 
                   const activeLedger = buildRawDocSheet(rmActiveMaterial);
 
                   return (
                     <div className="space-y-4">
+                      {rawUsageDetail && rawUsageDetail.companyId === companyId && rawUsageDetail.month === docYearMonth && rawUsageDetail.material === rmActiveMaterial && <RawDocUsageDetailModal detail={rawUsageDetail} onClose={() => setRawUsageDetail(null)} />}
                       {/* 헤더 */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -4044,14 +3998,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   </td>
                                   <td className="px-4 py-2.5 text-[11px] text-slate-500 text-right">{row.prevBalance}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{row.received > 0 ? `+${row.received}` : '-'}</td>
-                                  <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used !== 0 ? (row.used > 0 ? `-${row.used}` : `+${Math.abs(row.used)}`) : '-'}</td>
+                                  <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used !== 0 || row.usage.length > 0 ? <button type="button" className="underline underline-offset-2" aria-label={`${row.date} ${rmActiveMaterial} 사용량 상세`} onClick={() => setRawUsageDetail({companyId,month:docYearMonth,material:rmActiveMaterial,date:row.date,segment:row.id,total:row.used,contributions:row.usage})}>{row.used > 0 ? `-${row.used}` : row.used < 0 ? `+${Math.abs(row.used)}` : '0'}</button> : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{row.adj !== 0 ? (row.adj > 0 ? `+${row.adj}` : `${row.adj}`) : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{row.currentBalance}</td>
                                   <td className={`px-4 py-2.5 text-[11px] font-bold ${row.who ? 'text-slate-600' : 'text-slate-300'}`}>{row.who || '—'}</td>
                                   <td className="px-4 py-2.5 text-[11px] text-slate-500">
-                                    {row.where && <span className="font-bold text-slate-600">{row.where}</span>}
+                                    {row.where && <span className="font-bold text-slate-600">{rawDocNoteSummary(row.where)}</span>}
                                     {row.where && row.note ? <span className="mx-1 text-slate-300">·</span> : null}
-                                    {row.note || (row.where ? '' : '-')}
+                                    {rawDocNoteSummary(row.note) || (row.where ? '' : '-')}
                                   </td>
                                   <td className="px-3 py-2.5 text-right">
                                     <div className="flex items-center justify-end gap-1">
@@ -4742,29 +4696,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     await setProductSuppliers(itemId, current.filter(id => id !== partnerId));
                     refreshStaticData();
                   }}
-                  onMergeItems={async (keepId, deleteIds) => {
-                    const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
-                    const { db: fireDb } = await import('../../shared/firebase');
-                    const writes: Parameters<typeof commitCompanyWrites>[0] = [];
-
-                    for (const delId of deleteIds) {
-                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('itemId', '==', delId)));
-                      for (const docSnap of snap.docs) {
-                        const data = docSnap.data();
-                        const dir = data.Direction ?? 'out';
-                        const pId = data.partnerId;
-                        const newId = `${keepId}_${pId}_${dir}`;
-                        const existing = partnerItems.find(pi => (pi.itemId) === keepId && (pi.partnerId) === pId && pi.Direction === dir);
-                        if (!existing) {
-                          const { itemId, partnerId, price, ...cleanData } = data as any;
-                          writes.push({ kind: 'set', collection: COL.partnerItem, id: newId, data: { ...cleanData, itemId: keepId, id: newId } });
-                        }
-                        writes.push({ kind: 'delete', collection: COL.partnerItem, id: docSnap.id });
-                      }
-                      writes.push({ kind: 'delete', collection: COL.items, id: delId });
-                    }
-                    await commitCompanyWrites(writes);
-                  }}
+                  onMergeItems={async () => { await refreshStaticData(); }}
                   itemBoms={itemBoms}
                   onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
                   onSaveServiceTerms={(ps) => handleUpsertPartnerItem(ps, ps.Direction === 'in' ? 'in' : 'out')}

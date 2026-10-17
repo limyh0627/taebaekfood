@@ -1,5 +1,6 @@
-const ownerExcel = vi.hoisted(() => ({ download: vi.fn() }));
+const ownerExcel = vi.hoisted(() => ({ download: vi.fn(), document: vi.fn(), actor: null as null | ((user: {uid:string} | null) => void) }));
 vi.mock('../src/shared/listExcel', () => ({ downloadListExcel: ownerExcel.download }));
+vi.mock('../src/features/statements/infrastructure/statementExcel', () => ({ downloadStatementExcel: ownerExcel.document }));
 import { today as ownerToday } from '../src/shared/day';
 /** @vitest-environment jsdom */
 import React from 'react';
@@ -170,7 +171,7 @@ const recoveryMocks=vi.hoisted(()=>({inspect:vi.fn(),backup:vi.fn(),clear:vi.fn(
 vi.mock('../src/features/statements/infrastructure/tradeStatementRecoveryService',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/tradeStatementRecoveryService')>(),inspectTradeStatementRecovery:recoveryMocks.inspect,exportTradeStatementRecovery:recoveryMocks.backup,clearVerifiedTradeStatementRecovery:recoveryMocks.clear,resumeTradeStatementRecoveryPayment:recoveryMocks.resumePayment,retryTradeStatementRecovery:recoveryMocks.retry,deleteTradeStatementRecovery:recoveryMocks.delete}));
 vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment,completeTradeStatementRequest:issueMocks.complete}));
-vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'},onAuthStateChanged:(callback:(user:{uid:string}|null)=>void)=>{ownerExcel.actor=callback;return()=>{if(ownerExcel.actor===callback)ownerExcel.actor=null;};}},db:{}}));
 // 저장 콜백 시험의 빈 Firebase 핸들은 조회에도 쓰지 않는다. 신규 단위 동작은 별도 시험한다.
 vi.mock('../src/shared/services/itemPurchaseUnitService',()=>({subscribeItemPurchaseUnits:vi.fn((_companyId,onData)=>{onData([]);return vi.fn();})}));
 
@@ -1016,3 +1017,32 @@ it('담당자 Auth UID를 현재 직원 이름으로 표시하고 이름순 정�
  fireEvent.click(within(table).getByText('담당자')); const rows = within(table).getAllByRole('row').slice(1); expect(rows[0]).toHaveTextContent('가직원'); expect(rows[1]).toHaveTextContent('하직원'); expect(statements.map(row => row.createdBy)).toEqual(['emp_aaa', 'emp_zzz']);
  fireEvent.click(screen.getByRole('button', { name: '엑셀' })); expect(ownerExcel.download.mock.calls[0][0].rows.map((row: unknown[]) => row[1])).toEqual(['가직원', '하직원']);
 });
+
+it('목록 엑셀 미리보기 수명은 회사·인증 UID 변경과 화면 해제 때 중단된다', () => {
+ const statement: IssuedStatement = { id:'excel-scope',companyId:'taebaek',type:'매출',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'EXCEL',totalSupply:100,totalTax:0,totalAmount:100,items:[] };
+ const props = { orders: [], allItems: [item], partners: [partner], partnerItems: [price], issuedStatements: [statement], companyId: 'taebaek' as const };
+ const view = render(<TradeStatement {...props} />);
+ const open = () => { fireEvent.click(screen.getByRole('button', { name: '엑셀' })); return ownerExcel.download.mock.calls.at(-1)![0].signal as AbortSignal; };
+ const first = open(); expect(first.aborted).toBe(false);
+ view.rerender(<TradeStatement {...props} companyId="punghoe" />); expect(first.aborted).toBe(true);
+ const second = open(); act(() => ownerExcel.actor?.({ uid: 'other-uid' })); expect(second.aborted).toBe(true);
+ view.rerender(<TradeStatement {...props} />); const third = open(); view.unmount(); expect(third.aborted).toBe(true);
+});
+
+it('캐시 전표가 있어도 최초 인증 UID가 없으면 목록 엑셀을 열지 않는다', () => {
+ const user = auth.currentUser; (auth as unknown as {currentUser:null}).currentUser = null;
+ try {
+  const statement: IssuedStatement = { id:'excel-no-user',companyId:'taebaek',type:'매출',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'NO-USER',totalSupply:100,totalTax:0,totalAmount:100,items:[] };
+  render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" />);
+  fireEvent.click(screen.getByRole('button', { name:'엑셀' })); expect(ownerExcel.download).not.toHaveBeenCalled();
+ } finally { (auth as unknown as {currentUser:typeof user}).currentUser = user; }
+});
+
+it('발행 문서 엑셀도 인증된 화면 수명과 원품목을 미리보기 서비스에 전달한다', async () => {
+ const statement: IssuedStatement = { id:'document-preview',companyId:'taebaek',type:'매입',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'DOCUMENT',totalSupply:250,totalTax:0,totalAmount:250,items:[{itemId:item.id,name:'문서 원품목',spec:'kg',qty:2.5,price:100,supply:250,tax:0,total:250,isTaxExempt:true,accountCode:'500'}] };
+ const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" detailStatementId={statement.id}/>);
+ const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'엑셀'}));
+ expect(ownerExcel.document).toHaveBeenCalledOnce();const request=ownerExcel.document.mock.calls[0][0];expect(request.items[0]).toMatchObject({qty:2.5,price:100});expect(request.signal.aborted).toBe(false);view.unmount();expect(request.signal.aborted).toBe(true);
+});
+
+it('전표인쇄는회사UID출력signal을전달하고계정변경후재인쇄를차단한다',async()=>{const statement:IssuedStatement={id:'html-print-scope',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'HTML-SCOPE',orderId:'',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'인쇄원문',spec:'kg',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]};const view=render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));const signal=issueMocks.print.mock.calls.at(-1)![2] as AbortSignal;expect(signal.aborted).toBe(false);const count=issueMocks.print.mock.calls.length;act(()=>ownerExcel.actor?.({uid:'different-user'}));expect(signal.aborted).toBe(true);fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));expect(issueMocks.print).toHaveBeenCalledTimes(count);view.unmount();expect(signal.aborted).toBe(true);});

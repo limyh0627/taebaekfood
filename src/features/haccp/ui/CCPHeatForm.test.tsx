@@ -1,3 +1,4 @@
+vi.mock('../../../shared/firebase',()=>({auth:{currentUser:{uid:'output-test'},onAuthStateChanged:()=>()=>{}}}));
 /** @vitest-environment jsdom */
 import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -20,4 +21,7 @@ it('행 추가와 제품·배치 입력은 선택한 행만 바꾸고 새 행은
 it('가열 적합 O/X의 원래 뜻·색과 독립 선택을 유지한다',()=>{
  render(<CCPHeatForm/>);const selects=screen.getByRole('table').querySelectorAll('tbody select');
  expect(screen.getByText('O: 한계기준 적합 / X: 한계기준 이탈 (개선조치 기재 필수)')).toBeInTheDocument();fireEvent.change(selects[1],{target:{value:'X'}});expect(selects[1]).toHaveClass('text-rose-600');fireEvent.change(selects[1],{target:{value:'O'}});expect(selects[1]).toHaveClass('text-green-600');
+});
+it('관리월이 바뀌면 이미 연 출력 수명은 취소되고 새 월에만 새 수명을 쓴다',()=>{
+ const view=render(<CCPHeatForm/>);fireEvent.click(screen.getByRole('button',{name:'PDF 저장'}));const first=mocks.pdf.mock.calls[0][2] as AbortSignal;expect(first.aborted).toBe(false);fireEvent.change(screen.getByLabelText(/관리월/),{target:{value:'2020-01'}});expect(first.aborted).toBe(true);fireEvent.click(screen.getByRole('button',{name:'PDF 저장'}));const second=mocks.pdf.mock.calls[1][2] as AbortSignal;expect(second.aborted).toBe(false);view.unmount();expect(second.aborted).toBe(true);
 });

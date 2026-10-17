@@ -1,3 +1,4 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save } from 'lucide-react';
 import { TH, TD, TDL } from './ChecklistFormParts';
@@ -36,6 +37,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
   const [monthItems, setMonthItems] = useState<{ item: string; standard: string }[]>(MONTHLY_ITEMS_DEFAULT);
   const [records, setRecords] = useState<PeriodRecord[]>([]);
   const [selected, setSelected] = useState<PeriodRecord | null>(null);
+  const outputSignal = useOutputScope(companyId, `${cycle}:${weekPeriod}:${monthPeriod}:${selected?.id ?? "new"}`);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -186,9 +188,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
       if (!control.current(token)) return;
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
-      if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
-        if (control.current(token) && printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`);
-      }
+      alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
     } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
     } finally { if (control.current(token)) { control.busy.current = false; setConfirming(false); } }
   };
@@ -291,7 +291,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
             <span className="text-xs text-slate-500">{cycleName} · {selected.period}</span>
             <div className="ml-auto flex gap-2 flex-wrap justify-end">
               <button
-                onClick={() => printRef.current && downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`)}
+                onClick={() => printRef.current && downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`, outputSignal())}
                 className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700"
               >
                 <FileDown size={12} /> PDF
@@ -302,7 +302,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
                       <BadgeCheck size={13} /> {selected.confirmedBy} 확인완료
                     </span>
                   : <button
-                      onClick={handleConfirm}
+                      onClick={handleConfirm} title="확인 결과만 저장합니다. PDF는 별도 PDF 버튼에서 미리보고 저장합니다."
                       disabled={confirming || !selected.id}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
                     >

@@ -1,10 +1,13 @@
+const outputApi=vi.hoisted(()=>({download:vi.fn(),stop:vi.fn(),actor:null as null|((user:{uid:string})=>void)}));
+vi.mock('../src/shared/listExcel',()=>({downloadListExcel:outputApi.download}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,cb:(user:{uid:string})=>void)=>{outputApi.actor=cb;cb({uid:'test-user'});return outputApi.stop;}}));
 /** @vitest-environment jsdom */
 import React, {useState} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import PartnerLedger from './PartnerLedger';
 import type {AccountCode, CashAccount, CashEntry, IssuedStatement, Partner} from '../src/shared/types';
-vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'manual-ui-user'}}}));
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-user'}},authReady:Promise.resolve()}));
 vi.mock('../src/shared/useLoanContracts',()=>({useLoanContracts:()=>[]}));
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',()=>({recordPartnerPayment:vi.fn()}));
 vi.mock('../src/shared/services/interCompanyTransferService',()=>({hasPendingTransfer:()=>false}));
@@ -24,31 +27,14 @@ function setup(save=vi.fn().mockResolvedValue({id:'saved'}),cashSave=vi.fn().moc
  function Host(){const [statements,setStatements]=useState([original('a'),original('b')]);const [entries,setEntries]=useState<CashEntry[]>([]);const [companyId,setCompanyId]=useState<'taebaek'|'punghoe'>('taebaek');return <><button onClick={()=>setCompanyId('punghoe')}>풍회로 전환</button><button onClick={()=>setCompanyId('taebaek')}>태백으로 전환</button><PartnerLedger key={companyId} companyId={companyId} partners={partners} issuedStatements={statements} cashEntries={entries} cashAccounts={[bank]} accountCodes={accounts} accountGroups={[]} onAddIssuedStatement={async statement=>{await save(statement);setStatements(rows=>[...rows,{...statement,docNo:'new-manual'}]);}} onIssueCashEntry={async entry=>{await cashSave(entry);setEntries(rows=>[...rows,entry]);}} onAddCashEntry={cashSave}/></>;}
  const view=render(<Host/>);fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));return {...view,save,cashSave};
 }
-async function enter(debit='133',credit='375'){
- fireEvent.click(screen.getByRole('button',{name:'수동 전표 작성'}));
- await screen.findByRole('button',{name:'저장'}, {timeout:5000});
- fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'100'}});
- const selects=screen.getAllByRole('combobox').filter(element=>within(element).queryByRole('option',{name:'계정 —'}));
- fireEvent.change(selects[0],{target:{value:debit}});fireEvent.change(selects[1],{target:{value:credit}});
-}
-describe('거래처 원장의 실제 수동 전표 작성',()=>{
- it('회사 전환은 작성창을 재마운트하여 이전 회사 창이 돌아오지 않는다',async()=>{
-  setup();await enter();fireEvent.click(screen.getByRole('button',{name:'풍회로 전환'}));expect(screen.queryByRole('button',{name:'저장'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'태백으로 전환'}));expect(screen.queryByRole('button',{name:'저장'})).toBeNull();
- });
- it('선택 거래처의 차대 원문을 저장하고 같은 원장에 반영한다',async()=>{
-  const {save,cashSave}=setup();await enter();fireEvent.click(screen.getByRole('button',{name:'저장'}));
-  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
-  expect(save.mock.calls[0][0]).toMatchObject({partnerId:'a',companyId:'taebaek',type:'비용',totalAmount:100,items:[{accountCode:'133',side:'차변',total:100},{accountCode:'375',side:'대변',total:100}]});
-  expect(cashSave).not.toHaveBeenCalled();await waitFor(()=>expect(screen.queryByRole('button',{name:'저장'})).toBeNull());
-  fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
-  expect(within(screen.getByRole('table',{name:'거래처 전체 전표'})).getByText('new-manual')).toBeTruthy();
-  expect(within(screen.getByRole('table',{name:'거래처 계정별 잔액'})).getByText(/133 선급금/)).toBeTruthy();
- });
- it('unknown 원문은 다른 거래처 초기 선택에도 덮이지 않고 그대로 재시도한다',async()=>{
-  const save=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue({id:'saved'});setup(save);await enter();fireEvent.click(screen.getByRole('button',{name:'저장'}));await screen.findByRole('button',{name:'이전 전표 재시도'});
-  const first=save.mock.calls[0][0];fireEvent.click(screen.getByRole('button',{name:'일반전표 발행 닫기'}));fireEvent.change(screen.getByPlaceholderText('거래처명'),{target:{value:'나 거래처'}});fireEvent.click(screen.getByRole('button',{name:'수동 전표 작성'}));await screen.findByRole('button',{name:'이전 전표 재시도'});fireEvent.click(screen.getByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(save.mock.calls[1][0]).toEqual(first);expect(first.partnerId).toBe('a');await waitFor(()=>expect(localStorage.length).toBe(0));
- });
- it('통장 대변은 기존 현금 발행 콜백으로 보내고 비현금 전표를 중복 생성하지 않는다',async()=>{
-  const {save,cashSave}=setup();fireEvent.click(screen.getByRole('button',{name:'수동 전표 작성'}));await screen.findByRole('button',{name:'저장'});fireEvent.click(screen.getByRole('button',{name:'출금'}));fireEvent.change(screen.getByPlaceholderText('업체명 검색...'),{target:{value:'가 거래처'}});fireEvent.mouseDown(within(screen.getByRole('dialog')).getByRole('button',{name:'가 거래처'}));fireEvent.change(screen.getAllByPlaceholderText('0')[0],{target:{value:'100'}});const select=screen.getAllByRole('combobox').find(element=>within(element).queryByRole('option',{name:'계정 —'}))!;fireEvent.change(select,{target:{value:'811'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(cashSave).toHaveBeenCalledTimes(1));expect(cashSave.mock.calls[0][0]).toMatchObject({dir:'출금',amount:100,partnerId:'a',cashAccountId:bank.id,accountCode:'811'});expect(save).not.toHaveBeenCalled();
+describe('거래처 원장의 작성 진입 제거', () => {
+ it('거래처 선택과 회사 전환 후에도 수동전표와 독립 상계 버튼을 제공하지 않는다', () => {
+ const {save,cashSave}=setup();
+ expect(screen.queryByRole('button',{name:'수동 전표 작성'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'선급·선수금 적용'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'풍회로 전환'}));fireEvent.click(screen.getByRole('button',{name:'태백으로 전환'}));
+ expect(screen.queryByRole('button',{name:'수동 전표 작성'})).toBeNull();expect(save).not.toHaveBeenCalled();expect(cashSave).not.toHaveBeenCalled();
  });
 });
+
+it('출력미리보기signal은인증교체·회사전환·unmount에중단한다',async()=>{const view=setup();await waitFor(()=>expect(outputApi.actor).not.toBeNull());fireEvent.click(screen.getByRole('button',{name:'엑셀 저장'}));expect(outputApi.download).toHaveBeenCalledTimes(1);const first=outputApi.download.mock.calls[0][0].signal as AbortSignal;expect(first.aborted).toBe(false);outputApi.actor!({uid:'other'});expect(first.aborted).toBe(true);fireEvent.click(screen.getByRole('button',{name:'풍회로 전환'}));expect(outputApi.stop).toHaveBeenCalled();view.unmount();});

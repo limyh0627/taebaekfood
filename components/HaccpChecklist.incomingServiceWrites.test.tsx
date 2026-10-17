@@ -7,7 +7,7 @@ import * as services from '../src/shared/services/firebaseService';
 
 const boundary = vi.hoisted(() => ({ update: vi.fn(), add: vi.fn(), rows: [] as any[], company: 'taebaek' }));
 vi.mock('../src/shared/firebase', () => ({
-  db: {}, authReady: Promise.resolve(), auth: { currentUser: { getIdTokenResult: async () => ({ claims: { companyId: boundary.company } }) } },
+  db: {}, authReady: Promise.resolve(), auth: { onAuthStateChanged:()=>()=>{}, currentUser: { uid:'output-test', getIdTokenResult: async () => ({ claims: { companyId: boundary.company } }) } },
 }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: any, collection: string, id: string) => ({ collection, id }),

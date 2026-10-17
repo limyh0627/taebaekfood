@@ -1,0 +1,12 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const m=vi.hoisted(()=>({call:vi.fn(),uid:'u'}));
+vi.mock('../firebase',()=>({authReady:Promise.resolve(),auth:{get currentUser(){return{uid:m.uid};}},functions:{}}));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>m.call}));
+vi.mock('firebase/firestore',async()=>({...await vi.importActual<object>('firebase/firestore'),doc:(_db:unknown,c:string,id:string)=>({path:c+'/'+id})}));
+import {prepareCatalogOrderCommit} from './catalogOrderReferenceProof';
+import {encodeCatalogValue} from '../../../functions/src/shared/catalogOrderReferenceProof';
+const next={companyId:'taebaek',status:'PENDING',items:[{itemId:'i'}]};
+beforeEach(()=>{m.uid='u';m.call.mockReset();});
+it('없는 epoch도 읽기 집합에 넣고 원 patch를 그대로 반환한다',async()=>{const tx={get:vi.fn(async()=>({exists:()=>false}))};expect(await prepareCatalogOrderCommit({} as any,tx as any,'o',undefined,next,true)).toBe(next);expect(tx.get).toHaveBeenCalledOnce();expect(m.call).not.toHaveBeenCalled();});
+it('증거는 별도 commit 복사에만 붙이고 RPC는 tagged 원문을 보낸다',async()=>{m.call.mockResolvedValue({data:{proofId:'p',catalogRevision:2}});const tx={get:vi.fn(async(ref:any)=>ref.path.startsWith('catalogItemMergeState')?{exists:()=>true,data:()=>({companyId:'taebaek',revision:2})}:{exists:()=>true,data:()=>({companyId:'taebaek',actorUid:'u',orderId:'o',catalogRevision:2,beforeRevision:0,orderExists:false,status:'PENDING',items:next.items})})};const result=await prepareCatalogOrderCommit({type:'firestore',_databaseId:{database:'(default)'},_app:{}} as any,tx as any,'o',undefined,next,true);expect(result).toEqual({...next,catalogReferenceProofId:'p'});expect(next).not.toHaveProperty('catalogReferenceProofId');expect(m.call.mock.calls[0][0].items).toEqual(encodeCatalogValue(next.items));});
+it('표시 메모만 바꿀 때는 epoch와 callable을 읽지 않는다',async()=>{const tx={get:vi.fn()};const patch={memo:'설명'};expect(await prepareCatalogOrderCommit({} as any,tx as any,'o',next,patch)).toBe(patch);expect(tx.get).not.toHaveBeenCalled();});

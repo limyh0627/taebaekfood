@@ -1,4 +1,4 @@
-import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
+import {runInventoryWriterTransaction,captureInventoryWriterContext,prepareCatalogOrderCommit} from '../../shared/inventoryWriterProtocol';
 import {rawPressText} from '../../shared/rawPressAttempt';
 import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
 import {orderRawBatchOrderEvidence} from '../../shared/orderRawBatchAttempt';
@@ -162,6 +162,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       const {activeByItem,previousReservations,available,quantities,shortages}=planOrderStockReservation(order.id,new Map(ids.map((id,index)=>[id,snapshots[index]!.data()??{}])),planDeltas,{...options,nowMs});
       if(shortages.length){const row=shortages[0],item=allItems.find(candidate=>candidate.id===row.itemId);throw new OrderInventoryPreconditionError(`${item?.name??row.itemId} 재고가 부족합니다. 현재 ${row.current}, 다른 주문 예약 ${row.other}, 이번 주문 ${row.required}`);}
 
+      const stagePatch=current?{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}}:null;
+      const commitStage=current&&stagePatch?await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,stagePatch):null;
       ids.forEach((itemId, index) => {
         const data = snapshots[index]!.data() ?? {};
         const active = activeByItem.get(itemId) ?? [];
@@ -175,7 +177,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         }
       });
 
-      if(current)tx.update(current.ref,protectInventoryWriterPatch(current.order,{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}}));
+      if(current&&commitStage)tx.update(current.ref,protectInventoryWriterPatch(current.order,commitStage));
       return {
         operationId,
         orderId: order.id,
@@ -265,7 +267,9 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     if (rows.length === 0&&!generation) {
       if (orderMutation) await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({orderId:orderMutation.orderId,patch:orderMutation.patch})}), async tx => {
         const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
-        tx.update(ref,protectInventoryWriterPatch(snap.data(),stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch)));
+        const patch=stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch);
+        const commitPatch=await prepareCatalogOrderCommit(db,tx,orderMutation.orderId,snap.data(),patch);
+        tx.update(ref,protectInventoryWriterPatch(snap.data(),commitPatch));
       });
       return [];
     }
@@ -361,10 +365,11 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       if(generation)validateOrderInventoryConsumedLots(consumed);
       const requestText=generation?finalOrderInventoryRequestText(generation,deltas,lotMutations.map(row=>row.itemId),patch!,reservationEvidence):null;
       if(generation&&patch?.inventoryOperation!=null)throw Error('최종 확정에서 다른 작업 표식을 만들 수 없습니다.');
+      const commitPatch=current&&patch?await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch):patch;
       assertActor(generation);
       for(const [index,update] of updates.entries())if(Object.keys(update.patch).length>0)tx.update(update.ref,protectItemInventoryPatch(snapshots[index].data(),update.patch));
-      if(current&&generation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined({...patch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}})));
-      else if(current&&orderMutation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined(patch!)));
+      if(current&&generation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined({...commitPatch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}})));
+      else if(current&&orderMutation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined(commitPatch!)));
       return consumed;
     });
 

@@ -1,3 +1,5 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
+import { previewRasterPdf, snapshotOutputElement, type RasterPdfPage } from '../../../shared/rasterPdfOutput';
 import React, {useState,useRef,useEffect} from 'react';
 import {FileDown,ShieldAlert,Save,Trash2,BadgeCheck} from 'lucide-react';
 import {collection,doc,onSnapshot,query,where} from 'firebase/firestore';
@@ -58,6 +60,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   // ── 월별 심사자료 PDF 다운로드 (관리자) ──────────────────────────────
   const bulkRef = useRef<HTMLDivElement>(null);
   const [bulkMonth, setBulkMonth] = useState(today.slice(0, 7));
+  const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.checkDate ?? ""}:${bulkMonth}`);
   const [bulkList, setBulkList] = useState<SanitationRecord[] | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ cur: number; total: number } | null>(null);
 
@@ -75,29 +78,34 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   useEffect(() => {
     if (!bulkList) return;
     let cancelled = false;
+    const signal = outputSignal();
     (async () => {
       // 숨은 영역 렌더/레이아웃 완료 대기 (2 프레임)
       await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
-      if (cancelled || !bulkRef.current) { setBulkList(null); return; }
+      if (cancelled || signal.aborted || !bulkRef.current) { setBulkList(null); return; }
       const pages = Array.from(bulkRef.current.querySelectorAll<HTMLElement>('[data-pdf-page]'));
       if (pages.length === 0) { setBulkList(null); return; }
+      const snapshots = pages.map(page => snapshotOutputElement(page));
       try {
-        const { default: jsPDF } = await import('jspdf') as any;
         const { default: html2canvas } = await import('html2canvas') as any;
-        const pdf = new jsPDF('p', 'mm', 'a4');
+        const outputPages: RasterPdfPage[] = [];
         const pageW = 210, pageH = 297;
         for (let i = 0; i < pages.length; i++) {
-          if (cancelled) return;
+          if (cancelled || signal.aborted) return;
           setBulkProgress({ cur: i + 1, total: pages.length });
-          const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+          const canvas = await html2canvas(snapshots[i].element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+          if (cancelled || signal.aborted) return;
           let w = pageW;
           let h = (canvas.height * w) / canvas.width;
           if (h > pageH) { h = pageH; w = (canvas.width * h) / canvas.height; }
-          if (i > 0) pdf.addPage();
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - w) / 2, 0, w, h);
+          outputPages.push({width:pageW,height:pageH,draws:[{image:canvas.toDataURL('image/png'),x:(pageW-w)/2,y:0,width:w,height:h}]});
         }
-        if (!cancelled) pdf.save(`작업장위생점검표_${bulkMonth}_월별.pdf`);
+        snapshots.forEach(snapshot => snapshot.dispose());
+        if (!cancelled && !signal.aborted) await previewRasterPdf({pages:outputPages,fileName:`작업장위생점검표_${bulkMonth}_월별.pdf`,signal});
+      } catch {
+        if (!cancelled && !signal.aborted) alert('월별 PDF를 만들지 못했습니다. 기록은 바꾸지 않았습니다. 다시 미리보기를 열어 주세요.');
       } finally {
+        snapshots.forEach(snapshot => snapshot.dispose());
         if (!cancelled) { setBulkProgress(null); setBulkList(null); }
       }
     })();
@@ -217,9 +225,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       await updateItem('haccp_sanitation', selected.id, update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
-      if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
-        if (printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${selected.checkDate}_${selected.checkTime.replace(':', '')}_확인완료.pdf`);
-      }
+      alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
     } finally {
       setConfirming(false);
     }
@@ -423,7 +429,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
             <span className="text-xs text-slate-500">{selected.checkDate} {slotLabel(selected.checkTime)}</span>
             <div className="ml-auto flex gap-2 flex-wrap justify-end">
               <button
-                onClick={() => printRef.current && downloadAsPDF(printRef.current, `작업장위생점검표_${selected.checkDate}_${selected.checkTime.replace(':', '')}.pdf`)}
+                onClick={() => printRef.current && downloadAsPDF(printRef.current, `작업장위생점검표_${selected.checkDate}_${selected.checkTime.replace(':', '')}.pdf`, outputSignal())}
                 className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700"
               >
                 <FileDown size={12} /> PDF
@@ -632,7 +638,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
                     : canConfirm && selected.id && allChecked
                       ? <button
-                          onClick={handleConfirm}
+                          onClick={handleConfirm} title="확인 결과만 저장합니다. PDF는 별도 PDF 버튼에서 미리보고 저장합니다."
                           disabled={confirming}
                           className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
                         >

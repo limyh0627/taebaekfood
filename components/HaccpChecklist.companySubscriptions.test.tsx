@@ -6,7 +6,7 @@ import HaccpChecklist, { StaffChecklistView } from './HaccpChecklist';
 import { today } from '../src/shared/day';
 
 const state = vi.hoisted(() => ({ subscriptions: [] as any[], tempRows: [] as any[] }));
-vi.mock('../src/shared/firebase', () => ({ db: {} }));
+vi.mock('../src/shared/firebase', () => ({ db: {}, auth:{currentUser:{uid:'output-test'},onAuthStateChanged:()=>()=>{}} }));
 vi.mock('../src/shared/services/firebaseService', () => ({ addItem: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn(), setDocument: vi.fn() }));
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, collection: string) => ({ collection }),

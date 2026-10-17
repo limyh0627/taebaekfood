@@ -8,7 +8,7 @@ import * as services from '../src/shared/services/firebaseService';
 
 const boundary = vi.hoisted(() => ({ update: vi.fn(), remove: vi.fn(), token: vi.fn(), rows: [] as any[] }));
 vi.mock('../src/shared/firebase', () => ({
-  db: {}, authReady: Promise.resolve(), auth: { currentUser: { getIdTokenResult: boundary.token } },
+  db: {}, authReady: Promise.resolve(), auth: { onAuthStateChanged:()=>()=>{}, currentUser: { uid:'output-test', getIdTokenResult: boundary.token } },
 }));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockResolvedValue(true) }));
 vi.mock('firebase/firestore', () => ({

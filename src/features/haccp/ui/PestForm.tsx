@@ -1,3 +1,5 @@
+import { useHaccpCompany } from '../context/HaccpCompanyContext';
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useState, useRef } from 'react';
 import { FileDown } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -22,6 +24,7 @@ interface PestRow {
 }
 
 export const PestForm: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [rows, setRows] = useState<PestRow[]>([
     { date: today(), season: '하절기', location: '', checks: {}, corrective: '', inspector: '' },
   ]);
@@ -34,6 +37,7 @@ export const PestForm: React.FC = () => {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, checks: { ...r.checks, [key]: val } } : r));
 
   const currentYear = new Date().getFullYear();
+  const outputSignal = useOutputScope(companyId, currentYear);
 
   return (
     <div>
@@ -41,7 +45,7 @@ export const PestForm: React.FC = () => {
         <span className="text-xs text-slate-500">※ 하절기(4~10월): 주 1회 이상 / 동절기(11~3월): 월 1회 이상</span>
         <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
         <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_방충방서점검표_${currentYear}.pdf`)}
+          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_방충방서점검표_${currentYear}.pdf`, outputSignal())}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
         >
           <FileDown size={13} /> PDF 저장

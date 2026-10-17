@@ -2,11 +2,12 @@ import ActionButton from '../src/shared/components/ActionButton';
 import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { formatQuantity } from '../src/shared/quantityDisplay';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
 import { AccountCode, AccountGroup, FixedCostTemplate, Partner, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement, companyOf } from '../src/shared/types';
 import { endOfMonth, monthStart, today } from '../src/shared/day';
-import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
+import { auth, authReady } from '../src/shared/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash, partnerAccountHistory, partnerAccountBalances, PartnerHistorySource } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
@@ -14,11 +15,10 @@ import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 import { downloadListExcel } from '../src/shared/listExcel';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
-import PartnerAdvanceModal from './PartnerAdvanceModal';
+import PartnerPaymentModal from './PartnerPaymentModal';
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
-import { settlementTypeOf, settlementDirectionOf } from '../src/features/admin/voucherMerge';
-const VoucherComposer = React.lazy(() => import('./voucher/VoucherComposer'));
-type ComposerProps = React.ComponentProps<typeof VoucherComposer>;
+import { settlementTypeOf } from '../src/features/admin/voucherMerge';
+type ComposerProps = React.ComponentProps<typeof import('./voucher/VoucherComposer').default>;
 
 interface Props {
   partners?: Partner[];
@@ -53,12 +53,16 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
   const [selectedAccount, setSelectedAccount] = useState('');
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
-  const [manualVoucher, setManualVoucher] = useState<{companyId: CompanyId; partnerId: string} | null>(null);
-  const [manualAccountId, setManualAccountId] = useState('');
-  const activeCashAccounts = cashAccounts.filter(a => companyOf(a) === companyId && a.active);
   const [payOpen, setPayOpen] = useState(false);
-  const [advanceOpen, setAdvanceOpen] = useState(false);
-  const [payAccountId, setPayAccountId] = useState('');
+  const outputScope = useRef<{ companyId: CompanyId; uid: string; controller: AbortController } | null>(null);
+  useEffect(() => {
+    let live = true, stop = () => {};
+    const replace = (uid: string) => { outputScope.current?.controller.abort(); outputScope.current = {companyId, uid, controller:new AbortController()}; };
+    replace(auth.currentUser?.uid ?? '');
+    void Promise.resolve(authReady).then(() => { if (live) stop = onAuthStateChanged(auth, user => { if (live) replace(user?.uid ?? ''); }); });
+    return () => {live = false; stop(); outputScope.current?.controller.abort(); outputScope.current = null;};
+  }, [companyId]);
+
   /**
    * 수금·지불 창을 연다. 금액을 미리 채워 두면 바로 누르기만 하면 된다 —
    * 거래처 목록의 잔액을 누르거나, 전표 줄의 남은 금액을 누르면 그 값이 들어온다.
@@ -84,16 +88,6 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
     () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes }),
     [issuedStatements, cashEntries, accountCodes]);
   const journals = journalResult.entries;
-  const composerBalances = useMemo(() => {
-    const result = new Map<string, {receivable: number; payable: number}>();
-    for (const kind of ['매출', '매입'] as const) for (const row of partnerBalances(kind, issuedStatements, cashEntries, journals)) {
-      const balance = result.get(row.partnerId) ?? {receivable: 0, payable: 0};
-      balance[kind === '매출' ? 'receivable' : 'payable'] = row.balance;
-      result.set(row.partnerId, balance);
-    }
-    return result;
-  }, [issuedStatements, cashEntries, accountCodes]);
-
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
@@ -115,6 +109,8 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
     () => partnerBalances(type, issuedStatements, cashEntries, journals),
     [type, issuedStatements, cashEntries, journals],
   );
+
+
   /**
    * 수금·지불 한 건을 자금원장에 적는다.
    *
@@ -122,29 +118,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
    * 오래된 것부터 알아서 맞춘다. 전표에 매다는 옛 경로는 걷어냈다.
    * 계정은 매출이면 108(외상매출금), 매입이면 251(외상매입금)이다.
    */
-  const paySaving = useRef(false);
-  const savePay = async () => {
-    if (!sel) return;
-    if (paySaving.current) return;
-    const amt = parseMoneyInput(payForm.amount);
-    if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 넣으세요.'); return; }
-    if (!payAccountId || !cashAccounts.some(account => account.id === payAccountId && account.active)) { alert('입출금 계좌를 선택해 주세요.'); return; }
-    //  셈은 shared/payment 하나다 — 여기서 또 짓지 않는다
-    paySaving.current = true;
-    try {
-    await recordPartnerPayment(companyId, {
-      tradeDate: payForm.date, partnerId: sel.partnerId, direction: type === '매출' ? '입금' : '출금',
-      amount: amt, cashAccountId: payAccountId, pin: false, allocations: [],
-      note: [`${sel.partnerName} ${type === '매출' ? '수금' : '지불'}`, payForm.note].filter(Boolean).join(' · '),
-    });
-    setPayOpen(false);
-    setPayForm({ amount: '', date: today(), note: '' });
-    } catch (error) {
-      alert(`수금·지불 저장에 실패했습니다. 입력 내용은 그대로 있습니다.\n${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      paySaving.current = false;
-    }
-  };
+
 
   const allPartners = useMemo(() => {
     const names = new Map<string, string>();
@@ -310,7 +284,6 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
         <div>
           <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-3 flex-wrap">
             <span className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'}</span>
-              {sel && onAddIssuedStatement && <button type="button" onClick={() => { setManualAccountId(defaultCashAccountId(activeCashAccounts, companyId)); setManualVoucher({companyId, partnerId: sel.partnerId}); }} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">수동 전표 작성</button>}
             {ledger && (
               /* 기초 + 발생 − 결제 = 잔액. 기초를 발생에 뭉치면 이번 달에 새로 산 것처럼 보인다 —
                  청양식품은 넘어온 5,800만원이 8월 매입으로 보였다.
@@ -331,7 +304,9 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                 row.amount < 0 ? -row.amount : '', row.balance,
                 row.kind === '전표' && row.sourceId ? (openByStmt.get(row.sourceId) ?? 0) : '',
               ]);
-              void downloadListExcel({
+              const output = outputScope.current;
+              if (!output || output.companyId !== companyId || !output.uid || output.uid !== auth.currentUser?.uid || output.controller.signal.aborted) return;
+              void downloadListExcel({ signal: output.controller.signal,
                 title: '거래처원장',
                 subtitle: `${type} · ${sel.partnerName} · ${periodRange ? `${periodRange.from} ~ ${periodRange.to}` : '전체 기간'} · 기초 ${fmt(ledger.opening)} · 발생 ${fmt(ledger.accrued)} · 결제 ${fmt(ledger.paid)} · 잔액 ${fmt(ledger.balance)}`,
                 fileName: `거래처원장_${sel.partnerName}_${periodRange ? `${periodRange.from}_${periodRange.to}` : '전체'}`,
@@ -348,9 +323,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             </ActionButton>}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
                  색은 들어오면 파랑, 나가면 빨강. */}
-            {sel && (
-              <button type="button" onClick={() => setAdvanceOpen(true)} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-700">선급·선수금 적용</button>
-            )}
+
             {sel && (
               <button type="button" onClick={() => openPay(sel.balance)}
                 className={`ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black text-white transition-all ${
@@ -577,74 +550,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
       })()}
 
       {/*  수금·지불 창 — 전표에 안 붙인다. 어느 청구서를 갚았는지는 배분이 알아서 맞춘다. */}
-      {payOpen && sel && (
-        <ModalShell title={`${sel.partnerName} ${type === '매출' ? '수금' : '지불'}`} onClose={() => setPayOpen(false)} bodyClassName="!p-0">
-            <p className="px-5 pt-4 text-[10px] font-bold text-slate-400">
-              지금 {type === '매출' ? '미수' : '미지급'} {fmt(sel.balance)}원
-            </p>
-            <div className="px-5 py-4 space-y-3">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">금액</p>
-                <input autoFocus inputMode="numeric" value={payForm.amount}
-                  aria-label={`${type === '매출' ? '수금' : '지불'} 금액`}
-                  onChange={e => setPayForm(f => ({ ...f, amount: formatMoneyInput(e.target.value) }))}
-                  onKeyDown={e => { if (e.key === 'Enter') savePay(); }}
-                  placeholder={formatMoneyInput(sel.balance)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-black text-right tabular-nums outline-none focus:border-indigo-400" />
-                <button type="button" onClick={() => setPayForm(f => ({ ...f, amount: formatMoneyInput(sel.balance) }))}
-                  className="mt-1 text-[10px] font-black text-indigo-500 hover:text-indigo-700">전액 넣기</button>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">날짜</p>
-                <input type="date" value={payForm.date} aria-label={`${type === '매출' ? '수금' : '지불'} 날짜`}
-                  onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">입출금 계좌</p>
-                <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)} aria-label="입출금 계좌"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400">
-                  <option value="">계좌 선택</option>
-                  {cashAccounts.filter(account => account.active).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">메모 <span className="text-slate-300 normal-case">(선택)</span></p>
-                <input value={payForm.note} onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
-                  placeholder="계좌이체 등"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-slate-100 flex gap-2">
-              <button onClick={() => setPayOpen(false)}
-                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black hover:bg-slate-50">취소</button>
-              <button onClick={savePay}
-                className={`flex-1 px-4 py-2 rounded-xl text-white text-xs font-black ${type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
-                {type === '매출' ? '수금' : '지불'} 기록
-              </button>
-            </div>
-        </ModalShell>
-      )}
-      {manualVoucher?.companyId === companyId && <React.Suspense fallback={<p role="status">전표 작성창을 여는 중입니다.</p>}>
-        <VoucherComposer key={companyId + ':' + manualVoucher.partnerId} companyId={companyId} initialDir="대체" initialPartnerId={manualVoucher.partnerId}
-          partners={partners.filter(p => companyOf(p) === companyId)} accountCodes={accountCodes} accountGroups={accountGroups} cashAccounts={activeCashAccounts}
-          fixedCostTemplates={fixedCostTemplates} cashEntries={cashEntries} statements={issuedStatements} partnerBalances={composerBalances}
-          getBalance={statement => allocatePartnerCash(statement.partnerId, settlementTypeOf(statement), issuedStatements, cashEntries, settlements, undefined, returnOperations, {statements: advanceStatements}).get(statement.id) ?? 0}
-          cashAccountId={manualAccountId} onCashAccountId={setManualAccountId} onClose={() => setManualVoucher(null)}
-          onAddCashEntry={onAddCashEntry} onIssueCashEntry={onIssueCashEntry} onAddIssuedStatement={onAddIssuedStatement} onAddFixedCostTemplate={onAddFixedCostTemplate}
-          recordPayment={(allocations, opts) => {
-            const first = allocations[0]?.stmt;
-            const amount = allocations.reduce((sum, row) => sum + row.amount, 0);
-            if (!first?.partnerId || amount <= 0 || allocations.some(row => row.stmt.partnerId !== first.partnerId || companyOf(row.stmt) !== companyId)) throw new Error('같은 회사의 거래처와 수금·지불 금액을 확인해 주세요.');
-            const cashAccountId = opts.cashAccountId || defaultCashAccountId(activeCashAccounts, companyId);
-            if (!activeCashAccounts.some(account => account.id === cashAccountId)) throw new Error('입출금 계좌를 선택해 주세요.');
-            return recordPartnerPayment(companyId, {tradeDate: opts.date, partnerId: first.partnerId, direction: settlementDirectionOf(first), amount, cashAccountId, pin: opts.pin !== false,
-              allocations: opts.pin === false ? [] : allocations.map(row => ({statementId: row.stmt.id, amount: row.amount})), note: opts.note || first.partnerName || ''});
-          }}
-          renderJournal={(je, _compact, meta) => <VoucherSlip je={je} partnerName={new Map(partners.map(p => [p.id, p.name]))} headPartner={partners.find(p => p.id === manualVoucher.partnerId)?.name} date={meta?.date ?? today()} docNo={meta?.docNo ?? ''} codeName={codeName} />}
-        />
-      </React.Suspense>}
-      {advanceOpen && sel && <PartnerAdvanceModal key={`${companyId}:${sel.partnerId}`} companyId={companyId} partnerId={sel.partnerId} partnerName={sel.partnerName} onClose={() => setAdvanceOpen(false)} />}
+      {payOpen && sel && <PartnerPaymentModal key={companyId + ':' + sel.partnerId} companyId={companyId} partnerId={sel.partnerId} partnerName={sel.partnerName} type={type} balance={sel.balance} cashAccounts={cashAccounts} initialAmount={payForm.amount ? parseMoneyInput(payForm.amount) : undefined} initialDate={payForm.date} onClose={() => setPayOpen(false)} />}
     </div>
   );
 }

@@ -1,0 +1,34 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import * as admin from 'firebase-admin';
+import { randomUUID } from 'node:crypto';
+import { executeCatalogItemMerge, catalogItemMergeReceiptId, CATALOG_MERGE_RECEIPTS } from './catalogItemMergeCommand';
+import type { CatalogItemMergePreview, CatalogItemMergeRequest, CatalogItemMergeResult } from './shared/catalogItemMerge';
+const enabled = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
+const project = 'demo-merge-' + randomUUID().slice(0, 8), actor = {uid:'synthetic-admin',token:{isAdmin:true,companyId:'taebaek',employeeId:'synthetic-employee'}};
+let app:admin.app.App, db:admin.firestore.Firestore;
+const owned = new Set<string>();
+const ref=(collection:string,id:string)=>{owned.add(collection+'/'+id);return db.collection(collection).doc(id);};
+async function seed() {
+ const suffix=randomUUID(),keepId='keep-'+suffix,donorId='donor-'+suffix,partnerId='partner-'+suffix,linkId='link-'+suffix;
+ const item={companyId:'taebaek',name:'합성 동일 품목',type:'product',unit:'개',stock:0};
+ await Promise.all([ref('appMeta','releaseCutover').set({status:'active',releaseId:'synthetic-release'}),ref('items',keepId).set({...item,stock:17,custom:'남길원문'}),ref('items',donorId).set(item),ref('partners',partnerId).set({companyId:'taebaek',name:'합성 거래처'}),ref('partner_item',linkId).set({companyId:'taebaek',itemId:donorId,partnerId,Direction:'out',price:550,taxType:'면세',packing:{label:'유리',count:12},unknownBusiness:{original:true}})]);
+ ref('partner_item',`${keepId}_${partnerId}_out`);ref('inventoryWriterDeletions','taebaek__'+donorId);ref('catalogItemMergeState','taebaek');
+ return {keepId,donorId,partnerId,linkId};
+}
+type Fixture=Awaited<ReturnType<typeof seed>>;
+const read=(f:Fixture)=>executeCatalogItemMerge(db,actor,{mode:'read',companyId:'taebaek',keepId:f.keepId,donorIds:[f.donorId]}) as Promise<CatalogItemMergePreview>;
+async function request(f:Fixture):Promise<CatalogItemMergeRequest>{const p=await read(f),operationId=randomUUID();ref(CATALOG_MERGE_RECEIPTS,catalogItemMergeReceiptId('taebaek',actor.uid,operationId));return {version:1,companyId:'taebaek',operationId,releaseId:'synthetic-release',keepId:f.keepId,donorIds:[f.donorId],snapshotDigest:p.snapshotDigest,resolutions:[]};}
+const apply=(r:CatalogItemMergeRequest)=>executeCatalogItemMerge(db,actor,{mode:'apply',request:r}) as Promise<CatalogItemMergeResult>;
+describe.skipIf(!enabled)('중복 품목 서버 실제 로컬 Firestore 거래',{timeout:60000},()=>{
+ beforeAll(()=>{app=admin.initializeApp({projectId:project},project);db=admin.firestore(app);});
+ afterAll(async()=>{if(db)for(const path of owned)await db.doc(path).delete();await app?.delete();});
+ it('정상 실제 apply는 donor삭제·keeper원문·unknown연결·tomb·epoch·영수증을 원자 보존한다',async()=>{const f=await seed(),before=await ref('items',f.keepId).get(),r=await request(f);expect((await apply(r)).status).toBe('applied');expect((await ref('items',f.donorId).get()).exists).toBe(false);const keep=await before.ref.get();expect(keep.data()).toEqual(before.data());expect(keep.updateTime!.isEqual(before.updateTime!)).toBe(true);expect((await ref('partner_item',`${f.keepId}_${f.partnerId}_out`).get()).data()).toMatchObject({itemId:f.keepId,partnerId:f.partnerId,price:550,packing:{label:'유리',count:12},unknownBusiness:{original:true}});expect((await ref('inventoryWriterDeletions','taebaek__'+f.donorId).get()).data()).toMatchObject({mergedIntoItemId:f.keepId,mergeOperationId:r.operationId});expect((await apply(r)).status).toBe('applied');});
+ it('재조회전 추가한 연결은 query집합digest를 바꿔 donor와 원문을 보존한다',async()=>{const f=await seed(),r=await request(f);await ref('partner_item','late-'+f.donorId).set({companyId:'taebaek',itemId:f.donorId,partnerId:f.partnerId,Direction:'out',price:550});expect(await apply(r)).toMatchObject({status:'rejected',errorCode:'snapshot-changed'});expect((await ref('items',f.donorId).get()).exists).toBe(true);});
+ it('최초 missing raw상태가 생기면같은0재고여도 옛요청은거절한다',async()=>{const f=await seed(),r=await request(f);await ref('rawInventories','taebaek__'+f.donorId).set({companyId:'taebaek',rawItemId:f.donorId,stockKg:0,activeLots:[],revision:0});expect((await apply(r)).errorCode).toBe('snapshot-changed');expect((await ref('items',f.donorId).get()).exists).toBe(true);});
+ it('legacy회사누락 진행주문 참조도빠뜨리지않고차단한다',async()=>{const f=await seed();await ref('orders','legacy-'+f.donorId).set({status:'PROCESSING',items:[{itemId:f.donorId,quantity:1}]});expect((await read(f)).plan.phase).toBe('blocked');expect((await apply(await request(f))).status).toBe('rejected');expect((await ref('items',f.donorId).get()).exists).toBe(true);});
+ it('apply와중단경합은영수증하나의같은결과이며늦은재전송은새통합0',async()=>{const f=await seed(),r=await request(f),reference={version:1 as const,companyId:r.companyId,operationId:r.operationId};const rows=await Promise.all([apply(r),executeCatalogItemMerge(db,actor,{mode:'discard-request',reference}) as Promise<CatalogItemMergeResult>]);expect(rows[0].status).toBe(rows[1].status);expect((await apply(r)).status).toBe(rows[0].status);expect((await ref('items',f.donorId).get()).exists).toBe(rows[0].status!=='applied');});
+ it('수동충돌선택은keeper목적ID와선택된가격세금포장전체보존',async()=>{const f=await seed(),existingId='existing-'+f.keepId;await ref('partner_item',existingId).set({companyId:'taebaek',itemId:f.keepId,partnerId:f.partnerId,Direction:'out',price:990,taxType:'과세',packing:{label:'다른포장'}});const p=await read(f);expect(p.plan.phase).toBe('needs-resolution');const r=await request(f);r.resolutions=[{destinationKey:p.plan.groups[0].destinationKey,sourceLinkId:f.linkId}];expect((await apply(r)).status).toBe('applied');expect((await ref('partner_item',existingId).get()).data()).toMatchObject({price:550,taxType:'면세',packing:{label:'유리',count:12},unknownBusiness:{original:true}});});
+ it('다른회사무관진행업무변경은현재회사digest를오염시키지않는다',async()=>{const f=await seed(),foreignId='foreign-'+f.donorId;await ref('orders',foreignId).set({companyId:'punghoe',status:'PROCESSING',items:[{itemId:'unrelated',quantity:1}],note:'before'});const r=await request(f);await ref('orders',foreignId).update({note:'after'});await ref('purchaseOrders',foreignId).set({companyId:'punghoe',status:'pending',items:[{itemId:'foreign',quantity:1}]});await ref('returnRequests',foreignId).set({companyId:'punghoe',status:'pending',items:[{itemId:'foreign',quantity:1}]});expect((await apply(r)).status).toBe('applied');expect((await ref('items',f.donorId).get()).exists).toBe(false);});
+ it('최초조회뒤현재회사donor진행참조추가는여전히CAS거절',async()=>{const f=await seed(),r=await request(f);await ref('orders','late-current-'+f.donorId).set({status:'PROCESSING',items:[{itemId:f.donorId,quantity:1}]});expect(await apply(r)).toMatchObject({status:'rejected',errorCode:'snapshot-changed'});expect((await ref('items',f.donorId).get()).exists).toBe(true);});
+
+});

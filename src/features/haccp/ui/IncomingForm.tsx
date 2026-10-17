@@ -1,3 +1,4 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useState, useRef, useEffect } from 'react';
 import { FileDown, BadgeCheck, Plus, Save } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -49,6 +50,7 @@ export const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }
   const companyId = useHaccpCompany();
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
+  const outputSignal = useOutputScope(companyId, month);
   const [records, setRecords] = useState<IncomingRecord[]>([]);
   const [workingRows, setWorkingRows] = useState<IncomingRow[]>([defaultIncomingRow()]);
   const [saving, setSaving] = useState(false);
@@ -222,7 +224,7 @@ export const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }
           </button>
         )}
         <button
-          onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_입고검사일지_${month}.pdf`)}
+          onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_입고검사일지_${month}.pdf`, outputSignal())}
           className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 font-medium"
         >
           <FileDown size={12} /> PDF

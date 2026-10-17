@@ -43,6 +43,11 @@ export async function captureInventoryWriterContext(database:Firestore,options:C
 type Seen={snapshot:DocumentSnapshot;ref:DocumentReference};
 type Written={ref:DocumentReference;kind:'set'|'update'|'delete';data?:Record<string,any>};
 export type InventoryWriterObserver=(snapshot:DocumentSnapshot)=>void;
+/** 실제 SDK 경계에서만 추가 확인한다. 업무 patch와 최초 요청의 정체성은 변경하지 않는다. */
+export async function prepareCatalogOrderCommit(database:Firestore,transaction:Transaction,orderId:string,before:Record<string,any>|undefined,patch:Record<string,any>,replace=false,collection:'orders'|'purchaseOrders'='orders'):Promise<Record<string,any>>{
+ if(!database?.app)return patch;
+ return (await import('./services/catalogOrderReferenceProof')).prepareCatalogOrderCommit(database,transaction,orderId,before,patch,replace,collection);
+}
 const originalRevision=(data:Record<string,any>|undefined):number|null=>{
  if(!data)return 0;
  if(data.inventoryWriterProtocolVersion!==undefined&&data.inventoryWriterProtocolVersion!==1)return null;
@@ -81,6 +86,8 @@ export async function runInventoryWriterTransaction<T>(database:Firestore,contex
    }}) as Transaction;
    return callback(proxy,observe);
   });}catch(error){
+   const proofRace=!!error&&typeof error==='object'&&((error as any).catalogProofRace===true||(error as any).details?.catalogProofRace===true);
+   if(proofRace&&additional<2&&await current()){retryError=error;additional++;continue;}
    if(!permissionDenied(error)||additional>=2||!await current())throw error;
    let changed=false,valid=true,eligible=0;
    try{

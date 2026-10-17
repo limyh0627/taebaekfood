@@ -1,3 +1,4 @@
+import { ItemMergeDialog } from '../src/features/items/ui/ItemMergeDialog';
 import { ItemCostCalculator } from '../src/features/items/ui/ItemCostCalculator';
 import ActionButton from '../src/shared/components/ActionButton';
 import {PartnerItemCleanupDialog} from '../src/features/items/ui/PartnerItemCleanupDialog';
@@ -315,9 +316,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
-  const [merging, setMerging] = useState(false);
-  const [mergeConfirming, setMergeConfirming] = useState(false);
-  const [mergeError, setMergeError] = useState('');
+  const [mergeSelection, setMergeSelection] = useState<{companyId:CompanyId;groupKey:string;keepId:string;donorIds:string[];itemName:string}|null>(null);
+  useEffect(() => {setMergeSelection(null);}, [companyId]);
   const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
   const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
@@ -1391,7 +1391,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
         )}
       </div>
 
-      {mergeError && <p role="alert" className="text-sm text-red-700">{mergeError}</p>}
+      {mergeSelection?.companyId === companyId && <ItemMergeDialog key={companyId + ':' + mergeSelection.keepId + ':' + mergeSelection.donorIds.join(',')} companyId={companyId} keepId={mergeSelection.keepId} donorIds={mergeSelection.donorIds} itemName={mergeSelection.itemName} onClose={() => setMergeSelection(null)} onApplied={async request => {
+        await onMergeItems?.(request?.keepId ?? mergeSelection.keepId, request?.donorIds ?? mergeSelection.donorIds);
+        if(request && request.keepId === mergeSelection.keepId && JSON.stringify([...request.donorIds].sort()) === JSON.stringify([...mergeSelection.donorIds].sort())) {
+          const groupKey=mergeSelection.groupKey;
+          setDupExpandedKeys(previous=>{const next=new Set(previous);next.delete(groupKey);return next;});
+          setSelectedMergeIds(previous=>{const next={...previous};delete next[groupKey];return next;});
+          setSelectedKeepId(previous=>{const next={...previous};delete next[groupKey];return next;});
+        }
+        setMergeSelection(null);
+      }} />}
       {/* 중복 품목 패널 */}
       {showDuplicates && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
@@ -1517,22 +1526,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                             )}
 
                             <button
-                              disabled={merging || mergeConfirming || !canMerge}
-                              onClick={async () => {
-                                setMergeError(''); setMergeConfirming(true);
-                                try {
-                                  if (!await appConfirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
-                                  setMergeConfirming(false); setMerging(true);
-                                  await onMergeItems(keepId, deleteIds);
-                                  setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
-                                } catch (error) {
-                                  setMergeError(`통합 결과를 확인하지 못했습니다. 선택한 품목은 유지했습니다. 목록을 다시 확인한 뒤 담당자에게 문의하세요. ${error instanceof Error ? error.message : ''}`);
-                                } finally { setMergeConfirming(false); setMerging(false); }
-                              }}
+                              disabled={!canMerge}
+                              onClick={() => setMergeSelection({companyId,groupKey:group.key,keepId,donorIds:deleteIds,itemName:group.name})}
                               className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-[11px] font-black rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <GitMerge size={13} />
-                              {mergeConfirming ? '확인 대기 중...' : merging ? '통합 중...' : `선택 품목 통합 (${selectedList.length}개)`}
+                              {`선택 품목 통합 (${selectedList.length}개)`}
                             </button>
                           </div>
                         );

@@ -1,3 +1,4 @@
+import { appNotice } from './components/appDialog';
 export type ExcelListColumn = { header: string; width: number; number?: boolean };
 export type ExcelListValue = string | number | null | undefined;
 
@@ -47,13 +48,47 @@ export async function buildListWorkbook(input: {
   return workbook;
 }
 
-export async function downloadListExcel(input: Parameters<typeof buildListWorkbook>[0] & { fileName: string }): Promise<void> {
-  const workbook = await buildListWorkbook(input);
-  const buffer = await workbook.xlsx.writeBuffer();
-  const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `${input.fileName.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+export type ListExcelSnapshot = Parameters<typeof buildListWorkbook>[0] & { fileName: string };
+let previewOpen = false;
+
+/** 미리 본 행과 저장할 행이 달라지지 않도록 화면 상태와 분리한다. */
+export async function downloadListExcel(input: ListExcelSnapshot & { signal: AbortSignal }): Promise<void> {
+  if (input.signal.aborted || previewOpen) return;
+  previewOpen = true;
+  const snapshot: ListExcelSnapshot = { title: input.title, subtitle: input.subtitle, fileName: input.fileName,
+    columns: input.columns.map(column => ({ ...column })), rows: input.rows.map(row => [...row]) };
+  try {
+    const [{ createRoot }, { createElement }, { ListExcelPreview }] = await Promise.all([
+      import('react-dom/client'), import('react'), import('./components/ListExcelPreview'),
+    ]);
+    if (input.signal.aborted) return;
+    const host = document.createElement('div'); document.body.appendChild(host);
+    const root = createRoot(host);
+    await new Promise<void>(resolve => {
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true; input.signal.removeEventListener('abort', close);
+        // React 이벤트 처리 중 동기 unmount를 피하되 취소는 즉시 확정한다.
+        queueMicrotask(() => { root.unmount(); host.remove(); resolve(); });
+      };
+      input.signal.addEventListener('abort', close, { once: true });
+      if (input.signal.aborted) { close(); return; }
+      root.render(createElement(ListExcelPreview, { snapshot, signal: input.signal, onClose: close,
+        onSave: async () => {
+          const workbook = await buildListWorkbook(snapshot);
+          if (closed || input.signal.aborted) return;
+          const buffer = await workbook.xlsx.writeBuffer();
+          if (closed || input.signal.aborted) return;
+          const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+          try {
+            if (closed || input.signal.aborted) return;
+            const anchor = document.createElement('a'); anchor.href = url;
+            anchor.download = `${snapshot.fileName.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`; anchor.click();
+          } finally { URL.revokeObjectURL(url); }
+        } }));
+    });
+  } catch {
+    if (!input.signal.aborted) await appNotice('엑셀 미리보기를 열지 못했습니다. 파일은 저장하지 않았습니다. 다시 눌러 주세요.');
+  } finally { previewOpen = false; }
 }

@@ -1,17 +1,22 @@
+import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
+import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import React, { useState, useEffect } from 'react';
 import { Printer, Search } from 'lucide-react';
 import QRCode from 'qrcode';
-import { Item } from '../src/shared/types';
+import { Item, CompanyId } from '../src/shared/types';
 import ModalShell from '../src/shared/components/ModalShell';
 
 interface QrLabelPrintProps {
   submaterials: Item[];
+  companyId?: CompanyId;
   onClose: () => void;
 }
 
-const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose }) => {
+const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose, companyId = 'taebaek' }) => {
+  const escape = (value: string) => value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const outputSignal = useOutputScope(companyId, JSON.stringify([...selected]));
   const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
 
   const filtered = submaterials.filter(s =>
@@ -43,17 +48,16 @@ const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose }) =>
     const items = submaterials.filter(s => selected.has(s.id));
     if (items.length === 0) { alert('라벨을 선택해주세요.'); return; }
 
+    const signal = outputSignal(); if (signal.aborted) return;
     const labelsHtml = items.map(s => `
       <div class="label">
-        <img src="${qrUrls[s.id]}" width="90" height="90" />
-        <div class="name">${s.name}</div>
-        <div class="unit">${s.unit}</div>
+        <img src="${escape(qrUrls[s.id] ?? '')}" width="90" height="90" />
+        <div class="name">${escape(s.name)}</div>
+        <div class="unit">${escape(s.unit ?? '')}</div>
       </div>
     `).join('');
 
-    const win = window.open('', '_blank', 'width=800,height=600');
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR 라벨</title>
+    void previewHtmlPrint({title:'QR 라벨',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR 라벨</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Malgun Gothic', sans-serif; background: #fff; }
@@ -65,9 +69,7 @@ const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose }) =>
         @media print { body { margin: 0; } }
       </style></head><body>
       <div class="grid">${labelsHtml}</div>
-      <script>window.onload = () => { window.print(); window.close(); }<\/script>
-      </body></html>`);
-    win.document.close();
+      </body></html>`});
   };
 
   return (

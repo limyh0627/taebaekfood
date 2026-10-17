@@ -8,6 +8,7 @@ import {readPartnerAdvanceSnapshot} from './partnerAdvanceReader';
 import {activeAdvanceApplications} from './shared/partnerAdvance';
 import {readPartnerAdvanceWriteScope,prepareAdvanceCancellation,writePartnerAdvanceMutations} from './partnerAdvanceCommand';
 import {kstDateOf} from './shared/calculation';
+import {cleanupValidId} from './shared/partnerItemCleanup';
 type Row=Record<string,any>;
 type Link={kind:'orders'|'purchaseOrders'|'settlements';id:string;data:Row};
 type Input={operationId:string;statementId:string;releaseId:string;expectedRevision:number;expectedOriginalHash:string};
@@ -65,7 +66,7 @@ export async function readDeletionAdvances(db:admin.firestore.Firestore,tx:admin
  return {snapshot,affected};
 }
 export async function deleteIssuedStatement(db:admin.firestore.Firestore,companyId:string,actorId:string,input:Input){
- if(!actorId||!input||!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId)||!/^[A-Za-z0-9_-]{1,160}$/.test(input.statementId)
+ if(!actorId||!input||!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId)||!cleanupValidId(input.statementId)||input.statementId.length>160
   ||!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0
   ||!/^[a-f0-9]{64}$/.test(input.expectedOriginalHash))throw new HttpsError('invalid-argument','전표 삭제 입력이 잘못되었습니다.');
  const requestHash=statementDeletionHash({companyId,actorId,...input});

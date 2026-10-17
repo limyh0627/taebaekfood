@@ -1,3 +1,5 @@
+import { useHaccpCompany } from '../context/HaccpCompanyContext';
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useState, useRef } from 'react';
 import { FileDown } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -39,11 +41,13 @@ const OVERVIEW_ITEMS: Omit<OverviewRow, 'result' | 'note'>[] = [
 ];
 
 export const OverviewForm: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [rows, setRows] = useState<OverviewRow[]>(
     OVERVIEW_ITEMS.map(i => ({ ...i, result: '', note: '' }))
   );
   const [evaluator, setEvaluator] = useState('');
   const [evalDate, setEvalDate] = useState(today());
+  const outputSignal = useOutputScope(companyId, evalDate);
   const ref = useRef<HTMLDivElement>(null);
 
   const setResult = (idx: number, val: '' | 'O' | 'X') =>
@@ -68,7 +72,7 @@ export const OverviewForm: React.FC = () => {
           평가자: <input value={evaluator} onChange={e => setEvaluator(e.target.value)} placeholder="이름 입력" className="border border-slate-300 rounded px-1 py-0.5 text-xs w-24" />
         </label>
         <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_사후평가점검표_${evalDate}.pdf`)}
+          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_사후평가점검표_${evalDate}.pdf`, outputSignal())}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
         >
           <FileDown size={13} /> PDF 저장

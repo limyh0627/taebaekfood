@@ -1,4 +1,5 @@
 import type { PartnerMonthlyRow } from './partnerMonthlySettlement';
+import { previewRasterPdf, type RasterPdfPage } from '../../shared/rasterPdfOutput';
 
 const PAGE_ROWS = 17;
 const columns = [
@@ -15,17 +16,19 @@ export function settlementPages(rows: NamedSettlementRow[]): NamedSettlementRow[
     rows.slice(i * PAGE_ROWS, (i + 1) * PAGE_ROWS));
 }
 
-export async function savePartnerMonthlyPdf(month: string, rows: NamedSettlementRow[]): Promise<void> {
-  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-    import('html2canvas'), import('jspdf'),
-  ]);
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+export async function savePartnerMonthlyPdf(month: string, inputRows: NamedSettlementRow[], signal: AbortSignal = new AbortController().signal): Promise<void> {
+  if(signal.aborted)return;
+  const rows=inputRows.map(row=>({...row}));
+  const { default: html2canvas } = await import('html2canvas');
+  if(signal.aborted)return;
+  const rasterPages:RasterPdfPage[]=[];
   const pages = settlementPages(rows);
   const totals = Object.fromEntries(columns.slice(1).map(([key]) =>
     [key, rows.reduce((sum, row) => sum + Number(row[key]), 0)])) as Record<Exclude<keyof NamedSettlementRow, 'partnerId' | 'name'>, number>;
   const number = (value: number) => value.toLocaleString('ko-KR');
 
   for (let index = 0; index < pages.length; index++) {
+    if(signal.aborted)return;
     const page = document.createElement('div');
     page.style.cssText = 'position:fixed;left:-12000px;top:0;width:1123px;height:794px;box-sizing:border-box;padding:44px 46px;background:white;color:#172033;font-family:Malgun Gothic,Apple SD Gothic Neo,Noto Sans KR,sans-serif;';
     const title = document.createElement('h1');
@@ -66,11 +69,11 @@ export async function savePartnerMonthlyPdf(month: string, rows: NamedSettlement
     document.body.append(page);
     try {
       const canvas = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff' });
-      if (index) pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, 210);
+      if(signal.aborted)return;
+      rasterPages.push({width:297,height:210,draws:[{image:canvas.toDataURL('image/png'),x:0,y:0,width:297,height:210}]});
     } finally {
       page.remove();
     }
   }
-  pdf.save(`거래처별정산_${month}.pdf`);
+  if(!signal.aborted)await previewRasterPdf({pages:rasterPages,fileName:`거래처별정산_${month}.pdf`,signal});
 }

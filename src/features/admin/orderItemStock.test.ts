@@ -1,3 +1,4 @@
+import * as catalogWriter from '../../shared/inventoryWriterProtocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Order } from '../../shared/types';
 import type { OrderProductLotMutation } from './orderProductLots';
@@ -333,4 +334,12 @@ it('빈 생산기록 index 필드 삭제는 final·완료 duplicate를 복원 �
  const before=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation)).rejects.toThrow('연결 필드');expect(memory.docs).toEqual(before);
  memory.docs.get('orders/order-a')!.productionRecordIndex={line:{recordId:orderProductionRecordId(gen,'line'),generation:gen,requestHash:'a'.repeat(64)}};
  const changed=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation)).rejects.toThrow('연결이 변경');expect(memory.docs).toEqual(changed);
+});
+
+it('검증 proof는 최종 커밋에만 붙고 완료표 최초 원문과 완료 재시도는 바꾸지 않는다',async()=>{const spy=vi.spyOn(catalogWriter,'prepareCatalogOrderCommit').mockImplementation(async(_db,_tx,_id,_before,patch)=>({...patch,catalogReferenceProofId:'proof-one'}));try{const f=generationFixture([]),original=structuredClone(f.mutation.patch);await f.stock.applyItemStockDeltas(new Map(),[],undefined,f.mutation);const saved=memory.docs.get('orders/order-a')!;expect(saved.catalogReferenceProofId).toBe('proof-one');expect(JSON.parse((saved.inventoryGenerationCompletion as any).requestText).patch).toEqual(original);expect(f.mutation.patch).toEqual(original);spy.mockClear();await f.stock.applyItemStockDeltas(new Map(),[],undefined,f.mutation);expect(spy).not.toHaveBeenCalled();}finally{spy.mockRestore();}});
+it('옛 세대의 재고 증감 없는 주문 변경도 실제 마지막 TX에서 별도 proof 메타를 받는다',async()=>{
+ const before={companyId:'taebaek',status:'DELIVERED',items:[]};memory.docs.set('orders/legacy',before);
+ const patch={status:'PENDING',items:[{itemId:'a'}]},original=structuredClone(patch);
+ const spy=vi.spyOn(catalogWriter,'prepareCatalogOrderCommit').mockImplementation(async(_db,_tx,_id,_before,value)=>({...value,catalogReferenceProofId:'legacy-proof'}));
+ try{const stock=createOrderItemStockOperations({db:{} as never,allItems:[]});await stock.applyItemStockDeltas(new Map(),[],undefined,{orderId:'legacy',patch});expect(spy).toHaveBeenCalledOnce();expect(spy.mock.calls[0].slice(2)).toEqual(['legacy',before,original]);expect(memory.docs.get('orders/legacy')).toMatchObject({status:'PENDING',catalogReferenceProofId:'legacy-proof'});expect(patch).toEqual(original);}finally{spy.mockRestore();}
 });

@@ -6,6 +6,9 @@ import { db } from '../src/shared/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import type { CompanyId } from '../src/shared/types';
+import { useOutputScope } from '../src/shared/hooks/useOutputScope';
+import { previewRasterPdf, snapshotOutputElement } from '../src/shared/rasterPdfOutput';
+import { appNotice } from '../src/shared/components/appDialog';
 
 // 벤조피렌 시험 검사성적서 1건
 interface BenzopyreneTest {
@@ -43,6 +46,8 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
   const [editRow, setEditRow] = useState<BenzopyreneTest | null>(null);
   const [saving, setSaving] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  const outputSignal=useOutputScope(companyId,'benzopyrene');
+  const outputBusy=useRef(false);
 
   // 이 탭을 열 때만 구독 (읽기 절약). 작은 컬렉션.
   useEffect(() => {
@@ -93,14 +98,17 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
   };
 
   const downloadPDF = async () => {
-    if (!tableRef.current) return;
-    const { default: jsPDF } = await import('jspdf') as any;
-    const { default: html2canvas } = await import('html2canvas') as any;
-    const canvas = await html2canvas(tableRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-    const pdf = new jsPDF('l', 'mm', 'a4');
-    const w = 297, h = (canvas.height * w) / canvas.width;
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, Math.min(h, 210));
-    pdf.save(`벤조피렌_검사성적서_${todayStr()}.pdf`);
+    const signal=outputSignal();if (!tableRef.current||signal.aborted||outputBusy.current) return;
+    outputBusy.current=true;const fileName=`벤조피렌_검사성적서_${todayStr()}.pdf`;
+    let snapshot:ReturnType<typeof snapshotOutputElement>|undefined;
+    try{
+      snapshot=snapshotOutputElement(tableRef.current);
+      const { default: html2canvas } = await import('html2canvas');if(signal.aborted)return;
+      const canvas = await html2canvas(snapshot.element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });if(signal.aborted)return;
+      const w=297,h=(canvas.height*w)/canvas.width;
+      await previewRasterPdf({pages:[{width:297,height:210,draws:[{image:canvas.toDataURL('image/png'),x:0,y:0,width:w,height:Math.min(h,210)}]}],fileName,signal});
+    }catch{if(!signal.aborted)await appNotice('PDF 미리보기를 준비하지 못했습니다. 다시 시도해 주세요.');}
+    finally{snapshot?.dispose();outputBusy.current=false;}
   };
 
   const judgeCls = (j: string) => j === '적합' ? 'text-emerald-600 font-black' : j === '부적합' ? 'text-rose-600 font-black' : 'text-slate-400';

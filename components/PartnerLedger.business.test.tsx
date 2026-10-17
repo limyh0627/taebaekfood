@@ -1,10 +1,12 @@
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-user'}},authReady:Promise.resolve()}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,cb:(user:{uid:string})=>void)=>{cb({uid:'test-user'});return ()=>{};}}));
 /** @vitest-environment jsdom */
 import React from 'react';
 import {describe,it,expect,vi} from 'vitest';
 import {render,screen,fireEvent,within} from '@testing-library/react';
 import PartnerLedger from './PartnerLedger';
 import type {IssuedStatement,CashEntry,AccountCode,Partner} from "../src/shared/types";
-vi.mock('./PartnerAdvanceModal',()=>({default:({companyId,partnerId,onClose}:any)=><div role="dialog" aria-label="합성 적용"><span>{companyId+':'+partnerId}</span><button onClick={onClose}>적용 닫기</button></div>}));
+vi.mock('./PartnerPaymentModal',()=>({default:({companyId,partnerId,onClose}:any)=><div role="dialog" aria-label="합성 적용"><span>{companyId+':'+partnerId}</span><button onClick={onClose}>적용 닫기</button></div>}));
 vi.mock("../src/features/statements/infrastructure/issueTradeStatementCommand",()=>({recordPartnerPayment:vi.fn()}));
 const accounts:AccountCode[]=[['108','외상매출금','자산','debit'],['251','외상매입금','부채','credit'],['253','미지급금','부채','credit'],['133','선급금','자산','debit'],['254','선수금','부채','credit'],['500','상품매입','비용','debit'],['800','매출','수익','credit']].map(([code,name,type,normalBalance])=>({id:code,code,name,type,normalBalance} as AccountCode));
 const st=(id:string,partnerId:string,type:'매입'|'매출',amount=100,date='2026-09-02'):IssuedStatement=>({id,companyId:'taebaek',partnerId,partnerName:partnerId,tradeDate:date,issuedAt:date+'T01:00:00Z',docNo:id,type,orderId:'',totalSupply:amount,totalTax:0,totalAmount:amount,items:[{name:id,spec:'',qty:1,price:amount,supply:amount,tax:0,total:amount,isTaxExempt:true,accountCode:type==='매입'?'500':'800'}]});
@@ -46,8 +48,8 @@ it('첫 표시 거래처와 검색·방향·회사 fallback은 남은 금액과 
  const rows=[st('AUTO-A','가','매입',100),st('AUTO-B','나','매입',80),st('AUTO-SALE','다','매출',70),{...st('AUTO-FOREIGN','풍회','매입',40),companyId:'punghoe' as const}];
  const view=render(<PartnerLedger {...props} partners={[]} issuedStatements={rows} cashEntries={[]} returnOperations={[]} advanceStatements={[]}/>);fireEvent.click(screen.getByRole('button',{name:'전체'}));
  expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'100 지불'})).toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'선급·선수금 적용'}));expect(screen.getByText('taebaek:가')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'100 지불'}));expect(screen.getByText('taebaek:가')).toBeInTheDocument();
  fireEvent.change(screen.getByPlaceholderText('거래처명'),{target:{value:'나'}});expect(screen.getByText('taebaek:나')).toBeInTheDocument();expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'80 지불'})).toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'적용 닫기'}));fireEvent.change(screen.getByPlaceholderText('거래처명'),{target:{value:''}});fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'70 수금'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'선급·선수금 적용'}));expect(screen.getByText('taebaek:다')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'적용 닫기'}));
- fireEvent.click(screen.getByRole('button',{name:'매입 (미지급)'}));view.rerender(<PartnerLedger {...props} companyId="punghoe" partners={[]} issuedStatements={rows} cashEntries={[]} returnOperations={[]} advanceStatements={[]}/>);expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'40 지불'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'선급·선수금 적용'}));expect(screen.getByText('punghoe:풍회')).toBeInTheDocument();expect(screen.queryByText('taebaek:가')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'적용 닫기'}));fireEvent.change(screen.getByPlaceholderText('거래처명'),{target:{value:''}});fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'70 수금'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'70 수금'}));expect(screen.getByText('taebaek:다')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'적용 닫기'}));
+ fireEvent.click(screen.getByRole('button',{name:'매입 (미지급)'}));view.rerender(<PartnerLedger {...props} companyId="punghoe" partners={[]} issuedStatements={rows} cashEntries={[]} returnOperations={[]} advanceStatements={[]}/>);expect(within(screen.getByRole('table',{name:'거래처 업무 원장'})).getByRole('button',{name:'40 지불'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'40 지불'}));expect(screen.getByText('punghoe:풍회')).toBeInTheDocument();expect(screen.queryByText('taebaek:가')).not.toBeInTheDocument();
 });

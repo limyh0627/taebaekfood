@@ -1,3 +1,4 @@
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,cb:(user:{uid:string})=>void)=>{cb({uid:'test-user'});return ()=>{};}}));
 /**
  * @vitest-environment jsdom
  */
@@ -8,6 +9,9 @@ import { recordPartnerPayment } from '../src/features/statements/infrastructure/
 import type { AccountCode, CashEntry, IssuedStatement } from '../src/shared/types';
 import { lineAmount } from '../src/shared/lineAmount';
 
+vi.mock('../src/shared/firebase', () => ({auth:{currentUser:{uid:'test-user'}},authReady:Promise.resolve()}));
+vi.mock('./PartnerAdvanceModal', () => ({default: ({onStateChange}: {onStateChange?: (state:{blocked:boolean;applied:boolean;busy:boolean;sourceBalance:number;lookupBlocked:boolean;pendingUnknown:boolean;selectionValid:boolean;resetVersion:number;selectedAmount:number})=>void}) => { React.useEffect(() => {onStateChange?.({blocked:false,applied:false,busy:false,sourceBalance:0,lookupBlocked:false,pendingUnknown:false,selectionValid:false,resetVersion:0,selectedAmount:0});},[onStateChange]); return <p>상계 영역</p>; }}));
+import React from 'react';
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand', () => ({ recordPartnerPayment: vi.fn() }));
 const accounts = [{ id: 'bank-1', companyId: 'taebaek' as const, name: '보통예금', active: true,
   type: '통장' as const, openingBalance: 0, openingDate: '2026-08-01', createdAt: '2026-08-01T00:00:00.000Z' }];
@@ -71,6 +75,7 @@ describe('거래처 원장 수금 입력', () => {
     fireEvent.change(amount, { target: { value: '1000000' } });
     expect(amount).toHaveValue('1,000,000');
     fireEvent.change(screen.getByRole('combobox', { name: '입출금 계좌' }), { target: { value: 'bank-1' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '수금 기록' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '수금 기록' }));
 
     await waitFor(() => expect(recordPartnerPayment).toHaveBeenCalledWith('taebaek', expect.objectContaining({
@@ -87,8 +92,9 @@ describe('거래처 원장 수금 입력', () => {
     fireEvent.click(screen.getByRole('button', { name: '살림터' }));
     fireEvent.click(screen.getByRole('button', { name: '1,428,000 수금' }));
     fireEvent.change(screen.getByRole('combobox', { name: '입출금 계좌' }), { target: { value: 'bank-1' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '수금 기록' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '수금 기록' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('permission-denied')));
+    expect(await screen.findByRole('alert')).toHaveTextContent('permission-denied');
     expect(screen.getByRole('textbox', { name: '수금 금액' })).toHaveValue('1,428,000');
     alert.mockRestore();
   });

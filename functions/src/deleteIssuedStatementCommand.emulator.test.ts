@@ -20,6 +20,23 @@ describe.skipIf(!available)('서버 전표 삭제의 원자성과 원 발행 재
  beforeAll(()=>{app=admin.initializeApp({projectId:'demo-taebaekfood-local'},run);db=admin.firestore(app);});
  afterAll(async()=>{if(!db)return;for(const path of owned){const r=db.doc(path);if(path==='appMeta/releaseCutover'&&(await r.get()).get('testRunId')!==run)continue;await r.delete();}await app.delete();});
 
+ it('한글 기초 전표 ID는 같은 삭제 원문 재시도까지 보존한다',async()=>{
+  const id=run+'-기초-매출';await Promise.all([ref('appMeta','releaseCutover').set({status:'active',releaseId:run,testRunId:run}),ref('issuedStatements',id).set({companyId:company,partnerId:partner,tradeDate:'2026-07-31',totalSupply:102000,totalTax:0,totalAmount:102000,docNo:'합성기초',type:'비용',items:[{accountCode:'108',side:'차변',total:102000},{accountCode:'375',side:'대변',total:102000}]}),state().set({companyId:company,partnerId:partner,revision:0})]);
+  const input={...await command(id),operationId:run+'-korean-delete'};ref('voucherMutationOperations',input.operationId);
+  expect(await deleteIssuedStatement(db,company,'actor',input)).toMatchObject({status:'applied'});
+  const receipt=await ref('voucherMutationOperations',input.operationId).get();
+  expect(receipt.get('command')).toEqual(input);expect((await ref('issuedStatements',id).get()).exists).toBe(false);
+  expect(await deleteIssuedStatement(db,company,'actor',input)).toMatchObject({status:'duplicate'});
+  expect((await receipt.ref.get()).updateTime!.isEqual(receipt.updateTime!)).toBe(true);
+ });
+ it('빈값·경로·제어문자 ID는 감사와 금융문서 쓰기 전에 거절한다',async()=>{
+  for(const [index,statementId] of ['', 'a/b', 'a\u0001b', '.', '..', ' 앞공백', 'a'.repeat(161)].entries()){
+   const operationId=run+'-invalid-'+index,receipt=ref('voucherMutationOperations',operationId);
+   await expect(deleteIssuedStatement(db,company,'actor',{operationId,statementId,releaseId:run,expectedRevision:0,expectedOriginalHash:'0'.repeat(64)})).rejects.toMatchObject({code:'invalid-argument'});
+   expect((await receipt.get()).exists).toBe(false);
+  }
+ });
+
  it.each(['invoiced','received'])('TODO027 저장 매입 단위 전표 삭제는 %s 발주 연결만 해제하고 물리 재고와 중복 재시도를 보존한다',async status=>{
   const id=run+'-snapshot-'+status,rawId=id+'-raw',poId='po-'+id,unitId=id+'-unit',date='2026-10-08';
   const counter=ref('appMeta',voucherSequenceKey(company,date));

@@ -3,7 +3,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 const m=vi.hoisted(()=>({add:vi.fn(),update:vi.fn(),pdf:vi.fn(),snap:null as null|((s:any)=>void),unsub:vi.fn(),where:vi.fn((...args:any[])=>args)}));
-vi.mock('../../../shared/firebase',()=>({db:{}}));
+vi.mock('../../../shared/firebase',()=>({db:{},auth:{currentUser:{uid:'output-test'},onAuthStateChanged:()=>()=>{}}}));
 vi.mock('firebase/firestore',()=>({collection:vi.fn((_,n)=>n),query:vi.fn((...args)=>args),where:m.where,onSnapshot:vi.fn((_,cb)=>{m.snap=cb;cb({docs:[]});return m.unsub;})}));
 vi.mock('../../../shared/services/firebaseService',()=>({addItem:m.add,updateItem:m.update}));
 vi.mock('../infrastructure/downloadAsPDF',()=>({downloadAsPDF:m.pdf}));
@@ -22,4 +22,7 @@ it('직원 과거월은 저장·추가를 숨기고 두 PDF의 별도 영역·�
 });
 it('회사별 구독 인자와 cleanup을 보존한다',()=>{
  const view=render(<HaccpCompanyContext.Provider value="taebaek"><CleaningForm/></HaccpCompanyContext.Provider>);view.rerender(<HaccpCompanyContext.Provider value="punghoe"><CleaningForm/></HaccpCompanyContext.Provider>);expect(m.where).toHaveBeenCalledWith('companyId','==','punghoe');expect(m.unsub).toHaveBeenCalledOnce();view.unmount();expect(m.unsub).toHaveBeenCalledTimes(2);
+});
+it('회사 변경과 화면 해제는 두 출력 영역의 이전 미리보기 수명을 끝낸다',()=>{
+ const view=render(<HaccpCompanyContext.Provider value="taebaek"><CleaningForm/></HaccpCompanyContext.Provider>);fireEvent.click(screen.getAllByRole('button',{name:'PDF 저장'})[0]);const first=m.pdf.mock.calls[0][2] as AbortSignal;expect(first.aborted).toBe(false);view.rerender(<HaccpCompanyContext.Provider value="punghoe"><CleaningForm/></HaccpCompanyContext.Provider>);expect(first.aborted).toBe(true);fireEvent.click(screen.getAllByRole('button',{name:'PDF 저장'})[1]);const second=m.pdf.mock.calls[1][2] as AbortSignal;view.unmount();expect(second.aborted).toBe(true);expect(m.add).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();
 });

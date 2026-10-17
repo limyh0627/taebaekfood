@@ -3,6 +3,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import ItemManager from './ItemManager';
+vi.mock('../src/features/items/ui/ItemMergeDialog',()=>({ItemMergeDialog:({keepId,donorIds,onApplied,onClose}:{keepId:string;donorIds:string[];onApplied:(request:{keepId:string;donorIds:string[]})=>Promise<void>;onClose:()=>void})=><div role="dialog"><button onClick={()=>void onApplied({keepId,donorIds})}>합성 서버 통합 ACK</button><button onClick={onClose}>통합 취소</button></div>}));
 import type { Item, Partner, PartnerItem } from '../types';
 const cleanupApi = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), recover: vi.fn(), list: vi.fn(() => [] as any[]), watch: vi.fn(), confirm: vi.fn() }));
 vi.mock('../src/shared/services/partnerItemCleanupCommands', () => ({ previewPartnerItemCleanup: cleanupApi.read, applyPartnerItemCleanup: cleanupApi.apply, recoverPartnerItemCleanup: cleanupApi.recover, listPartnerItemCleanupAttempts: cleanupApi.list, watchPartnerItemCleanupActor: cleanupApi.watch }));
@@ -42,24 +43,12 @@ it('이전 회사의 늦은 미리보기는 새 회사 화면에 표시하지 �
 it('응답유실 요청은 재진입 때 보이고 손상본문도 참조확인·중단을 제공하며 다른 연결 확인은 막지 않는다', async () => { cleanupApi.list.mockReturnValue([{ key: 'k', text: '{broken', request: null, reference: { companyId: 'taebaek', linkId: 'other-link', operationId: 'op' }, error: '보관 본문 손상' }]); await openCleanup(); expect(screen.getByText('보관 본문 손상')).toBeInTheDocument(); expect(within(screen.getByRole('dialog')).getByText('연결 상태 확인')).toBeEnabled(); expect(screen.getByText('처리 결과 확인')).toBeEnabled(); expect(screen.getByText('미처리 요청 중단')).toBeEnabled(); expect(screen.queryByText('같은 내용으로 재시도')).toBeNull(); fireEvent.click(screen.getByText('이 연결 선택')); await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('연결 상태 확인')).toBeDisabled()); fireEvent.click(screen.getByText('처리 결과 확인')); await screen.findByText(/처리 여부 미확인/); expect(cleanupApi.recover.mock.calls[0][2]).toBe('inspect-request'); });
 it('정리 사유 입력 후 닫기는 명시 확인하며 취소하면 입력을 유지한다', async () => { cleanupApi.confirm.mockResolvedValue(false); await openCleanup(); fireEvent.click(within(screen.getByRole('dialog')).getByText('연결 상태 확인')); await screen.findByText('서버 확인: 품목 부재 확인'); fireEvent.change(screen.getByLabelText('연결 정리 사유'), { target: { value: '보존할 사유' } }); fireEvent.click(screen.getByRole('button', { name: '품목 연결 확인·정리 닫기' })); await waitFor(() => expect(cleanupApi.confirm).toHaveBeenCalled()); expect(screen.getByLabelText('연결 정리 사유')).toHaveValue('보존할 사유'); });
 
-it('통합 확인 대기와 실패를 표시하고 선택 및 펼침을 유지하며 성공 후에만 접는다', async () => {
- let confirm!: (value: boolean) => void;
- cleanupApi.confirm.mockImplementationOnce(() => new Promise<boolean>(resolve => { confirm = resolve; }));
- let rejectMerge!: (error: Error) => void;
- const merge = vi.fn().mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectMerge = reject; })).mockResolvedValueOnce(undefined);
- render(<ItemManager {...props()} items={[ownItem, { ...ownItem, id: 'duplicate' }]} onMergeItems={merge} />);
- fireEvent.click(screen.getByRole('button', { name: /중복 품목/ }));
- fireEvent.click(screen.getByRole('button', { name: /정상 품목.*2개/ }));
- fireEvent.click(screen.getByRole('button', { name: '선택 품목 통합 (2개)' }));
- expect(screen.getByRole('button', { name: '확인 대기 중...' })).toBeDisabled(); expect(merge).not.toHaveBeenCalled();
- await act(async () => confirm(true));
- expect(screen.getByRole('button', { name: '통합 중...' })).toBeDisabled();
- await act(async () => rejectMerge(new Error('응답 유실')));
- expect(await screen.findByRole('alert')).toHaveTextContent('통합 결과를 확인하지 못했습니다');
- expect(screen.getByRole('alert')).toHaveTextContent('응답 유실');
- expect(screen.getByRole('button', { name: '선택 품목 통합 (2개)' })).toBeEnabled();
- fireEvent.click(screen.getByRole('button', { name: '선택 품목 통합 (2개)' }));
- await waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
- await waitFor(() => expect(screen.queryByRole('button', { name: '선택 품목 통합 (2개)' })).toBeNull());
- expect(merge.mock.calls[1]).toEqual(merge.mock.calls[0]);
+it('서버 확인창을 열기만 하면 부모 writer를 호출하지 않고 ACK후에만 선택과 펼침을 정리한다',async()=>{
+ const onMerge=vi.fn().mockResolvedValue(undefined);
+ render(<ItemManager {...props()} items={[ownItem,{...ownItem,id:'duplicate'}]} onMergeItems={onMerge}/>);
+ fireEvent.click(screen.getByRole('button',{name:/중복 품목/}));fireEvent.click(screen.getByRole('button',{name:/정상 품목.*2개/}));
+ fireEvent.click(screen.getByRole('button',{name:'선택 품목 통합 (2개)'}));expect(onMerge).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'통합 취소'}));expect(screen.getByRole('button',{name:'선택 품목 통합 (2개)'})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'선택 품목 통합 (2개)'}));fireEvent.click(screen.getByRole('button',{name:'합성 서버 통합 ACK'}));
+ await waitFor(()=>expect(onMerge).toHaveBeenCalledTimes(1));await waitFor(()=>expect(screen.queryByRole('button',{name:'선택 품목 통합 (2개)'})).toBeNull());
 });

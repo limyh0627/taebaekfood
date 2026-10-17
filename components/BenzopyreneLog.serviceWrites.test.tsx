@@ -4,12 +4,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest';
 import BenzopyreneLog from './BenzopyreneLog';
 import * as services from '../src/shared/services/firebaseService';
+import {appNotice} from '../src/shared/components/appDialog';
 
-const state = vi.hoisted(() => ({ update: vi.fn(), remove: vi.fn(), subscriptions: [] as any[], rows: [] as any[] }));
+const state = vi.hoisted(() => ({ update: vi.fn(), remove: vi.fn(), subscriptions: [] as any[], rows: [] as any[],preview:vi.fn(),dispose:vi.fn(),capture:vi.fn(),pending:null as null|Promise<any> }));
+vi.mock('../src/shared/rasterPdfOutput',()=>({previewRasterPdf:state.preview,snapshotOutputElement:(element:HTMLElement)=>({element:element.cloneNode(true),dispose:state.dispose})}));
+vi.mock('html2canvas',()=>({default:state.capture}));
 vi.mock('../src/shared/firebase', () => ({ db: {}, authReady: Promise.resolve(), auth: { currentUser: {
-  getIdTokenResult: async () => ({ claims: { companyId: 'taebaek' } }),
+  uid:'synthetic-user',getIdTokenResult: async () => ({ claims: { companyId: 'taebaek' } }),
 } } }));
-vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockResolvedValue(true) }));
+vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockResolvedValue(true),appNotice:vi.fn() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
   collection: (_db: unknown, collection: string) => ({ collection }),
@@ -26,6 +29,8 @@ vi.mock('firebase/firestore', () => ({
   getDocs: vi.fn(), getDoc: vi.fn(), writeBatch: vi.fn(), runTransaction: vi.fn(), documentId: vi.fn(), arrayUnion: vi.fn(),
 }));
 beforeEach(() => {
+  vi.mocked(appNotice).mockClear();
+  state.preview.mockReset().mockResolvedValue(undefined);state.dispose.mockReset();state.pending=null;state.capture.mockReset().mockImplementation(()=>state.pending??Promise.resolve({width:1123,height:1000,toDataURL:()=> 'data:image/png;base64,AA=='}));
   state.update.mockReset().mockResolvedValue(undefined);
   state.remove.mockReset().mockResolvedValue(undefined);
   state.subscriptions = [];
@@ -33,6 +38,23 @@ beforeEach(() => {
     completedDate: '2026-10-02', testItem: '벤조피렌', criteria: '합성 기준', result: '0.1', judgment: '적합', createdAt: '2026-10-02' }];
   vi.spyOn(services, 'updateItem');
   vi.spyOn(services, 'deleteItem');
+});
+it('벤조피렌은 원래 가로 A4 배치와 높이 제한을 미리보기로만 보내고 업무 저장을 호출하지 않는다',async()=>{
+ render(<BenzopyreneLog companyId="taebaek" />);fireEvent.click(screen.getByRole('button',{name:'PDF 다운로드'}));
+ await waitFor(()=>expect(state.preview).toHaveBeenCalledOnce());
+ expect(state.preview.mock.calls[0][0]).toMatchObject({pages:[{width:297,height:210,draws:[{x:0,y:0,width:297,height:210}]}],fileName:expect.stringContaining('벤조피렌_검사성적서_')});
+ expect(state.update).not.toHaveBeenCalled();expect(state.remove).not.toHaveBeenCalled();expect(state.dispose).toHaveBeenCalledOnce();
+});
+it('캡처 대기 중 회사 전환은 이전 문서의 늦은 미리보기를 취소한다',async()=>{
+ let done!:(v:any)=>void;state.pending=new Promise(r=>{done=r;});const view=render(<BenzopyreneLog companyId="taebaek" />);
+ fireEvent.click(screen.getByRole('button',{name:'PDF 다운로드'}));await waitFor(()=>expect(state.capture).toHaveBeenCalledOnce());
+ view.rerender(<BenzopyreneLog companyId="punghoe" />);await act(async()=>{done({width:1123,height:794,toDataURL:()=> 'data:image/png;base64,AA=='});});
+ expect(state.preview).not.toHaveBeenCalled();expect(state.dispose).toHaveBeenCalledOnce();
+});
+it('캡처 실패를 안내하고 임시 문서를 정리한 뒤 다시 준비할 수 있다',async()=>{
+ state.capture.mockRejectedValueOnce(Error('capture'));render(<BenzopyreneLog companyId="taebaek"/>);
+ const click=()=>fireEvent.click(screen.getByRole('button',{name:'PDF 다운로드'}));click();await waitFor(()=>expect(appNotice).toHaveBeenCalledOnce());
+ expect(state.dispose).toHaveBeenCalledOnce();expect(state.preview).not.toHaveBeenCalled();click();await waitFor(()=>expect(state.preview).toHaveBeenCalledOnce());expect(state.dispose).toHaveBeenCalledTimes(2);
 });
 
 it('검사 수정은 공용 서비스를 통해 회사 claim을 포함하며 실패하면 편집 내용을 유지한다', async () => {

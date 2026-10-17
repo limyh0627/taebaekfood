@@ -1,3 +1,4 @@
+import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
@@ -87,6 +88,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
   const companyId = useHaccpCompany();
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
+  const outputSignal = useOutputScope(companyId, month);
   const [records, setRecords] = useState<CleaningRecord[]>([]);
   const [machineRows, setMachineRows] = useState<MachineCleanRow[]>(defaultMachineRows());
   const [areaRows, setAreaRows] = useState<AreaCleanRow[]>(defaultAreaRows());
@@ -193,7 +195,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
             <button onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
           )}
           <button
-            onClick={() => machineRef.current && downloadAsPDF(machineRef.current, `HACCP_기계세척소독일지_${month}.pdf`)}
+            onClick={() => machineRef.current && downloadAsPDF(machineRef.current, `HACCP_기계세척소독일지_${month}.pdf`, outputSignal())}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
           >
             <FileDown size={13} /> PDF 저장
@@ -273,7 +275,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
             <button onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
           )}
           <button
-            onClick={() => areaRef.current && downloadAsPDF(areaRef.current, `HACCP_구역청소일지_${month}.pdf`)}
+            onClick={() => areaRef.current && downloadAsPDF(areaRef.current, `HACCP_구역청소일지_${month}.pdf`, outputSignal())}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
           >
             <FileDown size={13} /> PDF 저장

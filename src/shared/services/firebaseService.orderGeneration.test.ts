@@ -59,3 +59,5 @@ it('손상된 ownfirst 또는 다른 선택은 서비스 strict거절을 유지�
  Object.assign(current(),{retirementId:'terminal',retirementClaimPending:false});bridge.retained.mockReturnValue(true);bridge.call.mockRejectedValue(Error('최초 원문을 보존했습니다.'));
  await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,{...operation(),lineId:'another-line'})).rejects.toThrow('원문');expect(mem.txCalls).toBe(0);expect(mem.writes).toEqual([]);
 });
+
+it('품목 검증 메타는 세대 업무 patch에 끼워 넣지 않고 원 품목 변경을 보존한다',async()=>{await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());const patch={items:[{itemId:'합성품목',quantity:1}]};await guardedUpdateOrderInventoryGeneration(gen,patch);expect(current().items).toEqual(patch.items);expect(patch).not.toHaveProperty('catalogReferenceProofId');});

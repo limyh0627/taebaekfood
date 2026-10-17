@@ -30,7 +30,7 @@ describe('선급·선수 적용 확인', () => {
   it('잔액 초과를 바로잡은 뒤 정상 적용할 수 있다', async () => {
     open(); await waitFor(() => expect(screen.getByLabelText('적용 금액')).toHaveValue('200'));
     fireEvent.change(screen.getByLabelText('적용 금액'), { target: { value: '201' } }); fireEvent.click(screen.getByRole('button', { name: '확인하고 적용' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('남은 금액'); expect(api.apply).not.toHaveBeenCalled();
+    expect((await screen.findAllByRole('alert')).some(row => row.textContent?.includes('남은 금액'))).toBe(true); expect(api.apply).not.toHaveBeenCalled();
     expect(screen.getByLabelText('적용 금액')).not.toBeDisabled(); fireEvent.change(screen.getByLabelText('적용 금액'), { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: '확인하고 적용' })); await waitFor(() => expect(api.apply).toHaveBeenCalled());
   });
@@ -52,3 +52,5 @@ describe('선급·선수 적용 확인', () => {
     expect(api.apply).not.toHaveBeenCalled(); expect(api.confirm).toHaveBeenCalledWith(expect.stringContaining('apply-001'));
   });
 });
+
+it('embedded는중첩모달없이표시하며외부현금처리중상계송신을막는다',async()=>{render(<PartnerAdvanceModal companyId="taebaek" partnerId="partner" partnerName="거래처" embedded externalBusy onClose={vi.fn()}/>);await screen.findByLabelText('적용 금액');expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('button',{name:'확인하고 적용'})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'확인하고 적용'}));expect(api.apply).not.toHaveBeenCalled();});
