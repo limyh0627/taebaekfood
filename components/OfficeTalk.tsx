@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -691,7 +692,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   }, [employees, mentionSearch, currentUser.id]);
 
   const sharedControls=(surface:"desktop"|"mobile")=>(<div data-testid={`shared-controls-${surface}`} className={`m-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3 ${surface==='mobile'?'lg:hidden':''}`}>
-          <button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" onClick={()=>{setShareAttempt(null);setShareRecoveryOpen(true);}}>공유 실패 작업 {shareAttempts.length}</button>
+          <div className="border-b border-slate-200 pb-2"><ActionButton tone="recovery" type="button" onClick={()=>{setShareAttempt(null);setShareRecoveryOpen(true);}}>공유 실패 {shareAttempts.length}</ActionButton></div>
           {(pendingShare||shareIdFromUrl())&&<><p className="text-xs">현재 계정에 연결하지 않은 공유가 있습니다. 대화방을 선택하고 직접 연결해주세요.</p>{pendingShare&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('text')}>공유 내용 연결</button>}{shareIdFromUrl()&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('file')}>공유 파일 연결</button>}</>}
         </div>);
 

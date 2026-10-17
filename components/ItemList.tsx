@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 import { boxEquivalentLabel, inventoryNameSpec, withSpec, parseMakeLabel } from '../src/features/items/ui/itemListDisplay';
 import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
 import { isStockProduction } from '../src/shared/orderPurpose';
@@ -1381,7 +1382,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   return (
     <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
-      <button type="button" className="self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 작업 {pendingInventory.filter(entry=>!entry.deleted).length}</button>
+      <ActionButton tone="recovery" className="self-start" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 {pendingInventory.filter(entry=>!entry.deleted).length}</ActionButton>
       {inventoryRecoveryOpen&&<ModalShell title={inventorySelection?'재고 실패 작업 상세':'재고 실패 작업 목록'} layer={1300} onClose={()=>{if(!inventoryBusy){if(inventorySelection)setInventorySelection(null);else setInventoryRecoveryOpen(false);}}}>
         {!inventorySelection?<>
           <p>처리 결과를 확인하지 못한 요청입니다. 항목을 선택해 최초 품목과 수량을 확인하세요.</p>

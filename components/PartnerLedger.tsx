@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { formatQuantity } from '../src/shared/quantityDisplay';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
@@ -322,7 +323,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                 <span className="text-slate-400">{periodRange ? '기말' : label} <span className={`tabular-nums ${tone}`}>{fmt(ledger.balance)}</span></span>
               </div>
             )}
-            {sel && ledger && <button type="button" onClick={() => {
+            {sel && ledger && <ActionButton tone="normal" type="button" onClick={() => {
               const rows = ledger.rows.map(row => [
                 row.date, row.time?.slice(0, 5) ?? '',
                 row.opening ? '기초' : row.kind === '전표' ? '전표' : row.source === 'cash' ? '결제·자금' : '결제',
@@ -342,9 +343,9 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                 ],
                 rows,
               });
-            }} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">
+            }}>
               <Download size={13}/>엑셀 저장
-            </button>}
+            </ActionButton>}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
                  색은 들어오면 파랑, 나가면 빨강. */}
             {sel && (
