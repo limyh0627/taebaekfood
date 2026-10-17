@@ -1,3 +1,4 @@
+import DateRangeInputs from './DateRangeInputs';
 import { monthStart, today, weekMonday } from '../day';
 
 export type DateRangeQuick = '당일' | '금주' | '당월' | '전체' | '';
@@ -24,14 +25,15 @@ export default function DateRangeFilter({ from, to, quick = '', onChange, label 
         {value}
       </button>)}
     </div>
-    <div className="grid w-full min-w-0 max-w-full grid-cols-1 items-center gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:w-80">
-    <input aria-label={`${label} 시작일`} type="date" value={from} max={to || undefined}
-      onChange={event => onChange(event.target.value, to, '')}
-      className="min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300" />
-    <span aria-hidden="true" className="hidden text-xs text-slate-400 min-[360px]:block">~</span>
-    <input aria-label={`${label} 종료일`} type="date" value={to} min={from || undefined}
-      onChange={event => onChange(from, event.target.value, '')}
-      className="min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300" />
-    </div>
+    <DateRangeInputs from={from} to={to}
+      onFromChange={value => onChange(value, to, '')}
+      onToChange={value => onChange(from, value, '')}
+      className="grid w-full min-w-0 max-w-full grid-cols-1 items-center gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:w-80"
+      separatorClassName="hidden text-xs text-slate-400 min-[360px]:block"
+      separatorAriaHidden
+      fromInputProps={{ 'aria-label': `${label} 시작일`, max: to || undefined,
+        className: 'min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300' }}
+      toInputProps={{ 'aria-label': `${label} 종료일`, min: from || undefined,
+        className: 'min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300' }}/>
   </div>;
 }

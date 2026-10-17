@@ -1,3 +1,4 @@
+import DateRangeInputs from '../src/shared/components/DateRangeInputs';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, Plus } from 'lucide-react';
@@ -1030,9 +1031,10 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
             주문일
             <span className="flex flex-wrap items-center gap-2">
               <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className="text-xs font-bold">기간 전체</button>
-              <input type="date" value={queryDateFrom} max={queryDateTo || undefined} onChange={event => setQueryDateFrom(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" aria-label="주문일 시작" />
-              <span className="text-xs text-slate-400">~</span>
-              <input type="date" value={queryDateTo} min={queryDateFrom || undefined} onChange={event => setQueryDateTo(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" aria-label="주문일 종료" />
+              <DateRangeInputs from={queryDateFrom} to={queryDateTo} onFromChange={setQueryDateFrom} onToChange={setQueryDateTo}
+                className="contents" separatorClassName="text-xs text-slate-400"
+                fromInputProps={{ max: queryDateTo || undefined, className: 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
+                toInputProps={{ min: queryDateFrom || undefined, className: 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
               <span className="flex h-9 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
                 {[[todayKey, '오늘'], [quickWeekStart, '이번 주'], [`${todayKey.slice(0, 7)}-01`, '이번 달']].map(([from, label], index) => {
                   const selected = queryDateFrom === from && queryDateTo === todayKey;

@@ -53,3 +53,10 @@ it('필터 버튼은 바깥 저장 폼을 제출하지 않는다', () => {
   fireEvent.click(screen.getByRole('button', { name: '전체' }));
   expect(onSubmit).not.toHaveBeenCalled();
 });
+
+it('공용 두 입력에도 원래 좁은폭·높이·포커스 클래스와 구분선 숨김을 유지한다',()=>{
+ render(<DateRangeFilter from="2026-10-01" to="2026-10-17" onChange={vi.fn()}/>);
+ for(const label of ['조회 시작일','조회 종료일']){const input=screen.getByLabelText(label);expect(input).toHaveClass('min-h-11','!min-w-0','text-xs','focus:ring-blue-300');}
+ expect(screen.getByText('~')).toHaveClass('hidden','min-[360px]:block');
+ expect(screen.getByLabelText('조회 시작일').parentElement).toHaveClass('grid-cols-1','min-[360px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+});

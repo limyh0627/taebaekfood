@@ -142,3 +142,25 @@ describe('주간 배송 캘린더', () => {
     );
   });
 });
+
+it('주문일 공용 입력은 양쪽 범위와 원래 높이·포커스 스타일을 보존한다',()=>{
+ render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);
+ const from=screen.getByLabelText('주문일 시작'),to=screen.getByLabelText('주문일 종료');
+ expect(from).toHaveAttribute('type','date');expect(to).toHaveAttribute('type','date');
+ expect(from).toHaveClass('h-9','focus:ring-1');expect(from.closest('label')).not.toBeNull();
+ expect(from.parentElement?.tagName).toBe('SPAN');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(from.parentElement).toHaveClass('contents');
+ fireEvent.change(from,{target:{value:'2026-09-01'}});expect(to).toHaveAttribute('min','2026-09-01');expect(to).toHaveValue('');
+ fireEvent.change(to,{target:{value:'2026-09-30'}});expect(from).toHaveAttribute('max','2026-09-30');expect(from).toHaveValue('2026-09-01');
+ fireEvent.change(from,{target:{value:''}});expect(to).not.toHaveAttribute('min');expect(to).toHaveValue('2026-09-30');
+});
+it('주문일 빠른기간 자동선택·수동변경·기간전체와 검색전체 초기화를 유지한다',()=>{
+ render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);
+ const from=screen.getByLabelText('주문일 시작'),to=screen.getByLabelText('주문일 종료');
+ const month=screen.getByRole('button',{name:/^이번 달$/});fireEvent.click(month);
+ expect(from).toHaveValue(today().slice(0,7)+'-01');expect(to).toHaveValue(today());expect(month).toHaveAttribute('aria-pressed','true');
+ fireEvent.change(from,{target:{value:'2020-01-01'}});expect(month).toHaveAttribute('aria-pressed','false');expect(to).toHaveValue(today());
+ fireEvent.click(screen.getByRole('button',{name:'기간 전체'}));expect(from).toHaveValue('');expect(to).toHaveValue('');expect(from).not.toHaveAttribute('max');
+ fireEvent.click(screen.getByRole('button',{name:/^오늘$/}));expect(from).toHaveValue(today());expect(to).toHaveValue(today());
+ const search=screen.getByPlaceholderText('거래처, 주소, 품목, 비고 검색');fireEvent.change(search,{target:{value:'참기름'}});
+ fireEvent.click(screen.getByRole('button',{name:/^초기화$/}));expect(from).toHaveValue('');expect(to).toHaveValue('');expect(search).toHaveValue('');
+});
