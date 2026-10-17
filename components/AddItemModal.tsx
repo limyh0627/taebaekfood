@@ -1,7 +1,8 @@
+import { saveItemEditorRelations } from '../src/features/items/services/saveItemEditorRelations';
+import { useItemPhotoSave, PHOTO_TYPES } from '../src/features/items/hooks/useItemPhotoSave';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { where, doc, getDoc } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { where } from 'firebase/firestore';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
 import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
@@ -15,7 +16,7 @@ import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import PickRow from '../src/shared/ui/PickRow';
 import ModalShell from '../src/shared/components/ModalShell';
-import { db, storage } from '../src/shared/firebase';
+
 
 interface ProductModalProps {
   companyId: CompanyId;
@@ -67,7 +68,7 @@ type SpecUnit = typeof SPEC_UNITS[number];
 const normUnit = (u: string | undefined): SpecUnit =>
   SPEC_UNITS.find(x => x.toLowerCase() === String(u ?? '').toLowerCase()) ?? 'ml';
 
-const PHOTO_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 
@@ -75,8 +76,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [photoPreview, setPhotoPreview] = useState('');
-  const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
+  const {saving,savingRef,saveItemPhoto} = useItemPhotoSave({companyId,initialData,onSave});
   useEffect(() => {
     if (!photoFile) { setPhotoPreview(''); return; }
     const url = URL.createObjectURL(photoFile);
@@ -338,80 +338,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
      * 받는 쪽은 `p.submaterials`를 계속 읽었으니 늘 빈 배열이었고, 그쪽 로직이
      * "기존 줄 전부 삭제 → 초안대로 다시 쓰기"라서 **품목을 저장할 때마다 BOM이 통째로 지워졌다.**
      */
-    savingRef.current = true;
-    setSaving(true);
-    let uploadedPath = '';
-    try {
-      if (photoFile) {
-        const suffix = PHOTO_TYPES[photoFile.type];
-        uploadedPath = `companies/${companyId}/items/${finalProduct.id}/photo-${crypto.randomUUID()}.${suffix}`;
-        const fileRef = storageRef(storage, uploadedPath);
-        await uploadBytes(fileRef, photoFile, { contentType: photoFile.type });
-        finalProduct.image = await getDownloadURL(fileRef);
-        finalProduct.imagePath = uploadedPath;
-      }
-      await onSave({ ...finalProduct, photoChanged: !!(photoFile || photoRemoved),
-        bomDraft: formData.type === 'service' ? [] : formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) });
-    } catch (error) {
-      // 품목 문서가 이미 새 사진을 가리키면 후속 처리 실패여도 파일을 남겨 둔다.
-      let photoPersisted = false;
-      if (uploadedPath) {
-        try {
-          const saved = await getDoc(doc(db, 'items', finalProduct.id));
-          photoPersisted = saved.exists() && saved.data().imagePath === uploadedPath;
-        } catch (checkError) {
-          console.error('사진 저장 상태 확인 실패 — 파일 삭제를 보류합니다.', checkError);
-          photoPersisted = true;
-        }
-        if (!photoPersisted) await deleteObject(storageRef(storage, uploadedPath)).catch(console.error);
-      }
-      window.alert(`${error instanceof Error ? error.message : '품목을 저장하지 못했습니다.'}${photoPersisted ? '\n사진이 품목에 저장되어 있어 파일은 유지했습니다.' : ''}`);
-      savingRef.current = false;
-      setSaving(false);
-      return;
-    }
-    if ((photoFile || photoRemoved) && initialData?.imagePath?.startsWith(`companies/${companyId}/items/${finalProduct.id}/`)) {
-      try {
-        const saved = await getDoc(doc(db, 'items', finalProduct.id));
-        // 다른 편집자가 구 사진을 다시 연결했다면 Storage에서 지우지 않는다.
-        if (saved.exists() && saved.data().imagePath !== initialData.imagePath) {
-          await deleteObject(storageRef(storage, initialData.imagePath)).catch(console.error);
-        }
-      } catch (error) { console.error('구 사진 참조 확인 실패 — 파일 삭제를 보류합니다.', error); }
-    }
-    savingRef.current = false;
-    setSaving(false);
+    if (!await saveItemPhoto({finalProduct,photoFile,photoRemoved,
+      bomDraft: formData.type === 'service' ? [] : formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) })) return;
 
-    // 원료 배합·수율 저장 — **반제품·원료만**. item_formula.
-    //   완제품은 저장하지 않는다: parent_key가 품목이라 같은 품목을 쓰는 다른 완제품까지 덮어쓰고,
-    //   완제품 배합은 구성품(BOM)이 정하므로 근거가 둘로 갈린다. 위 편집 UI도 완제품엔 없다.
-    if (onSaveItemFormula && ['wip', 'raw'].includes(formData.type)) {
-      const keyOf = (cat: string, pumok: string, nm: string) => cat === 'product' ? (pumok || nm) : baseRawName(nm);
-      const parentKey = keyOf(formData.type, formData.품목, formData.name);
-      const prevKey = initialData ? keyOf(initialData.type, initialData.품목 || '', initialData.name) : undefined;
-      const rows = formulaRows
-        .filter(r => r.child_name)
-        .map(r => ({ child_name: r.child_name, yield_rate: (r.yield_pct || 0) / 100, ratio: 1 }));
-      await onSaveItemFormula(parentKey, rows, prevKey && prevKey !== parentKey ? prevKey : undefined);
-    }
-
-    // PartnerItem 다중 upsert/삭제 — partner_item Direction='in'
-    if (onUpsertPartnerItem) {
-      const itemId = finalProduct.id;
-      const prevIn = partnerIn.filter(pi => pi.itemId === itemId);
-      // 선택된 매입거래처 upsert (기존 doc/단가 유지)
-      for (const partnerId of formData.inPartnerIds) {
-        const existing = prevIn.find(pi => (pi.partnerId) === partnerId);
-        onUpsertPartnerItem({ id: existing?.id ?? `${itemId}_${partnerId}_in`, partnerId: partnerId, itemId: itemId, Direction: 'in', price: existing?.price, taxType: existing?.taxType });
-      }
-      // 해제된 매입거래처 삭제
-      if (onDeletePartnerItem) {
-        for (const pi of prevIn) {
-          const pid = pi.partnerId;
-          if (pid && !formData.inPartnerIds.includes(pid)) onDeletePartnerItem(pi.id);
-        }
-      }
-    }
+    await saveItemEditorRelations({formData,initialData,formulaRows,itemId:finalProduct.id,partnerIn,onSaveItemFormula,onUpsertPartnerItem,onDeletePartnerItem});
 
     // 거래처별 포장 설정(shipping_rule)은 폐기했다 — 겉박스·테이프는 박스 품목의 BOM으로만 잡는다.
   };
