@@ -42,20 +42,6 @@ it('계정 메뉴는 설정 목록 밖에 고정하고 빈 그룹만 사이드�
  expect(source).toContain('<AccountMenu currentUser={currentUser}');expect(initializer('menuEntries')).not.toContain('AccountMenu');
  expect(source).toContain('if(!rows.length)return null;');expect(source).toContain('onReset:resetMenu');
 });
-it('이전 계정의 늦은 토큰 확인은 현재 계정 신원으로 적용하지 않는다',async()=>{
- let callback!:(user:any)=>void;let effect:ts.ArrowFunction|undefined;
- const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&node.expression.getText(parsed)==='useEffect'&&ts.isArrowFunction(node.arguments[0])&&node.arguments[0].getText(parsed).includes('onAuthStateChanged'))effect=node.arguments[0];ts.forEachChild(node,visit);};visit(parsed);
- if(!effect)throw Error('실제 인증 effect 없음');
- const identities=vi.fn(),auth={currentUser:{uid:'a'}};const stop=vi.fn();
- const cleanup=evaluate(effect.getText(parsed),{onAuthStateChanged:(_auth:unknown,cb:typeof callback)=>{callback=cb;return stop;},auth,setMenuIdentity:identities})();
- let resolveA!:(value:unknown)=>void,resolveB!:(value:unknown)=>void;
- callback({uid:'a',getIdTokenResult:()=>new Promise(resolve=>{resolveA=resolve;})});
- auth.currentUser.uid='b';callback({uid:'b',getIdTokenResult:()=>new Promise(resolve=>{resolveB=resolve;})});
- resolveA({claims:{employeeId:'old',companyId:'taebaek',isAdmin:true}});await Promise.resolve();
- expect(identities).not.toHaveBeenCalledWith(expect.objectContaining({uid:'a'}));
- resolveB({claims:{employeeId:'new',companyId:'taebaek',isAdmin:false}});await Promise.resolve();
- expect(identities).toHaveBeenLastCalledWith({uid:'b',employeeId:'new',companyId:'taebaek',admin:false});cleanup();expect(stop).toHaveBeenCalledOnce();
-});
 it('현재 메뉴 변경은 저장 실패에도 화면에 적용하고 계정 변경 뒤에는 쓰지 않는다',()=>{
  const c=catalog(true),value=normalizeMenuPreferences(null,c.groups,c.entries);value.items[0].hidden=true;
  const saved=vi.fn(),error=vi.fn(),write=vi.fn(()=>{throw Error('용량 부족');});

@@ -1,7 +1,7 @@
+import { useMenuIdentity } from './hooks/useMenuIdentity';
 import ActionButton from '../../shared/components/ActionButton';
 import { NavGroup, NavItem } from './ui/NavigationPrimitives';
 import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
-import { onAuthStateChanged } from 'firebase/auth';
 import { menuPreferenceKey, normalizeMenuPreferences, loadMenuPreferences, saveMenuPreferences, resetMenuPreferences, type MenuPreferences } from '../../shared/menuPreferences';
 const HelpChat = React.lazy(() => import('../../../components/HelpChat'));
 import {readOemReceiptEntry,markOemReceiptPreCallFailure} from '../../shared/oemReceiptPending';
@@ -357,22 +357,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 빈 목록으로 뜬다. 그게 "메뉴가 아예 없다"보다 낫다 — 없는 건지 못 여는 건지 알 수 있다.
    */
   const viewAllowed = (_v: ViewType) => true;
-  const [menuIdentity, setMenuIdentity] = useState<{uid:string;employeeId:string;companyId:string;admin:boolean}|null>(null);
+  const menuIdentity = useMenuIdentity();
   const [menuSaved, setMenuSaved] = useState<{key:string|null;value:MenuPreferences}|null>(null);
   const [menuError, setMenuError] = useState('');
   const [helpOpen, setHelpOpen] = useState<string|null>(null);
-  useEffect(() => {
-    let live=true, generation=0;
-    const stop=onAuthStateChanged(auth,user=>{
-      const captured=++generation;setMenuIdentity(null);
-      if(!user)return;
-      void user.getIdTokenResult().then(({claims})=>{
-        if(live && captured===generation && auth.currentUser?.uid===user.uid && typeof claims.employeeId==='string' && typeof claims.companyId==='string')
-          setMenuIdentity({uid:user.uid,employeeId:claims.employeeId,companyId:claims.companyId,admin:claims.isAdmin===true});
-      }).catch(()=>{if(live&&captured===generation)setMenuIdentity(null);});
-    });
-    return()=>{live=false;generation++;stop();};
-  },[]);
+
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
   const allOrders = useMemo(() => mergeCompanyOrders(orders, historicalOrders, companyId), [orders, historicalOrders, companyId]);
   const receivedOrders = purchaseOrders.filter(po => po.status === 'received' || po.status === 'cancelled');
