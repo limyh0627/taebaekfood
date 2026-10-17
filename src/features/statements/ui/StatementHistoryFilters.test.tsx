@@ -25,3 +25,8 @@ describe('전표 조회 필터', () => {
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 });
+
+it('시작일과 종료일은 흰색 40px 입력 규격을 사용한다',()=>{
+ render(<StatementHistoryFilters quickRange="당일" from="2026-10-18" to="2026-10-18" kind="전체" kindCounts={new Map()} onQuickRange={vi.fn()} onFrom={vi.fn()} onTo={vi.fn()} onMove={vi.fn()} onKind={vi.fn()} onReset={vi.fn()}><span>검색</span></StatementHistoryFilters>);
+ for(const name of ['조회 시작일','조회 종료일'])expect(screen.getByLabelText(name)).toHaveClass('h-10','bg-white','border-slate-200');
+});

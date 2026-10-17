@@ -1046,3 +1046,16 @@ it('발행 문서 엑셀도 인증된 화면 수명과 원품목을 미리보기
 });
 
 it('전표인쇄는회사UID출력signal을전달하고계정변경후재인쇄를차단한다',async()=>{const statement:IssuedStatement={id:'html-print-scope',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'HTML-SCOPE',orderId:'',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'인쇄원문',spec:'kg',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]};const view=render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));const signal=issueMocks.print.mock.calls.at(-1)![2] as AbortSignal;expect(signal.aborted).toBe(false);const count=issueMocks.print.mock.calls.length;act(()=>ownerExcel.actor?.({uid:'different-user'}));expect(signal.aborted).toBe(true);fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));expect(issueMocks.print).toHaveBeenCalledTimes(count);view.unmount();expect(signal.aborted).toBe(true);});
+
+it('전표 실제 배치는 내역탭 행동 복구 검색 뒤에 결과 건수를 표시한다',()=>{
+ setup(undefined,undefined,{pendingInvoice:undefined});
+ const tabs=screen.getByRole('button',{name:'전표내역'}).closest('[data-page-header-slot="tabs"]')!;
+ const actions=screen.getByRole('group',{name:'거래명세서 작업'}),recovery=screen.getByRole('button',{name:/^실패 [0-9]+$/}),search=screen.getByRole('region',{name:'검색조건'}),summary=screen.getByRole('heading',{name:/조회 결과/});
+ expect(tabs).not.toBeNull();for(const [a,b]of [[tabs,actions],[actions,recovery],[recovery,search],[search,summary]])expect(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getAllByRole('heading',{name:/조회 결과/})).toHaveLength(1);expect(within(actions).getByRole('button',{name:'일반전표'})).toBeInTheDocument();
+ fireEvent.click(within(actions).getByRole('button',{name:/거래명세서/}));fireEvent.change(screen.getByPlaceholderText('업체명 · 문서번호 · 계정과목 검색'),{target:{value:'없는거래처'}});
+ expect(within(actions).getByRole('button',{name:'매입전표'})).toBeInTheDocument();
+});
+it('composerOnly에서는 조회 탭 행동과 검색조건을 새로 노출하지 않는다',()=>{
+ setup(undefined,undefined,{composerOnly:true});expect(screen.queryByRole('group',{name:'거래명세서 작업'})).toBeNull();expect(screen.queryByRole('button',{name:'전표내역'})).toBeNull();expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();expect(screen.getByLabelText('1행 거래 수량')).toBeInTheDocument();
+});

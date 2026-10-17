@@ -813,15 +813,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-      {!calendarOnly && orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {!calendarOnly && <PageHeader
         title="배송 관리"
         subtitle="배송 일정과 출고 진행 상태를 관리합니다."
-      />}
-
-      {!calendarOnly && <div className="order-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6">
-        <h2 className="text-lg font-black text-slate-900">전체 배송 관리</h2>
-        <div className="flex items-center rounded-2xl bg-slate-100 p-1" aria-label="배송 보기 방식">
+        tabs={<div className="w-full min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-1" aria-label="배송 보기 방식">
           {([
             { value: '캘린더' as const, icon: CalendarIcon },
             { value: '리스트' as const, icon: ListOrdered },
@@ -830,15 +826,32 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
             const Icon = view.icon;
             return (
               <button key={view.value} type="button" onClick={() => setDeliveryTab(view.value)} aria-pressed={deliveryTab === view.value}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black transition-all ${deliveryTab === view.value ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs font-bold transition-all ${deliveryTab === view.value ? 'bg-white text-indigo-600 border border-indigo-300' : 'text-slate-400 hover:text-slate-600'}`}>
                 <Icon size={13} aria-hidden="true" /><span>{view.value}</span>
               </button>
             );
           })}
         </div>
-      </div>}
+<div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="배송 상태 필터">
+        {/*  **'전체' 는 예전 주문을 안 센다** — 예전 것은 캘린더에서 '이전 N건' 으로 접혀 따로 뜬다.
+             셈에 넣으면 운영 중인 주문이 몇 건인지가 묻힌다. */}
+        {[
+          { value: 'all' as const, label: '전체', count: deliveryQueryOrders.filter(order => order.status !== OrderStatus.DELIVERED).length },
+          { value: OrderStatus.PENDING, label: '대기중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PENDING).length },
+          { value: OrderStatus.PROCESSING, label: '작업중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PROCESSING).length },
+          { value: OrderStatus.DISPATCHED, label: '작업완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.DISPATCHED).length },
+          { value: OrderStatus.SHIPPED, label: '출고완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.SHIPPED).length },
+        ].map(status => (
+          <button key={status.value} type="button" onClick={() => setQueryStatus(status.value as typeof queryStatus)} className={`flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-black transition-colors ${queryStatus === status.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}>
+            <span>{status.label}</span><span className={`text-[9px] tabular-nums ${queryStatus === status.value ? 'text-indigo-500' : 'text-slate-400'}`}>{status.count}</span>
+          </button>
+        ))}
+      </div>
+        </div>}
+        recovery={orderRecoveryOrphans ? <section aria-label="주문 없는 처리 확인 기록" className="rounded-lg border border-slate-200 bg-white p-3">{orderRecoveryOrphans}</section> : undefined}
+      />}
 
-      {!calendarOnly && <section className="order-3 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
+      {!calendarOnly && <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
         <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
           <h3 id="delivery-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
           <button type="button" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
@@ -850,12 +863,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
               <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className="text-xs font-bold">기간 전체</button>
               <DateRangeInputs from={queryDateFrom} to={queryDateTo} onFromChange={setQueryDateFrom} onToChange={setQueryDateTo}
                 className="contents" separatorClassName="text-xs text-slate-400"
-                fromInputProps={{ max: queryDateTo || undefined, className: 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
-                toInputProps={{ min: queryDateFrom || undefined, className: 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
-              <span className="flex h-9 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                fromInputProps={{ max: queryDateTo || undefined, className: 'h-10 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
+                toInputProps={{ min: queryDateFrom || undefined, className: 'h-10 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
+              <span className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
                 {[[todayKey, '오늘'], [quickWeekStart, '이번 주'], [`${todayKey.slice(0, 7)}-01`, '이번 달']].map(([from, label], index) => {
                   const selected = queryDateFrom === from && queryDateTo === todayKey;
-                  return <button key={label} type="button" aria-pressed={selected} onClick={() => { setQueryDateFrom(from); setQueryDateTo(todayKey); }} className={`h-full px-3 text-[11px] ${index < 2 ? 'border-r border-slate-200' : ''} ${selected ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}>{label}</button>;
+                  return <button key={label} type="button" aria-pressed={selected} onClick={() => { setQueryDateFrom(from); setQueryDateTo(todayKey); }} className={`h-full px-3 text-[11px] ${index < 2 ? 'border-r border-slate-200' : ''} ${selected ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-white'}`}>{label}</button>;
                 })}
               </span>
             </span>
@@ -863,14 +876,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           <span className="h-0 basis-full" aria-hidden="true" />
           <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
             검색 필드
-            <select value={queryField} onChange={event => { setQueryField(event.target.value); setQueryValue(''); }} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
+            <select value={queryField} onChange={event => { setQueryField(event.target.value); setQueryValue(''); }} className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
               <option value="">필드 선택</option>
               {queryFields.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
             조건 값
-            <select value={queryValue} disabled={!queryField} onChange={event => setQueryValue(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
+            <select value={queryValue} disabled={!queryField} onChange={event => setQueryValue(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
               <option value="">전체</option>
               {queryValue && !queryOptions.includes(queryValue) && <option value={queryValue}>{queryValue} (결과 없음)</option>}
               {queryOptions.map(value => <option key={value} value={value}>{value}</option>)}
@@ -880,30 +893,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
             전체 검색
             <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
-              <input type="search" value={queryText} onChange={event => setQueryText(event.target.value)} placeholder="거래처, 주소, 품목, 비고 검색" className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+              <input type="search" value={queryText} onChange={event => setQueryText(event.target.value)} placeholder="거래처, 주소, 품목, 비고 검색" className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
             </span>
           </label>
         </div>
       </section>}
 
-      {!calendarOnly && <div className="order-4 flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="배송 상태 필터">
-        {/*  **'전체' 는 예전 주문을 안 센다** — 예전 것은 캘린더에서 '이전 N건' 으로 접혀 따로 뜬다.
-             셈에 넣으면 운영 중인 주문이 몇 건인지가 묻힌다. */}
-        {[
-          { value: 'all' as const, label: '전체', count: deliveryQueryOrders.filter(order => order.status !== OrderStatus.DELIVERED).length },
-          { value: OrderStatus.PENDING, label: '대기중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PENDING).length },
-          { value: OrderStatus.PROCESSING, label: '작업중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PROCESSING).length },
-          { value: OrderStatus.DISPATCHED, label: '작업완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.DISPATCHED).length },
-          { value: OrderStatus.SHIPPED, label: '출고완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.SHIPPED).length },
-        ].map(status => (
-          <button key={status.value} type="button" onClick={() => setQueryStatus(status.value as typeof queryStatus)} className={`flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-black transition-colors ${queryStatus === status.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}>
-            <span>{status.label}</span><span className={`text-[9px] tabular-nums ${queryStatus === status.value ? 'text-indigo-500' : 'text-slate-400'}`}>{status.count}</span>
-          </button>
-        ))}
-      </div>}
-
       {!calendarOnly && deliveryTab === '리스트' && (
-        <div className="order-5">
+        <div className="min-w-0">
         <OrdersList
           renderOrderRecovery={renderOrderRecovery}
           companyId={companyId}
@@ -1142,7 +1139,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                    리스트·보드에서는 그날 도는 순서를 볼 일이 없고, 늘 붙어 있으면 화면만 길어진다.
                    주문 쪽 금일 작업순서와 두 덩이가 겹쳐 쌓이는 것도 막는다. */}
               {(calendarOnly || deliveryTab === '캘린더') && (
-              <div className="order-1 flex w-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex w-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
                   <button type="button" className="flex min-h-11 items-center gap-2 text-left" onClick={() => toggleMobileCollapse('delivery-order')} aria-expanded={!mobileCollapsed.has('delivery-order')}>
                     <div className="rounded-xl bg-indigo-600 p-1.5 text-white"><ListOrdered size={16} /></div>
@@ -1329,7 +1326,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
               </ModalShell>
             )}
 
-            {!calendarOnly && deliveryTab === '보드' && <div className="order-5 md:overflow-x-auto no-scrollbar">
+            {!calendarOnly && deliveryTab === '보드' && <div className="md:overflow-x-auto no-scrollbar">
               <div className="flex flex-col gap-4 pb-1 md:min-w-max md:flex-row md:items-start">
               {/* 작업완료 컬럼 (2열) */}
               <div
@@ -1509,7 +1506,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
       {/* Calendar (Weekly / Monthly toggle) */}
       {(calendarOnly || deliveryTab === '캘린더') && (
-        <div className="order-5 mb-10 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="mb-10 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {/* 공통 헤더 — 뷰 토글 + 현재 뷰 내비게이션 */}
           <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">

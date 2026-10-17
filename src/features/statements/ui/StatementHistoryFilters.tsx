@@ -43,16 +43,16 @@ export default function StatementHistoryFilters(props: {
                  단추만 따로 감싸면 그제야 마지막이 마지막이 된다. */}
             <div className="flex items-center">
               {QUICK_RANGES.map(range => <button key={range} type="button" onClick={() => props.onQuickRange(range)}
-                className={`h-9 px-3 text-[11px] font-black border-y border-l first:rounded-l-md last:rounded-r-md last:border-r -mr-px last:mr-0 transition-all ${
+                className={`h-10 px-3 text-[11px] font-black border-y border-l first:rounded-l-md last:rounded-r-md last:border-r -mr-px last:mr-0 transition-all ${
                   props.quickRange === range ? 'relative z-10 bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}>{range}</button>)}
             </div>
             <div className="flex w-full items-center gap-1.5 sm:ml-1 sm:w-auto">
               <input type="date" value={props.from} aria-label="조회 시작일" onChange={event => props.onFrom(event.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+                className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
               <span className="text-xs text-slate-300">~</span>
               <input type="date" value={props.to} aria-label="조회 종료일" onChange={event => props.onTo(event.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+                className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
               {/*  **테두리 없이 위아래로**(2026-09-15 사장님: "테두리 없애고 위아래로 바꿔라").
                    네모 상자 둘이 날짜칸 옆에서 날짜만큼 자리를 먹고 있었다. 표가 이제
                    **오래된 것부터 아래로** 흐르므로(같은 날 "오래된게 위로 오게") 기간을

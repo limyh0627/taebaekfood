@@ -50,3 +50,11 @@ describe('전표 조회 결과 작업', () => {
     expect(button).toHaveAttribute('title','현재 조회 조건의 전표내역 전체를 엑셀로 저장');
   });
 });
+
+it('헤더 모드에서는 결과 요약만 숨기고 메뉴와 내보내기 보호를 유지한다',()=>{
+ const purchase=vi.fn(),exportRows=vi.fn();const props={resultCount:0,fetching:true,hideResultSummary:true,onCreateSale:vi.fn(),onCreatePurchase:purchase,onCreateCash:vi.fn(),onOpenCompany:vi.fn(),onExport:exportRows};
+ const view=render(<StatementHistoryActions {...props}/>);expect(screen.queryByText(/조회 결과/)).toBeNull();expect(screen.queryByText(/불러오는 중/)).toBeNull();expect(screen.getByRole('button',{name:'엑셀'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:/거래명세서/}));view.rerender(<StatementHistoryActions {...props} resultCount={3} fetching={false}/>);
+ fireEvent.click(screen.getByRole('button',{name:'매입전표'}));expect(purchase).toHaveBeenCalledOnce();
+ fireEvent.click(screen.getByRole('button',{name:'엑셀'}));expect(exportRows).toHaveBeenCalledOnce();
+});

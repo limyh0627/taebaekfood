@@ -44,13 +44,13 @@ export default function StatementHistorySearchFields(props: {
     <div className="relative flex flex-col gap-1">
       <span className="text-[10px] font-bold text-slate-500">거래처</span>
       <button type="button" onClick={() => { props.onPartnerOpen(!props.partnerOpen); props.onPartnerQuery(''); }}
-        className={`flex h-9 min-w-[145px] max-w-[210px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all ${props.partner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+        className={`flex h-10 min-w-[145px] max-w-[210px] items-center justify-between gap-1.5 rounded-md border bg-white px-2.5 text-xs font-bold outline-none transition-all ${props.partner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
         <span className="truncate">{props.partner || '거래처 선택'}</span><ChevronDown size={12} className="shrink-0 opacity-50"/>
       </button>
       {props.partnerOpen && <>
         <div className="fixed inset-0 z-40" onClick={() => props.onPartnerOpen(false)}/>
         <div className="absolute left-0 top-full z-50 mt-1 w-[240px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-          <div className="border-b border-slate-100 p-2"><input autoFocus value={props.partnerQuery} onChange={event => props.onPartnerQuery(event.target.value)} placeholder="거래처 이름으로 찾기" className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/></div>
+          <div className="border-b border-slate-100 p-2"><input autoFocus value={props.partnerQuery} onChange={event => props.onPartnerQuery(event.target.value)} placeholder="거래처 이름으로 찾기" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/></div>
           <div className="h-[260px] overflow-y-auto py-1">
             {props.partner && <button type="button" onClick={() => { props.onPartner(''); props.onPartnerOpen(false); }} className="w-full px-3 py-1.5 text-left text-xs font-black text-slate-400 hover:bg-slate-50">필터 해제</button>}
             {!props.partnerShown.length && <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">찾는 거래처가 없습니다</p>}
@@ -63,14 +63,14 @@ export default function StatementHistorySearchFields(props: {
     <div className="relative flex flex-col gap-1">
       <span className="text-[10px] font-bold text-slate-500">계정과목</span>
       <button type="button" onClick={() => { props.onAccountOpen(!props.accountOpen); props.onAccountQuery(''); }}
-        className={`flex h-9 min-w-[190px] max-w-[280px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all ${props.account ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+        className={`flex h-10 min-w-[190px] max-w-[280px] items-center justify-between gap-1.5 rounded-md border bg-white px-2.5 text-xs font-bold outline-none transition-all ${props.account ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
         <span className="truncate">{props.accountPicked ? <><span className="font-bold text-slate-400">{props.accountPicked.path} › </span>{props.accountPicked.label}</> : '계정 선택'}</span>
         <ChevronDown size={12} className="shrink-0 opacity-50"/>
       </button>
       {props.accountOpen && <>
         <div className="fixed inset-0 z-40" onClick={closeAccount}/>
         <div className="absolute left-0 top-full z-50 mt-1 w-[320px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-          <div className="border-b border-slate-100 p-2"><input autoFocus value={props.accountQuery} onChange={event => props.onAccountQuery(event.target.value)} placeholder="계정 이름·번호·묶음(재료비·판관비)" className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/></div>
+          <div className="border-b border-slate-100 p-2"><input autoFocus value={props.accountQuery} onChange={event => props.onAccountQuery(event.target.value)} placeholder="계정 이름·번호·묶음(재료비·판관비)" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/></div>
           {!props.accountQuery.trim() && <div className="space-y-1.5 border-b border-slate-100 px-2 py-2">
             <div className="flex gap-1">{(['손익', '재무'] as const).map(axis => <button key={axis} type="button" onClick={() => { props.onAccountAxis(axis); props.onAccountBranch(''); props.onAccountGroup(''); }} className={`flex-1 rounded-lg border py-1.5 text-[11px] font-black transition-all ${props.accountAxis === axis ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'}`}>{axis}</button>)}</div>
             {props.accountAxis && <div className="flex gap-1">{(props.accountAxis === '손익' ? ['이익', '비용'] : ['자산', '부채', '자본']).map(branch => <button key={branch} type="button" onClick={() => { props.onAccountBranch(branch); props.onAccountGroup(''); }} className={`flex-1 rounded-lg border py-1.5 text-[11px] font-black transition-all ${props.accountBranch === branch ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'}`}>{branch}</button>)}</div>}
@@ -88,6 +88,6 @@ export default function StatementHistorySearchFields(props: {
       </>}
     </div>
 
-    <label className="flex min-w-[260px] max-w-sm flex-1 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">전체 검색</span><div className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={props.search} onChange={event => props.onSearch(event.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/></div></label>
+    <label className="flex min-w-[260px] max-w-sm flex-1 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">전체 검색</span><div className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={props.search} onChange={event => props.onSearch(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/></div></label>
   </>;
 }

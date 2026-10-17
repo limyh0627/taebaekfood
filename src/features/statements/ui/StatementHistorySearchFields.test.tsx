@@ -41,3 +41,9 @@ describe('전표 거래처·계정 검색기', () => {
     expect(props.onAccountOpen).toHaveBeenCalledWith(false);
   });
 });
+
+it('거래처 계정 전체검색과 열린 검색창은 같은 흰색40px 규격을 사용한다',()=>{
+ const props={...baseProps(),partnerOpen:true,accountOpen:true};render(<StatementHistorySearchFields {...props}/>);
+ for(const name of ['거래처 선택','계정 선택'])expect(screen.getByRole('button',{name})).toHaveClass('h-10','bg-white');
+ for(const placeholder of ['업체명 · 문서번호 · 계정과목 검색','거래처 이름으로 찾기','계정 이름·번호·묶음(재료비·판관비)'])expect(screen.getByPlaceholderText(placeholder)).toHaveClass('h-10','bg-white');
+});

@@ -147,11 +147,24 @@ it('주문일 공용 입력은 양쪽 범위와 원래 높이·포커스 스타�
  render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);
  const from=screen.getByLabelText('주문일 시작'),to=screen.getByLabelText('주문일 종료');
  expect(from).toHaveAttribute('type','date');expect(to).toHaveAttribute('type','date');
- expect(from).toHaveClass('h-9','focus:ring-1');expect(from.closest('label')).not.toBeNull();
+ expect(from).toHaveClass('h-10','focus:ring-1');expect(from.closest('label')).not.toBeNull();
  expect(from.parentElement?.tagName).toBe('SPAN');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(from.parentElement).toHaveClass('contents');
  fireEvent.change(from,{target:{value:'2026-09-01'}});expect(to).toHaveAttribute('min','2026-09-01');expect(to).toHaveValue('');
  fireEvent.change(to,{target:{value:'2026-09-30'}});expect(from).toHaveAttribute('max','2026-09-30');expect(from).toHaveValue('2026-09-01');
  fireEvent.change(from,{target:{value:''}});expect(to).not.toHaveAttribute('min');expect(to).toHaveValue('2026-09-30');
+});
+it('제목·보기·상태·복구·검색·금일 업무를 한 순서로 두고 중복 제목은 없다',()=>{
+ vi.clearAllMocks();
+ render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items} orderRecoveryOrphans={<button>기록 확인</button>}/>);
+ const title=screen.getByRole('heading',{name:'배송 관리'}),view=screen.getByRole('button',{name:/^캘린더$/}),status=screen.getByRole('button',{name:/대기중/}),recovery=screen.getByRole('button',{name:'기록 확인'}),search=screen.getByPlaceholderText('거래처, 주소, 품목, 비고 검색'),daily=screen.getByRole('button',{name:/금일 배송순서/});
+ for(const [before,after] of [[title,view],[view,status],[status,recovery],[recovery,search],[search,daily]])expect(before.compareDocumentPosition(after)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.queryByText('전체 배송 관리')).toBeNull();expect(screen.getAllByRole('heading',{name:'배송 관리'})).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:/^보드$/}));expect(screen.queryByRole('button',{name:/금일 배송순서/})).toBeNull();expect(view).toHaveAttribute('aria-pressed','false');expect(setDocument).not.toHaveBeenCalled();
+});
+it('달력 전용에서는 새 제목·탭·검색·복구를 노출하지 않고 금일 순서를 유지한다',()=>{
+ vi.clearAllMocks();
+ render(<DeliveryManager companyId="taebaek" calendarOnly orders={[]} partners={partners} items={items} orderRecoveryOrphans={<button>기록 확인</button>}/>);
+ expect(screen.queryByRole('heading',{name:'배송 관리'})).toBeNull();expect(screen.queryByLabelText('배송 보기 방식')).toBeNull();expect(screen.queryByPlaceholderText('거래처, 주소, 품목, 비고 검색')).toBeNull();expect(screen.queryByRole('button',{name:'기록 확인'})).toBeNull();expect(screen.getByRole('button',{name:/금일 배송순서/})).toBeInTheDocument();expect(setDocument).not.toHaveBeenCalled();
 });
 it('주문일 빠른기간 자동선택·수동변경·기간전체와 검색전체 초기화를 유지한다',()=>{
  render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);

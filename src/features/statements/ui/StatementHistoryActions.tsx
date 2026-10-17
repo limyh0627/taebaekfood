@@ -9,6 +9,7 @@ import ActionButton from '../../../shared/components/ActionButton';
 export default function StatementHistoryActions(props: {
   resultCount: number;
   fetching: boolean;
+  hideResultSummary?: boolean;
   onCreateSale: () => void;
   onCreatePurchase: () => void;
   onCreateCash: () => void;
@@ -16,7 +17,7 @@ export default function StatementHistoryActions(props: {
   onOpenCompany: () => void;
   onExport?: () => void;
 }) {
-  const { resultCount, fetching, onCreateSale, onCreatePurchase, onCreateCash, onOpenRecurring, onOpenCompany, onExport } = props;
+  const { resultCount, fetching, hideResultSummary = false, onCreateSale, onCreatePurchase, onCreateCash, onOpenRecurring, onOpenCompany, onExport } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -30,12 +31,12 @@ export default function StatementHistoryActions(props: {
   }, [menuOpen]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-      <h3 className="text-xs font-black text-slate-800">
+    <div className={`flex min-w-0 max-w-full flex-wrap items-center gap-3 ${hideResultSummary ? 'justify-end' : 'justify-between px-1'}`}>
+      {!hideResultSummary && <h3 className="text-xs font-black text-slate-800">
         조회 결과 <span className="text-indigo-600">{resultCount}건</span>
         {fetching && <span className="ml-2 animate-pulse text-[11px] text-indigo-400">불러오는 중…</span>}
-      </h3>
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+      </h3>}
+      <div className={`flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto ${hideResultSummary ? 'justify-end' : ''}`}>
         {onExport && <ActionButton onClick={onExport} disabled={fetching || resultCount === 0}
           title="현재 조회 조건의 전표내역 전체를 엑셀로 저장">
           <Download size={13}/>엑셀

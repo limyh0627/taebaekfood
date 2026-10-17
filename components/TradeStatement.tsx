@@ -2331,10 +2331,46 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {composerOnly&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2"><ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton></div>}
       {!composerOnly && <>
       <PageHeader
+        actions={mainTab === 'history' ? (
+      <StatementHistoryActions hideResultSummary
+        resultCount={filteredHistory.length}
+        fetching={isFetchingHistory}
+        onExport={() => {
+          const scope = excelScope.current;
+          if (!scope || !scope.uid || !auth.currentUser?.uid || scope.companyId !== companyId || scope.uid !== auth.currentUser.uid || scope.controller.signal.aborted) return;
+          const rows = sortedHistory.map(row => {
+            const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
+            const portion = row.kind === 'pay' ? null : accountPortion(row);
+            const amount = portion ?? view.amount;
+            const docNo = row.kind === 'stmt' ? row.data.docNo : row.entry?.docNo;
+            return [view.date, view.owner ?? '', view.label, view.partner, view.shipTo ?? '',
+              docNo ?? '', view.detail, amount, view.cumulative ?? '', view.note];
+          });
+          void downloadListExcel({
+            signal: scope.controller.signal,
+            title: '전표내역',
+            subtitle: `조회 기간 ${histFrom || '전체'} ~ ${histTo || '전체'} · 구분 ${histKind} · ${rows.length}건`,
+            fileName: `전표내역_${histFrom || '전체'}_${histTo || '전체'}`,
+            columns: [
+              { header: '일자', width: 14 }, { header: '담당자', width: 15 }, { header: '구분', width: 14 },
+              { header: '거래처', width: 24 }, { header: '배송지', width: 20 }, { header: '전표번호', width: 19 },
+              { header: '적요', width: 46 }, { header: '금액', width: 18, number: true },
+              { header: '누적잔액', width: 18, number: true }, { header: '메모', width: 36 },
+            ],
+            rows,
+          });
+        }}
+        onCreateSale={() => openCreate('매출')}
+        onCreatePurchase={() => openCreate('매입')}
+        onCreateCash={() => openCashModal('출금')}
+        onOpenRecurring={onGenerateRecurringCosts ? () => setShowRecurring(true) : undefined}
+        onOpenCompany={() => setShowCompanyModal(true)}
+      />
+        ) : undefined}
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
         recovery={<ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton>}
-        right={
+        tabs={
           <div className="flex min-w-0 flex-wrap gap-2">
             {([
               { id: 'history', icon: ClipboardList, label: '전표내역' },
@@ -2381,40 +2417,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           search={histSearch} onSearch={setHistSearch}/>
       </StatementHistoryFilters>
 
-      <StatementHistoryActions
-        resultCount={filteredHistory.length}
-        fetching={isFetchingHistory}
-        onExport={() => {
-          const scope = excelScope.current;
-          if (!scope || !scope.uid || !auth.currentUser?.uid || scope.companyId !== companyId || scope.uid !== auth.currentUser.uid || scope.controller.signal.aborted) return;
-          const rows = sortedHistory.map(row => {
-            const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
-            const portion = row.kind === 'pay' ? null : accountPortion(row);
-            const amount = portion ?? view.amount;
-            const docNo = row.kind === 'stmt' ? row.data.docNo : row.entry?.docNo;
-            return [view.date, view.owner ?? '', view.label, view.partner, view.shipTo ?? '',
-              docNo ?? '', view.detail, amount, view.cumulative ?? '', view.note];
-          });
-          void downloadListExcel({
-            signal: scope.controller.signal,
-            title: '전표내역',
-            subtitle: `조회 기간 ${histFrom || '전체'} ~ ${histTo || '전체'} · 구분 ${histKind} · ${rows.length}건`,
-            fileName: `전표내역_${histFrom || '전체'}_${histTo || '전체'}`,
-            columns: [
-              { header: '일자', width: 14 }, { header: '담당자', width: 15 }, { header: '구분', width: 14 },
-              { header: '거래처', width: 24 }, { header: '배송지', width: 20 }, { header: '전표번호', width: 19 },
-              { header: '적요', width: 46 }, { header: '금액', width: 18, number: true },
-              { header: '누적잔액', width: 18, number: true }, { header: '메모', width: 36 },
-            ],
-            rows,
-          });
-        }}
-        onCreateSale={() => openCreate('매출')}
-        onCreatePurchase={() => openCreate('매입')}
-        onCreateCash={() => openCashModal('출금')}
-        onOpenRecurring={onGenerateRecurringCosts ? () => setShowRecurring(true) : undefined}
-        onOpenCompany={() => setShowCompanyModal(true)}
-      />
+      <h3 className="text-xs font-black text-slate-800">
+        조회 결과 <span className="text-indigo-600">{filteredHistory.length}건</span>
+        {isFetchingHistory && <span className="ml-2 animate-pulse text-[11px] text-indigo-400">불러오는 중…</span>}
+      </h3>
 
       {/*  **무엇으로 세워 뒀는지 적고, 푸는 길을 옆에 둔다**(2026-09-15 사장님: "얘도 무슨 정렬인지
            보이고 초기화 버튼 있어야지"). 머리를 여러 번 눌러 겹쳐 두면 왜 이 차례인지 잊는다.

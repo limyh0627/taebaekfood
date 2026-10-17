@@ -120,26 +120,19 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
       <PageHeader
         title="거래처 관리"
         subtitle="거래처 정보를 관리하고 성격별로 분류하세요."
-        right={
-          <ActionButton tone="primary" disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}>
-            <Plus size={15} /><span>거래처 등록</span>
-          </ActionButton>
-        }
-      />
-
-      <div className="flex flex-col space-y-4">
-        <div className="flex items-center space-x-2 overflow-x-auto pb-2 no-scrollbar">
+        tabs={
+        <div className="flex w-full items-center gap-1 overflow-x-auto no-scrollbar">
           {partnerTabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap border text-sm ${
-                  isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-1 ring-indigo-50' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
+                className={`flex items-center space-x-2 h-9 px-3 rounded-lg transition-colors whitespace-nowrap border text-xs ${
+                  isActive ? 'bg-white border-indigo-300 text-indigo-600' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
                 }`}
               >
-                <span className="font-bold text-sm">{tab.label}</span>
+                <span className="font-bold text-xs">{tab.label}</span>
                 <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">
                   {tab.id === '전체' ? activePartners.length : activePartners.filter(c => getEffectivePartnerType(c) === tab.id).length}
                 </span>
@@ -147,6 +140,18 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
             );
           })}
         </div>
+        }
+        actions={
+          <ActionButton tone="primary" disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}>
+            <Plus size={15} /><span>거래처 등록</span>
+          </ActionButton>
+        }
+      />
+
+      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white">
+        <div className="flex min-h-11 items-center justify-between border-b border-slate-200 px-4 py-2"><h3 className="text-xs font-bold text-slate-900">검색조건</h3><button type="button" onClick={() => { setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }} className="text-xs font-bold text-slate-500">초기화</button></div>
+      <div className="flex flex-col gap-3 p-4">
+
 
         {(activeTab === '매출처' || activeTab === '전체') && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
@@ -161,7 +166,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                   key={t.id}
                   onClick={() => { setActiveTypeTab(isActive ? '전체' : t.id); setPage(1); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all border ${
-                    isActive ? `${t.color} border-current shadow-sm` : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                    isActive ? 'bg-white border-indigo-300 text-indigo-600' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
                   }`}
                 >
                   <Icon size={12} />
@@ -173,14 +178,14 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
           </div>
         )}
 
-        <div className="relative max-w-md animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="relative w-full max-w-md">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
             placeholder={`${activeTab === '전체' ? '전체' : activeTab} 거래처 검색...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"
+            className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-12 pr-9 text-sm outline-none focus:border-indigo-400"
           />
           {searchTerm && (
             <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -189,6 +194,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
           )}
         </div>
       </div>
+      </section>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

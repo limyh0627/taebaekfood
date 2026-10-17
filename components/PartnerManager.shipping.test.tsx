@@ -27,3 +27,13 @@ it('보관된 거래처만 목록·검색·분류와 유형 개수에서 제외�
  fireEvent.change(screen.getByPlaceholderText('전체 거래처 검색...'),{target:{value:'해피유통(쿠팡)'}});expect(screen.getByText(/에 대한 검색 결과가 없습니다/)).toBeInTheDocument();
  expect(JSON.stringify(rows)).toBe(before);expect(rows[0].shipTos?.[0].id).toBe('old');expect(remove).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
 });
+
+it('제목 다음 분류·등록·검색 순서를 유지하고 채널 재클릭과 검색 초기화는 목록만 복원한다',()=>{
+ const add=vi.fn(),update=vi.fn(),rows:Partner[]=[{...partner,id:'general',name:'일반 합성'},{...partner,id:'store',name:'스토어 합성',type:'스마트스토어'},{...partner,id:'buy',name:'매입 합성',partnerType:'매입처'}];
+ render(<PartnerManager {...props} partners={rows} onAddClient={add} onUpdateClient={update}/>);
+ const title=screen.getByRole('heading',{name:'거래처 관리'}),tab=screen.getByRole('button',{name:/^전체\s*3$/}),create=screen.getByRole('button',{name:'거래처 등록'}),panel=screen.getByRole('region',{name:'검색조건'});
+ expect(title.compareDocumentPosition(tab)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tab.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(panel)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:/^일반 거래처\s*2$/}));expect(screen.queryByRole('heading',{name:'스토어 합성'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:/^일반 거래처\s*2$/}));expect(screen.getByRole('heading',{name:'스토어 합성'})).toBeInTheDocument();
+ fireEvent.change(screen.getByPlaceholderText('전체 거래처 검색...'),{target:{value:'없는 거래처'}});expect(screen.queryByRole('heading',{name:'일반 합성'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(screen.getByRole('heading',{name:'일반 합성'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:/^매입처\s*1$/}));expect(screen.queryByRole('button',{name:/^일반 거래처/})).not.toBeInTheDocument();fireEvent.click(create);expect(screen.getByRole('dialog',{name:'신규 거래처 등록'})).toBeInTheDocument();expect(add).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
+});
