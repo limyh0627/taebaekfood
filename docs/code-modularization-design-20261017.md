@@ -419,3 +419,5 @@ flowchart TD
 대시보드·문서함·업무 서류·HACCP 입력 폼은 별도 화면 유형으로 남긴다. 이번 주메뉴 정리를 모든 앱 폼의 UI 완료로 확대하지 않는다. 원본 TODO 완료26/잔여17 집계도 변경하지 않는다.
 
 최종 빌드에서 발견된 CashTemplateModal 순환 재수출 경고는 VoucherComposer/CashLedgerEntryModal 두 소비자가 구현 모듈을 직접 import하도록 바꿨다. 다른 named import와 계산·렌더는 유지하며 root 별도 diff 검수를 마쳤다. 정확 제품·시험12파일과 관리 문서2파일이 이번 커밋 범위다.
+
+최종 배포 마감: main74db666e0f58c769a6c69a35cd7daaef6b58edd7 통합·푸시, 2026-10-18 04:57:47 KST 관리자0f626f0b881e91fc/직원6a2066456cd03f9f FINALIZED. 두 앱 타입·빌드 통과, 순환 재수출 경고0, 공개85+87파일 HTTP200·SHA 모두 일치. 기존 서버4개 ACTIVE nodejs22와 Rules 원문 SHA 유지. 주메뉴 배치 정리 마감, 별도 작성폼 범위 및 원본TODO26/17 유지.
