@@ -1,3 +1,4 @@
+import { useOrderEditorDraft } from '../src/features/orders/hooks/useOrderEditorDraft';
 import {OrderCard} from '../src/features/orders/ui/OrderCard';
 export {OrderCard} from '../src/features/orders/ui/OrderCard';
 import {OrderSourceGroup} from '../src/features/orders/ui/OrderSourceGroup';
@@ -485,7 +486,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listPartnerFilter, setListPartnerFilter] = useState('');
   const [listFilterField, setListFilterField] = useState<'source' | 'shipMethod' | 'invoicePrinted' | 'partner' | 'completion' | 'item' | 'quantity' | 'manufacturing' | 'label' | 'packaging' | 'pallet' | 'orderDate' | 'deliveryDate' | ''>('');
   const [listFilterValue, setListFilterValue] = useState('');
-  const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[]; note: string; noteImportant: boolean } | null>(null);
+
   /*  **주문 로그**(2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서 주문 넣은 사람 일시
       라벨이나 작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게 해봐").
       상태 변경 기록(`orderStatusAudits`)은 주문 문서 밖에 있어 **누를 때 읽어 온다** —
@@ -535,10 +536,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
     });
     return () => { 살아있나 = false; };
   }, [logOrderId, companyId, logActorUid]);
-  /*  주문 수정 창의 팔레트는 **접어 둔다**(2026-09-12 사장님: "팔레트는 좀 접어둬라
-      필요할때 펼치게"). 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
-      창을 닫았다 열면 다시 접힌다. */
-  const [showEditorPallet, setShowEditorPallet] = useState(false);
+
+
   /*  배송 오전·오후는 배송순서 화면과 **같은 회사별 문서**를 본다.
       읽고 쓰는 길은 [deliveryTimeSlot](../src/shared/deliveryTimeSlot.ts) 하나다. */
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, DeliveryTimeSlot>>({});
@@ -685,21 +684,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-  const openOrderEditor = (orderId: string) => {
-    const order = orders.find(candidate => candidate.id === orderId);
-    if (!order || embeddedListOnly) return;
+  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onUpdateDeliveryDate,onUpdateItems,onUpdateNote,onBeforeOpen:()=>{
     setPreviewOrderId(null);
     setEditingOrderId(null);
     setShowAddProductSelect(null);
-    setShowEditorPallet(false);   // 열 때는 늘 접힌 채로
-    setListOrderEditor({
-      orderId: order.id,
-      deliveryDate: order.deliveryDate.split('T')[0],
-      items: order.items.map(item => ({ ...item })),
-      note: order.note || '',
-      noteImportant: !!order.noteImportant,
-    });
-  };
+  }});
 
   useEffect(() => {
     if (!listPalletEditorOrderId) return;
@@ -3079,7 +3068,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
         );
       })()}
       {listOrderEditor && (() => {
-        const editorOrder = orders.find(order => order.id === listOrderEditor.orderId);
         if (!editorOrder) return null;
         const partnerName = editorOrder.partnerName || partners.find(partner => partner.id === editorOrder.partnerId)?.name || '이름 없음';
         /*  **그 거래처에 연결된 품목만 고르게 한다**(2026-09-11 사장님: "품목명 눌러서 나오는
@@ -3094,28 +3082,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           .filter(item => !item.archived && !['raw', 'submaterial', 'shipping', 'box', 'tape', 'container', 'cap', 'label'].includes(item.type))
           .filter(item => 이미담긴.has(item.id) || isLinkedToPartner(partnerItems, editorOrder.partnerId ?? '', item.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-        const updateDraftItem = (index: number, patch: Partial<OrderItem>) => {
-          setListOrderEditor(current => current && current.orderId === editorOrder.id
-            ? { ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) }
-            : current);
-        };
-        const closeEditor = () => setListOrderEditor(null);
-        const 주문수량 = (item: OrderItem) => item.isBoxUnit ? (item.boxQuantity ?? item.quantity) : item.quantity;
-        const saveEditor = () => {
-          if (!listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId || 주문수량(item) <= 0)) return;
-          if (listOrderEditor.deliveryDate !== editorOrder.deliveryDate.split('T')[0]) {
-            onUpdateDeliveryDate(editorOrder.id, new Date(listOrderEditor.deliveryDate).toISOString());
-          }
-          onUpdateItems?.(editorOrder.id, listOrderEditor.items);
-          if (listOrderEditor.note !== (editorOrder.note || '') || listOrderEditor.noteImportant !== !!editorOrder.noteImportant) {
-            onUpdateNote?.(editorOrder.id, clampNote(listOrderEditor.note.trim(), editorOrder.note), listOrderEditor.noteImportant);
-          }
-          closeEditor();
-        };
-        const addDraftItem = () => setListOrderEditor(current => current && current.orderId === editorOrder.id
-          ? { ...current, items: [...current.items, { itemId: '', name: '', quantity: 1, price: 0 }] }
-          : current);
-        const saveDisabled = !listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId || 주문수량(item) <= 0);
+
         return (
           <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled}
             headerAction={(
