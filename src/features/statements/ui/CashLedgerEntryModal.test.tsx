@@ -1,0 +1,15 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {EntryModal} from './CashLedgerEntryModal';
+const state=vi.hoisted(()=>({auth:{currentUser:{uid:'actor',isAnonymous:false}}}));
+vi.mock('../../../shared/firebase',()=>({auth:state.auth,authReady:Promise.resolve()}));
+vi.mock('../../../shared/useLoanContracts',()=>({useLoanContracts:()=>[]}));
+const key='cash-entry-issue:taebaek:actor',entry={id:'original-request',companyId:'taebaek',dir:'출금',amount:100,accountCode:'251',cashAccountId:'bank',date:'2026-10-03'};
+const encoded=(entries:object[])=>JSON.stringify({companyId:'taebaek',userId:'actor',entries});
+function props(){const account={id:'bank',companyId:'taebaek',name:'합성 통장',type:'통장',active:true};return {companyId:'taebaek' as const,account,accounts:[account],accountCodes:[{id:'251',code:'251',name:'외상매입금'}],partners:[],onClose:vi.fn(),onAdd:vi.fn().mockResolvedValue(undefined)} as any;}
+beforeEach(()=>{localStorage.clear();state.auth.currentUser={uid:'actor',isAnonymous:false};vi.spyOn(window,'alert').mockImplementation(()=>{});});afterEach(()=>{localStorage.clear();vi.restoreAllMocks();});
+it('손상된 보관 원문은 새 발행을 차단하고 원문을 보존한다',()=>{localStorage.setItem(key,'broken-original');const p=props();render(<EntryModal {...p}/>);expect(screen.getByRole('alert')).toHaveTextContent('저장된 발행 요청 확인이 필요');expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();expect(localStorage.getItem(key)).toBe('broken-original');expect(p.onAdd).not.toHaveBeenCalled();});
+it('같은 원문 재시도는 최초 ID를 보내고 완료 중 다른 창이 쓴 요청은 지우지 않는다',async()=>{const original=encoded([entry]);localStorage.setItem(key,original);let finish!:()=>void;const p=props();p.onAdd=vi.fn(()=>new Promise<void>(r=>finish=r));render(<EntryModal {...p}/>);const retry=screen.getByRole('button',{name:'동일 요청 재시도'});fireEvent.click(retry);fireEvent.click(retry);await waitFor(()=>expect(p.onAdd).toHaveBeenCalledTimes(1));expect(p.onAdd).toHaveBeenCalledWith(entry);const newer=encoded([{...entry,id:'other-window'}]);localStorage.setItem(key,newer);await act(async()=>finish());expect(localStorage.getItem(key)).toBe(newer);expect(p.onClose).toHaveBeenCalledOnce();});
+it('두 건 중 첫 저장 뒤 UID가 달라지면 나머지 송신과 닫기를 중단하고 최초 사본을 유지한다',async()=>{const original=encoded([entry,{...entry,id:'second-original'}]);localStorage.setItem(key,original);let finish!:()=>void;const p=props();p.onAdd=vi.fn(()=>new Promise<void>(r=>finish=r));render(<EntryModal {...p}/>);fireEvent.click(screen.getByRole('button',{name:'동일 요청 재시도'}));await waitFor(()=>expect(p.onAdd).toHaveBeenCalledOnce());state.auth.currentUser={uid:'other',isAnonymous:false};await act(async()=>finish());expect(p.onAdd).toHaveBeenCalledTimes(1);expect(p.onClose).not.toHaveBeenCalled();expect(localStorage.getItem(key)).toBe(original);});
