@@ -1,3 +1,5 @@
+import { buildPartnerPalletHistory, buildAvailablePalletMonths, buildPalletSummary, buildAllPalletHistory } from '../src/features/pallets/domain/palletHistory';
+import { buildPartnerPalletStats, filterPartnerPalletStatus, buildOutstandingByPallet } from '../src/features/pallets/domain/palletBalances';
 
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -104,91 +106,17 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   // 거래처별 파레트 잔량 — 원시 집계(검색 필터 전). 주문 출고 + 수동 거래(이동전표 제외)에서 계산.
   const partnerPalletStatsRaw = useMemo(() => {
-    const stats: Record<string, { name: string; pallets: Record<string, number> }> = {};
-    
-    // Initialize with all partners
-    partners.forEach(partner => {
-      stats[partner.id] = { name: partner.name, pallets: {} };
-    });
-
-    // Add from orders
-    orders
-      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
-      .forEach(order => {
-        const partnerId = order.partnerId || 'unknown';
-        if (!stats[partnerId]) stats[partnerId] = { name: order.partnerName, pallets: {} };
-        
-        order.pallets?.filter(p => !p.isExchange).forEach(p => {
-          const pType = palletNameOf(p.type);
-          const qty = p.quantity || 0;
-          if (!stats[partnerId].pallets[pType]) stats[partnerId].pallets[pType] = 0;
-          stats[partnerId].pallets[pType] -= qty; // Outbound -> balance down (-)
-        });
-      });
-
-    // Add/Subtract from manual transactions
-    palletTransactions.forEach(trans => {
-      // 이동전표는 거래처 잔량과 무관 — 회사 보유 총량만 증감(전체 이력에서만 확인)
-      if (trans.isTransfer) return;
-      const partnerId = trans.partnerId;
-      if (!stats[partnerId]) {
-        const partner = partners.find(c => c.id === partnerId);
-        stats[partnerId] = { name: partner?.name || '알 수 없는 거래처', pallets: {} };
-      }
-      
-      const pallet = pallets.find(p => p.id === trans.palletId);
-      const pType = pallet?.name || '기타';
-      
-      if (!stats[partnerId].pallets[pType]) stats[partnerId].pallets[pType] = 0;
-      
-      if (trans.type === 'in') {
-        stats[partnerId].pallets[pType] += trans.quantity; // Inbound -> balance up (+)
-      } else {
-        stats[partnerId].pallets[pType] -= trans.quantity; // Outbound -> balance down (-)
-      }
-    });
-      
-    return Object.entries(stats)
-      .map(([id, data]) => {
-        const total = Object.values(data.pallets).reduce((a, b) => a + b, 0);
-        return {
-          id,
-          name: data.name,
-          pallets: data.pallets,
-          total
-        };
-      });
+    return buildPartnerPalletStats(orders, partners, palletTransactions, pallets, palletNameOf);
   }, [orders, partners, palletTransactions, pallets]);
 
   const partnerPalletStatus = useMemo(() => {
-    return partnerPalletStatsRaw
-      .filter(item => {
-        if (!item.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-        // 검색어 없을 때는 잔량 있는 거래처만 표시
-        if (!searchTerm.trim()) {
-          return Object.values(item.pallets).some(v => v !== 0);
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        // Non-zero totals first
-        if (a.total !== 0 && b.total === 0) return -1;
-        if (a.total === 0 && b.total !== 0) return 1;
-        // Then by total magnitude (most negative/positive first)
-        return Math.abs(b.total) - Math.abs(a.total);
-      });
+    return filterPartnerPalletStatus(partnerPalletStatsRaw, searchTerm);
   }, [partnerPalletStatsRaw, searchTerm]);
 
   // 파레트 종류별 '회수 대기'(거래처 소재) — 거래처 음수 잔량의 합. 저장 카운터(inUse) 대신
   // 기록(주문+거래)에서 계산해 거래처별 잔량과 항상 일치한다(단일 진실 소스).
   const outstandingByPallet = useMemo(() => {
-    const m = new Map<string, number>();
-    partnerPalletStatsRaw.forEach(s => {
-      Object.entries(s.pallets).forEach(([pName, q]) => {
-        if (q < 0) m.set(pName, (m.get(pName) ?? 0) - q);
-      });
-    });
-    return m;
+    return buildOutstandingByPallet(partnerPalletStatsRaw);
   }, [partnerPalletStatsRaw]);
   const outstandingOf = (p: PalletStock) => outstandingByPallet.get(p.name) ?? 0;
 
@@ -199,45 +127,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const pagedClientPalletStatus = partnerPalletStatus.slice((partnerSafePage - 1) * CLIENT_PAGE_SIZE, partnerSafePage * CLIENT_PAGE_SIZE);
 
   const partnerHistory = useMemo(() => {
-    if (!selectedClientIdForDetail) return [];
-
-    const history: { id: string; type: 'in' | 'out'; quantity: number; date: string; note: string; palletName: string; txId?: string }[] = [];
-
-    // From manual transactions (이동전표는 거래처 이력에서 제외 — 전체 이력에서만 조회)
-    palletTransactions
-      .filter(t => t.partnerId === selectedClientIdForDetail && !t.isTransfer)
-      .forEach(t => {
-        const pallet = pallets.find(p => p.id === t.palletId);
-        history.push({
-          id: t.id,
-          type: t.type,
-          quantity: t.quantity,
-          date: t.date,
-          note: t.note || (t.type === 'in' ? '수동 입고' : '수동 출고'),
-          palletName: pallet?.name || '기타',
-          txId: t.id,
-        });
-      });
-
-    // From orders
-    orders
-      .filter(o => o.partnerId === selectedClientIdForDetail && o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DISPATCHED))
-      .forEach(o => {
-        o.pallets?.forEach((p, idx) => {
-          history.push({
-            id: `${o.id}-${idx}`,
-            type: 'out',
-            quantity: p.quantity,
-            date: o.deliveryDate.split('T')[0],
-            note: `주문 출고 (${o.id})`,
-            palletName: palletNameOf(p.type)
-          });
-        });
-      });
-
-    return history
-      .filter(item => !historyDateFilter || item.date.includes(historyDateFilter))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return buildPartnerPalletHistory(selectedClientIdForDetail, palletTransactions, orders, pallets, historyDateFilter, palletNameOf);
   }, [selectedClientIdForDetail, palletTransactions, orders, pallets, historyDateFilter]);
 
   const paginatedHistory = useMemo(() => {
@@ -287,35 +177,13 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   // 선택 가능한 월 목록(YYYY-MM) — 거래/주문 출고 날짜 기준, 최신순
   const availableMonths = useMemo(() => {
-    const set = new Set<string>();
-    set.add(currentMonth); // 거래가 없는 새달도 다시 렌더되면 선택할 수 있어야 한다.
-    if (monthFilter) set.add(monthFilter); // 조회 중인 옛 달은 옵션에서 빠져 선택 표시가 바뀌지 않게 한다.
-    palletTransactions.forEach(t => { if (t.date) set.add(t.date.slice(0, 7)); });
-    orders.forEach(o => {
-      if (o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED)) {
-        const m = (o.deliveryDate || '').slice(0, 7);
-        if (m) set.add(m);
-      }
-    });
-    return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
+    return buildAvailablePalletMonths(palletTransactions, orders, currentMonth, monthFilter);
   }, [palletTransactions, orders, currentMonth, monthFilter]);
 
   // 전체 요약: 입고(들어온 합계) / 지급(나간 합계) / 교체중(교체 진행 중)
   // monthFilter 지정 시 해당 월(YYYY-MM) 거래만 합산
   const palletSummary = useMemo(() => {
-    let totalOut = 0, totalIn = 0, exchanging = 0;
-    const inMonth = (d?: string) => !monthFilter || (d ?? '').startsWith(monthFilter);
-    palletTransactions.forEach(t => {
-      if (!inMonth(t.date)) return;
-      if (t.isTransfer) return; // 이동전표는 실제 입출고가 아니므로 합계에서 제외
-      if (t.type === 'out') totalOut += t.quantity;
-      else if (t.type === 'in') totalIn += t.quantity;
-      if (t.status === '교체중') exchanging += t.quantity;
-    });
-    orders
-      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
-      .forEach(o => { if (inMonth(o.deliveryDate)) o.pallets?.filter(p => !p.isExchange).forEach(p => { totalOut += p.quantity || 0; }); });
-    return { 입고: totalIn, 지급: totalOut, 교체중: exchanging };
+    return buildPalletSummary(palletTransactions, orders, monthFilter);
   }, [palletTransactions, orders, monthFilter]);
 
   // 교체중 거래 목록 (거래처별 표시·완료 처리용)
@@ -326,28 +194,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   // 전체 이력 — 이미 로딩된 거래(palletTransactions, 24개월) + 주문 출고분 재사용 (추가 Firebase 읽기 없음)
   const allPalletHistory = useMemo(() => {
-    const pName = (id: string) => partners.find(p => p.id === id)?.name || '알 수 없음';
-    type Row = { id: string; date: string; partner: string; pallet: string; type: 'in' | 'out'; quantity: number; status?: string; note: string; txId?: string };
-    const rows: Row[] = palletTransactions.map(t => ({
-      id: t.id, date: t.date, partner: pName(t.partnerId),
-      pallet: pallets.find(p => p.id === t.palletId)?.name || '기타',
-      type: t.type, quantity: t.quantity,
-      status: t.isTransfer ? (t.type === 'in' ? '이동입고' : '이동지급') : t.status,
-      note: t.note || '', txId: t.id,
-    }));
-    orders
-      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
-      .forEach(o => o.pallets?.filter(p => !p.isExchange).forEach((p, i) => rows.push({
-        id: `${o.id}-pl-${i}`, date: (o.deliveryDate || '').split('T')[0], partner: o.partnerName,
-        pallet: palletNameOf(p.type), type: 'out', quantity: p.quantity || 0, note: `주문 출고 (${o.id})`,
-      })));
-    // 같은 날짜 안에서는 등록 시각(수동 거래 id의 timestamp)이 최신인 것부터
-    const tsOf = (r: Row) => { const m = /^ptrans-(\d+)/.exec(r.txId ?? ''); return m ? Number(m[1]) : 0; };
-    const q = historySearch.trim().toLowerCase();
-    return rows
-      .filter(r => !monthFilter || (r.date ?? '').startsWith(monthFilter))
-      .filter(r => !q || r.partner.toLowerCase().includes(q))
-      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || tsOf(b) - tsOf(a));
+    return buildAllPalletHistory(palletTransactions, orders, partners, pallets, monthFilter, historySearch, palletNameOf);
   }, [palletTransactions, orders, partners, pallets, monthFilter, historySearch]);
 
   // 교체완료: 헌 파레트 입고 확인 → 원 거래를 교체완료로 표시 + 회수(in) 기록
