@@ -10,6 +10,7 @@ import { useLoanContracts } from '../src/shared/useLoanContracts';
 import { matchingLoan } from '../src/shared/loanLedger';
 import type { CompanyId } from '../src/shared/types';
 import ModalShell from '../src/shared/components/ModalShell';
+import TemplateAccountSummary from '../src/features/statements/ui/TemplateAccountSummary';
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
 const splitValOf = (t: { mode?: string } & Record<string, any>, which: 'a' | 'b'): string => {
@@ -187,24 +188,22 @@ export default function VoucherTemplateManager({
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{g.name}</span>
                 <span className="text-[10px] font-bold text-slate-300">{g.items.length}</span>
               </div>
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-200">
                 {g.items.map(t => (
                   <button key={t.id} type="button" aria-label={t.name + ' 상세보기'}
                     onClick={() => setSelectedId(t.id)}
-                    className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
+                    className="w-full bg-white px-4 py-4 flex items-start gap-4 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-slate-800 truncate">{t.name}</span>
-                      <span className="block mt-1 text-xs text-slate-400 truncate">
-                        {t.accountCode ? t.accountCode + ' ' + (accountCodes.find(c => c.code === t.accountCode)?.name ?? '') : '계정 직접선택'}
-                        {t.partnerName && ' · ' + t.partnerName}
-                      </span>
+                      <span className="block text-sm font-bold text-slate-800 break-words">{t.name}</span>
+                      <span className="block mt-2"><TemplateAccountSummary template={t} accountCodes={accountCodes}/></span>
+                      <span className="block mt-2 text-xs text-slate-600 break-words"><span className="text-slate-400">거래처</span> {t.partnerName || '선택 안 함'}</span>
                       {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).length > 0 && <span className="block mt-1 text-xs text-rose-600"><b>계정 없음</b> · <span>현재 회사 계정표에 {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).join(', ')} 없음</span></span>}
                       <span className="block mt-1 text-[11px] text-slate-500">
                         {dirOf(t)} · {t.autoIssue ? '매월 ' + ((t.issueDay ?? 1) === 31 ? '말일' : (t.issueDay ?? 1) + '일') + ' 자동' : '수동'}
                         {t.hidden && ' · 숨김'}{t.builtin && ' · 기본'}{t.favorite && ' · 즐겨찾기'}
                       </span>
                     </span>
-                    <span className="shrink-0 text-sm font-bold text-slate-800 tabular-nums">{fmt(t.amount)}원</span>
+                    <span className="shrink-0 border-l border-slate-200 pl-3 text-sm font-bold text-slate-800 tabular-nums">{fmt(t.amount)}원</span>
                   </button>
                 ))}
               </div>
@@ -220,10 +219,10 @@ export default function VoucherTemplateManager({
             {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).length > 0 && <p className="mb-3 text-sm text-rose-600">현재 회사 계정표에 {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).join(', ')} 없음 — 계정을 수정해 주세요.</p>}
             <h4 className="text-lg font-bold text-slate-900">{detailTpl.name}</h4>
             <p className="mt-1 text-xl font-bold text-slate-800">{fmt(detailTpl.amount)}원</p>
+            <div className="mt-4"><TemplateAccountSummary template={detailTpl} accountCodes={accountCodes}/></div>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <div><dt className="text-xs text-slate-400">묶음</dt><dd className="mt-1">{detailTpl.group?.trim() || NO_GROUP}</dd></div>
               <div><dt className="text-xs text-slate-400">발행 갈래</dt><dd className="mt-1">{dirOf(detailTpl)} · {detailTpl.mode || '일반'}</dd></div>
-              <div><dt className="text-xs text-slate-400">계정과목</dt><dd className="mt-1">{detailTpl.accountCode} {accountCodes.find(c => c.code === detailTpl.accountCode)?.name || '계정 미지정'}</dd></div>
               <div><dt className="text-xs text-slate-400">거래처</dt><dd className="mt-1">{detailTpl.partnerName || '선택 안 함'}</dd></div>
               <div><dt className="text-xs text-slate-400">자동 발행</dt><dd className="mt-1">{detailTpl.autoIssue ? '매월 ' + ((detailTpl.issueDay ?? 1) === 31 ? '말일' : (detailTpl.issueDay ?? 1) + '일') : '사용 안 함'}</dd></div>
               <div><dt className="text-xs text-slate-400">목록 표시</dt><dd className="mt-1">{detailTpl.hidden ? '숨김' : '표시'}{detailTpl.favorite && ' · 즐겨찾기'}{detailTpl.builtin && ' · 기본 템플릿'}</dd></div>

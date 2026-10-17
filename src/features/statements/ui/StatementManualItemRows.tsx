@@ -127,12 +127,13 @@ export default function StatementManualItemRows(props: Props) {
                   <input aria-label={(index + 1) + '행 매입단위 숫자'} type="text" inputMode="decimal" disabled={unitLocked} readOnly={unitInput.legacy} value={unitInput.amount}
                     onClick={e=>e.stopPropagation()} onChange={e=>{if(unitInput.legacy||!/^\d*(?:\.\d*)?$/.test(e.target.value))return;props.onChange(index,{...changeManualPurchaseUnitInput(e.target.value,unitInput.unit as 'kg'|'g',row.qty),purchaseQuantityKg:undefined});}}
                     className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1"/>
-                  <select aria-label={(index + 1) + '행 매입단위 단위'} disabled={unitLocked} value={unitInput.legacy?'legacy':unitInput.unit} onClick={e=>e.stopPropagation()} onChange={e=>{if(e.target.value==='legacy')return;props.onChange(index,{...changeManualPurchaseUnitInput(unitInput.amount,e.target.value as 'kg'|'g',row.qty),purchaseQuantityKg:undefined});}}
+                  <select aria-label={(index + 1) + '행 매입단위 단위'} disabled={unitLocked} value={unitInput.legacy?'':unitInput.unit} onClick={e=>e.stopPropagation()} onChange={e=>{if(e.target.value!=='kg'&&e.target.value!=='g')return;props.onChange(index,{...changeManualPurchaseUnitInput(unitInput.amount,e.target.value as 'kg'|'g',row.qty),purchaseQuantityKg:undefined});}}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1">
-                    {unitInput.legacy&&<option value="legacy">{unitInput.unit}</option>}<option value="kg">kg</option><option value="g">g</option>
+                    <option value="" disabled>단위 선택</option><option value="kg">kg</option><option value="g">g</option>
                   </select>
                 </span>
               </label>
+              {unitInput.legacy && <span className="block">기존 저장 단위: {unitInput.unit}</span>}
             </>}
           </div>}
           </div>

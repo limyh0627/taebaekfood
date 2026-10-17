@@ -1,3 +1,6 @@
+const ownerExcel = vi.hoisted(() => ({ download: vi.fn() }));
+vi.mock('../src/shared/listExcel', () => ({ downloadListExcel: ownerExcel.download }));
+import { today as ownerToday } from '../src/shared/day';
 /** @vitest-environment jsdom */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1002,4 +1005,14 @@ it('실제 같은 ID의 유효한 미확인 요청은 작성 입력을 계속 �
 
 it.each([false,true])('과거 구조 정상 0원 A는 재시도 없이 삭제 가능하고 무관 B를 저장한다: 삭제 %s',async deleted=>{
  const firstApply=vi.fn().mockRejectedValue(Error('응답 유실'));const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} composerOnly onApplyStatement={firstApply}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(firstApply).toHaveBeenCalledOnce());const entry=listTradePendings('taebaek','test-uid')[0],p=JSON.parse(entry.text);view.unmount();p.input.statement.totalAmount=0;p.input.statement.totalSupply=0;p.input.statement.items[0].total=0;p.input.statement.items[0].price=0;const text=JSON.stringify(p);localStorage.setItem(entry.key,text);const apply=vi.fn().mockResolvedValue('applied');setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-B']},onApplyStatement:apply});const qty=screen.getByLabelText('1행 거래 수량');expect(qty).not.toBeDisabled();fireEvent.change(qty,{target:{value:'2'}});const retry=await recoveryAction('같은 내용 다시 시도');expect(retry).toBeDisabled();fireEvent.click(retry);expect(apply).not.toHaveBeenCalled();expect(screen.getByText(/이전 요청의 합계가 0원/)).toBeInTheDocument();if(deleted){recoveryMocks.delete.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return {outcome:'rewrite',reason:'미발행 확인 후 삭제'};});fireEvent.click(screen.getByRole('button',{name:'실패 요청 삭제'}));await waitFor(()=>expect(localStorage.getItem(entry.key)).toBeNull());}returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('2');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].poIds).toEqual(['po-B']);expect(localStorage.getItem(entry.key)).toBe(deleted?null:text);
+});
+
+it('담당자 Auth UID를 현재 직원 이름으로 표시하고 이름순 정렬하며 원전표 ID는 보존한다', () => {
+ const stamp = ownerToday();
+ const statement = (id: string, createdBy: string, docNo: string): IssuedStatement => ({ id, companyId: 'taebaek', type: '매출', tradeDate: stamp, issuedAt: stamp, partnerId: partner.id, partnerName: partner.name, orderId: '', docNo, totalSupply: 100, totalTax: 0, totalAmount: 100, items: [{ name: '합성품목', spec: '', qty: 1, price: 100, supply: 100, tax: 0, total: 100, accountCode: '800', isTaxExempt: true }], createdBy });
+ const statements = [statement('owner-z', 'emp_aaa', 'OWNER-Z'), statement('owner-a', 'emp_zzz', 'OWNER-A')];
+ setup(undefined, undefined, { pendingInvoice: null, issuedStatements: statements, employees: [{ id: 'e-z', authUid: 'emp_aaa', name: '하직원', companyId: 'taebaek' }, { id: 'e-a', authUid: 'emp_zzz', name: '가직원', companyId: 'taebaek' }] });
+ const table = screen.getByRole('table'); expect(within(table).getByText('하직원')).toBeInTheDocument(); expect(within(table).getByText('가직원')).toBeInTheDocument(); expect(screen.queryByText('emp_aaa')).not.toBeInTheDocument();
+ fireEvent.click(within(table).getByText('담당자')); const rows = within(table).getAllByRole('row').slice(1); expect(rows[0]).toHaveTextContent('가직원'); expect(rows[1]).toHaveTextContent('하직원'); expect(statements.map(row => row.createdBy)).toEqual(['emp_aaa', 'emp_zzz']);
+ fireEvent.click(screen.getByRole('button', { name: '엑셀' })); expect(ownerExcel.download.mock.calls[0][0].rows.map((row: unknown[]) => row[1])).toEqual(['가직원', '하직원']);
 });

@@ -74,3 +74,5 @@ describe('템플릿 상세보기', () => {
     expect(screen.getByText('템플릿 상세보기')).toBeInTheDocument();
   });
 });
+
+it('목록과 상세에서 차대 계정을 같은 방식으로 표시하고 거래처는 별도로 둔다',async()=>{render(<VoucherTemplateManager templates={[{...template,amount:0,partnerName:'합성 거래처'}]} accountCodes={accounts}/>);const row=screen.getByRole('button',{name:'보험료 상세보기'});expect(row).toHaveTextContent('차변951 이자비용');expect(row).toHaveTextContent('대변103 보통예금');expect(row).toHaveTextContent('거래처 합성 거래처');expect(row).toHaveTextContent('0원');await userEvent.click(row);expect(screen.getAllByText('951 이자비용')).toHaveLength(2);expect(screen.getAllByText('103 보통예금')).toHaveLength(2);});

@@ -22,7 +22,7 @@ import { VoucherDateChip } from '../src/features/statements/ui/VoucherDateChip';
 export { VoucherDateChip } from '../src/features/statements/ui/VoucherDateChip';
 import { settleStatus, settlementTypeOf, settlementDirectionOf, isAccruedPayableStatement } from '../src/features/admin/voucherMerge';
 import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
-import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
+import { toggleSort, sortRank, sortSummary, rowOwner, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
 import { today, dateOfLocal, monthStart, isCalendarDay } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy } from '../src/shared/taxonomy';
@@ -63,7 +63,7 @@ import StatementHistoryPagination from '../src/features/statements/ui/StatementH
 import StatementComposerHeader from '../src/features/statements/ui/StatementComposerHeader';
 import StatementOrderDateFilter from '../src/features/statements/ui/StatementOrderDateFilter';
 import StatementHistorySearchFields from '../src/features/statements/ui/StatementHistorySearchFields';
-import { statementHistoryRowView } from '../src/features/statements/domain/statementHistoryRowView';
+import { statementHistoryRowView, createStatementOwnerResolver, type StatementOwnerEmployee } from '../src/features/statements/domain/statementHistoryRowView';
 import { downloadListExcel } from '../src/shared/listExcel';
 import { shipToOf, shipToSummary } from '../src/shared/shipTo';
 import { StatementPaymentMobileRow, StatementPaymentTableRow } from '../src/features/statements/ui/StatementPaymentRow';
@@ -107,6 +107,7 @@ interface TradeStatementProps {
   returnOperations?: readonly ReadonlyReturnOperation[];
   advanceStatements?: readonly IssuedStatement[];
   orders: Order[];
+  employees?: readonly StatementOwnerEmployee[];
   allItems: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
@@ -274,11 +275,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onUpdateItemCost,
   onUpdateOrder,
   currentUserId,
+  employees = [],
   defaultTab = 'history',
   expensePresets = [],
   onAddExpensePreset,
   onDeleteExpensePreset,
 }) => {
+  const ownerName = useMemo(() => createStatementOwnerResolver(employees, companyId), [employees, companyId]);
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const {
@@ -1006,11 +1009,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   /** 화면이 셈해 그리는 칸(수금/지불·증빙)은 그 글자로 세운다 — 표에 보이는 대로 서야 한다. */
   const 정렬글 = useCallback((row: TimelineRow, column: TimelineSortColumn): string | undefined => {
+    if (column === 'owner') return ownerName(rowOwner(row)) || '\uffff';
     if (row.kind !== 'stmt') return column === 'settle' || column === 'evidence' ? '\uffff' : undefined;
     if (column === 'settle') return statementSettleStatus(row.data, getBalance(row.data)).label;
     if (column === 'evidence') return evidenceChoices(row.data.type).length ? evidenceOf(row.data) : '\uffff';
     return undefined;
-  }, [getBalance]);
+  }, [getBalance, ownerName]);
 
   /**
    * 머리 한 칸 — 누르면 **뒤에 붙는다**(겹치기). 이미 걸린 칸을 누르면 방향만 뒤집는다.
@@ -2365,7 +2369,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         fetching={isFetchingHistory}
         onExport={() => {
           const rows = sortedHistory.map(row => {
-            const view = statementHistoryRowView(row, codeName, 줄배송지);
+            const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
             const portion = row.kind === 'pay' ? null : accountPortion(row);
             const amount = portion ?? view.amount;
             const docNo = row.kind === 'stmt' ? row.data.docNo : row.entry?.docNo;
@@ -2474,7 +2478,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                  (머리는 13px). 한 곳에서 정하니 이렇게 통째로 키울 수 있다. 바탕색은 안 깐다. */}
             <tbody className="divide-y divide-slate-200 text-[12px]">
               {pagedHistory.map(row => {
-                const view = statementHistoryRowView(row, codeName, 줄배송지);
+                const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
                 if (row.kind === 'cash') {
                   const lines = (row.entry.lines ?? []).filter(line => line.accountCode && line.amount !== 0);
                   const portion = accountPortion(row);
@@ -2535,7 +2539,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           {/* ── 모바일 카드 목록 ── */}
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
-              const view = statementHistoryRowView(row, codeName, 줄배송지);
+              const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
               if (row.kind === 'cash') {
                 return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
                   journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}

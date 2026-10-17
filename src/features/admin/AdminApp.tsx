@@ -4202,6 +4202,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {(currentView === 'trade-statement' || showInboundInvoice || inboundDetailId) && (
             <TradeStatement
+              employees={employees}
               orderUnitInputs={appData.orderUnitInputs}
               detailStatementId={inboundDetailId}
               onDetailClose={() => setInboundDetailId('')}

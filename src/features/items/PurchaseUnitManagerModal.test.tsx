@@ -18,3 +18,5 @@ it('등록 응답이 끊겨도 재시도는 같은 문서 ID와 생성시각을 
  await waitFor(()=>expect(screen.getByLabelText('매입단위 이름')).toHaveValue(''));
  fireEvent.change(screen.getByLabelText('매입단위 이름'),{target:{value:'큰포대'}});fireEvent.change(screen.getByLabelText('한 단위의 실제 중량 kg'),{target:{value:'25'}});fireEvent.click(screen.getByText('저장'));await waitFor(()=>expect(mocks.save).toHaveBeenCalledTimes(3));expect(mocks.save.mock.calls[2][0].id).not.toBe(first.id);
 });
+
+it('단위 예시는 중립적으로 안내하고 저장된 단위 이름은 바꾸지 않는다',()=>{mocks.subscribe.mockImplementation((_company:string,onData:any)=>{onData([{id:'old',itemId:'raw',purchaseUnit:'포대',unitKg:20,active:true,isDefault:false}]);return()=>{};});render(<PurchaseUnitManagerModal companyId="taebaek" item={{id:'raw',name:'들깨'} as Item} partners={[]} onClose={vi.fn()}/>);expect(screen.getByText(/등록한 단위의 실제 중량/)).toBeInTheDocument();expect(screen.getByLabelText('매입단위 이름')).toHaveAttribute('placeholder','예: 상자');fireEvent.click(screen.getByRole('button',{name:/포대 · 20kg/}));expect(screen.getByLabelText('매입단위 이름')).toHaveValue('포대');expect(mocks.save).not.toHaveBeenCalled();});
