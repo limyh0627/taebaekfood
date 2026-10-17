@@ -1,3 +1,5 @@
+import { EmployeeDirectory } from './hr/EmployeeDirectory';
+import { LeaveApprovalList } from './hr/LeaveApprovalList';
 import ActionButton from '../src/shared/components/ActionButton';
 import RetirementBenefitPanel from './hr/RetirementBenefitPanel';
 import { readRetirement, retirementActor } from '../src/shared/services/retirementBenefitCommands';
@@ -373,168 +375,17 @@ const HRManager: React.FC<HRManagerProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200">
         {activeTab === 'employees' && (
-          <>
-            <div className="p-6 border-b border-slate-50">
-              <div className="relative max-w-md">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="이름 또는 부서 검색..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto custom-scrollbar">
-              <table className="w-full text-left min-w-[640px]">
-                <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">임직원 정보</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">부서 / 직급</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">입사일 / 근속</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">보건증</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">관리</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredEmployees.map(emp => (
-                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-9 h-9 sm:w-12 sm:h-12 bg-indigo-50 text-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center font-black shrink-0">{emp.name[0]}</div>
-                          <div><p className="font-black text-slate-800 text-sm">{emp.name}</p><p className="text-xs text-slate-400">{emp.phone}</p></div>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
-                        <p className="text-sm font-bold text-slate-700">{emp.department}</p>
-                        <p className="text-[10px] text-slate-400 font-black uppercase">{emp.position}</p>
-                      </td>
-                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-slate-600 flex items-center"><Calendar size={12} className="mr-1.5" />{emp.joinDate}</p>
-                          <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">{calculateWorkDays(emp.joinDate)}일째</span>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-4 sm:py-6 text-center whitespace-nowrap">
-                        {emp.healthCertDate ? (() => {
-                          const { expiry, daysLeft } = getHealthCertStatus(emp.healthCertDate);
-                          const isExpired = daysLeft <= 0;
-                          const isWarning = daysLeft > 0 && daysLeft <= 30;
-                          return (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-[10px] font-bold text-slate-500">발급 {emp.healthCertDate}</span>
-                              <span className="text-[10px] font-bold text-slate-400">만료 {expiry}</span>
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${
-                                isExpired ? 'bg-rose-100 text-rose-600' :
-                                isWarning ? 'bg-amber-100 text-amber-600' :
-                                'bg-emerald-50 text-emerald-600'
-                              }`}>
-                                {isExpired ? '만료됨' : `D-${daysLeft}`}
-                              </span>
-                            </div>
-                          );
-                        })() : (
-                          <span className="text-[10px] text-slate-300 font-bold">미등록</span>
-                        )}
-                      </td>
-                      <td className="min-w-[192px] whitespace-nowrap px-4 sm:px-5 py-4 sm:py-6 text-right">
-                        <div className="flex shrink-0 flex-nowrap justify-end gap-2 whitespace-nowrap opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
-                          <ActionButton type="button" onClick={() => setRetirementEmployee(emp)} tone="normal">퇴직금</ActionButton>
-                          <ActionButton onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} aria-label={`${emp.name} 정보 수정`} className="w-9 !px-0 hover:!text-indigo-600"><Edit2 size={14} /></ActionButton>
-                          <ActionButton onClick={() => setConfirmModal({
+          <EmployeeDirectory filteredEmployees={filteredEmployees} searchTerm={searchTerm} onSearchChange={setSearchTerm}
+            calculateWorkDays={calculateWorkDays} getHealthCertStatus={getHealthCertStatus} onRetirement={setRetirementEmployee}
+            onEdit={(emp) => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} onDelete={(emp) => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
                               subMessage: '퇴직금 관리 등록 여부를 먼저 확인합니다. 이력이 있으면 삭제 대신 퇴사 처리하세요.',
                               onConfirm: () => { void deleteEmployeeSafely(emp); },
-                            })} aria-label={`${emp.name} 삭제`} className="w-9 !px-0 hover:!text-rose-600"><Trash2 size={14} /></ActionButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+                            })} />
         )}
 
         {activeTab === 'leave-approval' && (
-          <div className="flex-1 overflow-auto custom-scrollbar">
-            <table className="w-full text-left min-w-[580px]">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">신청 직원</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">항목 / 사유</th>
-                  <th className="px-4 sm:px-10 py-4 sm:py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">신청 기간 / 일수</th>
-                  <th className="px-4 sm:px-10 py-4 sm:py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">결재 처리</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pendingRequests.map(req => {
-                  const isCancel = req.status === 'cancel_pending';
-                  const isModify = req.modifyRequest?.status === 'pending';
-                  return (
-                  <tr key={req.id} className={`transition-colors ${isCancel ? 'hover:bg-rose-50/20' : isModify ? 'hover:bg-violet-50/20' : 'hover:bg-amber-50/20'}`}>
-                    <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
-                      <p className="font-black text-slate-800 text-sm">{req.employeeName}</p>
-                      {isCancel && <span className="text-[10px] font-black px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded mt-0.5 inline-block">취소 신청</span>}
-                      {isModify && <span className="text-[10px] font-black px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded mt-0.5 inline-block">변경 신청</span>}
-                    </td>
-                    <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-600 text-white' : req.type === '휴가' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>{req.type}</span>
-                      {isModify ? (
-                        <div className="mt-1 space-y-0.5">
-                          <p className="text-[10px] text-slate-400 font-bold">변경 전: {req.startDate} ~ {req.endDate}</p>
-                          <p className="text-[10px] text-violet-600 font-bold">변경 후: {req.modifyRequest!.startDate} ~ {req.modifyRequest!.endDate}</p>
-                          <p className="text-xs text-slate-500 italic">&quot;{req.modifyRequest!.reason}&quot;</p>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-500 font-medium italic">&quot;{req.reason}&quot;</p>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-10 py-4 sm:py-6 whitespace-nowrap">
-                      <p className="text-xs font-bold text-slate-700">{req.startDate} ~ {req.endDate}</p>
-                      <p className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-fit px-1.5 py-0.5 rounded-lg mt-1">
-                        {isModify ? `${req.modifyRequest!.daysUsed}일 (변경)` : `${req.daysUsed}일 사용`}
-                      </p>
-                    </td>
-                    <td className="px-4 sm:px-10 py-4 sm:py-6 text-right">
-                      <div className="flex justify-end space-x-3">
-                        {/*  취소 요청은 **받아 주기만** 한다(2026-09-04 사장님:
-                             "직원이 취소한걸 반려하는 경우는 없어").
-                             있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다 — 취소를 거절했는데
-                             오히려 취소가 확정돼 연차가 사라졌다. */}
-                        {isCancel &&
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
-                        {isModify && <>
-                          <button onClick={() => onUpdateLeave(req.id, {
-                            startDate: req.modifyRequest!.startDate,
-                            endDate: req.modifyRequest!.endDate,
-                            reason: req.modifyRequest!.reason,
-                            daysUsed: req.modifyRequest!.daysUsed,
-                            modifyRequest: { ...req.modifyRequest!, status: 'approved' },
-                          })} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
-                          <button onClick={() => onUpdateLeave(req.id, { modifyRequest: { ...req.modifyRequest!, status: 'rejected' } })} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
-                        </>}
-                        {!isCancel && !isModify && <>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"><Check size={14} /><span>승인</span></button>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'rejected')} className="flex items-center space-x-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"><X size={14} /><span>반려</span></button>
-                        </>}
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-                {pendingRequests.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-20 text-center flex flex-col items-center">
-                      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mb-4"><CalendarCheck size={32} /></div>
-                      <p className="text-slate-400 font-bold">새로 들어온 승인 대기 내역이 없습니다.</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <LeaveApprovalList pendingRequests={pendingRequests} onUpdateLeaveStatus={onUpdateLeaveStatus} onUpdateLeave={onUpdateLeave} />
         )}
 
         {activeTab === 'leave-balance' && (
