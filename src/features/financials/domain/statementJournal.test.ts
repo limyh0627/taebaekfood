@@ -1,0 +1,16 @@
+import {expect,it} from 'vitest';
+import {journalizeStatement} from './statementJournal';
+import * as statement from './statementJournal';
+import * as support from './journalSupport';
+import * as cash from './cashJournal';
+import * as balance from './balanceJournal';
+import * as legacy from '../../../shared/autoJournal';
+import type {IssuedStatement,IssuedStatementItem} from '../../../shared/types';
+const item=(name:string,supply:number,accountCode='800'):IssuedStatementItem=>({name,spec:'',qty:1,price:supply,supply,tax:0,total:supply,isTaxExempt:true,accountCode});
+const stmt=(items:IssuedStatementItem[],patch:Partial<IssuedStatement>={}):IssuedStatement=>({id:'statement',companyId:'taebaek',type:'매출',issuedAt:'2026-10-01T03:00:00.000Z',tradeDate:'2026-10-01',partnerId:'partner',partnerName:'합성 거래처',orderId:'',docNo:'doc',items,totalSupply:items.reduce((n,i)=>n+i.supply,0),totalTax:items.reduce((n,i)=>n+i.tax,0),totalAmount:items.reduce((n,i)=>n+i.total,0),...patch});
+it('기존 facade는 공개 함수와 Set를 같은 binding으로 내보내고 private는 숨긴다',()=>{for(const[key,value]of Object.entries({...support,...statement,...cash,...balance})){if(['r','sum','sourceTimestamp','NON_TRADE_HINT'].includes(key)){expect(key in legacy).toBe(false);continue;}expect((legacy as Record<string,unknown>)[key]).toBe(value);}});
+it('공급가는 같은 계정 Map에서 매 줄 두 자리 반올림한다',()=>{const result=journalizeStatement(stmt([item('첫 줄',.105),item('다음 줄',.105)],{totalAmount:.22}));expect(result?.lines.map(l=>[l.debit,l.credit])).toEqual([[.22,0],[0,.22]]);});
+it('품목명은 중복·공백을 제거하고 3개 뒤 개수만 적으며 원시각을 보존한다',()=>{const result=journalizeStatement(stmt([' 가 ','가','나','다','라'].map(n=>item(n,1))));expect(result?.lines[1].note).toBe('가, 나, 다 외 1건');expect(result?.createdAt).toBe('2026-10-01T03:00:00.000Z');});
+it('과세 매입은 공급가·세액·채무를 나누고 현금 옵션은 거래처 귀속을 생략한다',()=>{const s=stmt([{...item('비용',100,'818'),tax:10,total:110,isTaxExempt:false}],{type:'매입'});expect(journalizeStatement(s)?.lines.map(l=>[l.accountCode,l.debit,l.credit])).toEqual([['818',100,0],['135',10,0],['253',0,110]]);const paid=journalizeStatement(s,{cashAccountCode:'cash-selected'});expect(paid?.lines.at(-1)).toEqual({accountCode:'cash-selected',debit:0,credit:110});});
+it('옛 머리 금액 누락은 품목 합계로 계산하며 원시각 공란은 회계일 자정을 쓴다',()=>{const s=stmt([item('품목',5)],{issuedAt:''});Reflect.deleteProperty(s,'totalAmount');Reflect.deleteProperty(s,'totalTax');expect(journalizeStatement(s)?.lines[0].debit).toBe(5);expect(journalizeStatement(s)?.createdAt).toBe('2026-10-01T00:00:00.000Z');});
+it('명시 머리0은 품목합계로 바꾸지 않고 불균형·계정누락·비용전표는 null이다',()=>{expect(journalizeStatement(stmt([item('품목',5)],{totalAmount:0}))).toBeNull();expect(journalizeStatement(stmt([{...item('미지정',5),accountCode:undefined}]))).toBeNull();expect(journalizeStatement(stmt([item('비용',5)],{type:'비용'}))).toBeNull();});
