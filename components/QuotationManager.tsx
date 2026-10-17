@@ -1,6 +1,11 @@
+import type { QuotationLine, Quotation } from '../src/features/quotations/domain/quotation';
+export type {QuotationLine,Quotation} from '../src/features/quotations/domain/quotation';
+import { fmt } from '../src/features/quotations/ui/quotationDisplay';
+import { printQuotation } from '../src/features/quotations/infrastructure/printQuotation';
+import { QuotationPreview } from '../src/features/quotations/ui/QuotationPreview';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, X, Trash2, Search, Printer, FileText, Copy, Pencil } from 'lucide-react';
+import { Plus, Trash2, Search, Printer, Copy, Pencil } from 'lucide-react';
 import { Item, Partner, PartnerItem, CompanyId, CompanyInfo, COMPANIES, companyOf } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
@@ -9,7 +14,6 @@ import { today, addDays as plusDays } from '../src/shared/day';
 import { marginOf } from '../src/shared/margin';
 import { lineAmount } from '../src/shared/lineAmount';
 import { quoteTotals } from '../src/shared/quoteTotals';
-import { formatQuantity } from '../src/shared/quantityDisplay';
 import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice, type OrderUnitInputs } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
@@ -18,66 +22,6 @@ import { quoteRecipient } from '../src/shared/quoteRecipient';
 import { where } from 'firebase/firestore';
 import { DEFAULT_COMPANY_INFO } from '../src/config';
 import ModalShell from '../src/shared/components/ModalShell';
-
-/**
- * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
- *
- * 전표(거래명세서)와 다른 점은 **아직 판 게 아니라는 것**이다. 그래서 회계에 아무것도 안 남긴다 —
- * 분개도, 채권도, 재고도 안 움직인다. 나중에 그 값으로 실제로 팔면 그때 전표를 끊는다.
- *
- * 그리고 견적은 대개 **안 팔던 걸 새로 팔 때** 낸다. 그래서 품목 고르는 자리가
- * 거래처에 등록된 것 위주면 안 된다 — 전 품목을 빠르게 뒤질 수 있어야 한다.
- * 값을 매기려면 원가가 보여야 하고, 단가를 넣으면 남는 게 바로 보여야 한다.
- */
-export interface QuotationLine {
-  /** 품목에서 골랐으면 그 id — 원가를 되찾는 데 쓴다. 직접 적은 줄은 없다. */
-  itemId?: string;
-  name: string;
-  spec: string;
-  /** 견적 당시 단위 스냅샷 — 품목의 단위가 나중에 바뀌어도 발행본은 그대로 남긴다. */
-  unit?: string;
-  qty: number;
-  price: number;
-  /** 낼 때의 원가 — 나중에 원료값이 바뀌어도 그때 얼마로 셈했는지 남는다 */
-  cost?: number;
-  /**
-   * 면세면 부가세를 안 붙인다. **안 정했으면 `undefined`** —
-   * 과세를 기본으로 두면 안 고르고 그냥 지나간다(2026-09-09 사장님).
-   */
-  isTaxExempt?: boolean;
-  note?: string;
-}
-
-export interface Quotation {
-  id: string;
-  companyId?: CompanyId;
-  quoteNo: string;
-  date: string;                 // 'YYYY-MM-DD'
-  /** 이 날까지 이 값이다 — 비우면 안 적는다 */
-  validUntil?: string;
-  /** 등록 거래처면 ID, 미등록 문의처 견적이면 빈 문자열 */
-  partnerId: string;
-  partnerName: string;
-  /** 받는 업체 연락처 — 등록 거래처 값 또는 미등록 업체에 직접 적은 값을 견적에 남긴다. */
-  recipientPhone?: string;
-  /**
-   * 담당자 — **이 견적을 낸 우리 쪽 사람.** 받는 쪽이 물어볼 데가 있어야 한다.
-   * 새로 쓸 때는 쓰는 사람 이름이 저절로 들어간다(2026-09-05 사장님).
-   */
-  attention?: string;
-  deliveryTerms?: string;
-  paymentTerms?: string;
-  lines: QuotationLine[];
-  totalSupply: number;
-  totalTax: number;
-  totalAmount: number;
-  /** 낼 때의 원가 합 — 나중에 "이 견적 남는 거였나"를 되짚을 수 있게 */
-  totalCost?: number;
-  note?: string;
-  createdAt: string;
-  createdBy?: string;
-}
-
 interface Props {
   orderUnitInputs?: OrderUnitInputs;
   items: Item[];
@@ -89,12 +33,9 @@ interface Props {
   /** 품목 원가 — 재고평가와 같은 롤업을 쓴다(AdminApp이 넘긴다) */
   costOf?: (_item: Item) => number;
 }
-
-const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 //  날짜 셈은 shared/day 하나로 — 손으로 하면 toISOString 이 UTC로 되돌려 하루가 밀린다
 //  (한국 자정은 UTC로 전날 15:00이다). 유효기한이 29일 뒤로 잡히던 자리다.
 const num = (v: string) => Number(String(v).replace(/[^\d.]/g, '')) || 0;
-
 /** 그날 안에서 이어지는 번호 — 전표와 같은 꼴(`Q260901-01`)이되 통은 따로 쓴다 */
 function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
   const head = `Q${date.slice(2).replace(/-/g, '')}-`;
@@ -107,11 +48,9 @@ function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
   }
   return `${head}${String(max + 1).padStart(2, '0')}`;
 }
-
 //  **과세를 기본으로 두지 않는다** — 안 고른 줄은 저장이 막힌다(2026-09-09 사장님).
 //  합계 셈은 [shared/quoteTotals](../src/shared/quoteTotals.ts) 하나다.
 const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 });
-
 export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, companyInfo, costOf, orderUnitInputs }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
   const [quoteError, setQuoteError] = useState('');
@@ -161,46 +100,6 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   // 인쇄본의 공급자 정보는 사용자가 견적마다 다시 치는 값이 아니다. 회사 설정을 쓰고,
   // 설정 구독 전에도 빈칸이 생기지 않도록 태백식품 기본정보를 받친다.
   const printCompany = companyInfo ?? DEFAULT_COMPANY_INFO;
-  const printQuotation = () => {
-    // 앱 화면을 인쇄하지 않는다. 견적서 본문과 스타일만 담은 독립 문서를 iframe에 만든 뒤
-    // 그 문서를 인쇄한다. 그래야 모달의 가운데 정렬·크기·스크롤이 A4에 섞이지 않는다.
-    const source = document.getElementById('quotation-print-document');
-    if (!source) return;
-    document.getElementById('quotation-print-frame')?.remove();
-    const frame = document.createElement('iframe');
-    frame.id = 'quotation-print-frame';
-    frame.setAttribute('aria-hidden', 'true');
-    Object.assign(frame.style, {
-      position: 'fixed', width: '1px', height: '1px', right: '0', bottom: '0',
-      border: '0', opacity: '0', pointerEvents: 'none',
-    });
-    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map(node => node.outerHTML).join('\n');
-    const printCss = `
-      @page { size: A4 portrait; margin: 0; }
-      html, body { width: 210mm; margin: 0; padding: 0; background: white; }
-      #quotation-print-document {
-        display: block !important; width: 210mm !important; min-height: 0 !important;
-        margin: 0 !important; padding: 10mm !important; box-sizing: border-box !important;
-        overflow: visible !important; font-family: Arial, "Noto Sans KR", sans-serif;
-      }
-      .print\\:hidden { display: none !important; }
-    `;
-    const cleanup = () => {
-      frame.remove();
-    };
-    frame.srcdoc = `<!doctype html><html><head><meta charset="UTF-8"><title></title>${styleTags}<style>${printCss}</style></head><body>${source.outerHTML}</body></html>`;
-    frame.onload = () => {
-      const printWindow = frame.contentWindow;
-      if (!printWindow) { cleanup(); return; }
-      printWindow.addEventListener('afterprint', cleanup, { once: true });
-      printWindow.focus();
-      printWindow.print();
-    };
-    // srcdoc를 넣기 전에 DOM에 붙이면 iframe의 첫 about:blank 로드가 onload를 먼저 불러
-    // 빈 종이를 인쇄한다. 완성된 문서를 지정한 뒤 붙여야 견적서가 든 로드 한 번만 일어난다.
-    document.body.appendChild(frame);
-  };
 
   /**
    * 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다.
@@ -689,104 +588,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       )}
 
       {/* ── 보기 · 인쇄 ── */}
-      {viewing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0"
-          onClick={() => setViewing(null)}>
-          <div id="quotation-print-area" className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 print:hidden">
-              <h3 className="font-black text-slate-900 text-sm">{viewing.quoteNo}</h3>
-              <div className="flex items-center gap-2">
-                <button onClick={printQuotation}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800">
-                  <Printer size={13} />인쇄
-                </button>
-                <button onClick={() => setViewing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
-              </div>
-            </div>
-            <div id="quotation-print-document" className="flex-1 overflow-y-auto px-7 py-6 text-slate-900 print:overflow-visible print:px-0 print:py-0">
-              {/* 현장에서 익숙한 표준 견적서 구조를 그대로 따른다. 카드형 배치는 인쇄 때 빈 공간이 커지고
-                  항목 위치를 한눈에 대조하기 어려웠다. */}
-              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-2">
-                <tbody>
-                  <tr><td colSpan={4} className="text-center text-lg font-black tracking-[0.3em]">견 적 서</td></tr>
-                  <tr>
-                    <td className="w-[16%] bg-slate-100 text-center font-black">수신</td><td className="w-[34%] font-bold">{viewing.partnerName} 귀하</td>
-                    <td className="w-[16%] bg-slate-100 text-center font-black">상호</td><td className="w-[34%] font-black">{printCompany.name || companyName}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">참조</td><td>{viewing.recipientPhone || '—'}</td>
-                    <td className="bg-slate-100 text-center font-black">대표자</td><td>{printCompany.ceoName}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">견적일</td><td>{viewing.date}</td>
-                    <td className="bg-slate-100 text-center font-black">주소</td><td>{printCompany.address}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">유효기간</td><td>{viewing.validUntil ?? '별도 협의'}</td>
-                    <td className="bg-slate-100 text-center font-black">업태·종목</td><td>{printCompany.bizType} · {printCompany.bizItem}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">결제 조건</td><td>{viewing.paymentTerms || '별도 협의'}</td>
-                    <td className="bg-slate-100 text-center font-black">연락처</td><td>{printCompany.phone || '—'}{printCompany.fax && <><br />FAX {printCompany.fax}</>}</td>
-                  </tr>
-                  <tr>
-                    <td colSpan={2} className="font-bold">아래와 같이 견적합니다.</td>
-                    <td className="bg-slate-100 text-center font-black">담당자</td><td>{viewing.attention || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">견적번호</td><td>{viewing.quoteNo}</td>
-                    <td className="bg-slate-100 text-center font-black">납기</td><td>{viewing.deliveryTerms || '별도 협의'}</td>
-                  </tr>
-                  <tr>
-                    <td className="bg-slate-100 text-center font-black">합계금액</td>
-                    <td colSpan={3} className="text-center text-base font-black">일금 ₩ {fmt(viewing.totalAmount)}정</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <table className="w-full table-fixed border-collapse text-[10px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-1.5 [&_td]:py-1.5 [&_th]:border [&_th]:border-slate-400 [&_th]:bg-slate-100 [&_th]:px-1 [&_th]:py-1.5">
-                <thead><tr>
-                  <th className="w-[5%]">No</th><th className="w-[22%]">품명</th><th className="w-[12%]">규격</th>
-                  <th className="w-[8%]">수량</th><th className="w-[7%]">단위</th><th className="w-[13%]">단가</th>
-                  <th className="w-[14%]">공급가액</th><th className="w-[10%]">세액</th><th className="w-[9%]">비고</th>
-                </tr></thead>
-                <tbody>
-                  {Array.from({ length: Math.max(12, viewing.lines.length) }, (_, i) => {
-                    const l = viewing.lines[i];
-                    const amount = l ? lineAmount(l.qty, l.price, l.isTaxExempt) : null;
-                    return <tr key={i} className="h-9">
-                      <td className="text-center">{i + 1}</td><td className="font-bold">{l?.name || ''}</td><td>{l?.spec || ''}</td>
-                      <td className="text-right tabular-nums break-all">{l ? formatQuantity(l.qty) : ''}</td><td className="text-center">{l?.unit || ''}</td>
-                      <td className="text-right tabular-nums">{l ? fmt(l.price) : ''}</td>
-                      <td className="text-right tabular-nums">{amount ? fmt(amount.supply) : ''}</td>
-                      <td className="text-right tabular-nums">{amount ? fmt(amount.tax) : ''}</td>
-                      <td className="text-center">{l?.isTaxExempt ? '면세' : l?.note || ''}</td>
-                    </tr>;
-                  })}
-                  <tr className="font-black"><td colSpan={6} className="bg-slate-100 text-center">합계</td>
-                    <td className="text-right">{fmt(viewing.totalSupply)}</td><td className="text-right">{fmt(viewing.totalTax)}</td><td /></tr>
-                </tbody>
-              </table>
-
-              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-2">
-                <tbody>
-                  <tr><td className="w-[22%] bg-slate-100 text-center font-black">납기</td><td>{viewing.deliveryTerms || '별도 협의'}</td></tr>
-                  <tr><td className="bg-slate-100 text-center font-black">입금계좌</td><td>{printCompany.bankAccount || '별도 안내'}</td></tr>
-                  <tr><td className="bg-slate-100 text-center font-black">비고</td><td className="h-24 whitespace-pre-wrap align-top">{viewing.note || ''}</td></tr>
-                </tbody>
-              </table>
-              {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
-              {quoteTotals(viewing.lines).cost > 0 && (
-                <p className="mt-3 text-[11px] font-bold text-slate-400 print:hidden">
-                  원가 {fmt(quoteTotals(viewing.lines).cost)} · 마진 {fmt(quoteTotals(viewing.lines).margin)}
-                  ({(quoteTotals(viewing.lines).marginRate * 100).toFixed(1)}%) — 이 줄은 인쇄에 안 나옵니다
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {viewing && (<QuotationPreview viewing={viewing} printCompany={printCompany} companyName={companyName} onClose={() => setViewing(null)} onPrint={printQuotation} />)}
     </div>
   );
 }

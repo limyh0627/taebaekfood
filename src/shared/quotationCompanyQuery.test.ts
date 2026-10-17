@@ -23,7 +23,10 @@ describe('견적서 회사별 구독', () => {
   });
 
   it('인쇄할 때 견적서 본문만 인쇄 대상으로 표시한다', () => {
-    const source = readFileSync('components/QuotationManager.tsx', 'utf8');
+    const parent = readFileSync('components/QuotationManager.tsx', 'utf8');
+    expect(parent).toContain("from '../src/features/quotations/ui/QuotationPreview'");
+    expect(parent).toContain("from '../src/features/quotations/infrastructure/printQuotation'");
+    const source = readFileSync('src/features/quotations/ui/QuotationPreview.tsx', 'utf8') + readFileSync('src/features/quotations/infrastructure/printQuotation.ts', 'utf8');
     expect(source).toContain('id="quotation-print-area"');
     expect(source).toContain('id="quotation-print-document"');
     expect(source).toContain("frame.id = 'quotation-print-frame'");
@@ -33,7 +36,7 @@ describe('견적서 회사별 구독', () => {
   });
 
   it('정식 견적서 인쇄 항목을 한 장에 배치한다', () => {
-    const source = readFileSync('components/QuotationManager.tsx', 'utf8');
+    const source = readFileSync('components/QuotationManager.tsx', 'utf8') + readFileSync('src/features/quotations/ui/QuotationPreview.tsx', 'utf8');
     for (const label of ['합계금액', '공급가액']) {
       expect(source).toContain(label);
     }
