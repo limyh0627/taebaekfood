@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 import type { QuotationLine, Quotation } from '../src/features/quotations/domain/quotation';
 export type {QuotationLine,Quotation} from '../src/features/quotations/domain/quotation';
 import { fmt } from '../src/features/quotations/ui/quotationDisplay';
@@ -201,10 +202,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처·품목·번호"
             className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
         </div>
-        <button onClick={openNew}
-          className="ml-auto flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs hover:bg-indigo-700 active:scale-95 transition-all">
+        <ActionButton tone="primary" onClick={openNew} className="ml-auto">
           <Plus size={14} />견적서 작성
-        </button>
+        </ActionButton>
       </div>
 
       {quoteError && (

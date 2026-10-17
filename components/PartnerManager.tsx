@@ -1,3 +1,4 @@
+import ActionButton from '../src/shared/components/ActionButton';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
@@ -119,10 +120,9 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         title="거래처 관리"
         subtitle="거래처 정보를 관리하고 성격별로 분류하세요."
         right={
-          <button disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
+          <ActionButton tone="primary" disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}>
             <Plus size={15} /><span>거래처 등록</span>
-          </button>
+          </ActionButton>
         }
       />
 
