@@ -2,12 +2,8 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Tag, Truck } from 'lucide-react';
 import { Item, RawMaterialLot } from '../src/shared/types';
 
-export interface LotShipment {
-  orderId: string;
-  partnerName: string;
-  date: string;
-  qty: number;
-}
+import type { LotShipment } from '../src/features/items/domain/lotTimelineRows';
+export type { LotShipment } from '../src/features/items/domain/lotTimelineRows';
 
 interface Props {
   material: string;
