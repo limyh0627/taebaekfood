@@ -1,11 +1,17 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { getHelpMenuGuide } from '../src/shared/helpGuides';
 import { auth } from '../src/shared/firebase';
 import { askHelp, helpChatError, type HelpChatResponse, type HelpChatScope } from '../src/shared/services/helpChatService';
 
 export interface HelpChatProps extends HelpChatScope { currentView?: string; onClose: () => void; onNavigate?: (navId: string) => void | boolean }
 type Turn = { question: string; response: HelpChatResponse };
 export default function HelpChat({ companyId, userId, mode, currentView, onClose, onNavigate }: HelpChatProps) {
+  const [pane, setPane] = useState<'list'|'guide'|'chat'>('list');
+  const [featureId, setFeatureId] = useState<string|null>(null);
+  const guide = getHelpMenuGuide(currentView, mode);
+  const feature = guide.features.find(item => item.id === featureId);
+  const focusPane = useRef('');
   const [question, setQuestion] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -26,10 +32,15 @@ export default function HelpChat({ companyId, userId, mode, currentView, onClose
   useEffect(() => {
     return () => previousFocus.current?.focus();
   }, []);
-  useEffect(() => { clear(); input.current?.focus(); return () => { generation.current++; inFlight.current = false; }; }, [scope]);
-  useEffect(() => onAuthStateChanged(auth, user => { if (user?.uid !== userId) clear(); }), [userId]);
+  useEffect(() => { clear(); setPane('list'); setFeatureId(null); return () => { generation.current++; inFlight.current = false; }; }, [scope]);
+  useEffect(() => onAuthStateChanged(auth, user => { if (user?.uid !== userId) { clear(); setPane('list'); setFeatureId(null); } }), [scope, userId]);
   // 비활성화한 입력·전송 버튼은 초점을 잃으므로 DOM 갱신 후 유효한 조작으로 옮긴다.
-  useLayoutEffect(() => { if (busy) closeButton.current?.focus(); else input.current?.focus(); }, [busy]);
+  useLayoutEffect(() => {
+    const key = scope + ':' + pane;
+    if (pane === 'chat') { if (busy) closeButton.current?.focus(); else input.current?.focus(); }
+    else if (focusPane.current !== key) dialog.current?.querySelector<HTMLElement>('[data-pane-focus]')?.focus();
+    focusPane.current = key;
+  }, [pane, busy, scope]);
   const close = () => { generation.current++; onClose(); };
   const send = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -61,14 +72,20 @@ export default function HelpChat({ companyId, userId, mode, currentView, onClose
   };
   return <div className="fixed inset-0 z-[2110] flex items-center justify-center bg-black/30 p-3" style={{zIndex:2110}} onKeyDown={keyboard}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="help-chat-title" className="flex max-h-[90dvh] w-full max-w-xl flex-col rounded-xl border border-slate-200 bg-white text-slate-800 shadow-lg">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-200 p-4"><h2 id="help-chat-title" className="font-bold">사용법 도움말</h2><div className="flex gap-3"><button type="button" onClick={clear} className="text-sm underline">대화 비우기</button><button ref={closeButton} type="button" onClick={close} aria-label="도움말 닫기">닫기</button></div></header>
-      <div className="overflow-y-auto p-4 space-y-4"><p className="text-sm text-slate-600">앱 사용법과 오류 복구를 AI가 안내합니다. 회사의 주문·재고·금액은 조회하지 않습니다. 입력한 질문과 최근 대화는 답변을 위해 AI 서버로 전송됩니다.</p>
+      <header className="flex items-center justify-between gap-3 border-b border-slate-200 p-4"><h2 id="help-chat-title" className="font-bold">챗봇</h2><div className="flex gap-3">{pane === 'chat' && sameDisplayScope && <button type="button" onClick={clear} className="min-h-11 px-2 text-sm underline">대화 비우기</button>}<button ref={closeButton} type="button" onClick={close} className="min-h-11 px-2 text-sm" aria-label="챗봇 닫기">닫기</button></div></header>
+      {pane !== 'list' && sameDisplayScope && <div className="shrink-0 border-b border-slate-200 px-4 py-2"><button type="button" data-pane-focus onClick={()=>setPane('list')} className="min-h-11 text-sm underline">기능 목록</button></div>}
+      {(pane === 'list' || !sameDisplayScope) ? <>
+        <div className="min-h-0 overflow-y-auto p-4"><h3 className="font-bold">{guide.menuTitle}</h3><p className="mt-1 text-sm text-slate-500">궁금한 기능을 선택해 주세요.</p>
+          {guide.features.length ? <ul className="mt-3 divide-y divide-slate-200">{guide.features.map(item=><li key={item.id}><button type="button" data-pane-focus className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left text-sm" onClick={()=>{setFeatureId(item.id);setPane('guide');}}><span>{item.title}</span><span aria-hidden="true">›</span></button></li>)}</ul> : <p className="mt-4 text-sm text-slate-500">이 메뉴의 기능별 안내는 준비 중입니다. 직접 질문해 주세요.</p>}
+        </div><footer className="shrink-0 border-t border-slate-200 p-4"><button type="button" data-pane-focus className="min-h-11 w-full rounded-lg border border-slate-300 text-sm font-bold" onClick={()=>setPane('chat')}>직접 질문하기</button></footer>
+      </> : pane === 'guide' ? <><div className="min-h-0 overflow-y-auto p-4">{feature && <><h3 className="font-bold">{feature.title}</h3><ol className="mt-4 list-decimal space-y-3 pl-5 text-sm">{feature.steps.map((step,index)=><li key={index}>{step}</li>)}</ol>{feature.note&&<p className="mt-4 text-sm text-slate-600">{feature.note}</p>}{feature.recovery&&<p className="mt-4 text-sm">{feature.recovery}</p>}</>}</div><footer className="shrink-0 border-t border-slate-200 p-4"><button type="button" className="min-h-11 w-full rounded-lg border border-slate-300 text-sm" onClick={()=>setPane('chat')}>직접 질문하기</button></footer></> : <>
+      <div className="min-h-0 overflow-y-auto p-4 space-y-4"><p className="text-sm text-slate-600">앱 사용법과 오류 복구를 AI가 안내합니다. 회사의 주문·재고·금액은 조회하지 않습니다. 입력한 질문과 최근 대화는 답변을 위해 AI 서버로 전송됩니다.</p>
         {(!sameDisplayScope || turns.length === 0) && <p className="text-sm">예: 전표 저장에 실패하면 어떻게 하나요?</p>}
         <div aria-live="polite" className="space-y-4">{sameDisplayScope && turns.map((turn, index) => <section key={index} className="border-t border-slate-200 pt-3"><p className="whitespace-pre-wrap break-words font-semibold">{turn.question}</p><p className="mt-2 whitespace-pre-wrap break-words">{turn.response.answer}</p>{turn.response.sources.length > 0 && <ul aria-label="안내 근거" className="mt-2 space-y-1 text-sm">{turn.response.sources.map(source => <li key={source.id}>{source.navId && onNavigate ? <button type="button" className="underline" onClick={() => { if(onNavigate(source.navId!)===false){setNavigationNotice('현재 열려 있는 창을 유지했습니다. 관련 메뉴로 이동하려면 그 창을 마친 뒤 다시 선택해 주세요.');return;}generation.current++;setNavigationNotice(''); }}>{source.title} 열기</button> : source.title}</li>)}</ul>}</section>)}</div>
         {sameDisplayScope && error && <p role="alert" className="text-sm">{error}</p>}
         {sameDisplayScope && navigationNotice && <p role="status" className="text-sm">{navigationNotice}</p>}
       </div>
-      <form onSubmit={send} className="border-t border-slate-200 p-4"><label htmlFor="help-chat-question" className="text-sm font-semibold">질문</label><textarea ref={input} id="help-chat-question" rows={3} maxLength={2000} value={sameDisplayScope ? question : ''} disabled={busy && sameDisplayScope} onChange={event => { setQuestion(event.target.value); setError(''); }} className="mt-2 w-full rounded border border-slate-300 p-2" placeholder="앱에서 하려는 작업을 적어 주세요" /><div className="mt-2 flex items-center justify-between gap-3"><span className="text-xs text-slate-500">{sameDisplayScope ? question.length : 0}/2000</span><button type="submit" disabled={!sameDisplayScope || busy || !question.trim()} className="rounded border border-slate-300 px-4 py-2 disabled:opacity-50">{busy ? '답변 중…' : error ? '다시 시도' : '질문 보내기'}</button></div></form>
+      <form onSubmit={send} className="shrink-0 border-t border-slate-200 p-4"><label htmlFor="help-chat-question" className="text-sm font-semibold">질문</label><textarea ref={input} id="help-chat-question" rows={3} maxLength={2000} value={sameDisplayScope ? question : ''} disabled={busy && sameDisplayScope} onChange={event => { setQuestion(event.target.value); setError(''); }} className="mt-2 w-full rounded border border-slate-300 p-2" placeholder="앱에서 하려는 작업을 적어 주세요" /><div className="mt-2 flex items-center justify-between gap-3"><span className="text-xs text-slate-500">{sameDisplayScope ? question.length : 0}/2000</span><button type="submit" disabled={!sameDisplayScope || busy || !question.trim()} className="rounded border border-slate-300 px-4 py-2 disabled:opacity-50">{busy ? '답변 중…' : error ? '다시 시도' : '질문 보내기'}</button></div></form></>}
     </div>
   </div>;
 }

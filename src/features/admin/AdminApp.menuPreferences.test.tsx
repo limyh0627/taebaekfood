@@ -85,12 +85,13 @@ it('도움말 화면 이동은 현재 역할의 실메뉴·마이페이지로만
  expect(evaluate(initializer('helpSessionKey'),{menuKey:'scope',currentView:'mypage'})).toBe('scope:mypage');
  expect(evaluate(initializer('helpSessionKey'),{menuKey:null,currentView:'mypage'})).toBeNull();
 });
-it('공통 버튼은 메뉴 전체 숨김과 무관하며 계정 확인 전 비활성이고 열림 중 숨긴다',()=>{
- let expression='';const visit=(node:ts.Node)=>{if(ts.isJsxExpression(node)&&node.expression?.getText(parsed).includes('aria-label="사용법 도움말 열기"'))expression=node.expression.getText(parsed);ts.forEachChild(node,visit);};visit(parsed);if(!expression)throw Error('공통 도움말 버튼 없음');
- const open=vi.fn();const build=(key:string|null,helpOpen:string|null)=>evaluate(expression,{React,helpSessionKey:key,helpOpen,setHelpOpen:open});
- const view=render(<>{build('scope',null)}</>);const button=screen.getByRole('button',{name:'사용법 도움말 열기'});expect(button).toHaveAttribute('aria-keyshortcuts','Alt+/');expect(button.style.bottom).toContain('96px');fireEvent.click(button);expect(open).toHaveBeenCalledWith('scope');
- view.rerender(<>{build('scope','scope')}</>);expect(screen.queryByRole('button',{name:'사용법 도움말 열기'})).toBeNull();
- view.rerender(<>{build(null,null)}</>);expect(screen.getByRole('button',{name:'사용법 도움말 열기'})).toBeDisabled();
+it('상단 챗봇은 종 바로 앞에 있고 desktop 공통 표시와 모바일 메뉴 버튼을 유지한다',()=>{
+ let header='';const visit=(node:ts.Node)=>{if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(parsed)==='header'&&node.getText(parsed).includes('aria-label="챗봇 열기"'))header=node.getText(parsed);ts.forEachChild(node,visit);};visit(parsed);if(!header)throw Error('상단 챗봇 없음');
+ const open=vi.fn();const build=(key:string|null)=>evaluate(header,{React,helpSessionKey:key,setHelpOpen:open,setIsSidebarCollapsed:vi.fn(),Menu:()=>null,Bell:()=>null,currentView:'mypage',appNotifications:[],currentUser:{id:'u',name:'직원'},accountProfileImageUrl:()=>'/profile.png',setNotifPanelPos:vi.fn(),setShowNotifPanel:vi.fn()});
+ const view=render(build('scope'));const button=screen.getByRole('button',{name:'챗봇 열기'});
+ expect(button).toHaveTextContent('챗봇');expect(button).toHaveAttribute('aria-keyshortcuts','Alt+/');expect(button).toHaveClass('min-h-11');expect(button).not.toHaveClass('fixed');expect(button.nextElementSibling).toBe(screen.getByRole('button',{name:'알림'}));
+ expect(button.closest('header')).not.toHaveClass('xl:hidden');expect(screen.getByRole('button',{name:'메뉴 열기'})).toHaveClass('xl:hidden');fireEvent.click(button);expect(open).toHaveBeenCalledWith('scope');
+ view.rerender(build(null));expect(screen.getByRole('button',{name:'챗봇 열기'})).toBeDisabled();expect(source).not.toContain('z-[2100]');
 });
 it('공통 단축키는 현재 scope만 열며 보이는 작성창이 있으면 근거 화면 이동을 차단한다',()=>{
  let effect:ts.ArrowFunction|undefined,callback='';const visit=(node:ts.Node)=>{

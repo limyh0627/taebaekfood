@@ -2353,7 +2353,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
-      {!(helpOpen && helpOpen === helpSessionKey) && <button type="button" aria-label="사용법 도움말 열기" aria-keyshortcuts="Alt+/" title={helpSessionKey?'사용법 도움말 · Alt+/':'로그인 계정을 확인한 뒤 도움말을 열 수 있습니다.'} disabled={!helpSessionKey} onClick={()=>setHelpOpen(helpSessionKey)} className="fixed z-[2100] min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 shadow-sm disabled:opacity-50" style={{right:'calc(16px + env(safe-area-inset-right))',bottom:'calc(96px + env(safe-area-inset-bottom))'}}>사용법 도움말</button>}
       {helpOpen && helpOpen === helpSessionKey && menuIdentity && <React.Suspense fallback={<p role="status">도움말을 여는 중입니다.</p>}><HelpChat key={helpSessionKey} companyId={companyId} userId={menuIdentity.uid} mode={isAdmin?'admin':'staff'} currentView={currentView} onClose={()=>setHelpOpen(null)} onNavigate={id=>{
         if(menuIdentity.uid!==auth.currentUser?.uid)return false;
         const editingDialog=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')).some(node=>node.isConnected&&node.getAttribute('aria-labelledby')!=='help-chat-title'&&!node.closest('[hidden], [aria-hidden="true"]')&&getComputedStyle(node).display!=='none'&&getComputedStyle(node).visibility!=='hidden'&&node.getClientRects().length>0);
@@ -2475,12 +2474,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       </aside>
 
       <main className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`} style={{ height: '100dvh' }}>
-        {/* 모바일 헤더 */}
-        <header className="xl:hidden bg-white border-b border-slate-200 px-3 flex items-center gap-2" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
+        {/* 공통 상단 메뉴 */}
+        <header className="shrink-0 bg-white border-b border-slate-200 px-3 flex items-center gap-2" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
           <button
             onClick={() => setIsSidebarCollapsed(false)}
             aria-label="메뉴 열기"
-            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
+            className="xl:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
           >
             <Menu size={22} />
           </button>
@@ -2504,6 +2503,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1">
+            <button type="button" aria-label="챗봇 열기" aria-keyshortcuts="Alt+/" title={helpSessionKey?'챗봇 · Alt+/':'로그인 계정을 확인한 뒤 챗봇을 열 수 있습니다.'} disabled={!helpSessionKey} onClick={()=>setHelpOpen(helpSessionKey)} className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50">챗봇</button>
             <button type="button" aria-label="알림" onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setNotifPanelPos({ top: rect.bottom + 8, left: Math.max(8, window.innerWidth - 368) }); setShowNotifPanel(prev => !prev); }} className="relative flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">
               <Bell size={20} aria-hidden="true" />
               {appNotifications.some(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id)) && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />}
