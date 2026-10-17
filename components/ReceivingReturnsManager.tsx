@@ -268,26 +268,13 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   return (
     <div className="space-y-4">
       {!navigator.locks && <p className="text-xs text-slate-500">이 브라우저에서는 한 창에서만 반품을 접수해주세요. 다른 창의 동시 첫 접수 보호는 지원되지 않습니다.</p>}
-      {(pendingSubmission || submissionError) && <div role="status" className="border rounded-xl p-3 space-y-2">
-        <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
-          {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
-        {submissionError && <p role="alert">{submissionError}</p>}
-        <button onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
-      </div>}
       <PageHeader
         title="반품"
         subtitle="반품 접수 및 처리"
-      />
-
-      {/* ══════════════════════════════════════════
-          반품 탭
-      ══════════════════════════════════════════ */}
-      {(
-        <div className="space-y-4">
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
+      tabs={<div className="flex w-full min-w-0 flex-wrap gap-1">
             <button
               onClick={() => setReturnTab('받기')}
-              className={`px-4 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-1.5 ${returnTab === '받기' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${returnTab === '받기' ? 'bg-white border-indigo-300 text-indigo-700' : 'bg-white border-transparent text-slate-500 hover:bg-slate-50'}`}
             >
               <RotateCcw size={13} />
               반품받기
@@ -299,12 +286,26 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
             </button>
             <button
               onClick={() => setReturnTab('보내기')}
-              className={`px-4 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-1.5 ${returnTab === '보내기' ? 'bg-white text-orange-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${returnTab === '보내기' ? 'bg-white border-indigo-300 text-indigo-700' : 'bg-white border-transparent text-slate-500 hover:bg-slate-50'}`}
             >
               <Truck size={13} />
               반품하기
             </button>
-          </div>
+          </div>}
+        recovery={(pendingSubmission || submissionError) && <div role="status" className="border rounded-xl p-3 space-y-2">
+        <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
+          {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
+        {submissionError && <p role="alert">{submissionError}</p>}
+        <button className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800" onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
+      </div>}
+      />
+
+      {/* ══════════════════════════════════════════
+          반품 탭
+      ══════════════════════════════════════════ */}
+      {(
+        <div className="space-y-4">
+
 
           {/* ── 받은 반품 (매출처가 우리에게 돌려보내는 것) ── */}
           {returnTab === '받기' && (

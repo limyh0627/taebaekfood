@@ -1,9 +1,10 @@
+import { CashTemplateModal } from './CashTemplateSelection';
 import type { Props } from '../domain/cashLedger';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isCalendarDay, today } from '../../../shared/day';
 import { CashAccount, CashEntry, AccountCode, Partner, FixedCostTemplate, CompanyId, companyOf } from '../../../shared/types';
 import { useLoanContracts } from '../../../shared/useLoanContracts';
-import { CashTemplateModal, filterTemplates, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../../../shared/cashTemplates';
+import { filterTemplates, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../../../shared/cashTemplates';
 import { journalizeCashEntry } from '../../../shared/autoJournal';
 import { stampFor } from '../../../shared/voucherStamp';
 import VoucherSlip from '../../../shared/VoucherSlip';

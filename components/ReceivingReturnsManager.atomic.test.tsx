@@ -116,3 +116,7 @@ it('확인창을 기다리는 동안 중복 접수를 시작하지 않는다',as
  const button=screen.getByRole('button',{name:/반품 발송 접수/});fireEvent.click(button);fireEvent.click(button);expect(m.command).not.toHaveBeenCalled();
  confirm(true);await waitFor(()=>expect(m.command).toHaveBeenCalledOnce());
 });
+
+it('반품받기와 보내기 탭은 헤더에 있고 작성 검색은 각 원래 폼에 남는다',()=>{
+ render(<ReceivingReturnsManager {...props}/>);const receive=screen.getByRole('button',{name:'반품받기'}),send=screen.getByRole('button',{name:'반품하기'});expect(receive.closest('[data-page-header-slot="tabs"]')).not.toBeNull();expect(send.closest('[data-page-header-slot="tabs"]')).toBe(receive.closest('[data-page-header-slot="tabs"]'));expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();expect(screen.getByPlaceholderText('거래처 검색...')).toBeInTheDocument();fireEvent.click(send);expect(screen.getByPlaceholderText('공급처 검색...')).toBeInTheDocument();expect(screen.queryByPlaceholderText('거래처 검색...')).toBeNull();fireEvent.click(receive);expect(screen.getByPlaceholderText('거래처 검색...')).toBeInTheDocument();expect(m.command).not.toHaveBeenCalled();
+});

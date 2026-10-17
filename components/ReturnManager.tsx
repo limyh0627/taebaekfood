@@ -236,22 +236,13 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   return (
     <div className="space-y-4">
       {!navigator.locks && <p className="text-xs text-slate-500">이 브라우저에서는 한 창에서만 반품을 접수해주세요. 다른 창의 동시 첫 접수 보호는 지원되지 않습니다.</p>}
-      {(pendingSubmission || submissionError) && <div role="status" className="border rounded-xl p-3 space-y-2">
-        <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
-          {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
-        {submissionError && <p role="alert">{submissionError}</p>}
-        <button onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
-      </div>}
-      <PageHeader title="반품 관리" subtitle="고객 반품 접수 및 재고/정산 처리" />
-
-      {/* 탭 */}
-      <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
+      <PageHeader title="반품 관리" subtitle="고객 반품 접수 및 재고/정산 처리" tabs={<div className="flex w-full min-w-0 flex-wrap gap-1">
         {(['접수', '이력'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-black transition-all ${
-              tab === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+            className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+              tab === t ? 'bg-white border-indigo-300 text-indigo-700' : 'bg-white border-transparent text-slate-500 hover:bg-slate-50'
             }`}
           >
             {t}
@@ -262,7 +253,17 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
             )}
           </button>
         ))}
-      </div>
+      </div>}
+        recovery={(pendingSubmission || submissionError) && <div role="status" className="border rounded-xl p-3 space-y-2">
+        <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
+          {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
+        {submissionError && <p role="alert">{submissionError}</p>}
+        <button className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800" onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
+      </div>}
+      />
+
+      {/* 탭 */}
+
 
       {/* ── 접수 탭 ── */}
       {tab === '접수' && (
@@ -468,12 +469,15 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
       {/* ── 이력 탭 ── */}
       {tab === '이력' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
+          <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
+            <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-3 [&_input]:!h-10 [&_input]:!min-h-0 [&_input]:!py-0 [&_button]:!h-9 [&_button]:!min-h-0 [&_button]:!py-0">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">기간</label>
             <DateRangeFilter from={filterFrom} to={filterTo} quick={filterQuick} label="반품 조회"
               onChange={(from, to, quick) => { setFilterFrom(from); setFilterTo(to); setFilterQuick(quick); }} />
             <span className="text-xs text-slate-400">{filteredHistory.length}건</span>
           </div>
+          </section>
 
           {filteredHistory.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">

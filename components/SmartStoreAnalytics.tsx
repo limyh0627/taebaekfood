@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Order, Partner, Item } from '../src/shared/types';
 import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } from 'lucide-react';
 import PageHeader from './PageHeader';
@@ -229,7 +229,23 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="p-6 max-w-5xl mx-auto space-y-6">
-        <PageHeader title="스마트스토어 분석" subtitle={`총 ${ssOrders.length}건 주문 · 거래처 ${ssClients.length}개 · 전용 품목 ${ssProducts.length}개`} />
+        <PageHeader title="스마트스토어 분석" subtitle={`총 ${ssOrders.length}건 주문 · 거래처 ${ssClients.length}개 · 전용 품목 ${ssProducts.length}개`} tabs={<div className="flex flex-wrap gap-1">
+          {tabs.map(t => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex h-9 items-center justify-center gap-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                  tab === t.id ? 'border border-indigo-300 bg-white text-indigo-600' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <Icon size={15} />
+                <span >{t.label}</span>
+              </button>
+            );
+          })}
+        </div>} />
 
         {/* 요약 카드 */}
         <div className="grid grid-cols-3 gap-4">
@@ -245,25 +261,6 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
             <p className="text-xs text-slate-500 font-medium">등록 거래처</p>
             <p className="text-xl font-black text-slate-800 mt-1">{ssClients.length}개</p>
           </div>
-        </div>
-
-        {/* 탭 */}
-        <div className="flex gap-2 bg-white rounded-2xl p-1.5 shadow-sm border border-slate-100">
-          {tabs.map(t => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-bold transition-all ${
-                  tab === t.id ? 'bg-lime-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                <Icon size={15} />
-                <span className="hidden sm:inline">{t.label}</span>
-              </button>
-            );
-          })}
         </div>
 
         {/* ── 월별 매출 ── */}

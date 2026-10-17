@@ -27,3 +27,8 @@ it('완제품 폐기 반품은 원전표 금액과 선택 사유를 보존한다
   expect(m.command.mock.calls[0][0]).toMatchObject({ collection: 'returnRequests', data: { totalAmount: 110,
     items: [{ quantity: 1, price: 110, reason: '품질불량', isResellable: false }] } });
 });
+
+it('반품 관리 탭을 헤더에 두고 이력 조회만 검색조건으로 표시한다',()=>{
+ render(<ReturnManager companyId="taebaek" items={[]} partners={[]} orders={[]} issuedStatements={[]} currentUser={{id:'u',name:'관리자'}} isAdmin onProcessReturn={vi.fn()}/>);
+ const title=screen.getByRole('heading',{name:'반품 관리'}),history=screen.getByRole('button',{name:'이력'});expect(history.closest('[data-page-header-slot="tabs"]')).not.toBeNull();expect(title.compareDocumentPosition(history)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();fireEvent.click(history);expect(screen.getByRole('region',{name:'검색조건'})).toBeInTheDocument();const from=screen.getByLabelText('반품 조회 시작일');fireEvent.change(from,{target:{value:'2026-10-01'}});expect(from).toHaveValue('2026-10-01');fireEvent.click(screen.getByRole('button',{name:'접수'}));expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();
+});

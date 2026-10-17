@@ -19,6 +19,12 @@ vi.mock('../src/shared/services/firebaseService', () => ({
 }));
 
 const 이번달 = new Date().toISOString().slice(0, 7);
+it('발행 조회 탭 다음 검색조건을 표시하고 조회 전환으로 발행 writer를 호출하지 않는다',()=>{
+ const issue=vi.fn();render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} onApplyTaxIssue={issue}/>);
+ const title=screen.getByRole('heading',{name:'세금계산서'}),tab=screen.getByRole('button',{name:'발행'}),query=screen.getByRole('heading',{name:'검색조건'}),search=screen.getByRole('textbox',{name:'발행 거래처 검색'});
+ expect(title.compareDocumentPosition(tab)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tab.compareDocumentPosition(query)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(search).toHaveClass('h-10');expect(screen.getByLabelText('발행 월')).toHaveClass('h-10');
+ fireEvent.change(search,{target:{value:'확인'}});fireEvent.click(screen.getByRole('button',{name:'조회'}));expect(screen.getByRole('textbox',{name:'조회 거래처 검색'})).toHaveClass('h-10');fireEvent.click(screen.getByRole('button',{name:'발행'}));expect(screen.getByRole('textbox',{name:'발행 거래처 검색'})).toHaveValue('확인');expect(issue).not.toHaveBeenCalled();
+});
 
 const 회사: CompanyInfo = {
   name: '태백식품',

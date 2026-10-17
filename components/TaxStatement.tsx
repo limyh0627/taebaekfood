@@ -412,22 +412,21 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       <PageHeader
         title="세금계산서"
         subtitle="발행된 세금계산서를 조회하거나 새로 발행합니다."
-        right={
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+        tabs={
+          <div className="flex flex-wrap gap-1">
             {([
               { id: 'issue' as const, icon: Receipt, label: '발행' },
               { id: 'history' as const, icon: Eye, label: '조회' },
             ]).map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === t.id ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`flex items-center h-9 gap-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-white border border-indigo-300 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
                 <t.icon size={13}/>{t.label}
               </button>
             ))}
           </div>
         }
-      />
-
-      {currentHistory?.error && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-2 text-sm">
+        recovery={(currentHistory?.error||selectedStmts.length>100||taxPending||taxPendingError)?<>
+{currentHistory?.error && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-2 text-sm">
         <span>{currentHistory.error}</span>
         <button type="button" disabled={currentHistory.loading} onClick={()=>{historyRequestGeneration.current++;setHistoryRetry(value=>value+1);}} className="rounded border border-slate-300 px-3 py-1">과거 전표 다시 불러오기</button>
       </div>}
@@ -437,18 +436,22 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         {taxPendingError||`발행 결과 확인이 필요합니다. 전표 ${taxPending!.statements.length}건 · ${taxPending!.scope==='all'?'과세·면세':taxPending!.scope==='taxable'?'과세':'면세'} · ${dateOfLocal(taxPending!.issuedAt)}`}
         {taxPending&&!taxPendingError&&<button disabled={taxBusy} onClick={()=>void handleTaxIssue(true)} className="ml-3 rounded-lg bg-amber-700 px-3 py-2 font-bold text-white">이전 발행 결과 확인</button>}
       </div>}
+        </>:undefined}
+      />
+
       {/* ── 발행 탭 ── */}
       {activeTab === 'issue' && (
         <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 월 선택 + 거래처 */}
-          <div className="w-full lg:w-64 lg:shrink-0 flex flex-col gap-3">
+          <section className="w-full lg:w-64 lg:shrink-0 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white overflow-hidden" aria-labelledby="tax-issue-query-title">
+            <h3 id="tax-issue-query-title" className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
             {/* 월 선택 */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-3">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">발행 월</p>
+            <div className="bg-white p-3">
+              <label htmlFor="tax-issue-month" className="block text-[10px] font-bold text-slate-500 mb-1">발행 월</label>
               <select
-                value={selectedMonth}
+                id="tax-issue-month" value={selectedMonth}
                 onChange={e => { setSelectedMonth(e.target.value); setTaxClientId(''); setTaxStmtIds([]); }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-emerald-300"
+                className="h-10 w-full bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"
               >
                 {(() => {
                   const currentYm = today().slice(0, 7);
@@ -464,15 +467,16 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
             {/* 높이는 거래처통계와 같은 기준 — 400px 고정이라 아래가 비었다 */}
             <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden max-h-[calc(100vh-260px)]">
               <div className="px-3 pt-3 pb-2 border-b border-slate-100 space-y-2">
+                <p className="text-[10px] font-bold text-slate-500">거래처</p>
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input type="text" placeholder="거래처 검색..." value={taxClientSearch}
+                  <input aria-label="발행 거래처 검색" type="text" placeholder="거래처 검색..." value={taxClientSearch}
                     onChange={e => setTaxClientSearch(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
                 <button
                   onClick={() => setOnlyUnissued(p => !p)}
-                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${onlyUnissued ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  className={`w-full h-9 flex items-center justify-center gap-1.5 rounded-lg text-[11px] font-black transition-all ${onlyUnissued ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                   미발행 거래처만 보기
                 </button>
@@ -501,7 +505,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 )}
               </div>
             </div>
-          </div>
+          </section>
 
           {/* 우측: 전표 목록 + 미리보기 */}
           <div className="flex-1 flex flex-col gap-3 min-w-0">
@@ -764,14 +768,15 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 거래처 필터 */}
           <div className="w-full lg:w-56 lg:shrink-0 flex flex-col gap-3 lg:sticky lg:top-0">
-            <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
+            <div className="bg-white rounded-lg border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
+              <h3 className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
               <div className="px-3 pt-3 pb-2 border-b border-slate-100">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">발행 거래처</p>
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input type="text" placeholder="거래처 검색..." value={histClientSearch}
+                  <input aria-label="조회 거래처 검색" type="text" placeholder="거래처 검색..." value={histClientSearch}
                     onChange={e => setHistClientSearch(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
               </div>
               <div className="overflow-y-auto divide-y divide-slate-50 max-h-[calc(100vh-260px)]">

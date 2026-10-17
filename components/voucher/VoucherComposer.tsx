@@ -1,3 +1,4 @@
+import { CashTemplateModal } from '../../src/features/statements/ui/CashTemplateSelection';
 import {AccrualJournalPreview,CashJournalPreview} from '../../src/features/statements/ui/VoucherJournalPreview';
 import {auth} from '../../src/shared/firebase';
 import {readVoucherPending,storeVoucherPending,clearVoucherPending,voucherPendingKey,voucherNoWriteProof,type VoucherIssuePending} from '../../src/features/statements/infrastructure/voucherIssuePending';
@@ -19,7 +20,7 @@ import { isReceivableStmt } from '../../src/features/admin/cashLedger';
 import { settlementTypeOf, settlementDirectionOf } from '../../src/features/admin/voucherMerge';
 import { journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../../src/shared/autoJournal';
 import {
-  CashTemplateModal, filterTemplates, isCashDir, templateAccrRows,
+  filterTemplates, isCashDir, templateAccrRows,
   DIR_CHIP, DIR_HINT, type CashTemplate, type VoucherDir,
   SPLIT_MODES, splitModeOf,
 } from '../../src/shared/cashTemplates';

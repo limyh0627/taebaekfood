@@ -12,6 +12,7 @@ import {
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement, CompanyId, openingDocId, companyOf } from '../types';
 import PageHeader from './PageHeader';
+import ActionButton from '../src/shared/components/ActionButton';
 import PeriodPicker from '../src/shared/ui/PeriodPicker';
 import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/ui/LedgerCard';
 import CostManager from './CostManager';
@@ -417,25 +418,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {!isStandalone && (
         <>
           <PageHeader
+            actions={mainTab === 'analysis' ? <ActionButton onClick={() => setShowAccountSettings(true)}><Wallet size={13}/>계정 설정</ActionButton> : undefined}
             title="손익 / 비용 관리"
             subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
-            right={
-              <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            tabs={
+              <div className="flex min-w-0 max-w-full flex-wrap gap-1">
                 <button onClick={() => setMainTab('analysis')}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  className={`flex h-9 items-center gap-1.5 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${mainTab === 'analysis' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`}>
                   <BarChart2 size={13}/>손익분석
                 </button>
                 <button onClick={() => setMainTab('inventory-value')}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  className={`flex h-9 items-center gap-1.5 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${mainTab === 'inventory-value' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`}>
                   <Package size={13}/>재고액
                 </button>
               </div>
             }
           />
         </>
-      )}
-      {isStandalone && mainTab === 'partners' && (
-        <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" />
       )}
       {isStandalone && mainTab === 'cash-flow' && (
         <PageHeader title="현금흐름 분석" subtitle="직접법 현금흐름표 — 분개에서 현금이 실제로 움직인 것만 셉니다." />
@@ -444,7 +443,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {mainTab === 'analysis' && <>
 
       {/* ── 제목 + 기간 컨트롤 ── */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <section aria-label="손익 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4">
+        <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
+        <div className="[&_input]:h-10 [&_select]:h-10 [&_input]:bg-white [&_select]:bg-white [&_input]:font-bold [&_select]:font-bold [&_button]:min-h-9">
         {/* 기간 갈래를 **왼쪽 맨 앞**에 둔다 — 화면이 어느 기간인지가 먼저 읽혀야 한다.
             제목에 '2026년 1월~8월'을 또 쓰지 않는다. 고른 값이 곧 제목이라 두 번 말하는 것이다. */}
         <PeriodPicker
@@ -458,15 +459,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           yearlyAvailable={yearlyAvailable}
           alwaysShowDates
         />
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            onClick={() => setShowAccountSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
-          >
-            <Wallet size={13}/>계정 설정
-          </button>
+
         </div>
-      </div>
+      </section>
 
       {/*
         손익계산서 — **한 줄기로 위에서 아래로.** 매출에서 시작해 빼 나가며 이익이 남는다.
@@ -771,7 +766,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                  기간 갈래를 왼쪽 맨 앞에 두고, 화면마다 따로 그리던 고르개를
                  shared/ui/PeriodPicker 하나로 모았다. 제목은 PageHeader 가 이미
                  말했으니 여기서 또 말하지 않는다 — 손익분석이 그 규칙을 쓰고 있었다. */}
-            <div className="flex items-start justify-between gap-3 flex-wrap">
+            <section aria-label="현금흐름 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4 [&_input]:h-10 [&_select]:h-10 [&_button]:min-h-9">
+              <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                   {([['month','월별'],['period','기간']] as const).map(([val,label]) => (
@@ -801,7 +797,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   />
                 )}
               </div>
-            </div>
+            </section>
 
             {/*  **손익분석과 같은 카드**다(2026-09-06 사장님: "이게 통일한거야?").
                  전에는 검은 머리띠로 시작하고 구역이 안 접혔다 — 같은 일을 하는 두 화면이
@@ -1127,28 +1123,40 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         return (
           <>
+            {isStandalone && <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" actions={(
+                <ActionButton
+                  onClick={generateMonthlySummaryPdf}
+                  disabled={!/^\d{4}-(0[1-9]|1[0-2])$/.test(pdfMonth) || pdfMonth > today().slice(0, 7)}
+
+                >
+                  <Download size={13} /> 거래처별 월간 정산 PDF
+                </ActionButton>
+
+            )}/>}
+            <section aria-label="거래처 현황 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4">
+              <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
+              <label className="flex max-w-sm flex-col gap-1 text-[10px] font-bold text-slate-500">정산 PDF 월
+                <input type="month" value={pdfMonth} max={today().slice(0, 7)}
+                  onChange={e => setPdfMonth(e.target.value)}
+                  aria-label="거래처별 정산 PDF 월 선택"
+                  className="h-10 w-full px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold" />
+
+              </label>
+              <label className="mt-3 flex max-w-sm flex-col gap-1 text-[10px] font-bold text-slate-500">거래처
+                <div className="relative">
+                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+                  <input type="text" placeholder="거래처 검색..." value={recClientSearch}
+                    onChange={e => setRecClientSearch(e.target.value)}
+                    className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
+                </div>
+              </label>
+            </section>
             {/*  **좁은 화면에서는 위아래로 쌓는다.** 가로로 두면 오른쪽 판이 찌그러져
                  한글이 한 글자씩 세로로 쌓인다(2026-09-03 사장님 지적). */}
             <div className="flex flex-col lg:flex-row gap-4 lg:min-h-[600px]">
               {/* 좌측: 거래처 목록 — 좁은 화면에선 위쪽 */}
               <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
-                <input type="month" value={pdfMonth} max={today().slice(0, 7)}
-                  onChange={e => setPdfMonth(e.target.value)}
-                  aria-label="거래처별 정산 PDF 월 선택"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold" />
-                <button
-                  onClick={generateMonthlySummaryPdf}
-                  disabled={!/^\d{4}-(0[1-9]|1[0-2])$/.test(pdfMonth) || pdfMonth > today().slice(0, 7)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl transition-colors"
-                >
-                  <Download size={13} /> 거래처별 월간 정산 PDF
-                </button>
-                <div className="relative">
-                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input type="text" placeholder="거래처 검색..." value={recClientSearch}
-                    onChange={e => setRecClientSearch(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                </div>
+
                 {/* 높이를 묶는다 — flex-1만 두면 거래처 수만큼 늘어나 화면 끝까지 내려간다 */}
                 <div className="bg-white rounded-2xl border border-slate-200 flex-1 min-h-0 max-h-[40vh] lg:max-h-[calc(100vh-260px)] overflow-y-auto">
                   {allClientList.length === 0 && <div className="py-8 text-center text-slate-300 text-xs font-bold">전표 없음</div>}
