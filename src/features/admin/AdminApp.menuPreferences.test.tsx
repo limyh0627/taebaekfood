@@ -26,29 +26,9 @@ it('실제 관리자·직원 목록을 기준으로 독립 ID와 기존 동작·
  const staff=catalog(false);expect(staff.entries).toHaveLength(12);expect(staff.entries.some(r=>r.id==='hr'||r.id==='trade-statement')).toBe(false);
  expect(normalizeMenuPreferences({version:1,items:[{id:'hr',groupId:'staff-work'}]},staff.groups,staff.entries).items.some(r=>r.id==='hr')).toBe(false);
 });
-it('회사·UID·직원 prop 일치 전에는 현재 메뉴 키를 만들지 않고 기본 목록만 사용한다',()=>{
- const values={menuIdentity:{uid:'u',employeeId:'e',companyId:'taebaek',admin:true},auth:{currentUser:{uid:'u'}},currentUser:{id:'e'},companyId:'taebaek',isAdmin:true,menuPreferenceKey};
- expect(evaluate(initializer('menuKey'),values)).toBe(menuPreferenceKey({companyId:'taebaek',uid:'u',mode:'admin'}));
- expect(evaluate(initializer('menuKey'),{...values,auth:{currentUser:{uid:'new'}}})).toBeNull();
- expect(evaluate(initializer('menuKey'),{...values,currentUser:{id:'previous'}})).toBeNull();
- expect(evaluate(initializer('menuKey'),{...values,companyId:'punghoe'})).toBe(menuPreferenceKey({companyId:'punghoe',uid:'u',mode:'admin'}));
- expect(evaluate(initializer('menuKey'),{...values,isAdmin:false,companyId:'punghoe'})).toBe(menuPreferenceKey({companyId:'punghoe',uid:'u',mode:'staff'}));
- expect(evaluate(initializer('menuKey'),{...values,isAdmin:false,companyId:'punghoe',menuIdentity:{...values.menuIdentity,admin:false}})).toBeNull();
- expect(evaluate(initializer('menuKey'),{...values,menuIdentity:null})).toBeNull();
- const c=catalog(true),old=normalizeMenuPreferences(null,c.groups,c.entries);old.items[0].hidden=true;
- expect(evaluate(initializer('menuValue'),{menuSaved:{key:'old',value:old},menuKey:'new',normalizeMenuPreferences,menuGroups:c.groups,menuCatalog:c.entries}).items[0].hidden).toBe(false);
-});
 it('계정 메뉴는 설정 목록 밖에 고정하고 빈 그룹만 사이드바에서 숨긴다',()=>{
  expect(source).toContain('<AccountMenu currentUser={currentUser}');expect(initializer('menuEntries')).not.toContain('AccountMenu');
  expect(source).toContain('if(!rows.length)return null;');expect(source).toContain('onReset:resetMenu');
-});
-it('현재 메뉴 변경은 저장 실패에도 화면에 적용하고 계정 변경 뒤에는 쓰지 않는다',()=>{
- const c=catalog(true),value=normalizeMenuPreferences(null,c.groups,c.entries);value.items[0].hidden=true;
- const saved=vi.fn(),error=vi.fn(),write=vi.fn(()=>{throw Error('용량 부족');});
- const auth={currentUser:{uid:'u'}};
- const change=evaluate(initializer('changeMenu'),{menuKey:'key',menuIdentity:{uid:'u'},auth,normalizeMenuPreferences,menuGroups:c.groups,menuCatalog:c.entries,setMenuSaved:saved,saveMenuPreferences:write,setMenuError:error});
- change(value);expect(saved).toHaveBeenCalledWith({key:'key',value});expect(error).toHaveBeenCalledWith(expect.stringContaining('현재 화면에는 적용'));
- auth.currentUser.uid='other';change(value);expect(write).toHaveBeenCalledOnce();
 });
 it('실제 사이드바 식은 사용자 순서·숨김을 적용하고 빈 그룹은 그리지 않는다',()=>{
  const c=catalog(true),menuValue=normalizeMenuPreferences(null,c.groups,c.entries);
@@ -91,4 +71,10 @@ it('공통 단축키는 현재 scope만 열며 보이는 작성창이 있으면 
  const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.getClientRects=()=>[{}] as any;document.body.appendChild(dialog);
  expect(navigate('orders')).toBe(false);expect(c.nav).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();
  dialog.hidden=true;expect(navigate('orders')).toBe(true);expect(c.nav).toHaveBeenCalledWith('orders');dialog.remove();
+});
+
+it('메뉴 제어는 신원·회사·직원·모드와 실제 카탈로그를 전달하고 MyPage 수명을 유지한다',()=>{
+ let call='';const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&node.expression.getText(parsed)==='useMenuPreferencesController')call=node.getText(parsed);ts.forEachChild(node,visit);};visit(parsed);if(!call)throw Error('메뉴 제어 연결 없음');
+ const control=vi.fn(()=>({})),menuIdentity={uid:'u'},menuGroups=[{id:'g'}],menuCatalog=[{id:'one'}];evaluate(call,{useMenuPreferencesController:control,menuIdentity,companyId:'punghoe',currentUser:{id:'e'},isAdmin:false,menuGroups,menuCatalog});expect(control).toHaveBeenCalledWith({identity:menuIdentity,companyId:'punghoe',employeeId:'e',isAdmin:false,groups:menuGroups,items:menuCatalog});
+ expect(source).toContain('key={menuKey ?? `pending:'+ '${companyId}:${currentUser.id}:${isAdmin}`}');expect(source).toContain('menuSettings={{groups:menuGroups,items:menuCatalog,value:menuValue,enabled:!!menuKey,error:menuError,onChange:changeMenu,onReset:resetMenu}}');
 });

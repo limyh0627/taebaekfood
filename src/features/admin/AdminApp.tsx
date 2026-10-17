@@ -1,9 +1,9 @@
+import { useMenuPreferencesController } from './hooks/useMenuPreferencesController';
 import { AppTopBar } from './ui/AppTopBar';
 import { useMenuIdentity } from './hooks/useMenuIdentity';
 import ActionButton from '../../shared/components/ActionButton';
 import { NavGroup, NavItem } from './ui/NavigationPrimitives';
 import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
-import { menuPreferenceKey, normalizeMenuPreferences, loadMenuPreferences, saveMenuPreferences, resetMenuPreferences, type MenuPreferences } from '../../shared/menuPreferences';
 const HelpChat = React.lazy(() => import('../../../components/HelpChat'));
 import {readOemReceiptEntry,markOemReceiptPreCallFailure} from '../../shared/oemReceiptPending';
 import {getOemReceiptRecoveryContext} from '../../shared/services/firebaseService';
@@ -359,8 +359,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
    */
   const viewAllowed = (_v: ViewType) => true;
   const menuIdentity = useMenuIdentity();
-  const [menuSaved, setMenuSaved] = useState<{key:string|null;value:MenuPreferences}|null>(null);
-  const [menuError, setMenuError] = useState('');
   const [helpOpen, setHelpOpen] = useState<string|null>(null);
 
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
@@ -2317,8 +2315,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
                     </button>)}]).filter(row => !(row.element.props as {hidden?:boolean}).hidden);
   const menuCatalog = menuEntries.map(({id,label,groupId}) => ({id,label,groupId}));
-  const menuKey = menuIdentity && menuIdentity.uid === auth.currentUser?.uid && menuIdentity.employeeId === currentUser.id && (menuIdentity.companyId === companyId || menuIdentity.admin) && (!isAdmin || menuIdentity.admin) ? menuPreferenceKey({companyId,uid:menuIdentity.uid,mode:isAdmin?'admin':'staff'}) : null;
-  const menuDefaults = normalizeMenuPreferences(null,menuGroups,menuCatalog);
+  const {key:menuKey,value:menuValue,error:menuError,change:changeMenu,reset:resetMenu} = useMenuPreferencesController({identity:menuIdentity,companyId,employeeId:currentUser.id,isAdmin,groups:menuGroups,items:menuCatalog});
   const helpSessionKey = menuKey ? `${menuKey}:${currentView}` : null;
   useEffect(()=>{setHelpOpen(null);},[helpSessionKey]);
   useEffect(()=>{
@@ -2328,19 +2325,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     window.addEventListener('keydown',openHelp);
     return()=>window.removeEventListener('keydown',openHelp);
   },[helpSessionKey]);
-  const menuValue = normalizeMenuPreferences(menuSaved?.key === menuKey && menuKey ? menuSaved.value : null,menuGroups,menuCatalog);
-  const menuCatalogSignature = JSON.stringify({groups:menuGroups,items:menuCatalog});
-  useEffect(() => { setMenuSaved({key:menuKey,value:loadMenuPreferences(menuKey,menuGroups,menuCatalog)});setMenuError(''); },[menuKey,menuCatalogSignature]);
-  const changeMenu = (next: MenuPreferences) => {
-    if(!menuKey || menuIdentity?.uid !== auth.currentUser?.uid) return;
-    const value=normalizeMenuPreferences(next,menuGroups,menuCatalog);setMenuSaved({key:menuKey,value});
-    try{saveMenuPreferences(menuKey,value);setMenuError('');}catch{setMenuError('이 브라우저에 메뉴 설정을 저장하지 못했습니다. 현재 화면에는 적용했지만 다시 열면 유지되지 않을 수 있습니다.');}
-  };
-  const resetMenu = () => {
-    if(!menuKey || menuIdentity?.uid !== auth.currentUser?.uid)return;
-    setMenuSaved({key:menuKey,value:menuDefaults});
-    try{resetMenuPreferences(menuKey);setMenuError('');}catch{setMenuError('기본 메뉴는 적용했지만 저장된 설정을 삭제하지 못했습니다. 다시 시도해 주세요.');}
-  };
+
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
