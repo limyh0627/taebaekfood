@@ -1,3 +1,8 @@
+import CCPHeatForm from '../src/features/haccp/ui/CCPHeatForm';
+import CCPMetalForm from '../src/features/haccp/ui/CCPMetalForm';
+import {TH,TD,TDL,FormHeader,SignBox} from '../src/features/haccp/ui/ChecklistFormParts';
+import type {SlotTime,SanitationRow,SanitationRecord} from '../src/features/haccp/domain/sanitationTypes';
+import {sanSlotLabel,sanRevLabel,SanitationPrintable,SanitationMonthlyCover} from '../src/features/haccp/ui/SanitationPrint';
 import { downloadAsPDF } from '../src/features/haccp/infrastructure/downloadAsPDF';
 import { useDragReorder, arrayMove } from '../src/features/haccp/hooks/useDragReorder';
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
@@ -13,35 +18,17 @@ const HaccpCompanyContext = createContext<CompanyId>('taebaek');
 const useHaccpCompany = (): CompanyId => useContext(HaccpCompanyContext);
 
 // ── 공통 스타일 ────────────────────────────────────────────────────────────────
-const TH = 'border border-slate-400 bg-slate-100 p-1.5 text-xs font-bold text-center';
-const TD = 'border border-slate-400 p-1.5 text-xs text-center';
-const TDL = 'border border-slate-400 p-1.5 text-xs text-left';
+
+
+
 
 // ── PDF 다운로드 유틸 ──────────────────────────────────────────────────────────
 
 
 // ── 공통 헬퍼 컴포넌트 ────────────────────────────────────────────────────────
-const FormHeader: React.FC<{ title: string; company?: string; date?: string }> = ({
-  title, company = '태백식품', date,
-}) => (
-  <div className="mb-4">
-    <div className="flex items-center justify-between border-b-2 border-slate-600 pb-2">
-      <div className="text-base font-black text-slate-800">{title}</div>
-      <div className="text-xs text-slate-500">{company} | {date ?? new Date().toLocaleDateString('ko-KR')}</div>
-    </div>
-  </div>
-);
 
-const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확인자', '관리자'] }) => (
-  <div className="flex gap-2 mt-3 justify-end">
-    {labels.map(l => (
-      <div key={l} className="border border-slate-400 text-center w-20">
-        <div className="bg-slate-100 text-xs font-bold py-0.5 border-b border-slate-400">{l}</div>
-        <div className="h-8" />
-      </div>
-    ))}
-  </div>
-);
+
+
 
 // ── 드래그 순서 변경 훅 (템플릿 에디터 공용) ──────────────────────────────────
 // 핸들(GripVertical)만 draggable로 두어 행 안 input의 텍스트 선택과 충돌하지 않게 함.
@@ -730,237 +717,18 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 5. CCP-B 가열·살균공정 모니터링일지
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const CCP_PRODUCTS = ['시골향참기름', '시골향들기름', '시골향고추기름', '시골향마늘기름', '향미유(기타)', '고춧가루'];
 
-interface CCPHeatRow {
-  date: string;
-  product: string;
-  batch: string;
-  startTime: string;
-  endTime: string;
-  setTemp: string;
-  measuredTemp: string;
-  duration: string;
-  coreTemp: string;
-  result: '' | 'O' | 'X';
-  corrective: string;
-  operator: string;
-  verifier: string;
-}
 
-const CCPHeatForm: React.FC = () => {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [rows, setRows] = useState<CCPHeatRow[]>([
-    { date: '', product: CCP_PRODUCTS[0], batch: '', startTime: '', endTime: '', setTemp: '', measuredTemp: '', duration: '', coreTemp: '', result: '', corrective: '', operator: '', verifier: '' },
-  ]);
-  const ref = useRef<HTMLDivElement>(null);
 
-  const addRow = () => setRows(prev => [...prev, { date: '', product: CCP_PRODUCTS[0], batch: '', startTime: '', endTime: '', setTemp: '', measuredTemp: '', duration: '', coreTemp: '', result: '', corrective: '', operator: '', verifier: '' }]);
-  const update = (idx: number, field: keyof CCPHeatRow, value: string) =>
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
 
-  return (
-    <div>
-      <div className="flex gap-3 mb-3 flex-wrap">
-        <label className="text-xs text-slate-600 flex items-center gap-1">
-          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
-        </label>
-        <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
-        <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_CCP가열살균모니터링일지_${month}.pdf`)}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-        >
-          <FileDown size={13} /> PDF 저장
-        </button>
-      </div>
 
-      <div ref={ref} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-        <FormHeader title="CCP-B 모니터링일지 [가열·살균공정]" date={month} />
-
-        <div className="border border-slate-400 p-2 mb-3 text-xs bg-amber-50">
-          <div className="font-bold mb-1">한계기준(CL) — 이탈 시 즉각 개선조치 필요</div>
-          <div>• 가열온도: 95~100℃ / 가열시간: 15~20분 이상 / 품온: 70~85℃ 이상</div>
-          <div>• 기준 이탈 시: 재가열 또는 해당 배치 격리 후 품질 판정</div>
-        </div>
-
-        <p className="text-xs text-slate-500 mb-2">O: 한계기준 적합 / X: 한계기준 이탈 (개선조치 기재 필수)</p>
-
-        <div className="overflow-x-auto">
-          <table className="border-collapse text-xs" style={{ minWidth: 900 }}>
-            <thead>
-              <tr>
-                <th className={TH}>제조일</th>
-                <th className={TH}>제품명</th>
-                <th className={TH}>배치번호</th>
-                <th className={TH}>시작시간</th>
-                <th className={TH}>종료시간</th>
-                <th className={TH}>설정온도(℃)</th>
-                <th className={TH}>실측온도(℃)</th>
-                <th className={TH}>가열시간(분)</th>
-                <th className={TH}>품온(℃)</th>
-                <th className={TH}>적합</th>
-                <th className={TH}>개선조치</th>
-                <th className={TH}>작업자</th>
-                <th className={TH}>확인자</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, idx) => (
-                <tr key={idx}>
-                  <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" /></td>
-                  <td className={TD}>
-                    <select value={row.product} onChange={e => update(idx, 'product', e.target.value)} className="text-xs border-none outline-none bg-transparent">
-                      {CCP_PRODUCTS.map(p => <option key={p}>{p}</option>)}
-                    </select>
-                  </td>
-                  <td className={TD}><input value={row.batch} onChange={e => update(idx, 'batch', e.target.value)} className="w-16 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input type="time" value={row.startTime} onChange={e => update(idx, 'startTime', e.target.value)} className="text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}><input type="time" value={row.endTime} onChange={e => update(idx, 'endTime', e.target.value)} className="text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}><input value={row.setTemp} onChange={e => update(idx, 'setTemp', e.target.value)} placeholder="95~100" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input value={row.measuredTemp} onChange={e => update(idx, 'measuredTemp', e.target.value)} placeholder="실측값" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input value={row.duration} onChange={e => update(idx, 'duration', e.target.value)} placeholder="15~20" className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input value={row.coreTemp} onChange={e => update(idx, 'coreTemp', e.target.value)} placeholder="70~85" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}>
-                    <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
-                      <option value="">-</option>
-                      <option value="O">O</option>
-                      <option value="X">X</option>
-                    </select>
-                  </td>
-                  <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}><input value={row.operator} onChange={e => update(idx, 'operator', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input value={row.verifier} onChange={e => update(idx, 'verifier', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <SignBox labels={['작성자', '검증자', '관리자']} />
-      </div>
-    </div>
-  );
-};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 6. CCP-P 금속검출공정 모니터링일지
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-interface CCPMetalRow {
-  date: string;
-  time: string;
-  product: string;
-  batch: string;
-  fe: string;
-  sus: string;
-  feResult: '' | 'O' | 'X';
-  susResult: '' | 'O' | 'X';
-  productResult: '' | 'O' | 'X';
-  corrective: string;
-  operator: string;
-  verifier: string;
-}
 
-const CCPMetalForm: React.FC = () => {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [rows, setRows] = useState<CCPMetalRow[]>([
-    { date: '', time: '', product: CCP_PRODUCTS[0], batch: '', fe: '', sus: '', feResult: '', susResult: '', productResult: '', corrective: '', operator: '', verifier: '' },
-  ]);
-  const ref = useRef<HTMLDivElement>(null);
 
-  const addRow = () => setRows(prev => [...prev, { date: '', time: '', product: CCP_PRODUCTS[0], batch: '', fe: '', sus: '', feResult: '', susResult: '', productResult: '', corrective: '', operator: '', verifier: '' }]);
-  const update = (idx: number, field: keyof CCPMetalRow, value: string) =>
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
 
-  return (
-    <div>
-      <div className="flex gap-3 mb-3 flex-wrap">
-        <label className="text-xs text-slate-600 flex items-center gap-1">
-          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
-        </label>
-        <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
-        <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_CCP금속검출모니터링일지_${month}.pdf`)}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-        >
-          <FileDown size={13} /> PDF 저장
-        </button>
-      </div>
-
-      <div ref={ref} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-        <FormHeader title="CCP-P 모니터링일지 [금속검출공정]" date={month} />
-
-        <div className="border border-slate-400 p-2 mb-3 text-xs bg-amber-50">
-          <div className="font-bold mb-1">한계기준(CL) — 이탈 시 즉각 개선조치 필요</div>
-          <div>• Fe(철) 테스트피스: 2.0㎜φ — 검출(감도 확인) / 제품: 불검출</div>
-          <div>• Sus(스테인리스) 테스트피스: 2.5㎜φ — 검출(감도 확인) / 제품: 불검출</div>
-          <div>• 기준 이탈 시: 해당 배치 전량 재검사 또는 격리 후 처리</div>
-        </div>
-
-        <p className="text-xs text-slate-500 mb-2">감도확인: O=검출(정상) X=미검출(이상) / 제품검사: O=불검출(정상) X=검출(이상)</p>
-
-        <div className="overflow-x-auto">
-          <table className="border-collapse text-xs" style={{ minWidth: 900 }}>
-            <thead>
-              <tr>
-                <th className={TH} rowSpan={2}>검사일</th>
-                <th className={TH} rowSpan={2}>검사시간</th>
-                <th className={TH} rowSpan={2}>제품명</th>
-                <th className={TH} rowSpan={2}>배치번호</th>
-                <th className={TH} colSpan={2}>감도확인(테스트피스)</th>
-                <th className={TH} rowSpan={2}>제품검사결과</th>
-                <th className={TH} rowSpan={2}>개선조치</th>
-                <th className={TH} rowSpan={2}>검사자</th>
-                <th className={TH} rowSpan={2}>확인자</th>
-              </tr>
-              <tr>
-                <th className={TH}>Fe 2.0㎜φ</th>
-                <th className={TH}>Sus 2.5㎜φ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, idx) => (
-                <tr key={idx}>
-                  <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" /></td>
-                  <td className={TD}><input type="time" value={row.time} onChange={e => update(idx, 'time', e.target.value)} className="text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}>
-                    <select value={row.product} onChange={e => update(idx, 'product', e.target.value)} className="text-xs border-none outline-none bg-transparent">
-                      {CCP_PRODUCTS.map(p => <option key={p}>{p}</option>)}
-                    </select>
-                  </td>
-                  <td className={TD}><input value={row.batch} onChange={e => update(idx, 'batch', e.target.value)} className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}>
-                    <select value={row.feResult} onChange={e => update(idx, 'feResult', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.feResult === 'X' ? 'text-rose-600' : row.feResult === 'O' ? 'text-green-600' : ''}`}>
-                      <option value="">-</option>
-                      <option value="O">O(검출)</option>
-                      <option value="X">X(미검출)</option>
-                    </select>
-                  </td>
-                  <td className={TD}>
-                    <select value={row.susResult} onChange={e => update(idx, 'susResult', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.susResult === 'X' ? 'text-rose-600' : row.susResult === 'O' ? 'text-green-600' : ''}`}>
-                      <option value="">-</option>
-                      <option value="O">O(검출)</option>
-                      <option value="X">X(미검출)</option>
-                    </select>
-                  </td>
-                  <td className={TD}>
-                    <select value={row.productResult} onChange={e => update(idx, 'productResult', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.productResult === 'X' ? 'text-rose-600' : row.productResult === 'O' ? 'text-green-600' : ''}`}>
-                      <option value="">-</option>
-                      <option value="O">O(불검출)</option>
-                      <option value="X">X(검출)</option>
-                    </select>
-                  </td>
-                  <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}><input value={row.operator} onChange={e => update(idx, 'operator', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input value={row.verifier} onChange={e => update(idx, 'verifier', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <SignBox labels={['작성자', '검증자', '관리자']} />
-      </div>
-    </div>
-  );
-};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 7. 입고검사일지
@@ -1580,29 +1348,11 @@ const SANITATION_ITEMS: { item: string; standard: string }[] = [
   { item: '세척도구 관리',   standard: '구분 보관 실시' },
 ];
 
-type SlotTime = '08:30' | '15:00';
 
-interface SanitationRow {
-  result: 'pass' | 'fail' | '';
-  note: string;
-  inspector: string;
-}
 
-interface SanitationRecord {
-  id?: string;
-  checkDate: string;
-  checkZone: string;
-  checkTime: SlotTime;
-  rows: SanitationRow[];
-  specialNotes: string;
-  createdBy: string;
-  createdAt: string;
-  updatedBy: string;
-  updatedAt: string;
-  revisionCount: number;
-  confirmedBy?: string;
-  confirmedAt?: string;
-}
+
+
+
 
 const todayStr = () => {
   const d = new Date();
@@ -1623,152 +1373,14 @@ const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationR
 });
 
 // ── 월별 심사자료(PDF) — 읽기전용 서식 재현 ───────────────────────────────
-const sanSlotLabel = (slot: SlotTime) => slot === '08:30' ? '오전 08:30' : '오후 15:00';
-const sanRevLabel = (r: { revisionCount: number }) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
+
+
 
 // 단일 점검표 1장(A4 1페이지) — 화면 서식과 동일하게 재현(읽기전용)
-const SanitationPrintable: React.FC<{ record: SanitationRecord; templateItems: { item: string; standard: string }[] }> = ({ record, templateItems }) => (
-  <div style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-    <h2 className="text-lg font-black text-center mb-1">HACCP 작업장 위생점검표</h2>
-    <div className="text-center mb-3">
-      {record.confirmedBy
-        ? <span className="inline-block text-[11px] font-bold text-emerald-700 border border-emerald-500 rounded px-2 py-0.5">✔ 관리자 확인완료 · {record.confirmedBy} ({record.confirmedAt?.slice(0, 10)})</span>
-        : <span className="inline-block text-[11px] font-bold text-amber-700 border border-amber-500 rounded px-2 py-0.5">미확인</span>}
-    </div>
 
-    <table className="w-full border-collapse text-xs mb-3">
-      <tbody>
-        <tr>
-          <td className={TH} style={{ width: 84 }}>회사명</td><td className={TD}>태백식품</td>
-          <td className={TH} style={{ width: 84 }}>문서번호</td><td className={TD}>HACCP-PRP-001</td>
-        </tr>
-        <tr>
-          <td className={TH}>점검일자</td><td className={TD}>{record.checkDate}</td>
-          <td className={TH}>점검시간</td><td className={TD}>{sanSlotLabel(record.checkTime)}</td>
-        </tr>
-        <tr>
-          <td className={TH}>작성자</td><td className={TD}>{record.createdBy || '-'}</td>
-          <td className={TH}>개정번호</td><td className={TD}>{sanRevLabel(record)}</td>
-        </tr>
-        <tr>
-          <td className={TH}>점검구역</td><td className={TDL} colSpan={3}>{record.checkZone || '-'}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table className="w-full border-collapse text-xs mb-3">
-      <thead>
-        <tr>
-          <th className={TH} style={{ width: 28 }}>No</th>
-          <th className={TH}>점검항목</th>
-          <th className={TH}>점검기준</th>
-          <th className={TH} style={{ width: 40 }}>적합</th>
-          <th className={TH} style={{ width: 40 }}>부적합</th>
-          <th className={TH} style={{ width: 72 }}>점검자</th>
-          <th className={TH}>비고사항(조치)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {templateItems.map((item, idx) => {
-          const row = record.rows[idx] ?? { result: '', note: '', inspector: '' };
-          return (
-            <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
-              <td className={TD}>{idx + 1}</td>
-              <td className={TDL}>{item.item}</td>
-              <td className={TDL}>{item.standard}</td>
-              <td className={TD} style={{ color: '#059669', fontWeight: 700 }}>{row.result === 'pass' ? '●' : ''}</td>
-              <td className={TD} style={{ color: '#e11d48', fontWeight: 700 }}>{row.result === 'fail' ? '●' : ''}</td>
-              <td className={TDL}>{row.inspector || ''}</td>
-              <td className={TDL}>{row.note || ''}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-
-    <div className="text-xs font-bold mb-1">■ 특이사항 및 개선조치</div>
-    <div className="border border-slate-400 p-2 text-xs mb-3" style={{ minHeight: 44 }}>{record.specialNotes || '-'}</div>
-
-    <div className="flex justify-end gap-3 text-xs">
-      <div className="border border-slate-400 text-center" style={{ width: 110 }}>
-        <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">작성자</div>
-        <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.createdBy || '-'}</div>
-      </div>
-      {record.updatedBy && record.updatedBy !== record.createdBy && (
-        <div className="border border-slate-400 text-center" style={{ width: 110 }}>
-          <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">수정자</div>
-          <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.updatedBy}</div>
-        </div>
-      )}
-      <div className="border border-slate-400 text-center" style={{ width: 110 }}>
-        <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">확인자</div>
-        <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.confirmedBy || '미확인'}</div>
-      </div>
-    </div>
-  </div>
-);
 
 // 표지 — 월간 실시 현황 요약
-const SanitationMonthlyCover: React.FC<{ ym: string; monthRecords: SanitationRecord[] }> = ({ ym, monthRecords }) => {
-  const [y, m] = ym.split('-').map(Number);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  const total = monthRecords.length;
-  const confirmed = monthRecords.filter(r => r.confirmedBy).length;
-  const failCount = monthRecords.filter(r => r.rows.some(row => row.result === 'fail')).length;
-  const plannedSlots = daysInMonth * 2;
 
-  const cell = (day: number, slot: SlotTime) => {
-    const ds = `${ym}-${String(day).padStart(2, '0')}`;
-    const rec = monthRecords.find(r => r.checkDate === ds && r.checkTime === slot);
-    if (!rec) return <span style={{ color: '#cbd5e1' }}>미점검</span>;
-    const hasFail = rec.rows.some(r => r.result === 'fail');
-    if (rec.confirmedBy) return <span style={{ color: '#059669', fontWeight: 700 }}>확인{hasFail ? '·부적합' : ''}</span>;
-    return <span style={{ color: '#d97706', fontWeight: 700 }}>점검{hasFail ? '·부적합' : ''}</span>;
-  };
-
-  const box = (label: string, value: string, sub?: string) => (
-    <div className="border border-slate-400 rounded-lg p-2 text-center">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className="text-base font-black text-slate-800">{value}</div>
-      {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
-    </div>
-  );
-
-  return (
-    <div style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-      <h1 className="text-xl font-black text-center mb-1">작업장 위생점검 실시 현황</h1>
-      <div className="text-center text-sm text-slate-600 mb-4">{y}년 {String(m).padStart(2, '0')}월 · 태백식품 · HACCP-PRP-001</div>
-
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        {box('총 점검', `${total}회`, `계획 ${plannedSlots}회`)}
-        {box('확인완료', `${confirmed}회`)}
-        {box('미확인', `${total - confirmed}회`)}
-        {box('부적합 발생', `${failCount}회`)}
-      </div>
-
-      <div className="text-xs font-bold mb-1">■ 일자별 점검 현황</div>
-      <table className="w-full border-collapse text-xs mb-3">
-        <thead>
-          <tr>
-            <th className={TH} style={{ width: 110 }}>일자</th>
-            <th className={TH}>오전 08:30</th>
-            <th className={TH}>오후 15:00</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-            <tr key={day}>
-              <td className={TD}>{ym}-{String(day).padStart(2, '0')}</td>
-              <td className={TD}>{cell(day, '08:30')}</td>
-              <td className={TD}>{cell(day, '15:00')}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="text-[11px] text-slate-500">※ 점검주기 1일 2회(오전 08:30 / 오후 15:00) · '미점검' = 해당 시간대 기록 없음 · '확인' = 관리자 확인완료 · 개별 점검표는 다음 장부터 날짜순 첨부</div>
-    </div>
-  );
-};
 
 export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
