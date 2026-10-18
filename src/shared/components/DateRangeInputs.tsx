@@ -1,5 +1,13 @@
 import type {InputHTMLAttributes} from 'react';
 
+export const DATE_RANGE_INPUT_CLASS = 'date-narrow h-10 !min-w-0 max-w-full rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs';
+export const DATE_RANGE_PAIR_CLASS = 'flex min-w-0 max-w-full flex-nowrap items-center gap-1 sm:gap-2';
+export const DATE_RANGE_QUICK_GROUP_CLASS = 'flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white';
+export function dateRangeQuickButtonClass(active: boolean, divider = false): string {
+  return `h-full whitespace-nowrap px-1.5 text-[9px] sm:px-3 sm:text-[11px] ${divider ? 'border-r border-slate-200' : ''} ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
+}
+
+
 type DateInputProps=Omit<InputHTMLAttributes<HTMLInputElement>,'type'|'value'|'defaultValue'|'onChange'>;
 export interface DateRangeInputsProps {
   from:string;

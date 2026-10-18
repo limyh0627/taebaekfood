@@ -1,3 +1,4 @@
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../../../shared/components/DateRangeInputs';
 import React from 'react';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS} from '../../../shared/components/QueryFilterPanel';
 import { ChevronUp, ChevronDown } from 'lucide-react';
@@ -27,31 +28,13 @@ export default function StatementHistoryFilters(props: {
     <QueryFilterPanel id="statement-query-title" onReset={props.onReset} sectionClassName="relative !overflow-visible">
         <div className={QUERY_FILTER_LABEL_CLASS}>
           <span className="text-[10px] font-bold text-slate-500">전표일자</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {/*  **단추 묶음은 제 상자 안에 있어야 한다**(2026-09-15 사장님: "ALL이랑 달력사이 경계가
-                 애매하다", "ALL 오른쪽은 테두리가 없잖아").
-                 맞다 — 단추들 **뒤에 달력 묶음이 같은 부모에 있어서** 마지막 단추(ALL)가
-                 `:last-child` 가 아니었다. 그래서 `last:border-r`(오른쪽 테두리)도
-                 `last:mr-0`(붙이려고 준 당김을 푸는 것)도 통째로 무시됐다 —
-                 ALL 은 오른쪽이 트인 채로 달력 쪽으로 8px 끌려가 있었다.
-                 단추만 따로 감싸면 그제야 마지막이 마지막이 된다. */}
-            <div className="flex items-center">
-              {QUICK_RANGES.map(range => <button key={range} type="button" onClick={() => props.onQuickRange(range)}
-                className={`h-10 px-3 text-[11px] font-black border-y border-l first:rounded-l-md last:rounded-r-md last:border-r -mr-px last:mr-0 transition-all ${
-                  props.quickRange === range ? 'relative z-10 bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}>{range}</button>)}
-            </div>
-            <div className="flex w-full items-center gap-1.5 sm:ml-1 sm:w-auto">
-              <input type="date" value={props.from} aria-label="조회 시작일" onChange={event => props.onFrom(event.target.value)}
-                className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-              <span className="text-xs text-slate-300">~</span>
-              <input type="date" value={props.to} aria-label="조회 종료일" onChange={event => props.onTo(event.target.value)}
-                className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-              {/*  **테두리 없이 위아래로**(2026-09-15 사장님: "테두리 없애고 위아래로 바꿔라").
-                   네모 상자 둘이 날짜칸 옆에서 날짜만큼 자리를 먹고 있었다. 표가 이제
-                   **오래된 것부터 아래로** 흐르므로(같은 날 "오래된게 위로 오게") 기간을
-                   옮기는 방향도 좌우가 아니라 위아래로 읽는 것이 맞다 — 위가 이전, 아래가 다음. */}
-              <div className="flex shrink-0 flex-col sm:ml-0.5">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 sm:gap-2">
+            <DateRangeInputs from={props.from} to={props.to} onFromChange={props.onFrom} onToChange={props.onTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'조회 시작일',className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'조회 종료일',className:DATE_RANGE_INPUT_CLASS}}/>
+            <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
+              {QUICK_RANGES.map((range,index) => <button key={range} type="button" onClick={() => props.onQuickRange(range)} aria-pressed={props.quickRange===range} className={dateRangeQuickButtonClass(props.quickRange===range,index<QUICK_RANGES.length-1)}>{{당일:'오늘',금주:'이번 주',당월:'이번 달',당년:'올해',ALL:'전체'}[range]}</button>)}
+            </span>
+            {/* 이전/다음 기간은 전표의 기존 이동 정책을 그대로 호출한다. */}
+            <div className="flex shrink-0 flex-col sm:ml-0.5">
                 {([-1, 1] as const).map(direction => <button key={direction} type="button"
                   onClick={() => props.onMove(direction)} disabled={!props.from || !props.to}
                   aria-label={direction < 0 ? '이전 기간' : '다음 기간'} title={direction < 0 ? '이전 기간' : '다음 기간'}
@@ -59,7 +42,6 @@ export default function StatementHistoryFilters(props: {
                   {direction < 0 ? <ChevronUp size={13} strokeWidth={2.5}/> : <ChevronDown size={13} strokeWidth={2.5}/>}
                 </button>)}
               </div>
-            </div>
           </div>
         </div>
         <span className="h-0 basis-full" aria-hidden="true"/>

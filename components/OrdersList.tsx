@@ -1,3 +1,4 @@
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
 import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { useOrderEditorDraft } from '../src/features/orders/hooks/useOrderEditorDraft';
 import {OrderCard} from '../src/features/orders/ui/OrderCard';
@@ -1130,16 +1131,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
 
         </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
-          <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }}>
+          <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); if (activeView !== 'history') { setOperationDateFrom(''); setOperationDateTo(''); } setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }}>
               {activeView === 'history' ? <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
                 완료일
                 {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
                      날짜칸·단추의 여백과 글씨를 좁은 화면에서만 줄인다 — 넓은 화면은 그대로다. */}
-                <span className="flex flex-nowrap items-center gap-1 sm:gap-2">
-                  <input aria-label="완료일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
-                  <span className="shrink-0 text-xs text-slate-400">~</span>
-                  <input aria-label="완료일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
-                  <span className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1 sm:gap-2">
+                  <DateRangeInputs from={activeDateFrom} to={activeDateTo} onFromChange={setActiveDateFrom} onToChange={setActiveDateTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'완료일 시작',max:activeDateTo||undefined,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'완료일 종료',min:activeDateFrom||undefined,className:DATE_RANGE_INPUT_CLASS}}/>
+                  <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
                     {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
                          써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
                          날짜 칸을 86px 까지 좁히고 나니 제 이름이 다 들어간다. */}
@@ -1150,10 +1149,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </span>
               </label> : <div className="order-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
                 <span>{operationDateFrom || operationDateTo ? '주문일 기간 조회' : '진행 중 주문 전체 · 날짜 제한 없음'}</span>
-                <input aria-label="진행 주문일 시작" type="date" value={operationDateFrom} max={operationDateTo || undefined} onChange={e => setOperationDateFrom(e.target.value)} className="h-10 border rounded-md px-2" />
-                <span>~</span>
-                <input aria-label="진행 주문일 종료" type="date" value={operationDateTo} min={operationDateFrom || undefined} onChange={e => setOperationDateTo(e.target.value)} className="h-10 border rounded-md px-2" />
-                <button onClick={() => { setOperationDateFrom(''); setOperationDateTo(''); }}>기간 전체</button>
+                <DateRangeInputs from={operationDateFrom} to={operationDateTo} onFromChange={setOperationDateFrom} onToChange={setOperationDateTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'진행 주문일 시작',max:operationDateTo||undefined,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'진행 주문일 종료',min:operationDateFrom||undefined,className:DATE_RANGE_INPUT_CLASS}}/>
+                <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
+                  {[[sharedQuickToday,'오늘'],[sharedQuickWeekStart,'이번 주'],[sharedQuickMonthStart,'이번 달']].map(([from,label])=><button key={label} type="button" onClick={()=>{setOperationDateFrom(from);setOperationDateTo(sharedQuickToday);}} className={dateRangeQuickButtonClass(operationDateFrom===from&&operationDateTo===sharedQuickToday,true)}>{label}</button>)}
+                  <button type="button" aria-label="기간 전체" onClick={() => { setOperationDateFrom(''); setOperationDateTo(''); }} className={dateRangeQuickButtonClass(!operationDateFrom&&!operationDateTo)}>전체</button>
+                </span>
               </div>}
               {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
                    섞어 보여 주던 길을 두면 같은 것을 두 군데서 보게 되고, 어느 쪽이 맞는지 헷갈린다. */}
@@ -1224,7 +1224,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const sharedQuickWeekStart = seoulWeekStart();
   const sharedQuickMonthStart = `${sharedQuickToday.slice(0, 7)}-01`;
   //  폰에서는 여백·글씨를 줄여 '오늘·이번 주·이번 달'이 날짜칸과 한 행에 들어가게 한다.
-  const sharedQuickRangeClass = (active: boolean) => `h-full whitespace-nowrap px-1.5 text-[9px] sm:px-3 sm:text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
+  const sharedQuickRangeClass = dateRangeQuickButtonClass;
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
@@ -1935,7 +1935,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const quickToday = seoulDateInput();
           const quickWeekStart = seoulWeekStart();
           const quickMonthStart = `${quickToday.slice(0, 7)}-01`;
-          const quickRangeClass = (active: boolean) => `h-full px-3 text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
+          const quickRangeClass = dateRangeQuickButtonClass;
 
           return (
             <div className="order-4 space-y-3">
@@ -1950,10 +1950,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <div className="order-1 flex flex-col gap-1 text-[10px] font-bold text-slate-500">
                     <span>주문일</span>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+                      <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className={DATE_RANGE_INPUT_CLASS} />
                       <span className="text-xs text-slate-400">~</span>
-                      <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
-                      <div className="flex h-9 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                      <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className={DATE_RANGE_INPUT_CLASS} />
+                      <div className={DATE_RANGE_QUICK_GROUP_CLASS}>
                         <button type="button" onClick={() => { setActiveDateFrom(quickToday); setActiveDateTo(quickToday); }} className={`border-r border-slate-200 ${quickRangeClass(activeDateFrom === quickToday && activeDateTo === quickToday)}`}>오늘</button>
                         <button type="button" onClick={() => { setActiveDateFrom(quickWeekStart); setActiveDateTo(quickToday); }} className={`border-r border-slate-200 ${quickRangeClass(activeDateFrom === quickWeekStart && activeDateTo === quickToday)}`}>이번 주</button>
                         <button type="button" onClick={() => { setActiveDateFrom(quickMonthStart); setActiveDateTo(quickToday); }} className={quickRangeClass(activeDateFrom === quickMonthStart && activeDateTo === quickToday)}>이번 달</button>
@@ -2527,13 +2527,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
               <span className="text-[11px] font-black text-slate-500">주문일</span>
-              <input type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400" aria-label="주문일 시작" />
+              <input type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className={DATE_RANGE_INPUT_CLASS} aria-label="주문일 시작" />
               <span className="text-xs text-slate-400">~</span>
-              <input type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400" aria-label="주문일 종료" />
-              <div className="flex h-8 items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
-                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(today); setActiveDateTo(today); }} className={`h-full border-r border-slate-200 px-2.5 text-[11px] ${activeDateFrom === seoulDateInput() && activeDateTo === seoulDateInput() ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}>오늘</button>
-                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(seoulWeekStart()); setActiveDateTo(today); }} className={`h-full border-r border-slate-200 px-2.5 text-[11px] ${activeDateFrom === seoulWeekStart() && activeDateTo === seoulDateInput() ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}>이번 주</button>
-                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); }} className={`h-full px-2.5 text-[11px] ${activeDateFrom === `${seoulDateInput().slice(0, 7)}-01` && activeDateTo === seoulDateInput() ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}>이번 달</button>
+              <input type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className={DATE_RANGE_INPUT_CLASS} aria-label="주문일 종료" />
+              <div className={DATE_RANGE_QUICK_GROUP_CLASS}>
+                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(today); setActiveDateTo(today); }} className={dateRangeQuickButtonClass(activeDateFrom === seoulDateInput() && activeDateTo === seoulDateInput(),true)}>오늘</button>
+                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(seoulWeekStart()); setActiveDateTo(today); }} className={dateRangeQuickButtonClass(activeDateFrom === seoulWeekStart() && activeDateTo === seoulDateInput(),true)}>이번 주</button>
+                <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); }} className={dateRangeQuickButtonClass(activeDateFrom === `${seoulDateInput().slice(0, 7)}-01` && activeDateTo === seoulDateInput(),false)}>이번 달</button>
               </div>
               <span className="text-[11px] font-bold text-slate-500">{activeOperationOrders.length}건</span>
             </div>

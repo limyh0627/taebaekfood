@@ -1,3 +1,5 @@
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
+import { isCalendarDay } from '../src/shared/day';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import type { QuotationLine, Quotation } from '../src/features/quotations/domain/quotation';
@@ -69,6 +71,11 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   ), [companyId]);
 
   const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [quick, setQuick] = useState<DateRangeQuick>('전체');
+  const datePasses = (date: string) => !from && !to || isCalendarDay(date) && (!from || date >= from) && (!to || date <= to);
+  const resetDates = () => { setFrom(''); setTo(''); setQuick('전체'); };
   const [viewing, setViewing] = useState<Quotation | null>(null);
   const [form, setForm] = useState<{
     date: string; validUntil?: string; partnerId: string; partnerName: string; recipientPhone?: string;
@@ -92,11 +99,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     [quotes, companyId],
   );
   const shown = useMemo(
-    () => mine.filter(q => !search.trim()
+    () => mine.filter(q => datePasses(q.date) && (!search.trim()
       || matchesSearch(`${q.partnerName} ${q.lines.map(l => l.name).join(' ')}`, search.trim())
-      || q.quoteNo.includes(search.trim())),
-    [mine, search],
+      || q.quoteNo.includes(search.trim()))),
+    [mine, search, from, to],
   );
+  const excludedDates = (from || to) ? mine.filter(q => !isCalendarDay(q.date) && (!search.trim() || matchesSearch(`${q.partnerName} ${q.lines.map(l => l.name).join(' ')}`, search.trim()) || q.quoteNo.includes(search.trim()))).length : 0;
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
   // 인쇄본의 공급자 정보는 사용자가 견적마다 다시 치는 값이 아니다. 회사 설정을 쓰고,
@@ -199,7 +207,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           <Plus size={14} />견적서 작성
         </ActionButton>} />
 
-      <QueryFilterPanel onReset={() => setSearch('')}>
+      <QueryFilterPanel onReset={() => { setSearch(''); resetDates(); }}>
 <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
 <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
@@ -207,6 +215,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             aria-label="견적 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'} />
         </div>
 </label>
+<div className={QUERY_FILTER_LABEL_CLASS}><span>견적일</span><DateRangeFilter label="견적일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div>
+{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>}
 </QueryFilterPanel>
 
       {quoteError && (

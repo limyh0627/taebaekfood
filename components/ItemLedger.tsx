@@ -1,3 +1,5 @@
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
+import { isCalendarDay } from '../src/shared/day';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { ReturnStockOperation } from '../src/shared/returnStockMovement';
 import React, { useMemo, useState } from 'react';
@@ -48,6 +50,11 @@ const ItemLedger: React.FC<{
   returnOperations?: ReturnStockOperation[];
 }> = ({ items, orders, receipts = [], rawEntries = [], companyId, orderUnitInputs, returnOperations = [] }) => {
   const [q, setQ] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [quick, setQuick] = useState<DateRangeQuick>('전체');
+  const datePasses = (date: string) => !from && !to || isCalendarDay(date) && (!from || date >= from) && (!to || date <= to);
+  const resetDates = () => { setFrom(''); setTo(''); setQuick('전체'); };
   const [pickedId, setPickedId] = useState('');
   //  **분류 필터**(2026-09-03 사장님) — 품목이 많아 이름으로만 찾기 어렵다.
   //  고를 것은 [itemFilter.ts](../src/shared/itemFilter.ts) 가 **눈앞의 품목에서** 뽑는다.
@@ -71,6 +78,9 @@ const ItemLedger: React.FC<{
   const ledger = useMemo(
     () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts, rawEntries, orderUnitInputs, returnOperations) : null),
     [pickedId, companyOrders, items, companyReceipts, rawEntries, orderUnitInputs, returnOperations]);
+
+  const visibleRows = ledger?.rows.filter(row => datePasses(row.date)) ?? [];
+  const excludedDates = (from || to) ? ledger?.rows.filter(row => !isCalendarDay(row.date)).length ?? 0 : 0;
 
   //  좁은 화면에서는 위아래로 — 가로로 두면 오른쪽 표가 찌그러진다(shared/ui/table)
   return (
@@ -135,6 +145,11 @@ const ItemLedger: React.FC<{
               <span className="text-slate-700">재고 <span className="tabular-nums">{fmt(Number(picked.stock ?? 0))}</span>{picked.unit}</span>
             </div>
           </div>
+          <QueryFilterPanel onReset={resetDates}>
+            <div className={QUERY_FILTER_LABEL_CLASS}><span>기록일</span><DateRangeFilter label="제품 원장 기록일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div>
+            <p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>
+            {excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>}
+          </QueryFilterPanel>
           {ledger.independentlyVerified ? (
             <div className={`px-5 py-2 border-b text-[11px] font-bold ${
               Math.abs(ledger.gap) <= 0.001
@@ -156,8 +171,8 @@ const ItemLedger: React.FC<{
             </div>
           )}
           <div className="flex-none lg:flex-1 min-h-0 overflow-x-auto lg:overflow-y-auto">
-            {ledger.rows.length === 0 ? (
-              <p className="px-3 py-12 text-center text-[11px] font-bold text-slate-300">주문으로 오간 기록이 없습니다</p>
+            {visibleRows.length === 0 ? (
+              <p className="px-3 py-12 text-center text-[11px] font-bold text-slate-300">조건에 맞는 기록이 없습니다</p>
             ) : (
               <table className="w-full text-left">
                 <thead className="bg-slate-50 sticky top-0">
@@ -166,7 +181,7 @@ const ItemLedger: React.FC<{
                   ))}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {ledger.rows.map((r, i) => (
+                  {visibleRows.map((r, i) => (
                     <tr key={`${r.orderId}-${r.kind}-${i}`} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-2 text-[11px] font-bold text-slate-500 whitespace-nowrap">{r.date || '—'}</td>
                       <td className="px-4 py-2 whitespace-nowrap"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[r.kind]}`}>{r.kind}</span></td>

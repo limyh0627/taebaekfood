@@ -76,3 +76,14 @@ it('견적 작성 행동은 검색보다 먼저 있고 검색 입력 후에도 �
  const view=render(<QuotationManager items={items} partners={[partner]} partnerItems={prices}/>),ui=within(view.container),title=ui.getByRole('heading',{name:'견적서'}),create=ui.getByRole('button',{name:'견적서 작성'}),search=ui.getByRole('textbox',{name:'견적 검색'});
  expect(title.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.closest('[data-page-header-slot="actions"]')).not.toBeNull();fireEvent.change(search,{target:{value:'없는 견적'}});fireEvent.click(create);expect(ui.getByRole('dialog',{name:'견적서 작성'})).toBeInTheDocument();expect(addItem).not.toHaveBeenCalled();
 });
+
+it('견적일 양끝 포함 조회와 초기화는 회사 범위·원문·업무 쓰기를 보존한다',()=>{
+ const rows=['2026-10-08','2026-10-09','2026-10-10','2026-02-30',''].map((date,i)=>({id:'date-'+i,companyId:'taebaek',quoteNo:'Q-DATE-'+i,date,partnerId:'client',partnerName:'날짜 거래처',lines:[],totalSupply:0,totalTax:0,totalAmount:0,createdAt:''} as Quotation));
+ const foreign={...rows[1],id:'foreign',companyId:'punghoe',quoteNo:'Q-FOREIGN'} as Quotation,original=structuredClone(rows);
+ vi.mocked(subscribeToCollection).mockImplementation((_name,onRows)=>{onRows([...rows,foreign]);return()=>{};});
+ const view=render(<QuotationManager items={items} partners={[partner]}/>),ui=within(view.container);
+ expect(ui.getByText('Q-DATE-3')).toBeTruthy();expect(ui.queryByText('Q-FOREIGN')).toBeNull();
+ fireEvent.change(ui.getByLabelText('견적일 시작일'),{target:{value:'2026-10-09'}});fireEvent.change(ui.getByLabelText('견적일 종료일'),{target:{value:'2026-10-09'}});
+ expect(ui.getByText('Q-DATE-1')).toBeTruthy();for(const i of [0,2,3,4])expect(ui.queryByText('Q-DATE-'+i)).toBeNull();
+ fireEvent.click(ui.getByRole('button',{name:'초기화'}));expect(ui.getByText('Q-DATE-3')).toBeTruthy();expect(ui.getByText('Q-DATE-4')).toBeTruthy();expect(rows).toEqual(original);expect(addItem).not.toHaveBeenCalled();
+});

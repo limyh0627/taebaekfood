@@ -11,9 +11,9 @@ it('당월 조회는 이번 달 1일부터 오늘까지만 선택한다', () => 
   vi.setSystemTime(new Date(2026, 9, 7, 12));
   const onChange = vi.fn();
   render(<DateRangeFilter from="" to="" onChange={onChange} />);
-  fireEvent.click(screen.getByRole('button', { name: '당월' }));
+  fireEvent.click(screen.getByRole('button', { name: '이번 달' }));
   expect(onChange).toHaveBeenCalledWith('2026-10-01', '2026-10-07', '당월');
-  fireEvent.click(screen.getByRole('button', { name: '금주' }));
+  fireEvent.click(screen.getByRole('button', { name: '이번 주' }));
   expect(onChange).toHaveBeenCalledWith('2026-10-05', '2026-10-07', '금주');
 });
 
@@ -22,8 +22,8 @@ it('당일과 전체를 한 번씩 전달하고 연도 경계 금주는 월요�
   const onChange = vi.fn();
   render(<DateRangeFilter from="2026-12-01" to="2026-12-31" quick="전체" onChange={onChange} />);
   expect(screen.getByRole('button', { name: '전체' })).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(screen.getByRole('button', { name: '당일' }));
-  fireEvent.click(screen.getByRole('button', { name: '금주' }));
+  fireEvent.click(screen.getByRole('button', { name: '오늘' }));
+  fireEvent.click(screen.getByRole('button', { name: '이번 주' }));
   fireEvent.click(screen.getByRole('button', { name: '전체' }));
   expect(onChange.mock.calls).toEqual([
     ['2027-01-03', '2027-01-03', '당일'],
@@ -54,9 +54,9 @@ it('필터 버튼은 바깥 저장 폼을 제출하지 않는다', () => {
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-it('공용 두 입력에도 원래 좁은폭·높이·포커스 클래스와 구분선 숨김을 유지한다',()=>{
+it('주문과 같은 날짜 두 칸 뒤 붙은 빠른기간을 두고 좁은폭에서는 묶음별 줄바꿈한다',()=>{
  render(<DateRangeFilter from="2026-10-01" to="2026-10-17" onChange={vi.fn()}/>);
- for(const label of ['조회 시작일','조회 종료일']){const input=screen.getByLabelText(label);expect(input).toHaveClass('min-h-11','!min-w-0','text-xs','focus:ring-blue-300');}
- expect(screen.getByText('~')).toHaveClass('hidden','min-[360px]:block');
- expect(screen.getByLabelText('조회 시작일').parentElement).toHaveClass('grid-cols-1','min-[360px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+ for(const label of ['조회 시작일','조회 종료일']){const input=screen.getByLabelText(label);expect(input).toHaveClass('date-narrow','h-10','!min-w-0','text-[10px]','sm:text-xs','focus:ring-slate-300');}
+ const from=screen.getByLabelText('조회 시작일'),to=screen.getByLabelText('조회 종료일'),quick=screen.getByRole('button',{name:'오늘'});expect(from.compareDocumentPosition(to)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(to.compareDocumentPosition(quick)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByText('~')).toHaveClass('shrink-0');expect(screen.getByText('~')).not.toHaveClass('hidden');expect(quick.parentElement).toHaveClass('h-10','shrink-0','overflow-hidden','border');expect(from.parentElement).toHaveClass('flex-nowrap','max-w-full');expect(from.parentElement?.parentElement).toHaveClass('flex-wrap');
 });

@@ -4,7 +4,7 @@ import DeliveryCalendarCard from '../src/features/orders/ui/DeliveryCalendarCard
 import {queryDateKey} from '../src/features/orders/domain/deliveryQueryDate';
 import {queryFields,queryValuesFor as queryValuesForInputs,filterDeliverySearchOrders} from '../src/features/orders/domain/deliveryQuery';
 import {buildDeliverySchedules,buildDeliveredSchedules} from '../src/features/orders/domain/deliverySchedules';
-import DateRangeInputs from '../src/shared/components/DateRangeInputs';
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, Plus } from 'lucide-react';
@@ -857,17 +857,17 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           <label className={QUERY_FILTER_LABEL_CLASS}>
             주문일
             <span className="flex flex-wrap items-center gap-2">
-              <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className="text-xs font-bold">기간 전체</button>
+
               <DateRangeInputs from={queryDateFrom} to={queryDateTo} onFromChange={setQueryDateFrom} onToChange={setQueryDateTo}
-                className="contents" separatorClassName="text-xs text-slate-400"
-                fromInputProps={{ max: queryDateTo || undefined, className: 'h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
-                toInputProps={{ min: queryDateFrom || undefined, className: 'h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
-              <span className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400"
+                fromInputProps={{ max: queryDateTo || undefined, className: DATE_RANGE_INPUT_CLASS, 'aria-label': '주문일 시작' }}
+                toInputProps={{ min: queryDateFrom || undefined, className: DATE_RANGE_INPUT_CLASS, 'aria-label': '주문일 종료' }} />
+              <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
                 {[[todayKey, '오늘'], [quickWeekStart, '이번 주'], [`${todayKey.slice(0, 7)}-01`, '이번 달']].map(([from, label], index) => {
                   const selected = queryDateFrom === from && queryDateTo === todayKey;
-                  return <button key={label} type="button" aria-pressed={selected} onClick={() => { setQueryDateFrom(from); setQueryDateTo(todayKey); }} className={`h-full px-3 text-[11px] ${index < 2 ? 'border-r border-slate-200' : ''} ${selected ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-white'}`}>{label}</button>;
+                  return <button key={label} type="button" aria-pressed={selected} onClick={() => { setQueryDateFrom(from); setQueryDateTo(todayKey); }} className={dateRangeQuickButtonClass(selected,index < 3)}>{label}</button>;
                 })}
-              </span>
+              <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className={dateRangeQuickButtonClass(!queryDateFrom&&!queryDateTo)}>전체</button></span>
             </span>
           </label>
           <span className="h-0 basis-full" aria-hidden="true" />

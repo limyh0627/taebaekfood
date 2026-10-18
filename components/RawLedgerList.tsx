@@ -1,3 +1,5 @@
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
+import { isCalendarDay } from '../src/shared/day';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { buildRawLedgerRows } from '../src/features/items/domain/rawLedgerRows';
@@ -39,6 +41,11 @@ const RawLedgerList: React.FC<Props> = ({
   const entries = useMemo(() => stockMovements ? rawEntriesForItemLedger(sourceEntries) : sourceEntries, [sourceEntries, stockMovements]);
   const allEntries = useMemo(() => sourceAllEntries && (stockMovements ? rawEntriesForItemLedger(sourceAllEntries) : sourceAllEntries), [sourceAllEntries, stockMovements]);
   const [filter, setFilter] = useState<FilterType>('전체');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [quick, setQuick] = useState<DateRangeQuick>('전체');
+  const datePasses = (date: string) => !from && !to || isCalendarDay(date) && (!from || date >= from) && (!to || date <= to);
+  const resetDates = () => { setFrom(''); setTo(''); setQuick('전체'); };
   const [page, setPage] = useState(1);
   // 펼친 날짜(원료|날짜) — 그날 합계가 어떤 건들로 이뤄졌는지 보여준다
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -69,17 +76,20 @@ const RawLedgerList: React.FC<Props> = ({
     if (filter === '정정') return e.type === 'correction';
     return true;
   };
-  const filtered = useMemo(() => entries.filter(passes), [entries, filter, shownIds]);
   const dayRows = useMemo(
-    () => allRows.filter(r => r.rows.some(passes))
+    () => allRows.filter(r => datePasses(r.date) && r.rows.some(passes))
       // 최신이 위. 같은 날짜에 묶음이 여럿이면(정정이 하루를 자를 때) 그 안에서도 최신이 위여야
       // 잔량이 위→아래로 이어져 읽힌다. seq가 없으면 만들어진 순서(오래된 것부터)가 그대로 남아
       // 그 날짜만 거꾸로 보였다. **누적 계산은 오름차순 그대로다 — 표시만 뒤집는다.**
       .sort((a, b) => b.date.localeCompare(a.date)
         || (a.material ?? '').localeCompare(b.material ?? '')
         || b.seq - a.seq),
-    [allRows, filter, shownIds],
+    [allRows, filter, shownIds, from, to],
   );
+
+  const excludedDates = (from || to) ? allRows.filter(group => group.rows.some(passes) && !isCalendarDay(group.date)).length : 0;
+  const filteredCount = dayRows.reduce((sum, group) => sum + group.rows.filter(passes).length, 0);
+  const changeDates = (f: string, t: string, q: DateRangeQuick) => { setFrom(f); setTo(t); setQuick(q); setPage(1); setOpenDay(null); };
 
   const totalPages = Math.max(1, Math.ceil(dayRows.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -90,10 +100,11 @@ const RawLedgerList: React.FC<Props> = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1 flex-wrap">
-        <div className="w-full" onClick={event=>event.stopPropagation()}><QueryFilterPanel onReset={()=>pick('전체')}><label className={QUERY_FILTER_LABEL_CLASS + ' w-36'}>유형
+        <div className="w-full" onClick={event=>event.stopPropagation()}><QueryFilterPanel onReset={()=>{ pick('전체'); resetDates(); setOpenDay(null); }}><label className={QUERY_FILTER_LABEL_CLASS + ' w-36'}>유형
           <SearchableSelect ariaLabel="유형" className={QUERY_FILTER_CONTROL_CLASS} value={filter} onChange={value=>pick(value as FilterType)} options={FILTERS.map(value=>({value,label:value}))}/>
-        </label></QueryFilterPanel></div>
-        <span className="ml-auto text-[10px] font-black text-slate-300">{filtered.length}건</span>
+        </label><div className={QUERY_FILTER_LABEL_CLASS}><span>기록일</span><DateRangeFilter label="원료 기록일" from={from} to={to} quick={quick} onChange={changeDates}/></div>
+          <p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}개 묶음 제외 · 전체 기간에서 확인</p>}</QueryFilterPanel></div>
+        <span className="ml-auto text-[10px] font-black text-slate-300">{filteredCount}건</span>
       </div>
 
       {paged.length === 0 ? (

@@ -1,3 +1,4 @@
+import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
@@ -7,7 +8,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
-import { dateOfLocal } from '../src/shared/day';
+import { dateOfLocal, isCalendarDay, endOfMonth, addMonths } from '../src/shared/day';
 
 
 
@@ -56,8 +57,11 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const today = toLocalYMD(new Date());
   const thisMonth = today.slice(0, 7);
 
-  const [filterMonth, setFilterMonth] = useState(thisMonth);
-  const [showAll, setShowAll] = useState(false);
+  const [from,setFrom]=useState(thisMonth+'-01');
+  const [to,setTo]=useState(()=>endOfMonth(thisMonth));
+  const [quick,setQuick]=useState<DateRangeQuick>('');
+  const filterMonth=isCalendarDay(from)?from.slice(0,7):thisMonth;
+  const showAll=!from&&!to;
   const [filterProductId, setFilterProductId] = useState('');
   const [searchText, setSearchText] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -119,7 +123,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const filteredRecords = useMemo(() => {
     return records
       .filter(r => {
-        const matchMonth = showAll || r.date.startsWith(filterMonth);
+        const matchMonth = showAll || isCalendarDay(r.date)&&(!from||r.date>=from)&&(!to||r.date<=to);
         const matchProduct = !filterProductId || r.itemId === filterProductId;
         const matchSearch =
           !searchText ||
@@ -128,8 +132,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           (r.note ?? '').includes(searchText);
         return matchMonth && matchProduct && matchSearch;
       })
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [records, filterMonth, showAll, filterProductId, searchText]);
+      .sort((a, b) => String(b.date??'').localeCompare(String(a.date??'')));
+  }, [records, from, to, showAll, filterProductId, searchText]);
 
   const monthlySummary = useMemo(() => {
     const map: Record<string, { itemName: string; qty: number; count: number; category: string }> = {};
@@ -144,22 +148,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     return Object.values(map).sort((a, b) => b.qty - a.qty);
   }, [filteredRecords, items, currentRecordIds]);
 
-  const fmtMonth = (ym: string) => {
-    const [y, m] = ym.split('-');
-    return `${y}년 ${parseInt(m)}월`;
-  };
 
-  const prevMonth = () => {
-    const [y, m] = filterMonth.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  };
-
-  const nextMonth = () => {
-    const [y, m] = filterMonth.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  };
+  const prevMonth = () => {const month=addMonths(filterMonth,-1);setFrom(month+'-01');setTo(endOfMonth(month));setQuick('');};
+  const nextMonth = () => {const month=addMonths(filterMonth,1);setFrom(month+'-01');setTo(endOfMonth(month));setQuick('');};
 
   const handleSubmit = () => {
     if (!form.itemId || !form.finishedQty) {
@@ -239,6 +230,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   };
 
   const formatDate = (dateStr: string) => {
+    if(!isCalendarDay(dateStr))return '생산일 미확인';
     const [, m, d] = dateStr.split('-');
     return `${parseInt(m)}/${parseInt(d)}`;
   };
@@ -382,27 +374,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       )}
 
       {/* 필터 */}
-      <QueryFilterPanel id="production-query-title" onReset={() => { setShowAll(false); setFilterMonth(thisMonth); setFilterProductId(''); setSearchText(''); }}>
-        <div className="space-y-1"><span className="block text-[10px] font-bold text-slate-500">생산월</span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowAll(v => !v)}
-            className={`h-9 px-3 rounded-lg text-xs font-bold border transition-all ${showAll ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-          >
-            전체 보기
-          </button>
-          {!showAll && <>
-            <button onClick={prevMonth} className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
-              <ChevronLeft size={14} />
-            </button>
-            <span className="text-sm font-bold text-slate-700 w-24 text-center">{fmtMonth(filterMonth)}</span>
-            <button onClick={nextMonth} className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
-              <ChevronRight size={14} />
-            </button>
-          </>}
-        </div>
-
-        </div>
+      <QueryFilterPanel id="production-query-title" onReset={() => { setFrom(thisMonth+'-01'); setTo(endOfMonth(thisMonth)); setQuick(''); setFilterProductId(''); setSearchText(''); }}>
+        <div className={QUERY_FILTER_LABEL_CLASS}><span>생산일</span><DateRangeFilter label="생산일" from={from} to={to} quick={quick} onChange={(f,t,q)=>{setFrom(f);setTo(t);setQuick(q);}}/></div>
+        <div className="flex items-center gap-1"><button type="button" aria-label="이전달" onClick={prevMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">이전달</button><button type="button" aria-label="다음달" onClick={nextMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">다음달</button></div>
         <label className={QUERY_FILTER_LABEL_CLASS}>품목
         <SearchableSelect ariaLabel="품목" value={filterProductId} onChange={setFilterProductId} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'전체 품목'},...finishedProducts.map(p=>({value:p.id,label:p.name}))]}/>
         </label>
@@ -425,6 +399,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         </label>
       </QueryFilterPanel>
 
+      {!showAll&&records.some(r=>!isCalendarDay(r.date))&&<p role="status" className="text-xs text-slate-500">생산일 미확인 {records.filter(r=>!isCalendarDay(r.date)).length}건 제외 · 전체 기간에서 확인</p>}
       {/* #5 로트 역추적 (리콜) — 소비 로트 → 투입된 주문(거래처·납품일) */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
         <button onClick={() => setRecallOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
@@ -506,7 +481,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         return (
           <div className="bg-white rounded-2xl border border-slate-100 p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : fmtMonth(filterMonth)} 생산 요약</p>
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : '조회 기간'} 생산 요약</p>
               <div className="flex items-center gap-3 text-[11px] font-bold">
                 <span className="text-slate-500">품목 <b className="text-slate-800">{monthlySummary.length}</b>종</span>
                 <span className="text-slate-500">확정 집계 <b className="text-emerald-700">{filteredRecords.filter(record=>currentRecordIds.has(record.id)).length}</b>건</span>

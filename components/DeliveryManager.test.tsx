@@ -148,7 +148,7 @@ it('주문일 공용 입력은 양쪽 범위와 원래 높이·포커스 스타�
  const from=screen.getByLabelText('주문일 시작'),to=screen.getByLabelText('주문일 종료');
  expect(from).toHaveAttribute('type','date');expect(to).toHaveAttribute('type','date');
  expect(from).toHaveClass('h-10','focus:ring-1');expect(from.closest('label')).not.toBeNull();
- expect(from.parentElement?.tagName).toBe('SPAN');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(from.parentElement).toHaveClass('contents');
+ expect(from.parentElement?.tagName).toBe('SPAN');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(from.parentElement).toHaveClass('flex-nowrap','max-w-full');
  fireEvent.change(from,{target:{value:'2026-09-01'}});expect(to).toHaveAttribute('min','2026-09-01');expect(to).toHaveValue('');
  fireEvent.change(to,{target:{value:'2026-09-30'}});expect(from).toHaveAttribute('max','2026-09-30');expect(from).toHaveValue('2026-09-01');
  fireEvent.change(from,{target:{value:''}});expect(to).not.toHaveAttribute('min');expect(to).toHaveValue('2026-09-30');

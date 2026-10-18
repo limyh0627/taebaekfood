@@ -1,4 +1,4 @@
-import DateRangeInputs from './DateRangeInputs';
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from './DateRangeInputs';
 import { monthStart, today, weekMonday } from '../day';
 
 export type DateRangeQuick = '당일' | '금주' | '당월' | '전체' | '';
@@ -17,23 +17,23 @@ export default function DateRangeFilter({ from, to, quick = '', onChange, label 
     const date = today();
     onChange(date, date, value);
   };
-  return <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-    {(['당일', '금주', '당월', '전체'] as const).map(value =>
-      <button key={value} type="button" aria-pressed={quick === value} onClick={() => pick(value)}
-        className={`min-h-11 min-w-11 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${quick === value ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'}`}>
-        {value}
-      </button>)}
-    </div>
+  return <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 sm:gap-2">
     <DateRangeInputs from={from} to={to}
       onFromChange={value => onChange(value, to, '')}
       onToChange={value => onChange(from, value, '')}
-      className="grid w-full min-w-0 max-w-full grid-cols-1 items-center gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:w-80"
-      separatorClassName="hidden text-xs text-slate-400 min-[360px]:block"
+      className={DATE_RANGE_PAIR_CLASS}
+      separatorClassName="shrink-0 text-xs text-slate-400"
       separatorAriaHidden
       fromInputProps={{ 'aria-label': `${label} 시작일`, max: to || undefined,
-        className: 'min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300' }}
+        className: DATE_RANGE_INPUT_CLASS }}
       toInputProps={{ 'aria-label': `${label} 종료일`, min: from || undefined,
-        className: 'min-h-11 w-full !min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300' }}/>
+        className: DATE_RANGE_INPUT_CLASS }}/>
+    <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
+      {([['당일','오늘'],['금주','이번 주'],['당월','이번 달'],['전체','전체']] as const).map(([value, text], index) =>
+        <button key={value} type="button" aria-pressed={quick === value} onClick={() => pick(value)}
+          className={dateRangeQuickButtonClass(quick === value,index < 3)}>
+          {text}
+        </button>)}
+    </span>
   </div>;
 }

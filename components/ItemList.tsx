@@ -1,3 +1,4 @@
+import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
@@ -11,7 +12,7 @@ import { appConfirm } from '../src/shared/components/appDialog';
 import type { RawPressRetained } from '../src/shared/rawPressAttempt';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
-import { today, dateOfLocal, timeOfLocal } from '../src/shared/day';
+import { today, dateOfLocal, timeOfLocal, isCalendarDay } from '../src/shared/day';
 import { canConfirmPurchaseOrderReceiptItem, tracksQuantityLots, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { rawLotTarget } from '../src/shared/rawReceipt';
@@ -793,6 +794,14 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set()); // 낱개 밑 박스 접기
   // 로트 탭 — 원료 홀더별 로트/수불부 확인 전용
   const [lotSearch, setLotSearch] = useState('');
+  const [lotFrom,setLotFrom]=useState('');
+  const [lotTo,setLotTo]=useState('');
+  const [lotQuick,setLotQuick]=useState<DateRangeQuick>('전체');
+  const lotInDateRange=useCallback((lot:NonNullable<Item['lots']>[number])=>{
+    if(!lotFrom&&!lotTo)return true;
+    const date=lot.receivedDate;
+    return typeof date==='string'&&isCalendarDay(date)&&(!lotFrom||date>=lotFrom)&&(!lotTo||date<=lotTo);
+  },[lotFrom,lotTo]);
   const [selectedLot, setSelectedLot] = useState<{ itemId: string; lotId: string } | null>(null);
   const [lotKind, setLotKind] = useState<'all' | 'raw' | 'packed'>('all');
   const [lotStatus, setLotStatus] = useState<'all' | 'using' | 'waiting' | 'complete'>('all');
@@ -832,7 +841,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     return usingIds.includes(lot.id) ? '사용중' as const : '대기중' as const;
   };
   /** 화면의 한 줄은 품목이 아니라 로트 한 건이다. 같은 품목의 입고를 합치면 추적 단위가 사라진다. */
-  const visibleLotRows = useMemo(() => visibleLotItems.flatMap(item => {
+  const lotRowsBeforeDate = useMemo(() => visibleLotItems.flatMap(item => {
     const raw = isRawHolder(item);
     return (item.lots ?? []).filter(lot => {
       const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
@@ -852,12 +861,19 @@ const ItemListContent: React.FC<ItemListProps> = ({
     if (byLotNo !== 0) return byLotNo;
     return String(a.item.name ?? '').localeCompare(String(b.item.name ?? ''), 'ko');
   }), [visibleLotItems, activeTab, lotStatus]);
+  const visibleLotRows=useMemo(()=>lotRowsBeforeDate.filter(({lot})=>lotInDateRange(lot)),[lotRowsBeforeDate,lotInDateRange]);
+  const lotUnknownDateCount=lotRowsBeforeDate.filter(({lot})=>typeof lot.receivedDate!=='string'||!isCalendarDay(lot.receivedDate)).length;
+  const queriedLotBalances=useMemo(()=>{
+    const byUnit=new Map<string,number>();
+    for(const {item,lot} of visibleLotRows){const raw=isRawHolder(item),unit=raw?'kg':item.unit||'개',quantity=Number(raw?lot.kgRemaining??0:lot.qtyRemaining??0);byUnit.set(unit,(byUnit.get(unit)??0)+quantity);}
+    return [...byUnit].map(([unit,quantity])=>({unit,quantity}));
+  },[visibleLotRows]);
   const lotPageCount = Math.max(1, Math.ceil(visibleLotRows.length / LOT_PAGE_SIZE));
   const pagedLotRows = useMemo(
     () => visibleLotRows.slice((lotPage - 1) * LOT_PAGE_SIZE, lotPage * LOT_PAGE_SIZE),
     [visibleLotRows, lotPage],
   );
-  useEffect(() => { setLotPage(1); }, [lotSearch, lotKind, lotStatus, activeTab]);
+  useEffect(() => { setLotPage(1); }, [lotSearch, lotKind, lotStatus, activeTab, lotFrom, lotTo]);
   useEffect(() => { if (lotPage > lotPageCount) setLotPage(lotPageCount); }, [lotPage, lotPageCount]);
   const selectedLotItem = selectedLot ? lotItems.find(item => item.id === selectedLot.itemId) ?? null : null;
   const selectedLotData = selectedLotItem?.lots?.find(lot => lot.id === selectedLot?.lotId) ?? null;
@@ -874,6 +890,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const displayedLotsOf = (item: Item) => {
     const raw = isRawHolder(item);
     return (item.lots ?? []).filter(lot => {
+      if(!lotInDateRange(lot))return false;
       const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
       const complete = lot.status === 'depleted' || Math.abs(remaining) <= 0.0001;
       if (activeTab === 'lot-history') return complete && (lotStatus === 'all' || lotStatus === 'complete');
@@ -1935,8 +1952,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
-          <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); }}>
+          <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); setLotFrom(''); setLotTo(''); setLotQuick('전체'); }}>
 
+            <div className={QUERY_FILTER_LABEL_CLASS}><span>로트 입고일</span><DateRangeFilter label="로트 입고일" from={lotFrom} to={lotTo} quick={lotQuick} onChange={(from,to,quick)=>{setLotFrom(from);setLotTo(to);setLotQuick(quick);}}/></div>
             <label className="flex min-w-[220px] max-w-sm flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500">품목명 또는 규격
               <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
@@ -1948,6 +1966,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
             <label className={QUERY_FILTER_LABEL_CLASS}>상태<SearchableSelect ariaLabel="로트 상태" className={QUERY_FILTER_CONTROL_CLASS} value={lotStatus} onChange={value=>{setLotStatus(value as typeof lotStatus);setActiveTab(value==='complete'?'lot-history':'lots');}} options={[{value:'all',label:'전체'},{value:'using',label:'사용중'},{value:'waiting',label:'대기중'},{value:'complete',label:'완료'}]}/></label>
 
             </QueryFilterPanel>
+            {(lotFrom||lotTo)&&<div className="text-xs text-slate-600" role="status"><p>조회 로트 잔량: {queriedLotBalances.length?queriedLotBalances.map(({unit,quantity})=>quantity.toLocaleString()+' '+unit).join(' · '):'없음'}</p>{lotUnknownDateCount>0&&<p>입고일이 없거나 올바르지 않은 로트 {lotUnknownDateCount}건은 기간 조회에서 제외했습니다. 전체 기간에서 확인할 수 있습니다.</p>}</div>}
+
             <div role="group" aria-label="로트 보기" className="flex min-w-0 flex-wrap items-center justify-end gap-2"><span className="text-[10px] font-bold text-slate-500">보기</span><div className="flex flex-wrap gap-1">
               <button type="button" onClick={() => setLotView('list')} title="리스트 보기"
                 className={`flex items-center gap-1.5 h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotView === 'list' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-700'}`}>
@@ -2030,7 +2050,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
                       <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · {activeTab === 'lot-history' ? '완료' : '활성'} 로트 {activeLots.length}건</p></div>
                       <span className="text-xs font-black text-slate-700 tabular-nums">{raw
-                        ? `${(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg`
+                        ? `전체 활성 잔량 ${(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg`
                         : `${activeLots.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0).toLocaleString()} 개`}</span>
                     </header>
                     <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">

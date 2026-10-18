@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import ItemLedger from './ItemLedger';
 import type { Item, Order } from '../src/shared/types';
@@ -49,4 +49,17 @@ it('회사 원장 화면은 명시 BOM을 사용하고 같은 배열의 색인 �
     rerender(<ItemLedger companyId="taebaek" items={items} orders={orders} orderUnitInputs={inputs(10)} />);
     expect(screen.getByText('-20')).toBeTruthy(); expect(screen.queryByText('-40')).toBeNull();
   } finally { setBomIndex(previous); }
+});
+
+it('제품 원장은 기간을 양끝 포함으로 제한해도 전체 재고와 행 잔량을 다시 계산하지 않는다', () => {
+ const items=[{id:'can-date',companyId:'taebaek',name:'날짜 검수 캔',subtype:'캔',type:'semi',unit:'개',stock:7}] as Item[];
+ const entries=['2026-09-01','2026-09-02','2026-09-03'].map((date,i)=>({id:'date-'+i,companyId:'taebaek',rawItemId:'bulk',material:'깨분참기름',kind:'unpack',source:{type:'unpack',id:'can-date'},date,createdAt:date+'T01:00:00Z',received:0,used:0,canCount:1,appliedDeltaKg:16.5,note:'개봉-'+i,unit:'kg'} as ItemInventoryEntry));
+ const view=render(<ItemLedger items={items} orders={[]} rawEntries={entries} companyId="taebaek"/>);
+ fireEvent.click(within(view.container).getByRole('button',{name:/날짜 검수 캔/}));
+ const ui=within(view.container), before=ui.getByText('개봉-1').closest('tr')!.textContent;
+ fireEvent.change(ui.getByLabelText('제품 원장 기록일 시작일'),{target:{value:'2026-09-02'}});
+ fireEvent.change(ui.getByLabelText('제품 원장 기록일 종료일'),{target:{value:'2026-09-02'}});
+ expect(ui.queryByText('개봉-0')).toBeNull();expect(ui.queryByText('개봉-2')).toBeNull();expect(ui.getByText('개봉-1').closest('tr')!.textContent).toBe(before);
+ expect(ui.getByText(/전체 기록 기준/)).toBeTruthy();
+ fireEvent.click(ui.getByRole('button',{name:'전체'}));expect(ui.getByText('개봉-0')).toBeTruthy();expect(ui.getByText('개봉-2')).toBeTruthy();
 });
