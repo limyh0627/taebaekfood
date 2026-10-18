@@ -10,7 +10,7 @@ let app:admin.app.App,db:admin.firestore.Firestore;
 const cleanup=new Set<string>();
 const ref=(path:string)=>{cleanup.add(path);return db.doc(path);};
 const operation=(request:Pick<LeaveCreateRequest,'companyId'|'planId'>,uid=actor.uid)=>ref(LEAVE_BATCH_OPERATIONS+'/'+leaveBatchReceiptId(request.companyId,uid,request.planId));
-async function make(count=2):Promise<LeaveCreateRequest>{const id=randomUUID(),rows=Array.from({length:count},(_,i)=>({id:'leave-'+id+'-'+i,employeeId:'employee-'+id+'-'+i,employeeName:'합성직원 '+i,type:'휴가' as const,startDate:'2026-10-19',endDate:'2026-10-20',reason:'단체 휴가',status:'approved' as const,requestedAt:'2026-10-18T12:00:01.123Z',daysUsed:2,deductsLeave:false}));const batch=db.batch();for(const row of rows){batch.set(ref('employees/'+row.employeeId),{name:row.employeeName,companyId:'taebaek'});ref('leaveRequests/'+row.id);}await batch.commit();return {version:1,companyId:'taebaek',planId:'plan-'+id,rows};}
+async function make(count=2):Promise<LeaveCreateRequest>{const id=randomUUID(),rows=Array.from({length:count},(_,i)=>({id:'leave-'+id+'-'+i,employeeId:'employee-'+id+'-'+i,employeeName:'합성직원 '+i,type:'휴가' as const,startDate:'2026-10-19',endDate:'2026-10-20',reason:'단체 휴가',status:'approved' as const,requestedAt:'2026-10-18T12:00:01.123Z',daysUsed:2,deductsLeave:false}));const batch=db.batch();for(const row of rows){batch.set(ref('employees/'+row.employeeId),{name:row.employeeName,companyId:'taebaek'});ref('leaveRequests/'+row.id);}await batch.commit();const request:LeaveCreateRequest={version:1,companyId:'taebaek',planId:'plan-'+id,rows};operation(request);return request;}
 const apply=(request:LeaveCreateRequest|LeaveMutationRequest,who=actor)=>executeLeaveRequestCommand(db,who,{mode:'apply',request});
 const reference=(r:LeaveCreateRequest)=>({companyId:r.companyId,planId:r.planId});
 describe.skipIf(!available)('휴가 원자 명령 실제 SDK',()=>{
@@ -78,4 +78,55 @@ describe.skipIf(!available)('휴가 원자 명령 실제 SDK',()=>{
   const receipt=await operation(request).get();expect((await target.get()).get('status')).toBe(receipt.get('status')==='applied'?'approved':'pending');
   if(receipt.get('status')==='cancelled')expect((await apply(request)).status).toBe('cancelled');
  },60000);
+ it('v2 일곱 동작은 회사 누락·null·타회사 휴가를 수정하지 않고 거절 영수증으로 종결한다', async () => {
+  const actions: LeaveMutationAction[] = [{action:'approve'},{action:'reject'},{action:'request-cancel'},{action:'cancel',reason:'합성 중단'},{action:'request-modify',modifyRequest:{startDate:'2026-10-21',endDate:'2026-10-21',reason:'합성 변경',daysUsed:1}},{action:'approve-modify'},{action:'reject-modify'}];
+  for (const company of [undefined,null,'punghoe']) for (const action of actions) {
+   const pending = action.action === 'approve' || action.action === 'reject';
+   const item = await mutation(action,pending?'pending':'approved');
+   await item.target.update({companyId:company===undefined?admin.firestore.FieldValue.delete():company,...(action.action==='approve-modify'||action.action==='reject-modify'?{modifyRequest:{startDate:'2026-10-21',endDate:'2026-10-21',reason:'변경',daysUsed:1,status:'pending'}}:{})});
+   const before=await item.target.get();item.request.expected=leaveRequestExpected(before.data());
+   const result=await apply(item.request);expect(result.status).toBe('rejected');expect(result.message).toContain(company==null?'소속 회사':'현재 회사의 휴가가 아니므로');
+   const after=await item.target.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+   expect(result.requestIds).toEqual([item.request.targetId]);expect((await operation(item.request).get()).data()).toMatchObject({status:'rejected',requestHash:expect.stringMatching(/^[a-f0-9]{64}$/),requestText:expect.any(String)});
+   expect((await executeLeaveRequestCommand(db,actor,{mode:'inspect',reference:{companyId:item.request.companyId,planId:item.request.planId}})).status).toBe('rejected');
+   expect((await apply(item.request)).status).toBe('rejected');
+  }
+ },60000);
+ it('관리자 단체 등록의 한 직원만 회사 누락·null·타회사여도 전체 휴가를 쓰지 않는다',async()=>{
+  for(const company of [undefined,null,'punghoe']){
+   const request=await make(2),employee=ref('employees/'+request.rows[1].employeeId);
+   await employee.update({companyId:company===undefined?admin.firestore.FieldValue.delete():company});const before=await employee.get();
+   const result=await apply(request);expect(result.status).toBe('rejected');expect(result.requestIds).toEqual(request.rows.map(row=>row.id));
+   for(const row of request.rows)expect((await ref('leaveRequests/'+row.id).get()).exists).toBe(false);
+   expect((await employee.get()).data()).toEqual(before.data());expect((await operation(request).get()).get('status')).toBe('rejected');
+   await employee.update({companyId:'taebaek'});expect((await apply(request)).status).toBe('rejected');for(const row of request.rows)expect((await ref('leaveRequests/'+row.id).get()).exists).toBe(false);
+  }
+ });
+ it('관리자 자기·대리 pending도 대상 직원의 명시 회사가 없거나 다르면 거절한다',async()=>{
+  const actorRef=ref('employees/'+actor.token.employeeId),original=await actorRef.get();
+  try{
+   for(const own of [true,false])for(const company of [undefined,null,'punghoe']){
+    const base=await make(1),{deductsLeave:_unused,...source}=base.rows[0];
+    const row={...source,employeeId:own?actor.token.employeeId:source.employeeId,type:'연차' as const,status:'pending' as const,daysUsed:0};
+    const request:LeaveCreateRequest={...base,rows:[row]},employee=ref('employees/'+row.employeeId);
+    await employee.set({name:'합성 신청대상',...(company===undefined?{}:{companyId:company})});
+    expect((await apply(request)).status).toBe('rejected');expect((await ref('leaveRequests/'+row.id).get()).exists).toBe(false);expect((await operation(request).get()).get('status')).toBe('rejected');
+   }
+  }finally{if(original.exists)await actorRef.set(original.data()!);else await actorRef.delete();}
+ });
+ it('비관리자 본인 pending의 기존 회사 누락·null 판독은 그대로 허용한다',async()=>{
+  for(const company of [undefined,null]){
+   const base=await make(1),{deductsLeave:_unused,...source}=base.rows[0],row={...source,type:'연차' as const,status:'pending' as const,daysUsed:0};
+   const request:LeaveCreateRequest={...base,rows:[row]},staff={uid:'legacy-staff-'+randomUUID(),token:{companyId:'taebaek',employeeId:row.employeeId,isAdmin:false}};operation(request,staff.uid);
+   await ref('employees/'+row.employeeId).update({companyId:company===undefined?admin.firestore.FieldValue.delete():company});
+   expect((await apply(request,staff)).status).toBe('applied');expect((await ref('leaveRequests/'+row.id).get()).data()).toMatchObject({status:'pending',companyId:'taebaek'});
+  }
+ });
+ it('종전 create·mutation ACK는 이후 회사 누락보다 우선하고 삭제된 휴가를 재생성하지 않는다',async()=>{
+  const create=await make(1);expect((await apply(create)).status).toBe('applied');await ref('employees/'+create.rows[0].employeeId).update({companyId:admin.firestore.FieldValue.delete()});await ref('leaveRequests/'+create.rows[0].id).delete();expect((await apply(create)).status).toBe('duplicate');expect((await ref('leaveRequests/'+create.rows[0].id).get()).exists).toBe(false);
+  const item=await mutation({action:'approve'});expect((await apply(item.request)).status).toBe('applied');await item.target.update({companyId:admin.firestore.FieldValue.delete()});const before=await item.target.get();
+  expect((await executeLeaveRequestCommand(db,actor,{mode:'inspect',reference:{companyId:item.request.companyId,planId:item.request.planId}})).status).toBe('applied');expect((await apply(item.request)).status).toBe('duplicate');expect((await item.target.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
+  await item.target.delete();expect((await apply(item.request)).status).toBe('duplicate');expect((await item.target.get()).exists).toBe(false);
+ });
+
 });

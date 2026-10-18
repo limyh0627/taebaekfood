@@ -95,7 +95,9 @@ export async function executeLeaveRequestCommand(db: admin.firestore.Firestore, 
       const current = target.data();
       const ids = [mutation.targetId];
       const reject = (message: string) => saveReceipt(result(scope,'rejected',requestHash!,ids,message),text);
-      if (!target.exists || !current || (current.companyId ?? 'taebaek') !== scope.companyId) return reject('대상 휴가가 없거나 현재 회사의 휴가가 아닙니다. 다시 조회해 주세요.');
+      if (!target.exists || !current) return reject('대상 휴가를 찾을 수 없습니다. 현재 휴가 목록을 다시 조회해 주세요.');
+      if (current.companyId == null) return reject('대상 휴가의 소속 회사가 지정되지 않아 처리하지 않았습니다. 휴가의 소속 정보를 확인한 뒤 다시 열어 주세요.');
+      if (current.companyId !== scope.companyId) return reject('현재 회사의 휴가가 아니므로 처리하지 않았습니다. 휴가와 현재 선택한 회사를 확인해 주세요.');
       if (!cleanupValidId(current.employeeId)) return reject('대상 직원의 원문을 확인해 주세요.');
       const targetEmployee = await tx.get(db.collection('employees').doc(current.employeeId));
       if (!targetEmployee.exists || (targetEmployee.data()?.companyId ?? 'taebaek') !== scope.companyId) return reject('현재 회사에 속한 실제 직원인지 확인해 주세요.');
@@ -147,7 +149,15 @@ export async function executeLeaveRequestCommand(db: admin.firestore.Firestore, 
     const employees = snapshots.slice(0,rows.length);
     const leaves = snapshots.slice(rows.length);
     const ids = rows.map(row=>row.id);
-    if (employees.some(employee=>!employee.exists || (employee.data()?.companyId ?? 'taebaek') !== scope.companyId)) return saveReceipt(result(scope,'rejected',requestHash!,ids,'현재 회사에 속한 실제 직원인지 확인해 주세요. 휴가는 등록하지 않았습니다.'),text);
+    const invalidEmployee = employees.find(employee=>!employee.exists || (actor.token.isAdmin === true ? employee.data()?.companyId : employee.data()?.companyId ?? 'taebaek') !== scope.companyId);
+    if (invalidEmployee) {
+      const message = !invalidEmployee.exists
+        ? '대상 직원 정보를 찾을 수 없어 휴가를 등록하지 않았습니다. 직원 목록을 확인한 뒤 다시 열어 주세요.'
+        : invalidEmployee.data()?.companyId == null
+          ? '대상 직원의 소속 회사가 지정되지 않아 휴가를 등록하지 않았습니다. 직원의 소속 정보를 확인한 뒤 다시 열어 주세요.'
+          : '현재 회사에 속하지 않는 직원이 있어 휴가를 등록하지 않았습니다. 직원과 현재 선택한 회사를 확인해 주세요.';
+      return saveReceipt(result(scope,'rejected',requestHash!,ids,message),text);
+    }
     if (leaves.some(leave=>leave.exists)) return saveReceipt(result(scope,'rejected',requestHash!,ids,'같은 번호의 휴가가 이미 있습니다. 기존 휴가를 덮거나 일부만 등록하지 않았습니다.'),text);
     rows.forEach((row,index)=>tx.create(leaveRefs[index],{...row,companyId:scope.companyId}));
     return saveReceipt(result(scope,'applied',requestHash!,ids,'휴가 등록을 완료했습니다.'),text);
