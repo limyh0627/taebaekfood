@@ -1,3 +1,5 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { buildRawLedgerRows } from '../src/features/items/domain/rawLedgerRows';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
@@ -88,10 +90,9 @@ const RawLedgerList: React.FC<Props> = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1 flex-wrap">
-        {FILTERS.map(f => (
-          <button key={f} onClick={(e) => { e.stopPropagation(); pick(f); }}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-colors ${filter === f ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{f}</button>
-        ))}
+        <div className="w-full" onClick={event=>event.stopPropagation()}><QueryFilterPanel onReset={()=>pick('전체')}><label className={QUERY_FILTER_LABEL_CLASS + ' w-36'}>유형
+          <SearchableSelect ariaLabel="유형" className={QUERY_FILTER_CONTROL_CLASS} value={filter} onChange={value=>pick(value as FilterType)} options={FILTERS.map(value=>({value,label:value}))}/>
+        </label></QueryFilterPanel></div>
         <span className="ml-auto text-[10px] font-black text-slate-300">{filtered.length}건</span>
       </div>
 

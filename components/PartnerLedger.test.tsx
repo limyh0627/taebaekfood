@@ -13,6 +13,9 @@ vi.mock('../src/shared/firebase', () => ({auth:{currentUser:{uid:'test-user'}},a
 vi.mock('./PartnerAdvanceModal', () => ({default: ({onStateChange}: {onStateChange?: (state:{blocked:boolean;applied:boolean;busy:boolean;sourceBalance:number;lookupBlocked:boolean;pendingUnknown:boolean;selectionValid:boolean;resetVersion:number;selectedAmount:number})=>void}) => { React.useEffect(() => {onStateChange?.({blocked:false,applied:false,busy:false,sourceBalance:0,lookupBlocked:false,pendingUnknown:false,selectionValid:false,resetVersion:0,selectedAmount:0});},[onStateChange]); return <p>상계 영역</p>; }}));
 import React from 'react';
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand', () => ({ recordPartnerPayment: vi.fn() }));
+const scrollDescriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'scrollIntoView');
+beforeEach(()=>Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()}));
+afterEach(()=>{if(scrollDescriptor)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',scrollDescriptor);else delete (HTMLElement.prototype as any).scrollIntoView;});
 const accounts = [{ id: 'bank-1', companyId: 'taebaek' as const, name: '보통예금', active: true,
   type: '통장' as const, openingBalance: 0, openingDate: '2026-08-01', createdAt: '2026-08-01T00:00:00.000Z' }];
 
@@ -129,7 +132,7 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
     expect(within(balances).queryByRole('rowheader', { name: /375/ })).not.toBeInTheDocument();
     const receivable = within(balances).getByRole('rowheader', { name: /108 외상매출금/ }).closest('tr')!;
     expect(within(receivable).getAllByRole('cell').map(cell => cell.textContent)).toEqual(['0', '1,428,000', '0', '1,428,000']);
-    fireEvent.change(screen.getByRole('combobox', { name: '계정 필터' }), { target: { value: '133' } });
+    fireEvent.click(screen.getByRole('button', { name: '계정 필터' }));fireEvent.click(screen.getByRole('option',{name:/^133 /}));
     expect(within(history).queryByText('260810-01')).not.toBeInTheDocument();
     expect(within(history).getByRole('button', { name: 'ADVANCE' })).toBeInTheDocument();
   });
@@ -158,15 +161,15 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
     fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
     fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
     fireEvent.click(screen.getByRole('button', { name: '살림터' }));
-    fireEvent.change(screen.getByRole('combobox', { name: '계정 필터' }), { target: { value: '900' } });
+    fireEvent.click(screen.getByRole('button', { name: '계정 필터' }));fireEvent.click(screen.getByRole('option',{name:/^900 /}));
     fireEvent.click(screen.getByRole('button', { name: '새거래처' }));
-    expect(screen.getByRole('combobox', { name: '계정 필터' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: '계정 필터' })).toHaveTextContent('모든 계정');
     expect(within(screen.getByRole('table', { name: '거래처 전체 전표' })).getByRole('button', { name: 'SECOND' })).toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: '거래처 계정별 잔액' })).getAllByText('1,428,000')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: '살림터' }));
-    expect(screen.getByRole('combobox', { name: '계정 필터' })).toHaveValue('900');
+    expect(screen.getByRole('button', { name: '계정 필터' })).toHaveTextContent('900');
     rerender(<PartnerLedger companyId="punghoe" {...props} />);
-    expect(screen.getByRole('combobox', { name: '계정 필터' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: '계정 필터' })).toHaveValue('');
     expect(within(screen.getByRole('table', { name: '거래처 전체 전표' })).getByRole('button', { name: 'FOREIGN' })).toBeInTheDocument();
   });
   it('분개가 불가능한 거래도 경고 이력에 남기고 계정잔액에서는 제외한다', () => {

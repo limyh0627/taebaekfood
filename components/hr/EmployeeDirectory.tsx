@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../../src/shared/components/QueryFilterPanel';
 import React from 'react';
 import { Calendar, Edit2, Search, Trash2, RotateCcw } from 'lucide-react';
 import type { Employee } from '../../types';
@@ -11,20 +12,15 @@ interface EmployeeDirectoryProps {
 export function EmployeeDirectory({ filteredEmployees, searchTerm, onSearchChange, calculateWorkDays, getHealthCertStatus, onRetirement, onEdit, onDelete }: EmployeeDirectoryProps) {
  return (
           <>
-            <section className="border-b border-slate-200 bg-white px-3 py-2" aria-labelledby="employee-query-title">
-              <div className="flex min-h-9 items-center gap-2">
-                <h3 id="employee-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-                <button type="button" onClick={() => onSearchChange('')} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
-              </div>
-              <label className="flex max-w-md flex-col gap-1 pb-1 pt-1.5 text-[10px] font-bold text-slate-500">
+            <QueryFilterPanel id="employee-query-title" onReset={()=>onSearchChange('')}>
+<label className={`${QUERY_FILTER_LABEL_CLASS} w-full max-w-md`}>
                 이름 또는 부서
                 <span className="relative block">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
                   <input type="text" placeholder="이름 또는 부서 검색..." value={searchTerm} onChange={(e) => onSearchChange(e.target.value)}
-                    className="h-10 w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 text-xs font-bold outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+                    className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
                 </span>
-              </label>
-            </section>
+              </label></QueryFilterPanel>
             <div className="flex-1 overflow-auto custom-scrollbar">
               <table className="w-full text-left min-w-[640px]">
                 <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">

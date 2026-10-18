@@ -1,3 +1,5 @@
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../src/shared/components/QueryFilterPanel';
+import SearchableSelect from '../src/shared/components/SearchableSelect';
 import ActionButton from '../src/shared/components/ActionButton';
 import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { formatQuantity } from '../src/shared/quantityDisplay';
@@ -200,41 +202,45 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             </button>
           ))}
         </div>
-        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-          {([['all', '전체'], ['month', '월별'], ['custom', '기간']] as const).map(([mode, text]) => (
-            <button key={mode} type="button" onClick={() => setPeriodMode(mode)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
-                periodMode === mode ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-              }`}>
-              {text}
-            </button>
-          ))}
-        </div>
-        {periodMode === 'month' && (
-          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-            className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
-        )}
-        {periodMode === 'custom' && (
-          <div className="flex items-center gap-1">
-            <input type="date" value={customFrom} max={customTo}
-              onChange={e => setCustomFrom(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
-            <span className="text-slate-400 text-xs font-black">~</span>
-            <input type="date" value={customTo} min={customFrom}
-              onChange={e => setCustomTo(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
-          </div>
-        )}
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처명"
-            className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
-        </div>
         <div className="ml-auto bg-slate-800 text-white rounded-2xl px-5 py-3">
           <p className="text-[10px] font-black text-slate-400 uppercase">총 {label}</p>
           <p className="text-xl font-black tabular-nums">{fmt(total)}<span className="text-xs ml-1 text-slate-400">원</span></p>
         </div>
       </div>
+
+      <QueryFilterPanel ariaLabel="거래처 원장 검색조건" onReset={() => { setPeriodMode('custom'); setSelectedMonth(today().slice(0,7)); setCustomFrom(monthStart()); setCustomTo(today()); setSearch(''); setSelectedAccount(''); }}>
+        <div className={QUERY_FILTER_LABEL_CLASS}><span>기간</span><div className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+          {([['all', '전체'], ['month', '월별'], ['custom', '기간']] as const).map(([mode, text]) => (
+            <button key={mode} type="button" onClick={() => setPeriodMode(mode)}
+              className={`h-full px-3 text-[11px] transition-all ${
+                periodMode === mode ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'
+              }`}>
+              {text}
+            </button>
+          ))}
+        </div></div>
+        {periodMode === 'month' && (
+          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
+            className={QUERY_FILTER_CONTROL_CLASS} />
+        )}
+        {periodMode === 'custom' && (
+          <div className="flex items-center gap-1">
+            <input type="date" value={customFrom} max={customTo}
+              onChange={e => setCustomFrom(e.target.value)}
+              className={QUERY_FILTER_CONTROL_CLASS} />
+            <span className="text-slate-400 text-xs font-black">~</span>
+            <input type="date" value={customTo} min={customFrom}
+              onChange={e => setCustomTo(e.target.value)}
+              className={QUERY_FILTER_CONTROL_CLASS} />
+          </div>
+        )}
+        <label className={`min-w-[180px] max-w-xs flex-1 ${QUERY_FILTER_LABEL_CLASS}`}>거래처
+        <span className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처명"
+            className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8 !pr-3`} />
+        </span></label>
+      </QueryFilterPanel>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
         {/* 거래처 목록 */}
@@ -421,11 +427,12 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
               <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
 
-              <select aria-label="계정 필터" value={activeAccount} onChange={e => setSelectedAccount(e.target.value)}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
-                <option value="">모든 계정</option>
-                {historyCodes.map(code => <option key={code} value={code}>{code} {codeName.get(code) ?? accountBalances.find(row => row.code === code)?.name ?? '계정 미정'}</option>)}
-              </select>
+              <QueryFilterPanel ariaLabel="원장 계정 검색조건" onReset={() => setSelectedAccount('')}>
+                <label className={QUERY_FILTER_LABEL_CLASS}>계정
+                  <SearchableSelect ariaLabel="계정 필터" value={activeAccount} onChange={setSelectedAccount} className={QUERY_FILTER_CONTROL_CLASS}
+                    options={[{value:'',label:'모든 계정'},...historyCodes.map(code=>({value:code,label:code+' '+(codeName.get(code) ?? accountBalances.find(row=>row.code===code)?.name ?? '계정 미정')}))]} />
+                </label>
+              </QueryFilterPanel>
             </div>
             <div className="overflow-x-auto p-4">
               <table aria-label="거래처 계정별 잔액" className="w-full min-w-[600px] text-xs text-right">

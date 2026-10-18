@@ -1,3 +1,4 @@
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../src/shared/components/QueryFilterPanel';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
@@ -192,6 +193,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const currentYear = now.getFullYear();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+  const resetQueryPeriod = () => { setPeriod('custom'); setCustomStart(monthStart()); setCustomEnd(today()); setSelectedYear(new Date().getFullYear()); setSelectedQuarter(([1,2,3,4] as const).find(q => new Date().getMonth()+1 > q*3) ?? 1); setSelectedHalf(1); };
 
   // 계정코드 → AccountGroup 조회 (구 판매비/관리비 ID도 판관비로 매핑)
   const codeToGroup = useMemo(
@@ -443,8 +445,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {mainTab === 'analysis' && <>
 
       {/* ── 제목 + 기간 컨트롤 ── */}
-      <section aria-label="손익 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4">
-        <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
+      <QueryFilterPanel ariaLabel="손익 검색조건" onReset={resetQueryPeriod}>
         <div className="[&_input]:h-10 [&_select]:h-10 [&_input]:bg-white [&_select]:bg-white [&_input]:font-bold [&_select]:font-bold [&_button]:min-h-9">
         {/* 기간 갈래를 **왼쪽 맨 앞**에 둔다 — 화면이 어느 기간인지가 먼저 읽혀야 한다.
             제목에 '2026년 1월~8월'을 또 쓰지 않는다. 고른 값이 곧 제목이라 두 번 말하는 것이다. */}
@@ -461,7 +462,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         />
 
         </div>
-      </section>
+      </QueryFilterPanel>
 
       {/*
         손익계산서 — **한 줄기로 위에서 아래로.** 매출에서 시작해 빼 나가며 이익이 남는다.
@@ -766,8 +767,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                  기간 갈래를 왼쪽 맨 앞에 두고, 화면마다 따로 그리던 고르개를
                  shared/ui/PeriodPicker 하나로 모았다. 제목은 PageHeader 가 이미
                  말했으니 여기서 또 말하지 않는다 — 손익분석이 그 규칙을 쓰고 있었다. */}
-            <section aria-label="현금흐름 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4 [&_input]:h-10 [&_select]:h-10 [&_button]:min-h-9">
-              <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
+            <QueryFilterPanel ariaLabel="현금흐름 검색조건" onReset={() => { resetQueryPeriod(); setCfMode('period'); setCfMonth(today().slice(0,7)); }} bodyClassName="[&_input]:h-10 [&_select]:h-10 [&_button]:min-h-9">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                   {([['month','월별'],['period','기간']] as const).map(([val,label]) => (
@@ -797,7 +797,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   />
                 )}
               </div>
-            </section>
+            </QueryFilterPanel>
 
             {/*  **손익분석과 같은 카드**다(2026-09-06 사장님: "이게 통일한거야?").
                  전에는 검은 머리띠로 시작하고 구역이 안 접혔다 — 같은 일을 하는 두 화면이
@@ -1133,24 +1133,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 </ActionButton>
 
             )}/>}
-            <section aria-label="거래처 현황 검색조건" className="rounded-lg border border-slate-200 bg-white p-3 md:p-4">
-              <h3 className="mb-3 text-xs font-black text-slate-900">검색조건</h3>
-              <label className="flex max-w-sm flex-col gap-1 text-[10px] font-bold text-slate-500">정산 PDF 월
+            <QueryFilterPanel ariaLabel="거래처 현황 검색조건" onReset={() => { setPdfMonth(today().slice(0,7)); setRecClientSearch(''); }}>
+              <label className={`max-w-sm ${QUERY_FILTER_LABEL_CLASS}`}>정산 PDF 월
                 <input type="month" value={pdfMonth} max={today().slice(0, 7)}
                   onChange={e => setPdfMonth(e.target.value)}
                   aria-label="거래처별 정산 PDF 월 선택"
-                  className="h-10 w-full px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold" />
+                  className={`${QUERY_FILTER_CONTROL_CLASS} w-full`} />
 
               </label>
-              <label className="mt-3 flex max-w-sm flex-col gap-1 text-[10px] font-bold text-slate-500">거래처
+              <label className={`max-w-sm ${QUERY_FILTER_LABEL_CLASS}`}>거래처
                 <div className="relative">
                   <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input type="text" placeholder="거래처 검색..." value={recClientSearch}
                     onChange={e => setRecClientSearch(e.target.value)}
-                    className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300"/>
+                    className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8 !pr-3`}/>
                 </div>
               </label>
-            </section>
+            </QueryFilterPanel>
             {/*  **좁은 화면에서는 위아래로 쌓는다.** 가로로 두면 오른쪽 판이 찌그러져
                  한글이 한 글자씩 세로로 쌓인다(2026-09-03 사장님 지적). */}
             <div className="flex flex-col lg:flex-row gap-4 lg:min-h-[600px]">

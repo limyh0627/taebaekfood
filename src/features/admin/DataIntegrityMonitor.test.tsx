@@ -12,7 +12,7 @@ afterEach(()=>{cleanup();vi.clearAllMocks();});
 it('점검 날짜는 오늘 기본과 경계 없는 원래 입력 스타일·상대값을 유지한다',()=>{
  render(<DataIntegrityMonitor {...props}/>);const today=new Date().toLocaleDateString('sv-SE');
  const from=screen.getByLabelText('점검 시작일'),to=screen.getByLabelText('점검 종료일');
- expect(from).toHaveValue(today);expect(to).toHaveValue(today);expect(from).toHaveClass('py-2','text-sm');
+ expect(from).toHaveValue(today);expect(to).toHaveValue(today);expect(from).toHaveClass('h-10','bg-slate-50','rounded-md');
  expect(from).not.toHaveAttribute('max');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(to).not.toHaveAttribute('min');expect(from.parentElement).toHaveClass('contents');
  const before=vi.mocked(auditDataIntegrity).mock.calls.length;
  fireEvent.change(from,{target:{value:'2026-01-01'}});
@@ -25,7 +25,7 @@ it('점검 날짜 변경은 영역·검색 필터를 초기화하지 않고 별�
  const query=screen.getByPlaceholderText('주문번호·전표번호·내용 검색');fireEvent.change(query,{target:{value:'원료'}});
  fireEvent.change(screen.getByLabelText('점검 종료일'),{target:{value:'2026-10-01'}});
  expect(query).toHaveValue('원료');expect(screen.getByText('원료 연결 확인')).toBeTruthy();expect(screen.queryByText('전표 연결 확인')).toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'필터 초기화'}));expect(query).toHaveValue('');expect(screen.getByText('전표 연결 확인')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(query).toHaveValue('');expect(screen.getByText('전표 연결 확인')).toBeTruthy();
  expect(screen.getByLabelText('점검 종료일')).toHaveValue('2026-10-01');
  fireEvent.click(screen.getByRole('button',{name:'새로고침'}));expect(refresh).toHaveBeenCalledOnce();
 });

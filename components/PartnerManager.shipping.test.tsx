@@ -1,6 +1,8 @@
+// JSDOM에는 펼친 목록의 스크롤 API가 없어 브라우저 동작만 대체한다.
 /** @vitest-environment jsdom */
 import React from 'react';import {act,render,screen,fireEvent,waitFor} from '@testing-library/react';import {it,expect,vi} from 'vitest';
 import PartnerManager from './PartnerManager';import type {Partner} from '../types';
+HTMLElement.prototype.scrollIntoView = vi.fn();
 const partner={id:'p',name:'가상 거래처',type:'일반',partnerType:'매출처',shipTos:[{id:'s',name:'기존 창고'}]} as Partner;
 const props={onAddClient:vi.fn(),onDeleteClient:vi.fn()};
 it('기존 미설정 표시는 무관한 거래처 수정 저장을 막지 않는다',()=>{const save=vi.fn();render(<PartnerManager {...props} partners={[partner]} onUpdateClient={save}/>);
@@ -22,18 +24,18 @@ it('취소한 수정창의 늦은 주소검색 완료는 다음 거래처 초안
 it('보관된 거래처만 목록·검색·분류와 유형 개수에서 제외하고 원연결은 보존한다',()=>{
  const rows:Partner[]=[{...partner,id:'parent',name:'해피유통',archived:false,shipTos:[{id:'old',name:'쿠팡'}]},{...partner,id:'legacy',name:'옛 미지정 거래처'},{...partner,id:'old',name:'해피유통(쿠팡)',archived:true}];
  const before=JSON.stringify(rows),update=vi.fn(),remove=vi.fn();render(<PartnerManager {...props} onDeleteClient={remove} partners={rows} onUpdateClient={update}/>);
- expect(screen.getByRole('button',{name:/^전체\s*2$/})).toBeInTheDocument();expect(screen.getByRole('button',{name:/^매출처\s*2$/})).toBeInTheDocument();expect(screen.getByRole('button',{name:/^일반 거래처\s*2$/})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:/^전체\s*2$/})).toBeInTheDocument();expect(screen.getByRole('button',{name:/^매출처\s*2$/})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'거래처 유형'}));expect(screen.getByRole('option',{name:/^일반 거래처\s*2$/})).toBeInTheDocument();fireEvent.click(screen.getByRole('option',{name:'전체'}));
  expect(screen.getByRole('heading',{name:'해피유통'})).toBeInTheDocument();expect(screen.getByRole('heading',{name:'옛 미지정 거래처'})).toBeInTheDocument();expect(screen.queryByRole('heading',{name:'해피유통(쿠팡)'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'해피유통(쿠팡) 수정'})).not.toBeInTheDocument();
  fireEvent.change(screen.getByPlaceholderText('전체 거래처 검색...'),{target:{value:'해피유통(쿠팡)'}});expect(screen.getByText(/에 대한 검색 결과가 없습니다/)).toBeInTheDocument();
  expect(JSON.stringify(rows)).toBe(before);expect(rows[0].shipTos?.[0].id).toBe('old');expect(remove).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
 });
 
-it('제목 다음 분류·등록·검색 순서를 유지하고 채널 재클릭과 검색 초기화는 목록만 복원한다',()=>{
+it('제목 다음 분류·등록·검색 순서를 유지하고 채널 선택과 검색 초기화는 목록만 복원한다',()=>{
  const add=vi.fn(),update=vi.fn(),rows:Partner[]=[{...partner,id:'general',name:'일반 합성'},{...partner,id:'store',name:'스토어 합성',type:'스마트스토어'},{...partner,id:'buy',name:'매입 합성',partnerType:'매입처'}];
  render(<PartnerManager {...props} partners={rows} onAddClient={add} onUpdateClient={update}/>);
  const title=screen.getByRole('heading',{name:'거래처 관리'}),tab=screen.getByRole('button',{name:/^전체\s*3$/}),create=screen.getByRole('button',{name:'거래처 등록'}),panel=screen.getByRole('region',{name:'검색조건'});
  expect(title.compareDocumentPosition(tab)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tab.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(panel)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- fireEvent.click(screen.getByRole('button',{name:/^일반 거래처\s*2$/}));expect(screen.queryByRole('heading',{name:'스토어 합성'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:/^일반 거래처\s*2$/}));expect(screen.getByRole('heading',{name:'스토어 합성'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'거래처 유형'}));fireEvent.click(screen.getByRole('option',{name:/^일반 거래처\s*2$/}));expect(screen.queryByRole('heading',{name:'스토어 합성'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'거래처 유형'}));fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(screen.getByRole('heading',{name:'스토어 합성'})).toBeInTheDocument();
  fireEvent.change(screen.getByPlaceholderText('전체 거래처 검색...'),{target:{value:'없는 거래처'}});expect(screen.queryByRole('heading',{name:'일반 합성'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(screen.getByRole('heading',{name:'일반 합성'})).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:/^매입처\s*1$/}));expect(screen.queryByRole('button',{name:/^일반 거래처/})).not.toBeInTheDocument();fireEvent.click(create);expect(screen.getByRole('dialog',{name:'신규 거래처 등록'})).toBeInTheDocument();expect(add).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
 });

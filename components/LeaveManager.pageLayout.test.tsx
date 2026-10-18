@@ -20,12 +20,14 @@ it('연락망에서는 신청 행동을 숨기고 관리자 편집 권한과 조
  const {onAddLeaveRequest}=view();fireEvent.click(screen.getByRole('button',{name:'조직도·연락망'}));
  expect(screen.queryByRole('group',{name:'연차 신청 및 확인 작업'})).toBeNull();
  expect(screen.queryByRole('button',{name:'신규 연차 신청'})).toBeNull();expect(screen.queryByRole('button',{name:/편집/})).toBeNull();
- expect(screen.getByPlaceholderText('이름·부서·직급 검색')).toHaveClass('h-10','bg-white');
+ expect(screen.getByPlaceholderText('이름·부서·직급 검색')).toHaveClass('h-10','bg-slate-50');
  fireEvent.click(screen.getByRole('button',{name:'임직원 캘린더'}));expect(screen.getByRole('button',{name:'신규 연차 신청'})).toBeInTheDocument();expect(onAddLeaveRequest).not.toHaveBeenCalled();
 });
 it('내 휴가 검색과 월 필터의 controlled 값은 유지한다',()=>{
- view();const search=screen.getByPlaceholderText('검색...');expect(search).toHaveClass('h-10','bg-white');fireEvent.change(search,{target:{value:'직원'}});expect(search).toHaveValue('직원');
+ view();const search=screen.getByPlaceholderText('검색...');expect(search).toHaveClass('h-10','bg-slate-50');fireEvent.change(search,{target:{value:'직원'}});expect(search).toHaveValue('직원');
 });
 it('관리자는 연락망 편집을 열 수 있고 신청 행동은 조직도에서 생기지 않는다',()=>{
  view(true);fireEvent.click(screen.getByRole('button',{name:'조직도·연락망'}));fireEvent.click(screen.getByRole('button',{name:'편집'}));expect(screen.getByPlaceholderText('직함 (예: 대표이사)')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'신규 연차 신청'})).toBeNull();
 });
+
+it('내휴가와 연락처 조회 초기화는 각 검색만 비우고 신청 writer를 호출하지 않는다',()=>{const {onAddLeaveRequest}=view();const query=screen.getByRole('region',{name:'내 휴가 검색조건'}),search=screen.getByPlaceholderText('검색...');fireEvent.change(search,{target:{value:'조건'}});fireEvent.change(screen.getByLabelText('내 휴가 조회월'),{target:{value:'2025-01'}});fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(screen.getByLabelText('내 휴가 조회월')).toHaveValue(new Date().toISOString().slice(0,7));fireEvent.click(screen.getByRole('button',{name:'조직도·연락망'}));const contact=screen.getByPlaceholderText('이름·부서·직급 검색');fireEvent.change(contact,{target:{value:'없는 직원'}});fireEvent.click(within(screen.getByRole('region',{name:'연락처 검색조건'})).getByRole('button',{name:'초기화'}));expect(contact).toHaveValue('');expect(onAddLeaveRequest).not.toHaveBeenCalled();});

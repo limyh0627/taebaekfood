@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { ReturnStockOperation } from '../src/shared/returnStockMovement';
 import React, { useMemo, useState } from 'react';
 import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
@@ -76,16 +77,11 @@ const ItemLedger: React.FC<{
     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-auto lg:h-full min-h-0">
       {/* 품목 고르기 — 크기 고정. 검색으로 줄 수가 줄어도 창이 안 흔들린다. */}
       <div className="w-full lg:w-[280px] shrink-0 flex flex-col max-h-[38vh] lg:max-h-none bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="p-2 border-b border-slate-100 space-y-2">
-          <div className="relative">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+        <QueryFilterPanel onReset={() => { setQ(''); setType(ALL); setCat(ALL); }}><label className={QUERY_FILTER_LABEL_CLASS + ' w-full'}><span>전체 검색</span><div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-          </div>
-          {/*  거르개는 공용이다 — 견적서 품목 고르기·재고관리와 같은 것을 쓴다
-               (shared/ui/ItemFilterBar). 화면마다 새로 만들지 않는다. */}
-          <ItemFilterBar items={pickable} type={type} setType={setType} category={cat} setCategory={setCat} />
-        </div>
+              className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3'}/>
+          </div></label><ItemFilterBar items={pickable} type={type} setType={setType} category={cat} setCategory={setCat}/></QueryFilterPanel>
         <div className="flex-1 overflow-y-auto">
           {shown.length === 0 && (
             <div className="px-3 py-8 text-center">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { typeOptions, categoryOptions, keepCategory, ALL, type ItemLike } from '../itemFilter';
-import { SELECT, SELECT_LABEL } from './table';
+import SearchableSelect from '../components/SearchableSelect';
+import { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../components/QueryFilterPanel';
 
 /**
  * **품목 거르개 — 분류(타입) · 품목(카테고리) 드롭다운.**
@@ -31,28 +32,13 @@ export const ItemFilterBar: React.FC<{
     setCategory(keepCategory(items, v, category));   // 그 타입에 없는 품목이면 푼다
   };
 
-  return (
-    <div className={가로 ? 'flex items-center gap-2 flex-wrap' : 'space-y-2'}>
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className={SELECT_LABEL}>분류</span>
-        <select value={type} onChange={e => 타입고르기(e.target.value)}
-          className={`${SELECT(type !== ALL)} flex-1 min-w-0`}>
-          <option value={ALL}>전체 {items.length}</option>
-          {types.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
-        </select>
-      </div>
-      {cats.length > 1 && (
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className={SELECT_LABEL}>품목</span>
-          <select value={category} onChange={e => setCategory(e.target.value)}
-            className={`${SELECT(category !== ALL)} flex-1 min-w-0`}>
-            <option value={ALL}>전체</option>
-            {cats.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
-          </select>
-        </div>
-      )}
-    </div>
-  );
+  return <div className={가로 ? 'flex min-w-0 flex-wrap items-end gap-2' : 'w-full space-y-2'}>
+    <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-0 flex-1'}>분류
+      <SearchableSelect ariaLabel="분류" value={type} onChange={타입고르기} className={QUERY_FILTER_CONTROL_CLASS + ' w-full'} options={[{value:ALL,label:'전체 '+items.length},...types.map(o=>({value:o.key,label:o.label+' '+o.count}))]}/>
+    </label>
+    {cats.length > 1 && <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-0 flex-1'}>품목
+      <SearchableSelect ariaLabel="품목" value={category} onChange={setCategory} className={QUERY_FILTER_CONTROL_CLASS + ' w-full'} options={[{value:ALL,label:'전체'},...cats.map(o=>({value:o.key,label:o.label+' '+o.count}))]}/>
+    </label>}
+  </div>;
 };
-
 export default ItemFilterBar;

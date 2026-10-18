@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import type { QuotationLine, Quotation } from '../src/features/quotations/domain/quotation';
 export type {QuotationLine,Quotation} from '../src/features/quotations/domain/quotation';
@@ -198,15 +199,15 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           <Plus size={14} />견적서 작성
         </ActionButton>} />
 
-      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <QueryFilterPanel onReset={() => setSearch('')}>
+<label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
+<div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처·품목·번호"
-            aria-label="견적 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
+            aria-label="견적 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'} />
         </div>
-
-      </section>
+</label>
+</QueryFilterPanel>
 
       {quoteError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">

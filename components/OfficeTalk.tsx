@@ -1,19 +1,20 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import ConfirmModal from './ConfirmModal';
 import ModalShell from '../src/shared/components/ModalShell';
-import { 
-  MessageSquare, 
-  Plus, 
-  Search, 
-  Send, 
-  User, 
-  Users, 
-  MoreVertical, 
-  Edit2, 
-  Check, 
+import {
+  MessageSquare,
+  Plus,
+  Search,
+  Send,
+  User,
+  Users,
+  MoreVertical,
+  Edit2,
+  Check,
   X,
   AtSign,
   Image as ImageIcon,
@@ -108,7 +109,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [inviteSelected, setInviteSelected] = useState<string[]>([]);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
-  
+
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
@@ -283,16 +284,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
   const handleCreateRoom = async () => {
     if (selectedParticipants.length === 0) return;
-    
+
     const participantIds = [...new Set([...selectedParticipants, currentUser.id])];
     const companyId = companyOf(currentUser);
     const participantCompanies = participantCompaniesOf(participantIds, employees, companyId);
-    
+
     // Check if 1:1 room already exists
     if (participantIds.length === 2) {
-      const existingRoom = chatRooms.find(r => 
-        !r.isGroup && 
-        r.participantIds.length === 2 && 
+      const existingRoom = chatRooms.find(r =>
+        !r.isGroup &&
+        r.participantIds.length === 2 &&
         r.participantIds.every(id => participantIds.includes(id))
       );
       if (existingRoom) {
@@ -683,7 +684,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     if (mentionSearch === null) return [];
     const list = employees.filter(e => e.id !== currentUser.id);
     const results = list.filter(e => e.name.toLowerCase().includes(mentionSearch.toLowerCase()));
-    
+
     // Add "관리자" to the list if it matches
     if ('관리자'.includes(mentionSearch.toLowerCase())) {
       return [...results, { id: 'admin', name: '관리자', position: '시스템', department: '관리' } as any];
@@ -756,16 +757,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               )}
             </div>
           )}
-          <div className="relative">
+          <QueryFilterPanel onReset={() => setSearchTerm('')}><label className={QUERY_FILTER_LABEL_CLASS + ' w-full'}><span>전체 검색</span><div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="대화방 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3'}
             />
-          </div>
+          </div></label></QueryFilterPanel>
         </div>
 
         {sharedControls("desktop")}
@@ -846,7 +847,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             {/* Chat Header */}
             <div className="p-4 lg:p-6 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
               <div className="flex items-center space-x-3 lg:space-x-4">
-                <button 
+                <button
                   onClick={() => setActiveRoomId(null)}
                   className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
                 >
@@ -863,7 +864,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     /*  **폰에서 저장이 안 됐다**(2026-09-03 사장님) — 입력칸이 좁은 머리에서
                         넘쳐 ✓ 버튼이 화면 밖으로 밀렸다. 폭을 잡고, 엔터로도 저장되게 한다. */
                     <div className="flex items-center gap-1 min-w-0">
-                      <input 
+                      <input
                         type="text"
                         value={newRoomName}
                         onChange={(e) => setNewRoomName(e.target.value)}
@@ -875,14 +876,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         className="min-w-0 flex-1 w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
-                      <button 
+                      <button
                         onClick={saveRoomName}
                         aria-label="저장"
                         className="shrink-0 p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                       >
                         <Check size={16} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => setIsEditingRoomName(false)}
                         aria-label="취소"
                         className="shrink-0 p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
@@ -893,7 +894,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   ) : (
                     <div className="flex items-center gap-1 min-w-0">
                       <h3 className="text-base lg:text-lg font-black text-slate-900 truncate">{getRoomName(activeRoom)}</h3>
-                      <button 
+                      <button
                         onClick={() => {
                           //  내가 고쳐 둔 게 있으면 그걸, 없으면 지금 보이는 이름을 띄운다
                           setNewRoomName(activeRoom.nameBy?.[currentUser.id] || activeRoom.name || getRoomName(activeRoom));
@@ -1051,7 +1052,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   const newDay = idx === 0 || previousDay !== stamp.day;
                   // 날짜가 바뀌면 같은 사람이 계속 썼어도 새 묶음으로 보여야 한다.
                   const showSender = newDay || 보는말[idx - 1].senderId !== msg.senderId;
-                  
+
                   return (
                     <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${showSender && !newDay ? 'mt-3' : ''}`}>
                       {newDay && (
@@ -1205,7 +1206,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             <div className="p-3 sm:p-6 bg-white border-t border-slate-100 relative">
               <AnimatePresence>
                 {mentionSearch !== null && filteredMentionUsers.length > 0 && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
@@ -1314,7 +1315,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <textarea 
+                  <textarea
                     ref={inputRef}
                     value={messageText}
                     onChange={handleInputChange}
@@ -1354,7 +1355,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <h3 className="text-xl font-black text-slate-900 mb-2">오피스톡에 오신 것을 환영합니다</h3>
               <p className="text-sm font-bold text-slate-400">대화방을 선택하거나 새로운 대화를 시작해보세요.</p>
             </div>
-            <button 
+            <button
               onClick={() => setIsNewChatModalOpen(true)}
               className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center space-x-2"
             >

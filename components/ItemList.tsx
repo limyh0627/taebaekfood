@@ -1,3 +1,5 @@
+import SearchableSelect from '../src/shared/components/SearchableSelect';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import { boxEquivalentLabel, inventoryNameSpec, withSpec, parseMakeLabel } from '../src/features/items/ui/itemListDisplay';
 import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
@@ -243,16 +245,18 @@ const FilterDrop: React.FC<{
   label: string;
   summary: string;
   active: boolean;
+  queryStyle?: boolean;
   width?: string;
   children: (close: () => void) => React.ReactNode;
-}> = ({ label, summary, active, width = 'w-[280px]', children }) => {
+}> = ({ label, summary, active, queryStyle = false, width = 'w-[280px]', children }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-1.5 border rounded-xl px-2.5 py-2 text-[11px] font-black bg-white outline-none transition-all max-w-[220px] ${
+    <div className={queryStyle ? `${QUERY_FILTER_LABEL_CLASS} relative` : 'relative'}>
+      {queryStyle && <span>{label}</span>}
+      <button aria-label={queryStyle ? label : undefined} type="button" onClick={() => setOpen(o => !o)}
+        className={queryStyle ? `${QUERY_FILTER_CONTROL_CLASS} flex max-w-[220px] items-center justify-between gap-1.5` : `flex items-center gap-1.5 border rounded-xl px-2.5 py-2 text-[11px] font-black bg-white outline-none transition-all max-w-[220px] ${
           active ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">{label}</span>
+        {!queryStyle && <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">{label}</span>}
         <span className="truncate">{summary}</span>
         <ChevronDown size={12} className="shrink-0 opacity-50"/>
       </button>
@@ -1517,22 +1521,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </button>
               ))}
             </div>
-            {activeTab === 'master' && (
-              <section className="w-full border-b border-slate-200 bg-white px-3 py-2" aria-labelledby="inventory-query-title">
-                <div className="flex min-h-9 items-center gap-2">
-                  <h3 id="inventory-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-                  <button type="button" onClick={() => setSearchTerm('')} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
-                </div>
-                <label className="flex max-w-md flex-col gap-1 pb-1 pt-1.5 text-[10px] font-bold text-slate-500">
-                  품목명 또는 거래처
-                  <span className="relative block">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
-                    <input type="text" placeholder="품목명 · 거래처 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                      className="h-10 w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 text-xs font-bold outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
-                  </span>
-                </label>
-              </section>
-            )}
+
 
           </div>
         )}
@@ -1542,10 +1531,19 @@ const ItemListContent: React.FC<ItemListProps> = ({
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
             서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}
         {mode === 'inventory' && activeTab !== 'inbound' && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <QueryFilterPanel id="inventory-query-title" sectionClassName="!overflow-visible" onReset={() => { clearFilters(); if (!zeroStockOnly && activeTab === 'master') setSearchTerm(''); }}>
+{!zeroStockOnly && activeTab === 'master' && (<label className={`${QUERY_FILTER_LABEL_CLASS} w-full max-w-md`}>
+                  품목명 또는 거래처
+                  <span className="relative block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                    <input type="text" placeholder="품목명 · 거래처 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                      className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
+                  </span>
+                </label>)}
+
             {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
             {subtypeTabs.length > 0 && (
-              <FilterDrop label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype} width="w-[180px]">
+              <FilterDrop queryStyle label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype} width="w-[180px]">
                 {close => <div className="max-h-[280px] overflow-y-auto py-1">
                   {['전체', ...subtypeTabs].map(subtype => (
                     <FilterRow key={subtype} on={activeSubtype === subtype}
@@ -1555,7 +1553,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </FilterDrop>
             )}
             {subCategories.length > 0 && (
-              <FilterDrop label="카테고리" active={catSel.size > 0}
+              <FilterDrop queryStyle label="카테고리" active={catSel.size > 0}
                 summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${catSel.size}개`} width="w-[200px]">
                 {close => <div className="max-h-[280px] overflow-y-auto py-1">
                   <FilterRow on={catSel.size === 0} onClick={() => { setCatSel(new Set()); close(); }}>전체</FilterRow>
@@ -1567,7 +1565,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </FilterDrop>
             )}
             {specOptions.length > 0 && (
-              <FilterDrop label="용량" active={specSel.size > 0}
+              <FilterDrop queryStyle label="용량" active={specSel.size > 0}
                 summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
                 {close => (
                   /* 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */
@@ -1586,7 +1584,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </FilterDrop>
             )}
 
-            <FilterDrop label="등급" width="w-[180px]" active={!!gradeSel} summary={gradeSel || '전체'}>
+            <FilterDrop queryStyle label="등급" width="w-[180px]" active={!!gradeSel} summary={gradeSel || '전체'}>
               {close => (
                 <div className="py-1">
                   {GRADES.map(g => (
@@ -1599,7 +1597,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
             {/* 매입거래처 — 완제품은 우리가 만드는 것이라 매입처가 없다. 수가 많아 검색으로 고른다. */}
             {topTab !== 'product' && inboundPartners.length > 0 && (
-              <FilterDrop label="거래처" active={supSel.size > 0}
+              <FilterDrop queryStyle label="거래처" active={supSel.size > 0}
                 summary={supSel.size === 0 ? '전체' : supSel.size === 1 ? (inboundPartnerMap.get([...supSel][0])?.name ?? '1곳') : `${supSel.size}곳`}>
                 {() => (
                   <>
@@ -1630,7 +1628,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </FilterDrop>
             )}
 
-            <FilterDrop label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
+            <FilterDrop queryStyle label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
               summary={stockOnly ? '재고 있음' : zeroStockOnly ? '최소수량 미만' : '전체'}>
               {close => (
                 <div className="py-1">
@@ -1647,37 +1645,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               )}
             </FilterDrop>
 
-            {activeFilterCount > 0 && (
-              <button onClick={clearFilters}
-                className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
-            )}
-
-            {/* 켜진 필터를 칩으로 — 패널을 안 열어도 무엇이 걸렸는지 보이고, 눌러서 바로 뗀다 */}
-            {[...catSel].map(c => (
-              <button key={`c-${c}`} onClick={() => toggleIn(setCatSel, c)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 text-[11px] font-black text-slate-600 hover:bg-slate-200 transition-colors">
-                {c}<X size={11} />
-              </button>
-            ))}
-            {[...specSel].map(sp => (
-              <button key={`v-${sp}`} onClick={() => toggleIn(setSpecSel, sp)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-50 text-[11px] font-black text-sky-600 hover:bg-sky-100 transition-colors tabular-nums">
-                {sp}<X size={11} />
-              </button>
-            ))}
-            {[...supSel].map(id => (
-              <button key={`s-${id}`} onClick={() => toggleIn(setSupSel, id)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 text-[11px] font-black text-orange-600 hover:bg-orange-100 transition-colors">
-                {inboundPartners.find(p => p.id === id)?.name ?? id}<X size={11} />
-              </button>
-            ))}
-            {(stockOnly || zeroStockOnly) && (
-              <button onClick={() => { setStockOnly(false); setZeroStockOnly(false); }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-colors ${zeroStockOnly ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
-                {zeroStockOnly ? `최소수량 미만 ${filteredProducts.length}개` : '재고 있음'}<X size={11} />
-              </button>
-            )}
-          </div>
+</QueryFilterPanel>
         )}
       </div>
 
@@ -1967,38 +1935,19 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
-          <section aria-labelledby="lot-query-title" className="rounded-lg border border-slate-200 bg-white">
-            <div className="flex min-h-11 items-center border-b border-slate-200 px-3"><h3 id="lot-query-title" className="text-xs font-black text-slate-900">검색조건</h3></div>
-            <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
+          <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); }}>
 
             <label className="flex min-w-[220px] max-w-sm flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500">품목명 또는 규격
               <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input type="text" placeholder="품목명·규격 검색" value={lotSearch} onChange={e => setLotSearch(e.target.value)}
-                className="h-10 w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-400" />
+                className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
               </span>
             </label>
-            <div role="group" aria-label="로트 종류" className="flex min-w-0 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">종류</span><div className="flex flex-wrap gap-1">
-              {([['all', '전체'], ['raw', '벌크'], ['packed', '완제품']] as const).map(([key, label]) => (
-                <button key={key} type="button" onClick={() => setLotKind(key)}
-                  className={`h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotKind === key ? '!border-indigo-300 text-indigo-700' : 'text-slate-400'}`}>
-                  {label}
-                </button>
-              ))}
-            </div></div>
-            <div role="group" aria-label="로트 상태" className="flex min-w-0 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">상태</span><div className="flex flex-wrap gap-1">
-              {([['all', '전체'], ['using', '사용중'], ['waiting', '대기중'], ['complete', '완료']] as const).map(([key, label]) => (
-                <button key={key} type="button" onClick={() => {
-                  setLotStatus(key);
-                  setActiveTab(key === 'complete' ? 'lot-history' : 'lots');
-                }} className={`h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotStatus === key ? '!border-indigo-300 text-indigo-700' : 'text-slate-400'}`}>
-                  {label}
-                </button>
-              ))}
-            </div></div>
+            <label className={QUERY_FILTER_LABEL_CLASS}>종류<SearchableSelect ariaLabel="로트 종류" className={QUERY_FILTER_CONTROL_CLASS} value={lotKind} onChange={value=>setLotKind(value as typeof lotKind)} options={[{value:'all',label:'전체'},{value:'raw',label:'벌크'},{value:'packed',label:'완제품'}]}/></label>
+            <label className={QUERY_FILTER_LABEL_CLASS}>상태<SearchableSelect ariaLabel="로트 상태" className={QUERY_FILTER_CONTROL_CLASS} value={lotStatus} onChange={value=>{setLotStatus(value as typeof lotStatus);setActiveTab(value==='complete'?'lot-history':'lots');}} options={[{value:'all',label:'전체'},{value:'using',label:'사용중'},{value:'waiting',label:'대기중'},{value:'complete',label:'완료'}]}/></label>
 
-            </div>
-          </section>
+            </QueryFilterPanel>
             <div role="group" aria-label="로트 보기" className="flex min-w-0 flex-wrap items-center justify-end gap-2"><span className="text-[10px] font-bold text-slate-500">보기</span><div className="flex flex-wrap gap-1">
               <button type="button" onClick={() => setLotView('list')} title="리스트 보기"
                 className={`flex items-center gap-1.5 h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotView === 'list' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-700'}`}>

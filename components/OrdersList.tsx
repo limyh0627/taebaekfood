@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { useOrderEditorDraft } from '../src/features/orders/hooks/useOrderEditorDraft';
 import {OrderCard} from '../src/features/orders/ui/OrderCard';
 export {OrderCard} from '../src/features/orders/ui/OrderCard';
@@ -1129,12 +1130,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
 
         </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
-          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="active-view-query-title">
-            <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
-              <h3 id="active-view-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-              <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
-            </div>
-            <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
+          <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }}>
               {activeView === 'history' ? <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
                 완료일
                 {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
@@ -1143,7 +1139,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <input aria-label="완료일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
                   <span className="shrink-0 text-xs text-slate-400">~</span>
                   <input aria-label="완료일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-10 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
-                  <span className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <span className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
                     {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
                          써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
                          날짜 칸을 86px 까지 좁히고 나니 제 이름이 다 들어간다. */}
@@ -1167,7 +1163,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
                      거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
                 <SearchableSelect
-                  ariaLabel="검색 필드" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="검색 필드" className={QUERY_FILTER_CONTROL_CLASS}
                   value={listFilterField}
                   onChange={value => { setListFilterField(value as typeof listFilterField); setListFilterValue(''); }}
                   options={검색필드목록}
@@ -1177,7 +1173,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 조건 값
                 <SearchableSelect
-                  ariaLabel="조건 값" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  ariaLabel="조건 값" className={`${QUERY_FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:opacity-40`}
                   value={listFilterValue} onChange={setListFilterValue} disabled={!listFilterField}
                   options={[{ value: '', label: '전체' }, ...activeViewFilterValues.map(value => ({ value, label: value }))]}
                 />
@@ -1187,7 +1183,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
                 <SearchableSelect
-                  ariaLabel="거래처" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="거래처" className={QUERY_FILTER_CONTROL_CLASS}
                   value={listPartnerFilter} onChange={setListPartnerFilter}
                   options={[{ value: '', label: '전체' }, ...[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
                     .sort((a, b) => a.localeCompare(b, 'ko'))
@@ -1201,7 +1197,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-4 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 정렬
                 <SearchableSelect
-                  ariaLabel="정렬" className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  ariaLabel="정렬" className={QUERY_FILTER_CONTROL_CLASS}
                   value={listSort} onChange={value => setListSort(value as typeof listSort)}
                   options={정렬목록}
                 />
@@ -1213,8 +1209,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <input type="search" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처, 품목, 제조, 라벨, 포장, 팔레트 검색" className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
                 </span>
               </label>
-            </div>
-          </section>
+            </QueryFilterPanel>
           {/*  이력 탭에는 상태 고르개를 안 둔다(2026-09-11 사장님) — 거긴 예전 주문 하나뿐이라 고를 게 없다. */}
           {activeView !== 'history' && <div className="flex items-center gap-1 overflow-x-auto" aria-label="주문 상태 선택">
             {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (

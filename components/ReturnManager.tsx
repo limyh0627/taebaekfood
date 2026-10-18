@@ -1,3 +1,4 @@
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS} from '../src/shared/components/QueryFilterPanel';
 import { AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { companyOf } from '../src/shared/types';
 import { salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
@@ -469,15 +470,14 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
       {/* ── 이력 탭 ── */}
       {tab === '이력' && (
         <div className="space-y-4">
-          <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
-            <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
+          <QueryFilterPanel ariaLabel="검색조건" onReset={() => { setFilterFrom(monthStart()); setFilterTo(today()); setFilterQuick('당월'); }}>
           <div className="flex min-w-0 flex-wrap items-center gap-3 [&_input]:!h-10 [&_input]:!min-h-0 [&_input]:!py-0 [&_button]:!h-9 [&_button]:!min-h-0 [&_button]:!py-0">
-            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">기간</label>
+            <label className={QUERY_FILTER_LABEL_CLASS}>기간</label>
             <DateRangeFilter from={filterFrom} to={filterTo} quick={filterQuick} label="반품 조회"
               onChange={(from, to, quick) => { setFilterFrom(from); setFilterTo(to); setFilterQuick(quick); }} />
             <span className="text-xs text-slate-400">{filteredHistory.length}건</span>
           </div>
-          </section>
+          </QueryFilterPanel>
 
           {filteredHistory.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">

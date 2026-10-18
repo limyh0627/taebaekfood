@@ -29,3 +29,5 @@ it('현재 품목 분류로 생산·반제품 선택을 제공하고 보관 품�
   expect(products.queryByRole('option', { name: '원료' })).toBeNull();
   expect(wip.queryByRole('option', { name: '현재 완제품' })).toBeNull();
 });
+
+it('생산 조회 초기화는 검색과 기간·품목 선택만 복원하고 직접 입력 writer를 호출하지 않는다',()=>{const add=vi.fn();render(<ProductionManager records={[]} orders={[]} items={[]} onAdd={add} onDelete={vi.fn()} onUpdate={vi.fn()}/>);const query=screen.getByRole('region',{name:'검색조건'}),search=screen.getByPlaceholderText('품목명/메모 검색');fireEvent.change(search,{target:{value:'조건'}});fireEvent.click(screen.getByRole('button',{name:'전체 보기'}));fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(within(query).getByRole('button',{name:'품목'})).toHaveTextContent('전체 품목');expect(add).not.toHaveBeenCalled();});

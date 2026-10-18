@@ -1,3 +1,5 @@
+import SearchableSelect from '../src/shared/components/SearchableSelect';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import DeliveryCalendarCard from '../src/features/orders/ui/DeliveryCalendarCard';
 import {queryDateKey} from '../src/features/orders/domain/deliveryQueryDate';
 import {queryFields,queryValuesFor as queryValuesForInputs,filterDeliverySearchOrders} from '../src/features/orders/domain/deliveryQuery';
@@ -851,21 +853,16 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         recovery={orderRecoveryOrphans ? <section aria-label="주문 없는 처리 확인 기록" className="rounded-lg border border-slate-200 bg-white p-3">{orderRecoveryOrphans}</section> : undefined}
       />}
 
-      {!calendarOnly && <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
-        <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
-          <h3 id="delivery-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-          <button type="button" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
-        </div>
-        <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
-          <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-500">
+      {!calendarOnly && <QueryFilterPanel id="delivery-query-title" onReset={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }}>
+          <label className={QUERY_FILTER_LABEL_CLASS}>
             주문일
             <span className="flex flex-wrap items-center gap-2">
               <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className="text-xs font-bold">기간 전체</button>
               <DateRangeInputs from={queryDateFrom} to={queryDateTo} onFromChange={setQueryDateFrom} onToChange={setQueryDateTo}
                 className="contents" separatorClassName="text-xs text-slate-400"
-                fromInputProps={{ max: queryDateTo || undefined, className: 'h-10 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
-                toInputProps={{ min: queryDateFrom || undefined, className: 'h-10 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
-              <span className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                fromInputProps={{ max: queryDateTo || undefined, className: 'h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 시작' }}
+                toInputProps={{ min: queryDateFrom || undefined, className: 'h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300', 'aria-label': '주문일 종료' }} />
+              <span className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
                 {[[todayKey, '오늘'], [quickWeekStart, '이번 주'], [`${todayKey.slice(0, 7)}-01`, '이번 달']].map(([from, label], index) => {
                   const selected = queryDateFrom === from && queryDateTo === todayKey;
                   return <button key={label} type="button" aria-pressed={selected} onClick={() => { setQueryDateFrom(from); setQueryDateTo(todayKey); }} className={`h-full px-3 text-[11px] ${index < 2 ? 'border-r border-slate-200' : ''} ${selected ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-white'}`}>{label}</button>;
@@ -876,28 +873,20 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           <span className="h-0 basis-full" aria-hidden="true" />
           <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
             검색 필드
-            <select value={queryField} onChange={event => { setQueryField(event.target.value); setQueryValue(''); }} className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-              <option value="">필드 선택</option>
-              {queryFields.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            <SearchableSelect ariaLabel="검색 필드" value={queryField} onChange={value=>{setQueryField(value);setQueryValue('');}} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'필드 선택'},...queryFields.map(([value,label])=>({value,label}))]}/>
           </label>
           <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
             조건 값
-            <select value={queryValue} disabled={!queryField} onChange={event => setQueryValue(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-              <option value="">전체</option>
-              {queryValue && !queryOptions.includes(queryValue) && <option value={queryValue}>{queryValue} (결과 없음)</option>}
-              {queryOptions.map(value => <option key={value} value={value}>{value}</option>)}
-            </select>
+            <SearchableSelect ariaLabel="조건 값" value={queryValue} disabled={!queryField} onChange={setQueryValue} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'전체'},...(queryValue&&!queryOptions.includes(queryValue)?[{value:queryValue,label:queryValue+' (결과 없음)'}]:[]),...queryOptions.map(value=>({value,label:value}))]}/>
           </label>
           <label className="flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
             전체 검색
             <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
-              <input type="search" value={queryText} onChange={event => setQueryText(event.target.value)} placeholder="거래처, 주소, 품목, 비고 검색" className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
+              <input type="search" value={queryText} onChange={event => setQueryText(event.target.value)} placeholder="거래처, 주소, 품목, 비고 검색" className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
             </span>
           </label>
-        </div>
-      </section>}
+        </QueryFilterPanel>}
 
       {!calendarOnly && deliveryTab === '리스트' && (
         <div className="min-w-0">

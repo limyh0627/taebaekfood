@@ -1,3 +1,5 @@
+import SearchableSelect from '../src/shared/components/SearchableSelect';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
 import {projectProductionRecords,hasProductionRecordIndex} from '../src/shared/productionRecordProjection';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
@@ -380,9 +382,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       )}
 
       {/* 필터 */}
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="production-query-title">
-        <h3 id="production-query-title" className="border-b border-slate-200 px-4 py-3 text-xs font-bold text-slate-900">검색조건</h3>
-      <div className="p-3 md:p-4 flex flex-wrap gap-3 items-end">
+      <QueryFilterPanel id="production-query-title" onReset={() => { setShowAll(false); setFilterMonth(thisMonth); setFilterProductId(''); setSearchText(''); }}>
         <div className="space-y-1"><span className="block text-[10px] font-bold text-slate-500">생산월</span>
         <div className="flex items-center gap-1">
           <button
@@ -403,19 +403,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         </div>
 
         </div>
-        <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-500">품목
-        <select
-          value={filterProductId}
-          onChange={e => setFilterProductId(e.target.value)}
-          className="h-10 border border-slate-200 rounded-lg px-3 text-sm focus:outline-none focus:border-emerald-400 bg-white"
-        >
-          <option value="">전체 품목</option>
-          {finishedProducts.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <label className={QUERY_FILTER_LABEL_CLASS}>품목
+        <SearchableSelect ariaLabel="품목" value={filterProductId} onChange={setFilterProductId} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'전체 품목'},...finishedProducts.map(p=>({value:p.id,label:p.name}))]}/>
         </label>
-        <label className="flex-1 min-w-[160px] space-y-1 text-[10px] font-bold text-slate-500">전체 검색
+        <label className={`${QUERY_FILTER_LABEL_CLASS} flex-1 min-w-[160px]`}>전체 검색
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -423,7 +414,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             placeholder="품목명/메모 검색"
-            className="h-10 w-full bg-white pl-8 pr-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-emerald-400"
+            className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-8 pr-8`}
           />
           {searchText && (
             <button onClick={() => setSearchText('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
@@ -432,8 +423,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           )}
         </div>
         </label>
-      </div>
-      </section>
+      </QueryFilterPanel>
 
       {/* #5 로트 역추적 (리콜) — 소비 로트 → 투입된 주문(거래처·납품일) */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">

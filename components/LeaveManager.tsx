@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { today } from '../src/shared/day';
@@ -272,7 +273,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
     const month = currentMonth.getMonth();
     const days = daysInMonth(year, month);
     const startDay = firstDayOfMonth(year, month);
-    
+
     const result = [];
     // Previous month padding
     for (let i = 0; i < startDay; i++) {
@@ -401,7 +402,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               </button>
             </div>
           </div>
-          
+
           <div className="p-8 overflow-x-auto">
             <div className="min-w-[800px]">
               <div className="grid grid-cols-7 gap-2 mb-4">
@@ -412,10 +413,10 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               <div className="grid grid-cols-7 gap-2">
                 {calendarDays.map((date, idx) => {
                   if (!date) return <div key={`empty-${idx}`} className="aspect-square bg-slate-50/30 rounded-2xl" />;
-                  
+
                   const leaves = getLeavesForDate(date);
                   const isToday = date.toDateString() === new Date().toDateString();
-                  
+
                   return (
                     <div key={date.toISOString()} className={`min-h-[120px] p-3 rounded-2xl border transition-all flex flex-col ${isToday ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-50 hover:border-indigo-100'}`}>
                       <span className={`text-[10px] font-black mb-2 ${isToday ? 'text-indigo-600' : 'text-slate-400'}`}>{date.getDate()}</span>
@@ -573,16 +574,17 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <div className="w-full lg:flex-[6] bg-white rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="text-sm md:text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600 w-4 md:w-[18px] h-4 md:h-[18px]" />내 신청 내역</h3>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">‹</button>
-                      <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="h-10 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
-                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">›</button>
-                    </div>
-                    <div className="relative w-full sm:w-40">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
-                      <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
-                    </div>
+
+
                   </div>
+                  <QueryFilterPanel id="leave-list-query-title" ariaLabel="내 휴가 검색조건" onReset={()=>{setFilterMonth(new Date().toISOString().slice(0,7));setSearchTerm('');}}><label className={QUERY_FILTER_LABEL_CLASS}>조회월<div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">‹</button>
+                      <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} aria-label="내 휴가 조회월" className={QUERY_FILTER_CONTROL_CLASS} />
+                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">›</button>
+                    </div></label><label className={QUERY_FILTER_LABEL_CLASS}>전체 검색<div className="relative w-full sm:w-40">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
+                      <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-8 pr-3`} />
+                    </div></label></QueryFilterPanel>
                   <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
                     <table className="w-full text-left min-w-[500px]">
                       <thead className="bg-slate-50 sticky top-0">
@@ -826,11 +828,12 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                   <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">재직 {activeEmployees.length}명 · 탭하면 전화</p>
                 </div>
               </div>
-              <div className="relative w-40 md:w-52">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                <input value={dirSearch} onChange={e => setDirSearch(e.target.value)} placeholder="이름·부서·직급 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300" />
-              </div>
+
             </div>
+            <QueryFilterPanel id="leave-directory-query-title" ariaLabel="연락처 검색조건" onReset={()=>setDirSearch('')}><label className={QUERY_FILTER_LABEL_CLASS}>이름·부서·직급<div className="relative w-40 md:w-52">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <input value={dirSearch} onChange={e => setDirSearch(e.target.value)} placeholder="이름·부서·직급 검색" className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
+              </div></label></QueryFilterPanel>
             <div className="p-4 md:p-6">
               {(() => {
                 const q = dirSearch.trim().toLowerCase();

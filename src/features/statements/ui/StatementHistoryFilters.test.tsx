@@ -23,6 +23,8 @@ describe('전표 조회 필터', () => {
     expect(onMove).toHaveBeenCalledWith(1);
     expect(onKind).toHaveBeenCalledWith('매출');
     expect(onReset).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('region',{name:'검색조건'})).toHaveClass('!overflow-visible');
+    expect(screen.getByRole('button',{name:'초기화'})).toHaveClass('min-h-8','rounded-md');
   });
 });
 

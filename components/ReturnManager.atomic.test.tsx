@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, within, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ command: vi.fn() }));
 vi.mock('../src/shared/services/returnRequestSubmission', () => ({ returnSubmissionActorUid: () => 'u', getPendingReturnSubmission: () => null, resumeReturnSubmission: vi.fn(), submitReturnRequest: (_company: string, data: unknown) => m.command({collection:'returnRequests',data}) }));
@@ -30,5 +30,5 @@ it('완제품 폐기 반품은 원전표 금액과 선택 사유를 보존한다
 
 it('반품 관리 탭을 헤더에 두고 이력 조회만 검색조건으로 표시한다',()=>{
  render(<ReturnManager companyId="taebaek" items={[]} partners={[]} orders={[]} issuedStatements={[]} currentUser={{id:'u',name:'관리자'}} isAdmin onProcessReturn={vi.fn()}/>);
- const title=screen.getByRole('heading',{name:'반품 관리'}),history=screen.getByRole('button',{name:'이력'});expect(history.closest('[data-page-header-slot="tabs"]')).not.toBeNull();expect(title.compareDocumentPosition(history)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();fireEvent.click(history);expect(screen.getByRole('region',{name:'검색조건'})).toBeInTheDocument();const from=screen.getByLabelText('반품 조회 시작일');fireEvent.change(from,{target:{value:'2026-10-01'}});expect(from).toHaveValue('2026-10-01');fireEvent.click(screen.getByRole('button',{name:'접수'}));expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();
+ const title=screen.getByRole('heading',{name:'반품 관리'}),history=screen.getByRole('button',{name:'이력'});expect(history.closest('[data-page-header-slot="tabs"]')).not.toBeNull();expect(title.compareDocumentPosition(history)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();fireEvent.click(history);expect(screen.getByRole('region',{name:'검색조건'})).toBeInTheDocument();const from=screen.getByLabelText('반품 조회 시작일');fireEvent.change(from,{target:{value:'2026-10-01'}});expect(from).toHaveValue('2026-10-01');fireEvent.change(from,{target:{value:'2025-01-01'}});fireEvent.click(within(screen.getByRole('region',{name:'검색조건'})).getByRole('button',{name:'초기화'}));expect(from).not.toHaveValue('2025-01-01');fireEvent.click(screen.getByRole('button',{name:'접수'}));expect(screen.queryByRole('region',{name:'검색조건'})).toBeNull();
 });

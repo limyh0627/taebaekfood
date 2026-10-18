@@ -8,6 +8,7 @@ vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.f
 const fixture=vi.hoisted(()=>({history:false}));
 vi.mock('react',async importOriginal=>{const actual=await importOriginal<typeof import('react')>();return {...actual,useState:(initial:unknown)=>{const [value,setValue]=actual.useState(fixture.history&&initial==='master'?'history':initial);return [value,(next:unknown)=>setValue(fixture.history&&initial==='master'&&next==='master'?'history':next)];}};});
 afterEach(()=>{cleanup();fixture.history=false;});
+HTMLElement.prototype.scrollIntoView=vi.fn();
 function view(extra: Partial<React.ComponentProps<typeof ItemList>> = {}) {
  return render(<ItemList companyId="taebaek" items={[]} partners={[]} orderRequests={[]} confirmedOrders={[]} receivedOrders={[]} returnRequests={[]} inboundPartners={[]} rawMaterialLedger={[]}
  onUpdateItem={vi.fn()} onAddItem={vi.fn()} onAddOrderRequest={vi.fn()} onRemoveOrderRequest={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} {...extra} />);
@@ -58,11 +59,11 @@ it('발주 확정 후 history 상태에서도 기존 재고현황 행동을 유�
 it('생산 로트의 행동과 검색·결과보기를 분리하고 상태 전환을 보존한다',()=>{
  const {container}=view({mode:'lots'});const actions=slot(container,'actions'),query=screen.getByRole('region',{name:'검색조건'}),viewOptions=screen.getByRole('group',{name:'로트 보기'});
  expect(within(actions).getByRole('button',{name:'사용 기록'})).toHaveClass('h-9');expect(within(actions).getByRole('button',{name:'입출고 기록'})).toBeInTheDocument();expect(within(actions).queryByRole('button',{name:'외주 발주'})).toBeNull();
- const search=within(query).getByLabelText('품목명 또는 규격');expect(search).toHaveClass('h-10','bg-white');fireEvent.change(search,{target:{value:'조회할 품목'}});expect(search).toHaveValue('조회할 품목');
+ const search=within(query).getByLabelText('품목명 또는 규격');expect(search).toHaveClass('h-10','bg-slate-50');fireEvent.change(search,{target:{value:'조회할 품목'}});expect(search).toHaveValue('조회할 품목');
  expect(query).not.toContainElement(viewOptions);expect(query.compareDocumentPosition(viewOptions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- fireEvent.click(within(query).getByRole('group',{name:'로트 상태'}).querySelector('button:last-child')!);expect(within(slot(container,'tabs')).getByRole('button',{name:'로트 이력'})).toHaveClass('text-indigo-600');expect(search).toHaveValue('조회할 품목');
+ fireEvent.click(within(query).getByRole('button',{name:'로트 상태'}));fireEvent.click(screen.getByRole('option',{name:'완료'}));expect(within(slot(container,'tabs')).getByRole('button',{name:'로트 이력'})).toHaveClass('text-indigo-600');expect(search).toHaveValue('조회할 품목');
  fireEvent.click(within(viewOptions).getByRole('button',{name:'보드'}));expect(within(viewOptions).getByRole('button',{name:'보드'})).toHaveClass('text-indigo-700');
- fireEvent.click(within(viewOptions).getByRole('button',{name:'리스트'}));expect(screen.getByRole('table')).toBeInTheDocument();
+ fireEvent.click(within(viewOptions).getByRole('button',{name:'리스트'}));expect(screen.getByRole('table')).toBeInTheDocument();fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(within(query).getByRole('button',{name:'로트 종류'})).toHaveTextContent('전체');expect(within(query).getByRole('button',{name:'로트 상태'})).toHaveTextContent('전체');expect(within(viewOptions).getByRole('button',{name:'리스트'})).toHaveClass('text-indigo-700');
 });
 it('생산 사용 기록과 입출고 기록은 기존 모달을 열며 외주 콜백 없이 쓰지 않는다',()=>{
  const {container}=view({mode:'lots'});fireEvent.click(within(slot(container,'actions')).getByRole('button',{name:'사용 기록'}));
@@ -84,3 +85,5 @@ it('OEM 복구는 일반 실패와 같은 줄에 있고 로트 전환과 부모 
  fireEvent.click(within(slot(rendered.container,'tabs')).getByRole('button',{name:'로트'}));expect(screen.getByRole('dialog',{name:'OEM 실패 작업 목록'})).toBe(original);
  expect(issue).not.toHaveBeenCalled();expect(receive).not.toHaveBeenCalled();expect(fee).not.toHaveBeenCalled();
 });
+
+it('재고 검색과 복수선택 필터는 하나의 주문형 패널이며 초기화로 함께 복원한다',()=>{view();const query=screen.getByRole('region',{name:'검색조건'});expect(screen.getAllByRole('region',{name:'검색조건'})).toHaveLength(1);const search=screen.getByPlaceholderText('품목명 · 거래처 검색...');expect(query).toContainElement(search);const stock=within(query).getByRole('button',{name:'재고'});fireEvent.click(stock);fireEvent.click(screen.getByRole('button',{name:'재고 있음'}));expect(stock).toHaveTextContent('재고 있음');fireEvent.change(search,{target:{value:'보존조건'}});fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(stock).toHaveTextContent('전체');});

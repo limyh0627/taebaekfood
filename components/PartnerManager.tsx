@@ -1,3 +1,5 @@
+import SearchableSelect from '../src/shared/components/SearchableSelect';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { PartnerEditModal } from '../src/features/partners/ui/PartnerEditModal';
 import ActionButton from '../src/shared/components/ActionButton';
 
@@ -148,44 +150,27 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         }
       />
 
-      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white">
-        <div className="flex min-h-11 items-center justify-between border-b border-slate-200 px-4 py-2"><h3 className="text-xs font-bold text-slate-900">검색조건</h3><button type="button" onClick={() => { setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }} className="text-xs font-bold text-slate-500">초기화</button></div>
-      <div className="flex flex-col gap-3 p-4">
+      <QueryFilterPanel onReset={() => { setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }}>
+
 
 
         {(activeTab === '매출처' || activeTab === '전체') && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {partnerChannelTypes.filter(t => t.id !== '전체').map(t => {
-              const Icon = t.icon;
-              const isActive = activeTypeTab === t.id;
-              const count = activePartners
-                .filter(c => activeTab === '전체' || getEffectivePartnerType(c) === activeTab)
-                .filter(c => c.type === t.id).length;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => { setActiveTypeTab(isActive ? '전체' : t.id); setPage(1); }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all border ${
-                    isActive ? 'bg-white border-indigo-300 text-indigo-600' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
-                  }`}
-                >
-                  <Icon size={12} />
-                  <span>{t.label}</span>
-                  <span className="text-[9px] opacity-60">{count}</span>
-                </button>
-              );
-            })}
-          </div>
+          <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>거래처 유형
+            <SearchableSelect ariaLabel="거래처 유형" className={QUERY_FILTER_CONTROL_CLASS} value={activeTypeTab}
+              onChange={value => { setActiveTypeTab(value as PartnerChannel | '전체'); setPage(1); }}
+              options={partnerChannelTypes.map(t => ({value:t.id,label:t.id === '전체' ? '전체' : t.label + ' ' + activePartners.filter(c => activeTab === '전체' || getEffectivePartnerType(c) === activeTab).filter(c => c.type === t.id).length}))}/>
+          </label>
         )}
 
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
+<div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
           <input
             type="text"
             placeholder={`${activeTab === '전체' ? '전체' : activeTab} 거래처 검색...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-12 pr-9 text-sm outline-none focus:border-indigo-400"
+            className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
           />
           {searchTerm && (
             <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -193,8 +178,9 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
             </button>
           )}
         </div>
-      </div>
-      </section>
+</label>
+
+</QueryFilterPanel>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

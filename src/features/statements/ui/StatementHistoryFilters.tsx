@@ -1,5 +1,6 @@
 import React from 'react';
-import { ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS} from '../../../shared/components/QueryFilterPanel';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 
 export type StatementHistoryKind = '전체' | '매출' | '매입' | '대체' | '입금' | '출금';
 export type StatementQuickRange = '당일' | '금주' | '당월' | '당년' | 'ALL' | '';
@@ -23,15 +24,8 @@ export default function StatementHistoryFilters(props: {
   children: React.ReactNode;
 }) {
   return <>
-    <section className="relative overflow-visible rounded-lg border border-slate-200 bg-white" aria-labelledby="statement-query-title">
-      <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4">
-        <h3 id="statement-query-title" className="text-xs font-black text-slate-800">검색조건</h3>
-        <button type="button" onClick={props.onReset} className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800">
-          <RotateCcw size={12}/>초기화
-        </button>
-      </div>
-      <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
-        <div className="flex flex-col gap-1">
+    <QueryFilterPanel id="statement-query-title" onReset={props.onReset} sectionClassName="relative !overflow-visible">
+        <div className={QUERY_FILTER_LABEL_CLASS}>
           <span className="text-[10px] font-bold text-slate-500">전표일자</span>
           <div className="flex flex-wrap items-center gap-2">
             {/*  **단추 묶음은 제 상자 안에 있어야 한다**(2026-09-15 사장님: "ALL이랑 달력사이 경계가
@@ -70,8 +64,7 @@ export default function StatementHistoryFilters(props: {
         </div>
         <span className="h-0 basis-full" aria-hidden="true"/>
         {props.children}
-      </div>
-    </section>
+    </QueryFilterPanel>
     <div role="tablist" className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="전표 거래유형 선택">
       {KINDS.map(kind => <button key={kind} type="button" role="tab" aria-selected={props.kind === kind} onClick={() => props.onKind(kind)}
         className={`flex min-h-10 shrink-0 items-center gap-1 border-b-2 px-3 text-xs font-black transition-colors ${

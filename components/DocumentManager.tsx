@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -340,12 +341,18 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
           )}
         </div>
 
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm ml-auto">
-          <Search className="w-3.5 h-3.5 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="파일명·메모 검색" className="w-32 sm:w-44 text-xs font-medium focus:outline-none" />
-          {search && <button onClick={() => setSearch('')}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
-        </div>
+
       </div>
+
+      <QueryFilterPanel onReset={() => setSearch('')}>
+        <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="파일명·메모 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-9'} />
+          {search && <button type="button" aria-label="파일 검색 지우기" className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearch('')}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
+        </div>
+        </label>
+      </QueryFilterPanel>
 
       {/* 중분류 칩 */}
       {activeCat && (

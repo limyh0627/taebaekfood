@@ -22,7 +22,8 @@ const 이번달 = new Date().toISOString().slice(0, 7);
 it('발행 조회 탭 다음 검색조건을 표시하고 조회 전환으로 발행 writer를 호출하지 않는다',()=>{
  const issue=vi.fn();render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} onApplyTaxIssue={issue}/>);
  const title=screen.getByRole('heading',{name:'세금계산서'}),tab=screen.getByRole('button',{name:'발행'}),query=screen.getByRole('heading',{name:'검색조건'}),search=screen.getByRole('textbox',{name:'발행 거래처 검색'});
- expect(title.compareDocumentPosition(tab)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tab.compareDocumentPosition(query)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(search).toHaveClass('h-10');expect(screen.getByLabelText('발행 월')).toHaveClass('h-10');
+ expect(title.compareDocumentPosition(tab)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tab.compareDocumentPosition(query)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(search).toHaveClass('h-10','bg-slate-50');expect(screen.getByLabelText('발행 월')).toHaveClass('h-10','bg-slate-50');
+ const panel=search.closest('section')!;fireEvent.change(search,{target:{value:'다른조건'}});fireEvent.click(within(panel).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(within(panel).queryByText('해당 월 거래처 없음')).toBeNull();
  fireEvent.change(search,{target:{value:'확인'}});fireEvent.click(screen.getByRole('button',{name:'조회'}));expect(screen.getByRole('textbox',{name:'조회 거래처 검색'})).toHaveClass('h-10');fireEvent.click(screen.getByRole('button',{name:'발행'}));expect(screen.getByRole('textbox',{name:'발행 거래처 검색'})).toHaveValue('확인');expect(issue).not.toHaveBeenCalled();
 });
 
@@ -230,13 +231,22 @@ describe('세금계산서 원본과 편집 세션', () => {
   const updated = () => { const s = original(); return {...s, totalSupply:12_000,totalTax:1_200,totalAmount:13_200,items:s.items.map(i=>({...i,supply:12_000,tax:1_200,total:13_200}))}; };
   const props = (statements:IssuedStatement[],onApplyTaxIssue=vi.fn().mockResolvedValue([])) => ({issuedStatements:statements,partners:[거래처A],companyInfo:회사,onApplyTaxIssue});
   const select = () => { fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/})); };
+  it.each(['월 선택','조회 초기화'])('%s로 발행 월을 바꾸면 이전 거래처·전표 선택을 함께 해제한다',mode=>{
+    const current=original(),past={...original(),id:'past-source',docNo:'PAST-01',tradeDate:'2025-01-10'};
+    render(<TaxStatement {...props([current,past])}/>);
+    const month=screen.getByLabelText('발행 월');fireEvent.change(month,{target:{value:'2025-01'}});
+    fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/PAST-01/}));expect(screen.getByDisplayValue('10000')).toBeInTheDocument();
+    if(mode==='월 선택')fireEvent.change(month,{target:{value:이번달}});else fireEvent.click(within(screen.getByRole('region',{name:'검색조건'})).getByRole('button',{name:'초기화'}));
+    expect(month).toHaveValue(이번달);expect(screen.getByText('거래처를 선택하세요')).toBeInTheDocument();expect(screen.queryByRole('heading',{name:'세 금 계 산 서'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/동명유통/}));expect(screen.queryByRole('heading',{name:'세 금 계 산 서'})).toBeNull();
+  });
   it('편집 전 동일 ID 원본 갱신은 최신 금액을 보여 준다',()=>{
     const view=render(<TaxStatement {...props([original()])}/>);select();expect(screen.getByDisplayValue('10000')).toBeInTheDocument();view.rerender(<TaxStatement {...props([updated()])}/>);expect(screen.getByDisplayValue('12000')).toBeInTheDocument();
   });
   it('편집 중 동일 ID 원본 변경은 초안을 보존하고 초기화 전 발행·PDF·인쇄를 막는다',()=>{
     const issue=vi.fn().mockResolvedValue([]);const view=render(<TaxStatement {...props([original()],issue)}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([updated()],issue)}/>);
     expect(screen.getByDisplayValue('9000')).toBeInTheDocument();expect(screen.getByText(/원본 전표가 변경/)).toBeInTheDocument();for(const name of ['발행','PDF','인쇄'])expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name})).toBeDisabled();fireEvent.click(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'}));expect(issue).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(screen.getByDisplayValue('12000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();for(const name of ['발행','PDF','인쇄'])expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name})).toBeEnabled();
+    fireEvent.click(screen.getAllByRole('button',{name:'초기화'}).find(button=>!button.closest('[aria-labelledby="tax-issue-query-title"]'))!);expect(screen.getByDisplayValue('12000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();for(const name of ['발행','PDF','인쇄'])expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name})).toBeEnabled();
   });
   it('마지막 편집 행 삭제는 빈 초안으로 유지한다',()=>{
     render(<TaxStatement {...props([original()])}/>);select();const input=screen.getByDisplayValue('참기름');const row=input.closest('tr')!;fireEvent.click(within(row).getByRole('button'));expect(screen.queryByDisplayValue('참기름')).not.toBeInTheDocument();

@@ -1,9 +1,12 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherTemplateManager from './VoucherTemplateManager';
 import type { FixedCostTemplate, AccountCode } from '../src/shared/types';
+const scrollDescriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'scrollIntoView');
+beforeEach(()=>Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()}));
+afterEach(()=>{if(scrollDescriptor)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',scrollDescriptor);else delete (HTMLElement.prototype as any).scrollIntoView;});
 const dialogs = vi.hoisted(() => ({ notice: vi.fn(), confirm: vi.fn() }));
 vi.mock('../src/shared/components/appDialog', () => ({ appNotice: dialogs.notice, appConfirm: dialogs.confirm, appPrompt: vi.fn() }));
 vi.mock('../src/shared/useLoanContracts', () => ({ useLoanContracts: () => [] }));
@@ -76,3 +79,12 @@ describe('템플릿 상세보기', () => {
 });
 
 it('목록과 상세에서 차대 계정을 같은 방식으로 표시하고 거래처는 별도로 둔다',async()=>{render(<VoucherTemplateManager templates={[{...template,amount:0,partnerName:'합성 거래처'}]} accountCodes={accounts}/>);const row=screen.getByRole('button',{name:'보험료 상세보기'});expect(row).toHaveTextContent('차변951 이자비용');expect(row).toHaveTextContent('대변103 보통예금');expect(row).toHaveTextContent('거래처 합성 거래처');expect(row).toHaveTextContent('0원');await userEvent.click(row);expect(screen.getAllByText('951 이자비용')).toHaveLength(2);expect(screen.getAllByText('103 보통예금')).toHaveLength(2);});
+
+it('목록 조회 초기화는 부모 필터 세 값을 동기화하고 템플릿은 저장하지 않는다',()=>{
+ const onSearchChange=vi.fn(),onGroupChange=vi.fn(),onFilterChange=vi.fn(),onUpdate=vi.fn();
+ render(<VoucherTemplateManager templates={[{...template,group:'합성그룹'}]} accountCodes={accounts} onUpdate={onUpdate} onSearchChange={onSearchChange} onGroupChange={onGroupChange} onFilterChange={onFilterChange}/>);
+ const panel=screen.getByRole('region',{name:'템플릿 검색조건'});fireEvent.change(within(panel).getByPlaceholderText('이름·거래처 검색'),{target:{value:'보험'}});
+ fireEvent.click(within(panel).getByRole('button',{name:'템플릿 그룹'}));fireEvent.click(screen.getByRole('option',{name:'합성그룹'}));fireEvent.click(within(panel).getByRole('button',{name:'템플릿 표시'}));fireEvent.click(screen.getByRole('option',{name:'자동'}));
+ expect(onSearchChange).toHaveBeenLastCalledWith('보험');expect(onGroupChange).toHaveBeenLastCalledWith('합성그룹');expect(onFilterChange).toHaveBeenLastCalledWith('auto');
+ fireEvent.click(within(panel).getByRole('button',{name:'초기화'}));expect(onSearchChange).toHaveBeenLastCalledWith('');expect(onGroupChange).toHaveBeenLastCalledWith('');expect(onFilterChange).toHaveBeenLastCalledWith('all');expect(onUpdate).not.toHaveBeenCalled();
+});

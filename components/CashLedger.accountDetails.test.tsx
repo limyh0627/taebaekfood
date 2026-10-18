@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import {today,monthStart} from '../src/shared/day';
 import CashLedger, { AccountModal } from './CashLedger';
 import type { CashAccount, CashEntry } from '../src/shared/types';
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: async () => true, appNotice: async () => {} }));
@@ -101,3 +102,5 @@ describe('자금 합계와 계좌 카드의 오늘 기준',()=>{
  });
  it('날짜가 지나도 열어 둔 계좌 수정 초안은 변경하지 않는다',()=>{vi.setSystemTime(new Date('2026-10-15T12:00:00+09:00'));const onCorrect=vi.fn(),view=render(<AccountModal {...base} onCorrect={onCorrect}/>);fireEvent.click(screen.getByRole('button',{name:/메인통장/}));fireEvent.change(screen.getByLabelText('계좌 이름'),{target:{value:'작성 중 이름'}});fireEvent.change(screen.getByLabelText('현재 잔액'),{target:{value:'2345'}});vi.setSystemTime(new Date('2026-10-16T00:05:00+09:00'));view.rerender(<AccountModal {...base} onCorrect={onCorrect}/>);expect(screen.getByLabelText('계좌 이름')).toHaveValue('작성 중 이름');expect(screen.getByLabelText('현재 잔액')).toHaveValue('2,345');expect(onCorrect).not.toHaveBeenCalled();});
 });
+
+it('자금 조회 초기화는 당월만 복원하며 일반전표 행동은 패널 밖에서 유지한다',()=>{const write=vi.fn();render(<CashLedger companyId="taebaek" cashAccounts={[account]} cashEntries={[]} accountCodes={[]} partners={[]} issuedStatements={[]} settlements={[]} onAddCashAccount={write} onUpdateCashAccount={write} onAddCashEntry={write} onDeleteCashEntry={write} onAddSettlement={write} onDeleteSettlement={write}/>);const query=screen.getByRole('region',{name:'검색조건'}),from=screen.getByLabelText('자금 조회 시작일'),to=screen.getByLabelText('자금 조회 종료일');expect(query).not.toContainElement(screen.getByRole('button',{name:'일반전표'}));fireEvent.change(from,{target:{value:'2025-01-01'}});fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(from).toHaveValue(monthStart());expect(to).toHaveValue(today());expect(write).not.toHaveBeenCalled();});

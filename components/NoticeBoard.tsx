@@ -1,3 +1,4 @@
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { auth } from '../src/shared/firebase';
@@ -172,7 +173,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
     finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
   };
 
-  const filteredPosts = posts.filter(post => 
+  const filteredPosts = posts.filter(post =>
     post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     post.content.toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.date.localeCompare(a.date));
@@ -191,24 +192,25 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
             </button>
         </div> : undefined}
       />
-      <section aria-label="검색조건" className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-3 text-xs font-semibold text-slate-900">검색조건</h3>
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+      <QueryFilterPanel onReset={() => setSearchTerm('')}>
+<label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
+<div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
             <input
               type="text"
               placeholder="공지 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              aria-label="공지 검색" className="h-10 w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+              aria-label="공지 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
             />
           </div>
-      </section>
+</label>
+</QueryFilterPanel>
 
 
       <div className="grid grid-cols-1 gap-4">
         {filteredPosts.map((post) => (
-          <div 
+          <div
             key={post.id}
             onClick={() => setSelectedPost(post)}
             className={`group bg-white p-6 rounded-3xl border transition-all cursor-pointer hover:shadow-xl hover:border-indigo-100 flex items-center justify-between ${post.tag === '긴급' ? 'border-rose-100 ring-1 ring-rose-50' : 'border-slate-100'}`}
@@ -337,7 +339,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                   setBusy(true); try { await onDeletePost(selectedPost.id); setSelectedPost(null); await deleteNoticeImages(selectedPost.blocks,companyId,selectedPost.id); }
                   catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
                 }}>공지 삭제</button>}
-                <button 
+                <button
                   onClick={() => setSelectedPost(null)}
                   className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all"
                 >

@@ -1,3 +1,4 @@
+import {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../../../shared/components/QueryFilterPanel';
 import { ChevronDown, Search } from 'lucide-react';
 
 export type StatementAccountChoice = {
@@ -41,10 +42,10 @@ export default function StatementHistorySearchFields(props: {
     props.onAccount(''); props.onAccountAxis(''); props.onAccountBranch(''); props.onAccountGroup(''); closeAccount();
   };
   return <>
-    <div className="relative flex flex-col gap-1">
+    <div className={`relative ${QUERY_FILTER_LABEL_CLASS}`}>
       <span className="text-[10px] font-bold text-slate-500">거래처</span>
       <button type="button" onClick={() => { props.onPartnerOpen(!props.partnerOpen); props.onPartnerQuery(''); }}
-        className={`flex h-10 min-w-[145px] max-w-[210px] items-center justify-between gap-1.5 rounded-md border bg-white px-2.5 text-xs font-bold outline-none transition-all ${props.partner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+        className={`${QUERY_FILTER_CONTROL_CLASS} flex min-w-[145px] max-w-[210px] items-center justify-between gap-1.5 transition-all ${props.partner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
         <span className="truncate">{props.partner || '거래처 선택'}</span><ChevronDown size={12} className="shrink-0 opacity-50"/>
       </button>
       {props.partnerOpen && <>
@@ -60,10 +61,10 @@ export default function StatementHistorySearchFields(props: {
       </>}
     </div>
 
-    <div className="relative flex flex-col gap-1">
+    <div className={`relative ${QUERY_FILTER_LABEL_CLASS}`}>
       <span className="text-[10px] font-bold text-slate-500">계정과목</span>
       <button type="button" onClick={() => { props.onAccountOpen(!props.accountOpen); props.onAccountQuery(''); }}
-        className={`flex h-10 min-w-[190px] max-w-[280px] items-center justify-between gap-1.5 rounded-md border bg-white px-2.5 text-xs font-bold outline-none transition-all ${props.account ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+        className={`${QUERY_FILTER_CONTROL_CLASS} flex min-w-[190px] max-w-[280px] items-center justify-between gap-1.5 transition-all ${props.account ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
         <span className="truncate">{props.accountPicked ? <><span className="font-bold text-slate-400">{props.accountPicked.path} › </span>{props.accountPicked.label}</> : '계정 선택'}</span>
         <ChevronDown size={12} className="shrink-0 opacity-50"/>
       </button>
@@ -88,6 +89,6 @@ export default function StatementHistorySearchFields(props: {
       </>}
     </div>
 
-    <label className="flex min-w-[260px] max-w-sm flex-1 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">전체 검색</span><div className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={props.search} onChange={event => props.onSearch(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/></div></label>
+    <label className={`min-w-[260px] max-w-sm flex-1 ${QUERY_FILTER_LABEL_CLASS}`}><span className="text-[10px] font-bold text-slate-500">전체 검색</span><div className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={props.search} onChange={event => props.onSearch(event.target.value)} className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8 !pr-3`}/></div></label>
   </>;
 }
