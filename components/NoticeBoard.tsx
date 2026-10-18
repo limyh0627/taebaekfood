@@ -1,3 +1,4 @@
+import { useNoticeActions } from '../src/features/notices/hooks/useNoticeActions';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -17,7 +18,7 @@ import PageHeader from './PageHeader';
 import ModalShell from '../src/shared/components/ModalShell';
 import type { CompanyId } from '../src/shared/types';
 import { uploadNoticeImage, deleteNoticeImages } from '../src/shared/noticeImage';
-import { appConfirm, appNotice } from '../src/shared/components/appDialog';
+import { appNotice } from '../src/shared/components/appDialog';
 
 interface NoticeBoardProps {
   posts: Post[];
@@ -57,7 +58,6 @@ function NoticeContent({blocks,content}: {blocks?: Post['blocks'];content:string
 
 const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, onUpdatePost, onDeletePost }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', content: '', author: '', tag: '공지' as '공지' | '긴급' | '매뉴얼' | '업무' });
   const [blocks, setBlocks] = useState<NonNullable<Post['blocks']>>([]);
@@ -69,6 +69,8 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
   const busyRef = useRef(false);
   const insertionRef = useRef<{ index: number; offset: number } | undefined>(undefined);
   const userId=auth.currentUser?.uid;
+  const actions = useNoticeActions({ companyId, actorUid: userId, onUpdatePost, onDeletePost });
+  const { selectedPost, actionBusy, actionMessage, cleanupJobs } = actions;
   const scope = useRef({companyId,userId});
   if(scope.current.companyId!==companyId || scope.current.userId!==userId) scope.current={companyId,userId};
   const pendingKey = `notice-save-pending:${companyId || ''}:${userId || ''}`;
@@ -83,7 +85,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
     setForm({title:'',content:'',author:'',tag:'공지'}); setDraftId(`notice-${crypto.randomUUID()}`); setShowForm(false);
   };
   useEffect(()=>{
-    resetDraft();setSelectedPost(null);busyRef.current=false;setBusy(false);setPendingCorrupt(false);
+    resetDraft();busyRef.current=false;setBusy(false);setPendingCorrupt(false);
     try {
       const raw=sessionStorage.getItem(pendingKey);
       if(raw){
@@ -96,7 +98,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
   useEffect(()=>()=>{scope.current={companyId:undefined,userId:undefined};},[]);
   const openEdit = (post: Post) => {
     setEditing(post); setDraftId(post.id); setForm({title:post.title,content:'',author:post.author,tag:post.tag});
-    setBlocks(post.blocks?.length ? post.blocks.map(block=>({...block})) : [{type:'text',text:post.content}]); setPinned(!!post.pinned); setNewImages([]); setPreview(false); setSelectedPost(null); setShowForm(true);
+    setBlocks(post.blocks?.length ? post.blocks.map(block=>({...block})) : [{type:'text',text:post.content}]); setPinned(!!post.pinned); setNewImages([]); setPreview(false); actions.closeSelected(); setShowForm(true);
   };
   const bodyBlocks: NoticeBlocks = [...(form.content.trim() ? [{type:'text',text:form.content} as const] : []), ...blocks];
   const closeDraft = async () => {
@@ -208,11 +210,26 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
 </>} />
 
 
+      {!selectedPost && actionMessage && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{actionMessage}</p>}
+      {cleanupJobs.length > 0 && <section aria-label="공지 사진 정리" className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <h3 className="text-sm font-bold text-slate-700">공지 사진 정리</h3>
+        {cleanupJobs.map(job => <div key={job.jobId} className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="min-w-0">
+            <p className="font-bold text-slate-700">{job.displayTitle} · 사진 정리 미완료</p>
+            <p className="text-xs text-slate-500">공지 번호: {job.postId}</p>
+            <p className="whitespace-pre-line text-slate-600">{job.message}</p>
+          </div>
+          <button type="button" aria-label={`${job.displayTitle} · ${job.postId} · 사진 정리 다시 시도`} disabled={job.status === 'running'} onClick={() => void actions.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2 text-xs">
+            {job.status === 'running' ? '사진 정리 중…' : '사진 정리 다시 시도'}
+          </button>
+        </div>)}
+      </section>}
+
       <div className="grid grid-cols-1 gap-4">
         {filteredPosts.map((post) => (
           <div
             key={post.id}
-            onClick={() => setSelectedPost(post)}
+            onClick={() => actions.selectPost(post)}
             className={`group bg-white p-6 rounded-3xl border transition-all cursor-pointer hover:shadow-xl hover:border-indigo-100 flex items-center justify-between ${post.tag === '긴급' ? 'border-rose-100 ring-1 ring-rose-50' : 'border-slate-100'}`}
           >
             <div className="flex items-center space-x-6">
@@ -310,7 +327,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
 
       {/* Notice Detail Modal */}
       {selectedPost && (
-        <ModalShell title={`${selectedPost.title} · ${selectedPost.tag} 공지사항`} onClose={() => setSelectedPost(null)} bodyClassName="!p-0">
+        <ModalShell title={`${selectedPost.title} · ${selectedPost.tag} 공지사항`} onClose={() => actions.closeSelected()} bodyClassName="!p-0">
             <div className="p-10 space-y-8">
               <div className="flex items-center justify-between border-b border-slate-100 pb-6">
                 <div className="flex items-center space-x-6">
@@ -327,20 +344,14 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
               </div>
               <div className="text-slate-600 leading-relaxed whitespace-pre-wrap font-medium min-h-[200px]">
                 <NoticeContent blocks={selectedPost.blocks} content={selectedPost.content}/>
+                {actionMessage && <p role="status" className="mt-3 whitespace-pre-line text-sm text-slate-600">{actionMessage}</p>}
               </div>
               <div className="pt-6 border-t border-slate-50 flex justify-end">
-                {onUpdatePost && <button disabled={busy} className="mr-4 text-sm font-bold text-indigo-600" onClick={()=>openEdit(selectedPost)}>공지 수정</button>}
-                {onUpdatePost && <button disabled={busy} className="mr-4 text-sm font-bold" onClick={async () => {
-                  setBusy(true); try { await onUpdatePost(selectedPost.id, { pinned: !selectedPost.pinned }); setSelectedPost({ ...selectedPost, pinned: !selectedPost.pinned }); }
-                  catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
-                }}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
-                {onDeletePost && <button disabled={busy} className="mr-4 text-sm font-bold text-rose-600" onClick={async () => {
-                  if (!await appConfirm('이 공지를 삭제할까요?')) return;
-                  setBusy(true); try { await onDeletePost(selectedPost.id); setSelectedPost(null); await deleteNoticeImages(selectedPost.blocks,companyId,selectedPost.id); }
-                  catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
-                }}>공지 삭제</button>}
+                {onUpdatePost && <button disabled={busy || actionBusy} className="mr-4 text-sm font-bold text-indigo-600" onClick={()=>openEdit(selectedPost)}>공지 수정</button>}
+                {onUpdatePost && <button disabled={actionBusy} className="mr-4 text-sm font-bold" onClick={() => void actions.togglePinned()}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
+                {onDeletePost && <button disabled={actionBusy} className="mr-4 text-sm font-bold text-rose-600" onClick={() => void actions.deleteSelected()}>공지 삭제</button>}
                 <button
-                  onClick={() => setSelectedPost(null)}
+                  onClick={() => actions.closeSelected()}
                   className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all"
                 >
                   확인 완료

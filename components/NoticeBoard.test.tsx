@@ -1,17 +1,19 @@
 /** @vitest-environment jsdom */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import NoticeBoard from './NoticeBoard';
+import {appConfirm} from '../src/shared/components/appDialog';
 import {uploadNoticeImage,deleteNoticeImages} from '../src/shared/noticeImage';
-vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'admin-uid'}}}));
-beforeEach(()=>{sessionStorage.clear();vi.clearAllMocks();});
+const testAuth=vi.hoisted(()=>({currentUser:{uid:'admin-uid'}}));
+vi.mock('../src/shared/firebase',()=>({auth:testAuth}));
+beforeEach(()=>{sessionStorage.clear();vi.clearAllMocks();testAuth.currentUser.uid='admin-uid';});
 vi.mock('../src/shared/noticeImage', () => ({ uploadNoticeImage: vi.fn(async () => ({ type: 'image', url: 'https://example.com/photo.png', path: 'companies/taebaek/notices/a/photo', caption: '' })), deleteNoticeImages: vi.fn(async () => {}) }));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn(async () => true), appNotice: vi.fn() }));
 const posts = [{ id: 'old', title: '고정 공지', content: '본문', author: '관리자', tag: '공지' as const, date: '2026-09-01', pinned: true }, { id: 'new', title: '최근 공지', content: '본문', author: '관리자', tag: '공지' as const, date: '2026-10-06' }];
 describe('공지 관리', () => {
   it('고정 공지를 먼저 보여 주고 관리자가 고정 해제·삭제할 수 있다', async () => {
     const update = vi.fn(async () => {}), remove = vi.fn(async () => {});
-    render(<NoticeBoard posts={posts} onUpdatePost={update} onDeletePost={remove} />);
+    render(<NoticeBoard posts={posts} companyId="taebaek" onUpdatePost={update} onDeletePost={remove} />);
     expect(screen.getAllByRole('heading', { level: 3, name: /고정 공지|최근 공지/ })[0]).toHaveTextContent('고정 공지');
     fireEvent.click(screen.getByText('고정 공지'));
     fireEvent.click(screen.getByRole('button', { name: '상단 고정 해제' }));
@@ -154,4 +156,48 @@ it('일반 텍스트 붙여넣기는 사진 업로드하지 않는다',()=>{
 it('공지 작성은 검색 앞 행동 줄이며 검색은 권한 없이도 유지하고 관리자 진입만 노출한다',()=>{
  const add=vi.fn(),view=render(<NoticeBoard posts={posts} onAddPost={add}/>),title=screen.getByRole('heading',{name:'공지사항'}),create=screen.getByRole('button',{name:'공지 추가'}),search=screen.getByRole('textbox',{name:'공지 검색'});
  expect(title.compareDocumentPosition(create)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(create.closest('[data-page-header-slot="actions"]')).not.toBeNull();fireEvent.change(search,{target:{value:'최근'}});expect(screen.queryByText('고정 공지')).not.toBeInTheDocument();expect(screen.getByText('최근 공지')).toBeInTheDocument();fireEvent.click(create);expect(screen.getByRole('dialog',{name:'공지 작성'})).toBeInTheDocument();expect(add).not.toHaveBeenCalled();view.unmount();render(<NoticeBoard posts={posts}/>);expect(screen.queryByRole('button',{name:'공지 추가'})).not.toBeInTheDocument();expect(screen.getByRole('textbox',{name:'공지 검색'})).toBeInTheDocument();
+});
+
+function actionGate<T>() { let resolve!:(value:T)=>void; const promise=new Promise<T>(done=>{resolve=done;}); return {promise,resolve}; }
+it('고정 응답이 늦어도 닫힌 상세를 다시 열거나 다른 선택을 덮지 않는다',async()=>{
+ const gate=actionGate<void>(),update=vi.fn(()=>gate.promise);render(<NoticeBoard posts={posts} companyId="taebaek" onUpdatePost={update}/>);
+ fireEvent.click(screen.getByText('고정 공지'));fireEvent.click(screen.getByRole('button',{name:'상단 고정 해제'}));
+ fireEvent.click(screen.getByRole('button',{name:'확인 완료'}));fireEvent.click(screen.getByText('최근 공지'));
+ await act(async()=>gate.resolve());expect(screen.getByRole('dialog')).toHaveAccessibleName('최근 공지 · 공지 공지사항');
+ expect(screen.getByRole('button',{name:'상단 고정'})).toBeEnabled();
+});
+it('본문 삭제 미확인에서는 사진을 지우지 않고 원인과 확인 행동을 보여 준다',async()=>{
+ const remove=vi.fn().mockRejectedValue(new Error('응답 유실'));render(<NoticeBoard posts={posts} companyId="taebaek" onDeletePost={remove}/>);
+ fireEvent.click(screen.getByText('고정 공지'));fireEvent.click(screen.getByRole('button',{name:'공지 삭제'}));
+ await waitFor(()=>expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(/확인/));expect(screen.getByRole('dialog')).toBeInTheDocument();expect(deleteNoticeImages).not.toHaveBeenCalled();expect(screen.queryByRole('region',{name:'공지 사진 정리'})).toBeNull();
+});
+it('본문 ACK 뒤 사진 실패는 조건부 사진 재시도만 노출하고 본문을 다시 삭제하지 않는다',async()=>{
+ const post={...posts[0],blocks:[{type:'image' as const,path:'companies/taebaek/notices/old/photo',url:'https://example.com/photo',caption:'사진'}]},remove=vi.fn().mockResolvedValue(undefined);
+ vi.mocked(deleteNoticeImages).mockRejectedValueOnce(new Error('사진 연결 실패'));
+ render(<NoticeBoard posts={[post]} companyId="taebaek" onDeletePost={remove}/>);expect(screen.queryByRole('region',{name:'공지 사진 정리'})).toBeNull();
+ fireEvent.click(screen.getByText('고정 공지'));fireEvent.click(screen.getByRole('button',{name:'공지 삭제'}));
+ const panel=await screen.findByRole('region',{name:'공지 사진 정리'});expect(panel).toHaveTextContent('공지는 삭제됐지만');expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(within(panel).getByRole('button',{name:'고정 공지 · old · 사진 정리 다시 시도'}));await waitFor(()=>expect(screen.queryByRole('region',{name:'공지 사진 정리'})).toBeNull());expect(remove).toHaveBeenCalledOnce();expect(deleteNoticeImages).toHaveBeenCalledTimes(2);
+});
+it('상세 고정의 finally는 별도로 진행 중인 작성 busy를 풀지 않는다',async()=>{
+ const pin=actionGate<void>(),save=actionGate<void>();render(<NoticeBoard posts={posts} companyId="taebaek" onUpdatePost={()=>pin.promise} onAddPost={()=>save.promise}/>);
+ fireEvent.click(screen.getByText('고정 공지'));fireEvent.click(screen.getByRole('button',{name:'상단 고정 해제'}));fireEvent.click(screen.getByRole('button',{name:'확인 완료'}));
+ fireEvent.click(screen.getByRole('button',{name:'공지 추가'}));fireEvent.change(screen.getByPlaceholderText('제목'),{target:{value:'새 작성'}});fireEvent.change(screen.getByLabelText('글 단락 1'),{target:{value:'내용'}});fireEvent.click(screen.getByRole('button',{name:'등록'}));
+ await act(async()=>pin.resolve());expect(screen.getByRole('button',{name:'처리 중…'})).toBeDisabled();expect(screen.getByPlaceholderText('제목')).toBeDisabled();await act(async()=>save.resolve());
+});
+it('삭제 확인 대기 중 같은 회사 UID가 바뀌면 삭제를 송신하지 않는다',async()=>{
+ const confirm=actionGate<boolean>(),remove=vi.fn();vi.mocked(appConfirm).mockReturnValueOnce(confirm.promise);
+ const view=render(<NoticeBoard posts={posts} companyId="taebaek" onDeletePost={remove}/>);fireEvent.click(screen.getByText('고정 공지'));fireEvent.click(screen.getByRole('button',{name:'공지 삭제'}));
+ testAuth.currentUser.uid='other-uid';view.rerender(<NoticeBoard posts={posts} companyId="taebaek" onDeletePost={remove}/>);await act(async()=>confirm.resolve(true));expect(remove).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('사진 정리 두 작업은 원제목과 공지 번호로 구분하고 각각 사진만 다시 시도한다',async()=>{
+ const first={...posts[0],title:'첫 안내',blocks:[{type:'image' as const,path:'companies/taebaek/notices/old/photo',url:'https://example.com/one',caption:''}]};
+ const second={...posts[1],title:'둘째 안내',blocks:[{type:'image' as const,path:'companies/taebaek/notices/new/photo',url:'https://example.com/two',caption:''}]};
+ const remove=vi.fn().mockResolvedValue(undefined);vi.mocked(deleteNoticeImages).mockRejectedValueOnce(new Error('첫 사진 실패')).mockRejectedValueOnce(new Error('둘째 사진 실패'));
+ render(<NoticeBoard posts={[first,second]} companyId="taebaek" onDeletePost={remove}/>);
+ fireEvent.click(screen.getByText('첫 안내'));fireEvent.click(screen.getByRole('button',{name:'공지 삭제'}));await screen.findByRole('button',{name:'첫 안내 · old · 사진 정리 다시 시도'});
+ fireEvent.click(screen.getByText('둘째 안내'));fireEvent.click(screen.getByRole('button',{name:'공지 삭제'}));const retry=await screen.findByRole('button',{name:'둘째 안내 · new · 사진 정리 다시 시도'});
+ const panel=screen.getByRole('region',{name:'공지 사진 정리'});expect(panel).toHaveTextContent('첫 안내 · 사진 정리 미완료');expect(panel).toHaveTextContent('둘째 안내 · 사진 정리 미완료');expect(panel).toHaveTextContent('공지 번호: old');expect(panel).toHaveTextContent('공지 번호: new');
+ fireEvent.click(retry);await waitFor(()=>expect(screen.queryByRole('button',{name:'둘째 안내 · new · 사진 정리 다시 시도'})).toBeNull());expect(screen.getByRole('button',{name:'첫 안내 · old · 사진 정리 다시 시도'})).toBeEnabled();expect(remove).toHaveBeenCalledTimes(2);expect(vi.mocked(deleteNoticeImages).mock.calls[2]).toEqual([second.blocks,'taebaek','new']);
 });
