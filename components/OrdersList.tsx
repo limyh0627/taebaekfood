@@ -1127,11 +1127,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               return <button key={view.value} type="button" onClick={() => setActiveView(view.value)} aria-pressed={activeView === view.value} className={`flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-bold transition-colors ${activeView === view.value ? 'border-indigo-300 bg-white text-indigo-600' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}><Icon size={13} /><span>{view.label}</span></button>;
             })}
           </div>
-          {activeView !== 'history' && <div className="flex items-center gap-1 overflow-x-auto" aria-label="주문 상태 선택">
-            {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
-              <button key={tab.value} type="button" onClick={() => setListStatusTab(tab.value)} className={`flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-bold ${listStatusTab === tab.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><span>{tab.label}</span><span className="text-[10px] tabular-nums">{tab.count}</span></button>
-            ))}
-          </div>}
+
         </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
           <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="active-view-query-title">
             <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
@@ -1220,6 +1216,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
             </div>
           </section>
           {/*  이력 탭에는 상태 고르개를 안 둔다(2026-09-11 사장님) — 거긴 예전 주문 하나뿐이라 고를 게 없다. */}
+          {activeView !== 'history' && <div className="flex items-center gap-1 overflow-x-auto" aria-label="주문 상태 선택">
+            {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
+              <button key={tab.value} type="button" onClick={() => setListStatusTab(tab.value)} className={`flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-bold ${listStatusTab === tab.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><span>{tab.label}</span><span className="text-[10px] tabular-nums">{tab.count}</span></button>
+            ))}
+          </div>}
 
     </div>
   );

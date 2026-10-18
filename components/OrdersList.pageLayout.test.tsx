@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import OrdersList from './OrdersList';
 import { OrderStatus, type Order } from '../types';
@@ -42,3 +42,15 @@ it('제목·보기·행동·검색 순서로 표시하고 보기 변경 중 생�
 it('저장 주문 이동은 이력·검색 필터를 풀어 기존 카드를 보여주며 재생성하지 않는다',()=>{vi.useFakeTimers();const p=props(),view=render(<OrdersList {...p}/>);fireEvent.change(screen.getByPlaceholderText('거래처, 품목, 제조, 라벨, 포장, 팔레트 검색'),{target:{value:'없는 검색'}});fireEvent.click(screen.getAllByRole('button',{name:'이력'}).find(button=>button.hasAttribute('aria-pressed'))!);view.rerender(<OrdersList {...p} newOrderId="order-a"/>);tick(150);expect(screen.getByRole('button',{name:'보드'})).toHaveAttribute('aria-pressed','true');expect(document.getElementById('order-card-order-a')).toBeTruthy();expect(p.onAddClick).not.toHaveBeenCalled();expect(fixture.write).not.toHaveBeenCalled();});
 it('저장된 주문이 목록에 없으면 확인 안내만 표시하고 생성하지 않는다',()=>{vi.useFakeTimers();const p=props();render(<OrdersList {...p} newOrderId="missing"/>);tick(150);expect(screen.getByText(/저장된 주문을 현재 목록에서 찾지 못했습니다/)).toBeTruthy();expect(p.onAddClick).not.toHaveBeenCalled();expect(fixture.write).not.toHaveBeenCalled();});
 it('내장 목록은 제목·탭·생성 행동을 추가하지 않는다',()=>{render(<OrdersList {...props()} embeddedListOnly/>);expect(screen.queryByRole('heading',{name:'주문'})).toBeNull();expect(screen.queryByRole('button',{name:'주문 생성'})).toBeNull();});
+
+it('주문 상태 필터는 헤더 보기에서 분리하여 검색 뒤 본문에 원래 건수로 표시한다',()=>{
+ render(<OrdersList {...props()}/>);const board=screen.getByRole('button',{name:'보드'}),tabs=board.closest<HTMLElement>('[data-page-header-slot="tabs"]')!,status=screen.getByLabelText('주문 상태 선택'),query=screen.getByRole('region',{name:'검색조건'}),work=screen.getByRole('heading',{name:/금일 작업순서/});
+ expect(tabs).not.toContainElement(status);expect(query.compareDocumentPosition(status)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(status.compareDocumentPosition(work)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(status).toHaveClass('overflow-x-auto');
+ expect(within(status).getByRole('button',{name:/^전체\s*1$/})).toBeInTheDocument();const pending=within(status).getByRole('button',{name:/^대기중\s*1$/});fireEvent.click(pending);expect(pending).toHaveClass('border-indigo-600');expect(document.getElementById('order-card-order-a')).toBeTruthy();expect(fixture.write).not.toHaveBeenCalled();
+});
+it('상태 필터는 캘린더에서 유지하고 이력과 내장 목록에서는 추가하지 않는다',()=>{
+ const p=props(),view=render(<OrdersList {...p}/>);const tabs=screen.getByRole('button',{name:'보드'}).closest<HTMLElement>('[data-page-header-slot="tabs"]')!;
+ fireEvent.click(within(tabs).getByRole('button',{name:'배송 캘린더'}));expect(screen.getByLabelText('주문 상태 선택')).toBeInTheDocument();
+ fireEvent.click(within(tabs).getByRole('button',{name:'이력'}));expect(screen.queryByLabelText('주문 상태 선택')).toBeNull();
+ view.rerender(<OrdersList {...p} embeddedListOnly/>);expect(screen.queryByLabelText('주문 상태 선택')).toBeNull();expect(fixture.write).not.toHaveBeenCalled();
+});
