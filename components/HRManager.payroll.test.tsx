@@ -17,7 +17,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 
 const props = {
   requestScopeKey:'qa',employees: [], leaveRequests: [],
-  onSaveEmployeeEdit:vi.fn().mockResolvedValue({status:'saved'}), onDeleteEmployee: vi.fn(),
+  onSaveEmployeeEdit:vi.fn().mockResolvedValue({status:'saved'}),
   onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}),
 };
 

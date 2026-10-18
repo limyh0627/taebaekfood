@@ -1,3 +1,5 @@
+import {useDirectoryDelete,type DirectoryDeleteBindings} from '../src/shared/hooks/useDirectoryDelete';
+import DirectoryDeleteDialogs from '../src/shared/components/DirectoryDeleteDialogs';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { PartnerEditModal } from '../src/features/partners/ui/PartnerEditModal';
@@ -25,21 +27,19 @@ import { Partner, PartnerChannel, PartnerType } from '../types';
 
 //  window.daum 타입은 [AddPartnerModal](AddPartnerModal.tsx) 이 한 번만 선언한다
 import AddPartnerModal, { partnerSaveErrorMessage } from './AddPartnerModal';
-import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import { isShipMethod, isShippingPartner } from '../src/shared/partnerShipping';
 import type { ShipMethod } from '../src/shared/types';
 
-interface PartnerManagerProps {
+interface PartnerManagerProps extends DirectoryDeleteBindings {
   partners: Partner[];
   onUpdateClient: (_client: Partner) => void | Promise<unknown>;
   onAddClient: (_client: Partner) => void | Promise<unknown>;
-  onDeleteClient: (_id: string) => void;
 }
 
-const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClient, onAddClient, onDeleteClient }) => {
+const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClient, onAddClient,requestScopeKey,onPrepareDirectoryDelete,onConfirmDirectoryDelete,onInspectDirectoryDelete,onCancelDirectoryDelete,onReadPendingDirectoryDeletes,onReadDirectoryDeleteReferences }) => {
+  const deletion=useDirectoryDelete({scopeKey:'partners:'+(requestScopeKey??''),prepare:onPrepareDirectoryDelete,confirm:onConfirmDirectoryDelete,inspect:onInspectDirectoryDelete,cancel:onCancelDirectoryDelete,readPending:onReadPendingDirectoryDeletes,readReferences:onReadDirectoryDeleteReferences});
   const [editForm, setEditForm] = useState<Partner | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [activeTab, setActiveTab] = useState<PartnerType | '전체'>('전체');
   const [activeTypeTab, setActiveTypeTab] = useState<PartnerChannel | '전체'>('전체');
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,17 +52,18 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; formGeneration.current += 1; }; }, []);
   const openEditing = (partner: Partner) => {
-    if (savingRef.current) return;
+    if (savingRef.current||deletion.busy) return;
     formGeneration.current += 1;
     setSaveError('');
-    setEditForm({ ...partner });
+    if(deletion.select({kind:'partner',targetId:partner.id,opening:{...partner}}))setEditForm({ ...partner });
   };
   const closeEditing = () => {
-    if (savingRef.current) return;
+    if (savingRef.current||deletion.busy) return;
     formGeneration.current += 1;
     setSaveError('');
     setEditForm(null);
   };
+  useEffect(()=>{formGeneration.current+=1;setEditForm(null);setSaveError('');},[requestScopeKey]);
   const PAGE_SIZE = 15;
 
   const partnerTabs: { id: PartnerType | '전체', label: string }[] = [
@@ -101,7 +102,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
   const pagedClients = filteredClients.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const saveEditing = async () => {
-    if (!editForm || savingRef.current || !mounted.current) return;
+    if (!editForm || savingRef.current || deletion.busy || !mounted.current) return;
     const generation = formGeneration.current;
     savingRef.current = true;
     setIsSaving(true);
@@ -263,12 +264,8 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
 
       {/* 수정 오버레이 모달 */}
       {editForm && (
-        <PartnerEditModal editForm={editForm} setEditForm={setEditForm} isSaving={isSaving} saveError={saveError}
-          onClose={closeEditing} onSave={saveEditing} onDelete={() => { if (!savingRef.current) setConfirmModal({
-                  message: `"${editForm.name}" 거래처를 삭제하시겠습니까?`,
-                  subMessage: '연결된 주문 및 품목 데이터에 영향을 줄 수 있습니다.',
-                  onConfirm: () => { onDeleteClient(editForm.id); setEditForm(null); setConfirmModal(null); },
-                }); }} onSearchAddress={() => {
+        <PartnerEditModal editForm={editForm} setEditForm={setEditForm} isSaving={isSaving||deletion.busy} saveError={saveError}
+          onClose={closeEditing} onSave={saveEditing} onDelete={()=>{if(!savingRef.current)void deletion.openSelected();}} onSearchAddress={() => {
                       const generation = formGeneration.current;
                       const partnerId = editForm.id;
                       new window.daum.Postcode({
@@ -286,14 +283,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
           onOpenExisting={openEditing}
         />
       )}
-      {confirmModal && (
-        <ConfirmModal
-          message={confirmModal.message}
-          subMessage={confirmModal.subMessage}
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
-        />
-      )}
+      <DirectoryDeleteDialogs controller={deletion} onConfirmed={id=>{if(editForm?.id===id){formGeneration.current+=1;setEditForm(null);}}}/>
     </div>
   );
 };

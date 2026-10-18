@@ -1,3 +1,5 @@
+import {prepareDirectoryDelete,confirmDirectoryDelete,inspectDirectoryDelete,cancelDirectoryDelete,pendingDirectoryDeletes,directoryDeleteReferences,type DirectoryDeleteInput,type DirectoryDeleteOutcome,type DirectoryDeletePrepared} from '../../shared/services/directoryDeleteWrites';
+import type {DirectoryDeleteReference} from '../../shared/directoryDeleteCommand';
 import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
 import type {PartnerItemTermsReference} from '../../shared/partnerItemTermsCommand';
 import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
@@ -2199,6 +2201,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const readPendingEmployeeEdits=()=>{const scope=currentEmployeeEditScope();return scope?pendingEmployeeEdits(scope):[];};
   const readEmployeeEditReferences=()=>{const scope=currentEmployeeEditScope();return scope?employeeEditReferences(scope):[];};
 
+  const isCurrentDirectoryDelete=()=>currentEmployeeEditScope()!==null;
+  const directoryDeleteRejected=():DirectoryDeleteOutcome=>({status:'rejected',message:'회사 또는 로그인 정보가 바뀌어 삭제를 전송하지 않았습니다.',nextAction:'현재 회사에서 대상을 다시 열어 주세요.'});
+  const handlePrepareDirectoryDelete=async(input:DirectoryDeleteInput):Promise<DirectoryDeletePrepared>=>{
+    const scope=currentEmployeeEditScope();
+    if(!scope)return {status:'rejected',outcome:directoryDeleteRejected()};
+    return prepareDirectoryDelete(scope,input,isCurrentDirectoryDelete);
+  };
+  const runDirectoryDelete=async(work:(scope:EmployeeEditScope)=>Promise<DirectoryDeleteOutcome>):Promise<DirectoryDeleteOutcome>=>{
+    const scope=currentEmployeeEditScope();
+    if(!scope)return directoryDeleteRejected();
+    return work(scope);
+  };
+  const handleConfirmDirectoryDelete=(reference:DirectoryDeleteReference)=>runDirectoryDelete(scope=>confirmDirectoryDelete(scope,reference,isCurrentDirectoryDelete));
+  const handleInspectDirectoryDelete=(reference:DirectoryDeleteReference)=>runDirectoryDelete(scope=>inspectDirectoryDelete(scope,reference,isCurrentDirectoryDelete));
+  const handleCancelDirectoryDelete=(reference:DirectoryDeleteReference)=>runDirectoryDelete(scope=>cancelDirectoryDelete(scope,reference,isCurrentDirectoryDelete));
+  const readPendingDirectoryDeletes=()=>{const scope=currentEmployeeEditScope();return scope?pendingDirectoryDeletes(scope):[];};
+  const readDirectoryDeleteReferences=()=>{const scope=currentEmployeeEditScope();return scope?directoryDeleteReferences(scope):[];};
+  const directoryDeleteBindings={onPrepareDirectoryDelete:handlePrepareDirectoryDelete,onConfirmDirectoryDelete:handleConfirmDirectoryDelete,onInspectDirectoryDelete:handleInspectDirectoryDelete,onCancelDirectoryDelete:handleCancelDirectoryDelete,onReadPendingDirectoryDeletes:readPendingDirectoryDeletes,onReadDirectoryDeleteReferences:readDirectoryDeleteReferences};
+
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
   const seedItemFormulas = async () => {
     if (itemFormulas.length > 0) {
@@ -3115,7 +3136,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             );
           })()}
           {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}
-          {currentView === 'partners' && <PartnerManager key={companyId} partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId }, { partnerRegistration: true })} onDeleteClient={(id) => deleteItem('partners', id)} />}
+          {currentView === 'partners' && <PartnerManager key={companyId} requestScopeKey={employeeEditRenderUid??''} partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId }, { partnerRegistration: true })} {...directoryDeleteBindings} />}
           {currentView === 'quotation' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <QuotationManager
@@ -3166,7 +3187,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onInspectEmployeeEdit={handleInspectEmployeeEdit}
               onCancelEmployeeEdit={handleCancelEmployeeEdit}
               onReadEmployeeEditReferences={readEmployeeEditReferences}
-              onDeleteEmployee={(id) => deleteItem('employees', id)}
+              {...directoryDeleteBindings}
               onLeaveAction={handleLeaveAction}
               onReadPendingLeaveActions={readPendingLeaveActions}
               onInspectLeaveAction={handleInspectLeaveAction}

@@ -1,3 +1,5 @@
+import {useDirectoryDelete,type DirectoryDeleteBindings} from '../src/shared/hooks/useDirectoryDelete';
+import DirectoryDeleteDialogs from '../src/shared/components/DirectoryDeleteDialogs';
 import {useEmployeeEditor} from '../src/features/hr/hooks/useEmployeeEditor';
 import type {EmployeeEditBindings} from '../src/features/hr/infrastructure/employeeEditWrites';
 import {usePayrollDraft} from '../src/features/hr/hooks/usePayrollDraft';
@@ -55,14 +57,13 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
 
-interface HRManagerProps extends LeaveActionBindings,EmployeeEditBindings {
+interface HRManagerProps extends LeaveActionBindings,EmployeeEditBindings,DirectoryDeleteBindings {
   requestScopeKey?:string;
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
   companyId?: CompanyId;
   cashAccounts?: CashAccount[];
   employees: Employee[];
   leaveRequests: LeaveRequest[];
-  onDeleteEmployee: (_id: string) => Promise<void> | void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<SaveOutcome> | SaveOutcome | void;
   onReadPendingLeaveGroups?:()=>PendingLeaveGroup[];
@@ -78,11 +79,12 @@ const HRManager: React.FC<HRManagerProps> = ({
   employees: allEmployees,
   leaveRequests,
   onSaveEmployeeEdit,onReadPendingEmployeeEdits,onInspectEmployeeEdit,onCancelEmployeeEdit,onReadEmployeeEditReferences,
-  onDeleteEmployee,
+  onPrepareDirectoryDelete,onConfirmDirectoryDelete,onInspectDirectoryDelete,onCancelDirectoryDelete,onReadPendingDirectoryDeletes,onReadDirectoryDeleteReferences,
   onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,
   onAddLeaveRequests,onReadPendingLeaveGroups,onInspectLeaveRequest,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
 }) => {
   const actionScopeKey=companyId+':'+(requestScopeKey??'');
+  const deletion=useDirectoryDelete({scopeKey:actionScopeKey,prepare:onPrepareDirectoryDelete,confirm:onConfirmDirectoryDelete,inspect:onInspectDirectoryDelete,cancel:onCancelDirectoryDelete,readPending:onReadPendingDirectoryDeletes,readReferences:onReadDirectoryDeleteReferences});
   const actionScope=useRef(actionScopeKey);actionScope.current=actionScopeKey;
   const actions=useLeaveActions({scopeKey:actionScopeKey,onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
   const employeeEditor=useEmployeeEditor({scopeKey:actionScopeKey,onSave:onSaveEmployeeEdit,readPending:onReadPendingEmployeeEdits,inspect:onInspectEmployeeEdit,cancel:onCancelEmployeeEdit,readReferences:onReadEmployeeEditReferences});
@@ -97,30 +99,8 @@ const HRManager: React.FC<HRManagerProps> = ({
     [allEmployees, companyId],
   );
   const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance' | 'payroll'>('employees');
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [retirementEmployee, setRetirementEmployee] = useState<Employee | null>(null);
-  const [deleteMessage, setDeleteMessage] = useState('');
-  const deleteScope = React.useRef({ companyId, token: {} });
-  if (deleteScope.current.companyId !== companyId) deleteScope.current = { companyId, token: {} };
-  const deleteBusy = React.useRef(false);
-  React.useEffect(() => { setRetirementEmployee(null); setDeleteMessage(''); }, [companyId]);
-  React.useEffect(() => () => { deleteScope.current = { companyId, token: {} }; }, []);
-  async function deleteEmployeeSafely(emp: Employee) {
-    if (deleteBusy.current) return;
-    const token = deleteScope.current.token;
-    deleteBusy.current = true;
-    setConfirmModal(null);
-    try {
-      const actorUid = await retirementActor();
-      const current = () => deleteScope.current.token === token;
-      const result = await readRetirement({ companyId, employeeId: emp.id, actorUid }, todayStr(), current);
-      if (!current()) return;
-      if (result.profile !== null) { setDeleteMessage(`${emp.name} 직원은 퇴직금 관리 이력이 있어 삭제할 수 없습니다. 정보 수정에서 상태를 퇴사로 변경하세요. 퇴직금 정산과 이력은 계속 관리할 수 있습니다.`); return; }
-      await onDeleteEmployee(emp.id);
-      if (current()) setDeleteMessage('직원 삭제를 완료했습니다.');
-    } catch (e) { if (deleteScope.current.token === token) setDeleteMessage(`퇴직금 등록 여부를 확인하지 못해 삭제하지 않았습니다. ${e instanceof Error ? e.message : '다시 조회한 뒤 시도하세요.'}`); }
-    finally { deleteBusy.current = false; }
-  }
+  React.useEffect(()=>setRetirementEmployee(null),[companyId,requestScopeKey]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -322,11 +302,7 @@ const HRManager: React.FC<HRManagerProps> = ({
         {activeTab === 'employees' && (
           <EmployeeDirectory filteredEmployees={filteredEmployees} searchTerm={searchTerm} onSearchChange={setSearchTerm}
             calculateWorkDays={calculateWorkDays} getHealthCertStatus={getHealthCertStatus} onRetirement={setRetirementEmployee}
-            onEdit={(emp) => {if(employeeEditor.openProfile(emp))setIsModalOpen(true);}} onDelete={(emp) => setConfirmModal({
-                              message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
-                              subMessage: '퇴직금 관리 등록 여부를 먼저 확인합니다. 이력이 있으면 삭제 대신 퇴사 처리하세요.',
-                              onConfirm: () => { void deleteEmployeeSafely(emp); },
-                            })} />
+            onEdit={(emp) => {if(employeeEditor.openProfile(emp))setIsModalOpen(true);}} onDelete={emp=>void deletion.open({kind:'employee',targetId:emp.id,opening:{...emp}})} />
         )}
 
         {activeTab === 'leave-approval' && (
@@ -1042,16 +1018,8 @@ const HRManager: React.FC<HRManagerProps> = ({
         );
       })()}
 
-      {deleteMessage && <p role="status" className="border-t border-gray-200 py-3 text-sm">{deleteMessage}</p>}
       {retirementEmployee && companyOf(retirementEmployee) === companyId && <RetirementBenefitPanel companyId={companyId} employee={retirementEmployee} onClose={() => setRetirementEmployee(null)} />}
-      {confirmModal && (
-        <ConfirmModal
-          message={confirmModal.message}
-          subMessage={confirmModal.subMessage}
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
-        />
-      )}
+      <DirectoryDeleteDialogs controller={deletion}/>
     </div>
   );
 };

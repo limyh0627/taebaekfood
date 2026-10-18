@@ -27,7 +27,7 @@ it('금융기관 안내·유형별 배송 노출과 저장중 fieldset 동결을
 it('같은 거래처를 취소 후 다시 열어도 이전 주소검색 세대의 응답은 새 초안을 바꾸지 않는다', () => {
  let complete!: (data: { address: string }) => void;
  window.daum = { Postcode: class { constructor(config: { oncomplete: (data: { address: string }) => void }) { complete = config.oncomplete; } open() {} } };
- render(<PartnerManager partners={[partner]} onUpdateClient={vi.fn()} onAddClient={vi.fn()} onDeleteClient={vi.fn()} />);
+ render(<PartnerManager partners={[partner]} onUpdateClient={vi.fn()} onAddClient={vi.fn()} />);
  fireEvent.click(screen.getByRole('button', { name: '합성 거래처 수정' })); fireEvent.click(screen.getByRole('button', { name: '검색' })); fireEvent.click(screen.getByRole('button', { name: '취소' })); fireEvent.click(screen.getByRole('button', { name: '합성 거래처 수정' }));
  act(() => complete({ address: '이전 세대 주소' })); expect(screen.getByPlaceholderText('주소 검색 버튼을 눌러주세요')).toHaveValue('기존 주소');
 });

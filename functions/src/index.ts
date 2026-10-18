@@ -362,3 +362,4 @@ export {orderEditCommand} from './orderEditCommand';
 export {itemEditorCommand} from './itemEditorCommand';
 export {employeeEditCommand} from './employeeEditCommand';
 export {partnerItemTermsCommand} from './partnerItemTermsCommand';
+export {directoryDeleteCommand} from './directoryDeleteCommand';
