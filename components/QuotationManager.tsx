@@ -1,3 +1,7 @@
+import type {QuotationReference} from '../src/shared/quotationCommand';
+import {useQuotationEditor} from '../src/features/quotations/hooks/useQuotationEditor';
+import {auth} from '../src/shared/firebase';
+import ConfirmModal from '../src/shared/components/ConfirmModal';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { isCalendarDay } from '../src/shared/day';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
@@ -7,22 +11,20 @@ export type {QuotationLine,Quotation} from '../src/features/quotations/domain/qu
 import { fmt } from '../src/features/quotations/ui/quotationDisplay';
 import { printQuotation } from '../src/features/quotations/infrastructure/printQuotation';
 import { QuotationPreview } from '../src/features/quotations/ui/QuotationPreview';
-import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Search, Printer, Copy, Pencil } from 'lucide-react';
 import { Item, Partner, PartnerItem, CompanyId, CompanyInfo, COMPANIES, companyOf } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
-import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
+import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
-import { today, addDays as plusDays } from '../src/shared/day';
+import { today } from '../src/shared/day';
 import { marginOf } from '../src/shared/margin';
 import { lineAmount } from '../src/shared/lineAmount';
 import { quoteTotals } from '../src/shared/quoteTotals';
-import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
-import { boxDerivedUnitPrice, type OrderUnitInputs } from '../src/shared/orderUnits';
+import { isSaleTaxExempt } from '../src/shared/partnerPrice';
+import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
-import { quoteRecipient } from '../src/shared/quoteRecipient';
 import { where } from 'firebase/firestore';
 import { DEFAULT_COMPANY_INFO } from '../src/config';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -40,21 +42,6 @@ interface Props {
 //  날짜 셈은 shared/day 하나로 — 손으로 하면 toISOString 이 UTC로 되돌려 하루가 밀린다
 //  (한국 자정은 UTC로 전날 15:00이다). 유효기한이 29일 뒤로 잡히던 자리다.
 const num = (v: string) => Number(String(v).replace(/[^\d.]/g, '')) || 0;
-/** 그날 안에서 이어지는 번호 — 전표와 같은 꼴(`Q260901-01`)이되 통은 따로 쓴다 */
-function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
-  const head = `Q${date.slice(2).replace(/-/g, '')}-`;
-  let max = 0;
-  for (const q of existing) {
-    const no = q.quoteNo ?? '';
-    if (!no.startsWith(head)) continue;
-    const tail = no.slice(head.length);
-    if (/^[0-9]+$/.test(tail)) max = Math.max(max, Number(tail));
-  }
-  return `${head}${String(max + 1).padStart(2, '0')}`;
-}
-//  **과세를 기본으로 두지 않는다** — 안 고른 줄은 저장이 막힌다(2026-09-09 사장님).
-//  합계 셈은 [shared/quoteTotals](../src/shared/quoteTotals.ts) 하나다.
-const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 });
 export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, companyInfo, costOf, orderUnitInputs }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
   const [quoteError, setQuoteError] = useState('');
@@ -77,21 +64,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const datePasses = (date: string) => !from && !to || isCalendarDay(date) && (!from || date >= from) && (!to || date <= to);
   const resetDates = () => { setFrom(''); setTo(''); setQuick('전체'); };
   const [viewing, setViewing] = useState<Quotation | null>(null);
-  const [form, setForm] = useState<{
-    date: string; validUntil?: string; partnerId: string; partnerName: string; recipientPhone?: string;
-    attention?: string; deliveryTerms?: string; paymentTerms?: string; lines: QuotationLine[]; note?: string;
-  }>({
-    date: today(), validUntil: plusDays(today(), 30),
-    //  담당자는 **쓰는 사람**이 기본이다 — 매번 제 이름을 치게 할 일이 아니다
-    partnerId: '', partnerName: '', recipientPhone: '', attention: currentUser?.name ?? '',
-    deliveryTerms: '', paymentTerms: '', lines: [emptyLine()], note: '',
-  });
-  const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [partnerSearch, setPartnerSearch] = useState('');
   const [pickIdx, setPickIdx] = useState<number | null>(null);
   const [itemSearch, setItemSearch] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const mine = useMemo(
     () => quotes.filter(q => companyOf(q) === companyId)
@@ -105,87 +80,19 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     [mine, search, from, to],
   );
   const excludedDates = (from || to) ? mine.filter(q => !isCalendarDay(q.date) && (!search.trim() || matchesSearch(`${q.partnerName} ${q.lines.map(l => l.name).join(' ')}`, search.trim()) || q.quoteNo.includes(search.trim()))).length : 0;
+  const actorUid=auth.currentUser?.uid??'';
+  const editor=useQuotationEditor({companyId,actorUid,currentUser,quotes:mine,items,partnerItems,orderUnitInputs,costOf,onSaved:saved=>setQuotes(current=>[saved,...current.filter(quote=>quote.id!==saved.id)]),onDeleted:id=>setQuotes(current=>current.filter(quote=>quote.id!==id))});
+  const {form,open,editingId,busy:saving}=editor;
+  const setForm=editor.patchForm,setLine=editor.patchLine,priceFor=editor.priceFor,costFor=editor.costFor;
+  const openNew=()=>{if(editor.busy)return;editor.openNew();setPartnerSearch('');setPickIdx(null);};
+  const openCopy=(q:Quotation)=>{if(editor.busy)return;editor.openCopy(q);setPartnerSearch('');setPickIdx(null);};
+  const openEdit=(q:Quotation)=>{if(editor.busy)return;void editor.openEdit(q);setPartnerSearch('');setPickIdx(null);};
+  useEffect(()=>{setPartnerSearch('');setPickIdx(null);setItemSearch('');setViewing(null);},[companyId,actorUid]);
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
   // 인쇄본의 공급자 정보는 사용자가 견적마다 다시 치는 값이 아니다. 회사 설정을 쓰고,
   // 설정 구독 전에도 빈칸이 생기지 않도록 태백식품 기본정보를 받친다.
   const printCompany = companyInfo ?? DEFAULT_COMPANY_INFO;
-
-  /**
-   * 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다.
-   *
-   * **박스는 낱개 단가 × 개입수다**(2026-09-06 사장님이 마진 −523% 를 보고 물으셨다).
-   * 박스 품목엔 단가를 안 박고 낱개만 관리한다(shared/orderUnits). 견적서만 그 규칙을
-   * 안 따라서, 박스 품목에 낱개 단가가 붙은 채 박스 원가(12병 값)와 견줘 마진이
-   * 수백 % 밑진 것처럼 나왔다. 주문 넣기·전표와 같은 차례로 맞춘다 —
-   * **저장된 값 > 낱개 × 개입수**.
-   */
-  const priceFor = (itemId: string) => {
-    const 붙은값 = partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
-    if (typeof 붙은값 === 'number' && 붙은값 > 0) return 붙은값;
-    const it = items.find(i => i.id === itemId);
-    return form.partnerId ? boxDerivedUnitPrice(it, form.partnerId, partnerItems as never, orderUnitInputs) : undefined;
-  };
-  const costFor = (it: Item) => Math.round(costOf?.(it) ?? Number(it.cost ?? 0));
-
-  const resetForm = (base?: Quotation, keepDates = false) => setForm({
-    date: keepDates && base ? base.date : today(),
-    validUntil: keepDates && base ? base.validUntil : plusDays(today(), 30),
-    partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '', recipientPhone: base?.recipientPhone ?? '',
-    attention: base?.attention ?? currentUser?.name ?? '',
-    deliveryTerms: base?.deliveryTerms ?? '', paymentTerms: base?.paymentTerms ?? '',
-    lines: base ? base.lines.map(l => ({ ...l })) : [emptyLine()],
-    note: base?.note ?? '',
-  });
-  const openNew = () => { setEditingId(null); resetForm(); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
-  const openCopy = (q: Quotation) => { setEditingId(null); resetForm(q); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
-  const openEdit = (q: Quotation) => { setEditingId(q.id); resetForm(q, true); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
-
-  const setLine = (i: number, patch: Partial<QuotationLine>) =>
-    setForm(f => ({ ...f, lines: f.lines.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
-
-  const save = async () => {
-    const recipient = quoteRecipient(form.partnerId, form.partnerName);
-    if (!recipient) { alert('견적 받을 업체명을 입력하세요.'); return; }
-    const lines = form.lines.filter(l => l.name.trim() && Number(l.qty) > 0);
-    if (!lines.length) { alert('품목을 한 줄 이상 넣으세요.'); return; }
-    //  과세·면세를 안 고르면 세액이 정해지지 않는다 — 값이 틀린 견적서가 나가면 안 된다
-    const 미정 = quoteTotals(lines).undecided;
-    if (미정 > 0) { alert(`과세·면세를 안 고른 줄이 ${미정}개 있습니다.
-'—' 칸을 눌러 골라 주세요.`); return; }
-    if (saving) return;
-    setSaving(true);
-    try {
-      const t = quoteTotals(lines);
-      const prev = editingId ? mine.find(q => q.id === editingId) : undefined;
-      const saved: Quotation = {
-        id: prev?.id ?? `quo-${Date.now()}`,
-        companyId,
-        quoteNo: prev?.quoteNo ?? nextQuoteNo(form.date, mine),
-        date: form.date, validUntil: form.validUntil || undefined,
-        partnerId: recipient.partnerId, partnerName: recipient.partnerName,
-        recipientPhone: form.recipientPhone?.trim() || undefined,
-        attention: form.attention || undefined,
-        deliveryTerms: form.deliveryTerms?.trim() || undefined,
-        paymentTerms: form.paymentTerms?.trim() || undefined,
-        lines, totalSupply: t.supply, totalTax: t.tax, totalAmount: t.total, totalCost: t.cost,
-        note: form.note || undefined,
-        createdAt: prev?.createdAt ?? new Date().toISOString(),
-        createdBy: currentUser?.name,
-      };
-      await addItem('quotations', saved as never);
-      // 저장은 끝났는데 구독 왕복이 늦으면 목록이 비어 보여 실패로 오해한다. 먼저 화면에
-      // 넣고, 뒤이어 오는 Firestore 스냅샷이 같은 ID의 확정값으로 맞춘다.
-      setQuotes(current => [saved, ...current.filter(quote => quote.id !== saved.id)]);
-      setQuoteError('');
-      setOpen(false);
-    } catch (error) {
-      console.error('[견적서 저장 실패]', error);
-      const reason = error instanceof Error ? error.message : String(error);
-      setQuoteError(`견적서를 저장하지 못했습니다. ${reason}`);
-      alert(`견적서를 저장하지 못했습니다.\n${reason}`);
-    } finally { setSaving(false); }
-  };
 
   /** 품목 고르기 — 검색 결과. 전 품목을 뒤진다(견적은 안 팔던 걸 새로 팔 때 낸다). */
   //  거르개는 공용이다 — 제품별 원장·재고관리와 같은 것을 쓴다(shared/ui/ItemFilterBar).
@@ -201,9 +108,16 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     return [...rows].sort((a, b) => (linked.has(b.id) ? 1 : 0) - (linked.has(a.id) ? 1 : 0)).slice(0, 300);
   }, [items, itemSearch, partnerItems, form.partnerId, pickType, pickCat]);
 
+  const sameReference=(a?:QuotationReference|null,b?:QuotationReference|null)=>!!a&&!!b&&a.companyId===b.companyId&&a.planId===b.planId&&a.targetId===b.targetId;
+  const activeReference=editor.open?editor.session?.reference:undefined;
+  const deleteReference=editor.deleteSession?.reference;
+  const visiblePending=editor.pending.filter(row=>!sameReference(row.reference,activeReference)&&!sameReference(row.reference,deleteReference));
+  const damagedReferences=editor.references.filter(row=>!row.readable&&(!row.reference||(!sameReference(row.reference,activeReference)&&!sameReference(row.reference,deleteReference))));
+  const recoveryActions=(reference:NonNullable<typeof activeReference>)=><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={()=>void editor.inspect(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">결과 확인</button><button type="button" disabled={saving} onClick={()=>void editor.cancel(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">요청 중단</button></div>;
+  const pendingFor=(reference:NonNullable<typeof activeReference>)=>editor.pending.some(row=>sameReference(row.reference,reference))||editor.references.some(row=>sameReference(row.reference,reference));
   return (
     <div className="space-y-4">
-      <PageHeader title="견적서" subtitle="팔기 전에 값을 적어 내미는 종이 — 회계엔 아무것도 안 남습니다" actions={        <ActionButton tone="primary" onClick={openNew}>
+      <PageHeader title="견적서" subtitle="팔기 전에 값을 적어 내미는 종이 — 회계엔 아무것도 안 남습니다" actions={        <ActionButton tone="primary" onClick={openNew} disabled={saving}>
           <Plus size={14} />견적서 작성
         </ActionButton>} />
 
@@ -225,6 +139,11 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
         </div>
       )}
 
+      {editor.message&&!(editor.open&&editor.message===editor.sessionMessage)&&!(editor.deleteSession&&editor.message===editor.deleteMessage)&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.message}</p>}
+      {(visiblePending.length>0||damagedReferences.length>0)&&<section aria-label="처리 결과 확인이 필요한 견적" className="space-y-2 rounded-lg border border-slate-200 p-3"><h3 className="text-sm font-bold text-slate-700">처리 결과 확인이 필요한 견적</h3>
+        {visiblePending.map(row=><div key={row.reference.planId} className="flex flex-wrap items-center gap-2 text-xs"><span>{row.description}</span>{recoveryActions(row.reference)}</div>)}
+        {damagedReferences.map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs"><span>요청 원문을 읽지 못했습니다. 대상 번호: {row.reference?.targetId??'확인 필요 · 다른 견적 작업은 계속할 수 있습니다.'}</span>{row.reference&&recoveryActions(row.reference)}</div>)}
+      </section>}
       {/* 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -267,11 +186,11 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => setViewing(q)} title="보기 · 인쇄"
                           className="p-1.5 text-slate-300 hover:text-indigo-600"><Printer size={13} /></button>
-                        <button onClick={() => openEdit(q)} title="견적서 수정"
+                        <button disabled={saving} onClick={() => openEdit(q)} title="견적서 수정"
                           className="p-1.5 text-slate-300 hover:text-indigo-600"><Pencil size={13} /></button>
-                        <button onClick={() => openCopy(q)} title="이대로 새 견적"
+                        <button disabled={saving} onClick={() => openCopy(q)} title="이대로 새 견적"
                           className="p-1.5 text-slate-300 hover:text-emerald-600"><Copy size={13} /></button>
-                        <button onClick={async () => { if (await appConfirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
+                        <button disabled={saving} onClick={()=>void editor.requestDelete(q)}
                           title="삭제" className="p-1.5 text-slate-300 hover:text-rose-500"><Trash2 size={13} /></button>
                       </div>
                     </td>
@@ -285,7 +204,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
 
       {/* ── 작성 ── */}
       {open && (
-        <ModalShell title={editingId ? '견적서 수정' : '견적서 작성'} onClose={() => setOpen(false)} bodyClassName="space-y-4">
+        <ModalShell title={editingId ? '견적서 수정' : '견적서 작성'} onClose={()=>void editor.close()} bodyClassName="space-y-4">
+          <fieldset disabled={editor.locked} className="min-w-0 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">일자</span>
@@ -435,12 +355,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                           : 'bg-white text-slate-500 border-slate-200'}`}>
                         {l.isTaxExempt === undefined ? '—' : l.isTaxExempt ? '면세' : '과세'}
                       </button>
-                      <button onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, k) => k !== i) }))}
+                      <button onClick={() => editor.removeLine(i)}
                         className="text-slate-300 hover:text-rose-500 justify-self-center"><Trash2 size={13} /></button>
                     </div>
                   );
                 })}
-                <button onClick={() => setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] }))}
+                <button onClick={() => editor.addLine()}
                   className="w-full min-w-[740px] py-2 border-t border-slate-100 text-[11px] font-black text-indigo-600 hover:bg-indigo-50">+ 줄 추가</button>
               </div>
 
@@ -493,9 +413,13 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   <p className="text-[11px] font-black text-rose-400">원가보다 싼 값입니다 — 팔면 손해입니다.</p>
                 )}
               </div>
+          </fieldset>
+          {editor.sessionMessage&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.sessionMessage}</p>}
+          {activeReference&&pendingFor(activeReference)&&recoveryActions(activeReference)}
+          {editor.session?.requiresReopen&&<button type="button" disabled={saving} onClick={()=>{if(editor.session?.mode==='create')editor.newFromDraft();else void editor.reopen();}} className="rounded border border-slate-200 px-3 py-2 text-xs">{editor.session.mode==='create'?'새 견적 초안으로 작성':'현재 견적 다시 열기'}</button>}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100">
-              <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={save} disabled={saving}
+              <button onClick={()=>void editor.close()} disabled={saving} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={()=>void editor.save()} disabled={editor.locked}
                 className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-60">
                 {saving ? '저장 중…' : editingId ? '수정 저장' : '저장'}
               </button>
@@ -508,7 +432,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           전 품목을 뒤지되, 그 거래처에 이미 붙은 건 위로 올린다.
           원가와 등록 단가를 나란히 보여줘 여기서 바로 값을 가늠할 수 있게 한다. */}
       {pickIdx !== null && (
-        <ModalShell title="품목 고르기" onClose={() => setPickIdx(null)} className="h-[72dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
+        <ModalShell title="품목 고르기" onClose={()=>{if(!editor.busy)setPickIdx(null);}} className="h-[72dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
             <div className="px-5 py-3 border-b border-slate-100">
                 <p className="text-[10px] text-slate-400">{pickResults.length}품목 · 이 거래처에 붙은 품목이 위에 옵니다</p>
             </div>
@@ -548,17 +472,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 const rt = m ? m.marginRate : null;
                 const linked = p !== undefined;
                 return (
-                  <button key={x.id}
+                  <button key={x.id} disabled={editor.locked}
                     onClick={() => {
-                      setLine(pickIdx, {
-                        itemId: x.id, name: x.name, spec: String(x.spec ?? ''), unit: String(x.unit ?? ''),
-                        cost: c,
-                        //  **거래처 판매단가를 그대로 넣는다**(세포함). 단가 칸이 판매단가라
-                        //  변환할 게 없다 — 공급가액은 줄마다 역산해서 낸다(2026-09-10 사장님).
-                        price: p ?? 0,
-                        //  거래처 연결에 정해진 게 있으면 그걸 쓰고, 없으면 **비워 둔다** — 고르게 한다
-                        isTaxExempt: (() => { const t = saleTaxTypeOf(partnerItems, x.id); return t === undefined ? undefined : t === '면세'; })(),
-                      });
+                      if(editor.locked)return;
+                      editor.selectItem(pickIdx,x);
                       setPickIdx(null);
                     }}
                     className="w-full sm:grid sm:grid-cols-[minmax(150px,1fr)_92px_92px_84px_92px] sm:min-w-[520px] sm:items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
@@ -594,11 +511,15 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             </div>
             <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-400">목록에 없으면 창을 닫고 품목명·규격을 직접 입력하세요</span>
-              <button onClick={() => setPickIdx(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
+              <button onClick={()=>{if(!editor.busy)setPickIdx(null);}} disabled={saving} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
             </div>
         </ModalShell>
       )}
 
+      {editor.deleteSession&&<ConfirmModal title="견적서 삭제" message={editor.deleteSession.quotation.quoteNo+' 견적서를 삭제하시겠습니까?'} subMessage="선택한 견적 원문을 확인한 뒤 삭제합니다. 이미 보낸 요청의 중단은 삭제를 되돌리는 기능이 아닙니다."
+        confirmText={saving?'처리 중…':editor.deleteSession.ready?'삭제':'확인창 닫기'} confirmDisabled={saving||(!editor.deleteSession.ready&&!editor.deleteSession.reference)} confirmOnly={!editor.deleteSession.ready&&!!editor.deleteSession.reference}
+        onConfirm={()=>{if(editor.deleteSession?.ready)void editor.confirmDelete();else void editor.closeDelete();}} onCancel={()=>void editor.closeDelete()}
+        body={<div className="mt-3 space-y-3">{editor.deleteMessage&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.deleteMessage}</p>}{deleteReference&&pendingFor(deleteReference)&&!editor.deleteSession.ready&&recoveryActions(deleteReference)}</div>}/>}
       {/* ── 보기 · 인쇄 ── */}
       {viewing && (<QuotationPreview viewing={viewing} printCompany={printCompany} companyName={companyName} onClose={() => setViewing(null)} onPrint={printQuotation} />)}
     </div>

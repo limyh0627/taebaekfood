@@ -9,6 +9,7 @@ import { quoteTotals } from '../src/shared/quoteTotals';
 import { buildBomIndex, getBomIndex, setBomIndex } from '../src/shared/bomIndex';
 import { buildPackIndex } from '../src/shared/packIndex';
 import type { Item, Partner, PartnerItem } from '../src/shared/types';
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'quotation-test'}},authReady:Promise.resolve(),functions:{},db:{}}));
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: vi.fn(() => () => {}), addItem: vi.fn(), deleteItem: vi.fn() }));
 const original = getBomIndex(); afterEach(() => { setBomIndex(original); vi.mocked(subscribeToCollection).mockImplementation(() => () => {}); vi.mocked(addItem).mockClear(); });
 const items = [{ id: 'box', name: '견적 박스', type: 'product', unit: '박스' }, { id: 'loose', name: '견적 낱개', type: 'product', unit: '병' }] as Item[];

@@ -124,7 +124,7 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
@@ -339,6 +339,9 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /directoryDeleteOperations/{document=**} {
+      allow read, write: if false;
+    }
+    match /quotationOperations/{document=**} {
       allow read, write: if false;
     }
     match /orderItemEdits/{id} {

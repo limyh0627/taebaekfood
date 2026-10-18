@@ -925,6 +925,20 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  let isolated:RulesTestEnvironment;
  beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
  afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ it('견적 영수증만 서버 전용으로 보호하고 기존 견적 관리자 권한은 유지한다',async()=>{
+  const manager=isolated.authenticatedContext('quote-manager',{employeeId:'quote-manager',companyId:'taebaek',isAdmin:true}).firestore();
+  const staff=isolated.authenticatedContext('quote-staff',{employeeId:'quote-staff',companyId:'taebaek',isAdmin:false}).firestore();
+  const foreign=isolated.authenticatedContext('quote-foreign',{employeeId:'quote-foreign',companyId:'punghoe',isAdmin:true}).firestore();
+  await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'quotationOperations','quote-proof'),{companyId:'taebaek'});});
+  try{
+   for(const store of [manager,staff,foreign,isolated.unauthenticatedContext().firestore()]){
+    const receipt=doc(store,'quotationOperations','quote-proof');
+    await assertFails(getDoc(receipt));await assertFails(getDocs(collection(store,'quotationOperations')));await assertFails(setDoc(receipt,{companyId:'taebaek'}));await assertFails(updateDoc(receipt,{status:'applied'}));await assertFails(deleteDoc(receipt));await assertFails(setDoc(doc(store,'quotationOperations','quote-proof','nested','bypass'),{companyId:'taebaek'}));
+   }
+   const quote=doc(manager,'quotations','quote-rule');await assertSucceeds(setDoc(quote,{companyId:'taebaek',name:'기존견적'}));
+   await assertSucceeds(updateDoc(quote,{name:'기존수정'}));await assertFails(updateDoc(doc(staff,'quotations','quote-rule'),{name:'직원수정'}));await assertFails(getDoc(doc(foreign,'quotations','quote-rule')));await assertSucceeds(deleteDoc(quote));
+  }finally{await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'quotationOperations','quote-proof'));await deleteDoc(doc(context.firestore(),'quotations','quote-rule'));});}
+ });
  it('디렉터리 삭제 영수증을 서버 전용으로 보호하고 기존 삭제 권한과 퇴직금 보호를 유지한다',async()=>{
   const staff=isolated.authenticatedContext('directory-staff',{employeeId:'directory-staff',companyId:'taebaek',isAdmin:false}).firestore();
   const manager=isolated.authenticatedContext('directory-manager',{employeeId:'directory-manager',companyId:'taebaek',isAdmin:true}).firestore();

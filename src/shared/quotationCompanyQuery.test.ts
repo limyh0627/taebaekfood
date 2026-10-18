@@ -1,5 +1,18 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import {render,fireEvent,screen,waitFor} from '@testing-library/react';
+import QuotationManager from '../../components/QuotationManager';
+import type {Quotation} from '../features/quotations/domain/quotation';
+import {quotationSnapshot} from './quotationCommand';
+import {subscribeToCollection} from './services/firebaseService';
+import type {QuotationScope} from '../features/quotations/infrastructure/quotationWrites';
+import {captureQuotation,prepareQuotation} from '../features/quotations/infrastructure/quotationWrites';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it,vi } from 'vitest';
+
+vi.mock('./firebase',()=>({auth:{currentUser:{uid:'query-actor'}},authReady:Promise.resolve(),functions:{},db:{}}));
+vi.mock('./services/firebaseService',()=>({subscribeToCollection:vi.fn(()=>()=>{}),addItem:vi.fn(),deleteItem:vi.fn()}));
+vi.mock('../features/quotations/infrastructure/quotationWrites',async importOriginal=>{const actual=await importOriginal<typeof import('../features/quotations/infrastructure/quotationWrites')>();return {...actual,captureQuotation:vi.fn(async(scope:QuotationScope,selected:Quotation)=>({reference:{companyId:scope.companyId,planId:'read-open',targetId:selected.id},expectedVersion:'1:000000001',snapshot:quotationSnapshot({...selected,companyId:scope.companyId})})),prepareQuotation:vi.fn(),pendingQuotations:()=>[],quotationReferences:()=>[]};});
 
 describe('견적서 회사별 구독', () => {
   it('전체 컬렉션이 아니라 로그인 회사만 조회한다', () => {
@@ -14,12 +27,13 @@ describe('견적서 회사별 구독', () => {
     expect(source).toMatch(/name: e\.target\.value, itemId: undefined, cost: undefined/);
   });
 
-  it('목록의 기존 견적서를 수정 모드로 다시 연다', () => {
-    const source = readFileSync('components/QuotationManager.tsx', 'utf8');
-    expect(source).toContain('const openEdit = (q: Quotation) => { setEditingId(q.id); resetForm(q, true);');
-    expect(source).toContain('onClick={() => openEdit(q)} title="견적서 수정"');
-    expect(source).toContain("editingId ? '수정 저장' : '저장'");
-    expect(source).toContain('date: keepDates && base ? base.date : today()');
+  it('목록의 기존 견적서는 원문 열림 확인 뒤 기존 날짜와 내용으로 수정한다',async()=>{
+    const selected:Quotation={id:'기존-견적',companyId:'taebaek',quoteNo:'Q250202-01',date:'2025-02-02',validUntil:'2025-02-10',partnerId:'',partnerName:'합성 문의처',lines:[{name:'원료',spec:'20kg',qty:2.5,price:100,isTaxExempt:true}],totalSupply:250,totalTax:0,totalAmount:250,createdAt:'2025-02-02T00:00:00Z'};
+    vi.mocked(subscribeToCollection).mockImplementation((_name,onRows)=>{onRows([selected]);return()=>{};});
+    render(React.createElement(QuotationManager,{items:[],partners:[]}));fireEvent.click(screen.getByTitle('견적서 수정'));
+    await waitFor(()=>expect(screen.getByRole('button',{name:'수정 저장'})).toBeEnabled());
+    expect(screen.getByDisplayValue(selected.date)).toBeInTheDocument();expect(screen.getByDisplayValue(selected.validUntil!)).toBeInTheDocument();expect(screen.getByDisplayValue('원료')).toBeInTheDocument();expect(screen.getByDisplayValue('2.5')).toBeInTheDocument();
+    expect(captureQuotation).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'query-actor'},selected,expect.any(Function));expect(prepareQuotation).not.toHaveBeenCalled();
   });
 
   it('인쇄할 때 견적서 본문만 인쇄 대상으로 표시한다', () => {
