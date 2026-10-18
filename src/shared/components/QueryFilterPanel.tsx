@@ -2,7 +2,7 @@ import React, { useId } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 export const QUERY_FILTER_LABEL_CLASS = 'flex flex-col gap-1 text-[10px] font-bold text-slate-500';
-export const QUERY_FILTER_CONTROL_CLASS = 'h-10 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300';
+export const QUERY_FILTER_CONTROL_CLASS = 'h-10 min-w-32 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300';
 
 export default function QueryFilterPanel({ id, ariaLabel, onReset, children, bodyClassName = '', sectionClassName = '' }: {
   id?: string;
