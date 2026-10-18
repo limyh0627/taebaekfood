@@ -1,16 +1,18 @@
 import {createItemEditorProgress,type ItemEditorProgress,type ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
 import {saveOutcomeMessage} from '../src/shared/saveOutcome';
 import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
-import { saveItemEditorRelations } from '../src/features/items/services/saveItemEditorRelations';
+import {itemEditorOpeningMatches,type ItemEditorOpening,type PendingItemEditorPlan,type ItemEditorSaveInput} from '../src/features/items/infrastructure/itemEditorWrites';
+import {ITEM_EDITOR_METADATA_FIELDS,itemEditorStageLabel,type ItemEditorDraft,type ItemEditorReference} from '../src/shared/itemEditorCommand';
 import { useItemPhotoSave, PHOTO_TYPES } from '../src/features/items/hooks/useItemPhotoSave';
-import { appConfirm } from '../src/shared/components/appDialog';
+import {confirmItemEditorPurchaseNotices} from '../src/features/items/services/saveItemEditorRelations';
+import { appConfirm,appNotice } from '../src/shared/components/appDialog';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { where } from 'firebase/firestore';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
 import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
-import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
+import { bomOf, buildBomIndex, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
@@ -31,16 +33,20 @@ interface ProductModalProps {
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   onClose: () => void;
-  onSave: (product:ItemPhotoProduct,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
-  onUpsertPartnerItem?: (ps: PartnerItem) => Promise<void>;
-  onDeletePartnerItem?: (id: string) => Promise<void>;
+  onCaptureItemEditorOpening: (targetId:string,isCurrent:()=>boolean)=>Promise<ItemEditorOpening>;
+  onSave: (input:ItemEditorSaveInput,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
+  initialPending?:PendingItemEditorPlan;
+  initialReference?:ItemEditorReference;
+  onInspectItemEditor:ItemEditorRecoveryPort;
+  onContinueItemEditor:ItemEditorRecoveryPort;
+  onCancelItemEditor:ItemEditorRecoveryPort;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
   rawItems?: Item[];
   itemFormulas?: import('../src/shared/types').ItemFormula[];
-  onSaveItemFormula?: (parentKey: string, rows: { child_name: string; yield_rate: number; ratio: number }[], prevKey?: string) => Promise<void>;
   /** 편집 중인 초안 기준 롤업 원가 — 원가 토글이 계산값을 보여주는 데 쓴다. */
   rollupCostOf?: (draft: Item, bomDraft?: BomDraftLine[]) => number;
 }
+type ItemEditorRecoveryPort=(reference:ItemEditorReference,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
 
 const CAT_NORM: Record<string, string> = {
   'Cap': '마개', 'Tape': '테이프', '박스': '박스', '용기': '용기', '라벨': '라벨', '마개': '마개', '테이프': '테이프',
@@ -76,9 +82,10 @@ const normUnit = (u: string | undefined): SpecUnit =>
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 
-const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
+const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}> = ({ companyId,requestScopeKey, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onAddSubmaterial, rawItems = [], itemFormulas = [], rollupCostOf,opening,onInspectItemEditor,onContinueItemEditor,onCancelItemEditor }) => {
   const closeModalRef=useRef<()=>void>(()=>{});
-  const newItemId=useRef('p-'+Date.now());
+  const recoveryBusy=useRef(false);
+  const newItemId=useRef(opening.targetId);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -100,7 +107,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
     setPhotoRemoved(false);
   };
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
-  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const openingBom = useMemo(()=>buildBomIndex(
+    opening.documents.items.map(row=>({...row.data,id:row.id}) as Item),
+    opening.documents.boms.map(row=>row.data as {parent_id:string;child_id:string;quantity?:number}),
+  ),[opening]);
+  const partnerIn = opening.documents.links.map(row=>({id:row.id,itemId:row.data.itemId,partnerId:row.data.partnerId,Direction:row.data.Direction})).filter(row=>row.Direction==='in');
 
   const [costInput, setCostInput] = useState(() =>
     typeof initialData?.cost === 'number' && Number.isFinite(initialData.cost) ? String(initialData.cost) : '');
@@ -126,7 +137,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
       .map(pi => (pi.partnerId))
       .filter(Boolean) as string[],
     //  구성은 item_bom에서 읽는다. 자식 품목이 붙어 오므로 이름·규격·단위가 언제나 제 값이다.
-    submaterials: (orderUnitInputs ? orderUnitInputs.bom.of(initialData?.id ?? '') : bomOf(initialData?.id)).map(l => ({
+    submaterials: openingBom.of(initialData?.id??'').map(l => ({
       id: l.childId,
       name: l.child?.name ?? l.childId,
       category: normCat(l.child?.type ?? 'submaterial'),
@@ -210,9 +221,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
     if (!initialData) return [];
     const isProduct = initialData.type === 'product';
     const key = isProduct ? docName(initialData) : baseRawName(initialData.name);
-    const rows = (itemFormulas ?? []).filter(f => f.parent_key === key);
+    const rows = opening.documents.formulas.map(row=>row.data).filter(f=>f.parent_key===key);
     if (rows.length > 0)
-      return rows.map(f => ({ child_name: f.child_name, yield_pct: Math.round((f.ratio ?? 1) * (f.yield_rate ?? 1) * 1000) / 10 }));
+      return rows.map(f => ({ child_name: String(f.child_name), yield_pct: Math.round(Number(f.ratio ?? 1) * Number(f.yield_rate ?? 1) * 1000) / 10 }));
     // item_formula 행이 없으면 완제품은 하드코딩 시드(PRODUCT_FORMULA)를 미리 채워 보여줌(실수로 비우는 것 방지).
     if (isProduct && PRODUCT_FORMULA[key])
       return PRODUCT_FORMULA[key].map(r => ({ child_name: r.raw, yield_pct: Math.round(r.ratio * 1000) / 10 }));
@@ -297,7 +308,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
           photoRemoved: boolean;
           bomDraft: BomDraftLine[];
       };
-      relations: Parameters<typeof saveItemEditorRelations>[0];
+      draft: ItemEditorDraft;
       progress: ItemEditorProgress;
       save: typeof onSave;
       isCurrent: () => boolean;
@@ -319,15 +330,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
           const session = sessionRef.current;
           if (!session || !isCurrent())
               return { outcome: { status: 'cancelled', message: '현재 작성 세션이 바뀌었습니다.' }, progress };
-          const primary = await session.save(product, progress, isCurrent);
-          if (primary.outcome.status !== 'saved')
-              return primary;
-          return saveItemEditorRelations(session.relations, progress, isCurrent);
+          const metadata=Object.fromEntries(ITEM_EDITOR_METADATA_FIELDS.filter(key=>Object.prototype.hasOwnProperty.call(product,key)).map(key=>[key,product[key]]));
+          const draft={...session.draft,metadata,photoChanged:!!product.photoChanged};
+          let purchaseNoticeHash:string|undefined;
+          try {purchaseNoticeHash=await confirmItemEditorPurchaseNotices(opening,draft,appNotice,isCurrent);}
+          catch(error){return {progress,outcome:{status:'rejected',message:error instanceof Error?error.message:'낱개 연결 안내를 완료하지 못했습니다.',nextAction:'품목 저장을 전송하지 않았습니다. 내용을 확인한 뒤 다시 시도해 주세요.'}};}
+          return session.save({opening,draft,...(purchaseNoticeHash?{purchaseNoticeHash}:{})},progress,isCurrent);
       } });
   const closeModal = () => {
-      if (savingRef.current || validationBusy.current)
+      if (savingRef.current || validationBusy.current || recoveryBusy.current)
           return;
-      if (sessionRef.current?.progress.unknownStageId || saveResult?.outcome.status === 'unknown') {
+      if (!sessionRef.current?.progress.reference && (sessionRef.current?.progress.unknownStageId || saveResult?.outcome.status === 'unknown')) {
           setSaveResult(current => current && ({ ...current, outcome: { ...current.outcome, message: '저장 결과가 불확실하여 최초 작성 내용과 사진을 유지하고 있습니다.', nextAction: '같은 요청을 다시 저장하지 말고 관리자에게 미확정 단계를 확인해 주세요.' } }));
           return;
       }
@@ -338,20 +351,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
       const session = sessionRef.current;
       if (!session || savingRef.current || !session.isCurrent() || session.progress.unknownStageId)
           return;
-      const result = await saveItemPhoto({ ...session.input, progress: session.progress, isCurrent: session.isCurrent });
+      const result = session.progress.reference
+          ? await onContinueItemEditor(session.progress.reference,session.progress,session.isCurrent)
+          : await saveItemPhoto({ ...session.input, progress: session.progress, isCurrent: session.isCurrent });
       if (!session.isCurrent())
           return;
       setSaveResult(result);
       if (result.outcome.status === 'saved')
           session.close();
-      else if (!result.progress.confirmedStageIds.length && !result.progress.unknownStageId && result.outcome.status === 'rejected')
+      else if (!result.progress.confirmedStageIds.length && !result.progress.unknownStageId && !result.progress.reference && result.outcome.status === 'rejected')
           sessionRef.current = null;
   };
   const submissionLocked = !!sessionRef.current;
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
-    if(validationBusy.current)return;
+    if(validationBusy.current||recoveryBusy.current)return;
     validationBusy.current=true;setPreparing(true);
     try {
     if (savingRef.current) return;
@@ -408,7 +423,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
      * "기존 줄 전부 삭제 → 초안대로 다시 쓰기"라서 **품목을 저장할 때마다 BOM이 통째로 지워졌다.**
      */
     const currentScope=scope;
-    sessionRef.current={input:{finalProduct,photoFile,photoRemoved,bomDraft:formData.type==='service'?[]:formData.submaterials.map(line=>({childId:line.id,qty:typeof line.stock==='number'?line.stock:1}))},relations:{formData:{...formData,inPartnerIds:[...formData.inPartnerIds]},initialData,formulaRows:formulaRows.map(row=>({...row})),itemId:finalProduct.id,partnerIn:partnerIn.map(row=>({...row})),onSaveItemFormula,onUpsertPartnerItem,onDeletePartnerItem},progress:createItemEditorProgress(finalProduct.id),save:onSave,isCurrent:()=>alive.current&&scopeRef.current===currentScope,close:onClose};
+    sessionRef.current={input:{finalProduct,photoFile,photoRemoved,bomDraft:formData.type==='service'?[]:formData.submaterials.map(line=>({childId:line.id,qty:typeof line.stock==='number'?line.stock:1}))},draft:{isNew:!initialData,metadata:{},bomDraft:formData.type==='service'?[]:formData.submaterials.map(line=>({childId:line.id,qty:typeof line.stock==='number'?line.stock:1})),formulaRows:formulaRows.map(row=>({...row})),inPartnerIds:[...formData.inPartnerIds],photoChanged:false},progress:createItemEditorProgress(finalProduct.id),save:onSave,isCurrent:()=>alive.current&&scopeRef.current===currentScope,close:onClose};
     await continueSession();
 
     // 거래처별 포장 설정(shipping_rule)은 폐기했다 — 겉박스·테이프는 박스 품목의 BOM으로만 잡는다.
@@ -974,7 +989,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
                   </div>
                 )}
               </div>
-              {!onSaveItemFormula && <p className="text-[10px] font-bold text-amber-500">⚠ 저장 핸들러 미연결 — 배합이 저장되지 않습니다.</p>}
+
             </div>
           )}
 
@@ -1112,7 +1127,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
 
         </form></fieldset>
 
-        {saveResult&&saveResult.outcome.status!=='saved'&&<div role="status" className="mx-6 mb-3 whitespace-pre-line text-xs text-slate-600">{saveOutcomeMessage(saveResult.outcome)}{saveResult.progress.confirmedStageIds.length>0&&<p>확인된 단계: {saveResult.progress.confirmedStageIds.map(id=>id==='primary'?'품목·구성품':id==='cost'?'원가':id==='formula'?'배합·원가':id.startsWith('partner-upsert:')?'매입처 연결':id.startsWith('partner-delete:')?'매입처 연결 해제':'후속 처리').filter((label,index,labels)=>labels.indexOf(label)===index).join(', ')}</p>}</div>}
+        {saveResult&&!sessionRef.current?.progress.reference&&saveResult.outcome.status!=='saved'&&<div role="status" className="mx-6 mb-3 whitespace-pre-line text-xs text-slate-600">{saveOutcomeMessage(saveResult.outcome)}{saveResult.progress.confirmedStageIds.length>0&&<p>확인된 단계: {saveResult.progress.confirmedStageIds.map(id=>itemEditorStageLabel(id as Parameters<typeof itemEditorStageLabel>[0])).filter((label,index,labels)=>labels.indexOf(label)===index).join(', ')}</p>}</div>}
+        {sessionRef.current?.progress.reference&&<div className="mx-6 mb-3"><ItemEditorRecovery reference={sessionRef.current.progress.reference} progress={sessionRef.current.progress} initialResult={saveResult??undefined} canContinue onInspect={onInspectItemEditor} onContinue={onContinueItemEditor} onCancel={onCancelItemEditor} isCurrent={sessionRef.current.isCurrent} onResult={setSaveResult} onBusy={busy=>{recoveryBusy.current=busy;setPreparing(busy);}}/></div>}
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex space-x-3">
           <button
             type="button"
@@ -1122,17 +1138,101 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, 
           >
             취소
           </button>
-          <button
+          {!sessionRef.current?.progress.reference&&(          <button
             type="button"
             onClick={handleSubmit}
             disabled={saving||preparing||!!sessionRef.current?.progress.unknownStageId||saveResult?.outcome.status==='unknown'}
             className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all"
           >
             {saving||preparing ? '저장 중…' : submissionLocked ? '미완료 단계 이어하기' : initialData ? '수정 완료' : '등록 완료'}
-          </button>
+          </button>)}
         </div>
     </ModalShell>
   );
 };
 
+
+export interface ItemEditorRecoveryEntry {
+  reference:ItemEditorReference;
+  pending?:PendingItemEditorPlan;
+  error?:string;
+}
+export function ItemEditorRecoveryList({entries,onOpen}:{entries:ItemEditorRecoveryEntry[];onOpen:(entry:ItemEditorRecoveryEntry)=>void}) {
+  if(!entries.length)return null;
+  return <section aria-label="처리 결과 확인이 필요한 품목 저장" className="mb-4 rounded-lg border border-slate-200 p-3">
+    <h3 className="text-sm font-bold text-slate-700">처리 결과 확인이 필요한 품목 저장</h3>
+    {entries.map(entry=><div key={entry.reference.planId} className="mt-2 flex items-center justify-between gap-3 text-xs">
+      <span>{String(entry.pending?.request.draft.metadata.name??('대상 번호: '+entry.reference.targetId))}{entry.error&&' · 원문 확인 필요'}</span>
+      <button type="button" className="rounded border border-slate-200 px-3 py-2 font-bold" onClick={()=>onOpen(entry)}>상세·결과 확인</button>
+    </div>)}
+  </section>;
+}
+function ItemEditorRecovery({reference,pending,progress:initialProgress,onInspect,onContinue,onCancel,isCurrent,onResult,onBusy,canContinue,initialResult}:{reference:ItemEditorReference;pending?:PendingItemEditorPlan;progress?:ItemEditorProgress;onInspect:ItemEditorRecoveryPort;onContinue:ItemEditorRecoveryPort;onCancel:ItemEditorRecoveryPort;isCurrent:()=>boolean;onResult?:(result:ItemEditorSaveResult)=>void;onBusy?:(busy:boolean)=>void;canContinue?:boolean;initialResult?:ItemEditorSaveResult}) {
+  const progress=useRef(initialProgress??createItemEditorProgress(reference.targetId));
+  const [result,setResult]=useState<ItemEditorSaveResult|null>(initialResult??null),[busy,setBusy]=useState(false);
+  const busyRef=useRef(false);
+  useEffect(()=>{setResult(initialResult??null);},[initialResult]);
+  const run=async(port:ItemEditorRecoveryPort)=>{
+    if(busyRef.current||!isCurrent())return;
+    busyRef.current=true;setBusy(true);onBusy?.(true);
+    try {
+      const next=await port(reference,progress.current,isCurrent);
+      if(!isCurrent())return;
+      setResult(next);onResult?.(next);
+    } catch {
+      if(isCurrent())setResult({progress:progress.current,outcome:{status:'unknown',message:'품목 저장 결과를 확인하지 못했습니다.',nextAction:'같은 요청의 결과 확인을 다시 선택해 주세요. 새 요청은 보내지 않습니다.'}});
+    } finally {busyRef.current=false;onBusy?.(false);if(isCurrent())setBusy(false);}
+  };
+  const terminal=['completed','cancelled','rejected'].includes(result?.progress.terminalStatus??'');
+  return <section aria-label="품목 저장 결과 복구" className="space-y-3 text-sm text-slate-600">
+    <p>대상 번호: {reference.targetId}</p>
+    {pending&&<><p>작성 품목: {String(pending.request.draft.metadata.name)}</p>
+      {typeof pending.request.draft.metadata.image==='string'&&pending.request.draft.metadata.image&&<img src={pending.request.draft.metadata.image} alt="저장 요청에 보관된 품목 사진" className="h-24 w-24 object-contain"/>}
+      <dl className="grid grid-cols-2 gap-2 text-xs">
+        <dt>규격</dt><dd>{String(pending.request.draft.metadata.spec??'미입력')}</dd>
+        <dt>단위</dt><dd>{String(pending.request.draft.metadata.unit??'미입력')}</dd>
+        <dt>단위 원가</dt><dd>{pending.request.draft.metadata.cost===undefined?'미입력':String(pending.request.draft.metadata.cost)+'원'}</dd>
+      </dl>
+      <p>구성품 {pending.request.draft.bomDraft?.length??0}개 · 배합 {pending.request.draft.formulaRows?.length??0}개 · 매입 거래처 {pending.request.draft.inPartnerIds.length}개</p>
+      {pending.request.draft.bomDraft?.map(line=><p key={line.childId} className="text-xs">구성품 번호 {line.childId}: {line.qty}</p>)}
+      {pending.request.draft.formulaRows?.map((line,index)=><p key={index} className="text-xs">배합 {line.child_name}: {line.yield_pct}%</p>)}
+      {!!pending.request.draft.inPartnerIds.length&&<p className="text-xs">매입 거래처 번호: {pending.request.draft.inPartnerIds.join(', ')}</p>}</>}
+    {result&&<div role="status" className="whitespace-pre-line">{result.outcome.status==='saved'?'모든 단계의 저장이 확인됐습니다. 창을 닫고 현재 품목을 다시 열어 주세요.':saveOutcomeMessage(result.outcome)}
+      {!!result.progress.confirmedStageIds.length&&<p>확인된 단계: {result.progress.confirmedStageIds.map(id=>itemEditorStageLabel(id as Parameters<typeof itemEditorStageLabel>[0])).join(', ')}</p>}
+    </div>}
+    {terminal&&result&&result.outcome.status!=='saved'&&(!('nextAction' in result.outcome)||!result.outcome.nextAction)&&<p className="text-xs">창을 닫고 현재 자료를 새로 열어 주세요.</p>}
+    {!terminal&&<div className="flex flex-wrap gap-2">
+      <button type="button" disabled={busy} onClick={()=>void run(onInspect)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
+      {(pending||canContinue)&&<button type="button" disabled={busy} onClick={()=>void run(onContinue)} className="rounded border border-slate-200 px-3 py-2">미완료 단계 이어하기</button>}
+      <button type="button" disabled={busy} onClick={()=>void run(onCancel)} className="rounded border border-slate-200 px-3 py-2">남은 단계 중단</button>
+    </div>}
+    <p className="text-xs">중단해도 이미 완료된 단계는 유지됩니다. 완료된 자료를 되돌리는 작업은 아닙니다.</p>
+  </section>;
+}
+const ProductModal:React.FC<ProductModalProps>=(props)=>{
+  const targetId=useRef(props.initialData?.id??('p-'+Date.now()));
+  const selection=useRef(props.initialData),initialProps=useRef(props);
+  const [opening,setOpening]=useState<ItemEditorOpening|null>(null),[error,setError]=useState('');
+  const current=useRef(true),recoveryBusy=useRef(false);
+  const scope=props.companyId+':'+(props.requestScopeKey??'')+':'+targetId.current;
+  const scopeRef=useRef(scope);scopeRef.current=scope;
+  const pending=props.initialPending,reference=pending?.reference??props.initialReference;
+  useEffect(()=>{
+    current.current=true;
+    if(reference)return()=>{current.current=false;};
+    const capturedScope=scope;
+    const isCurrent=()=>current.current&&scopeRef.current===capturedScope;
+    props.onCaptureItemEditorOpening(targetId.current,isCurrent).then(value=>{
+      if(!isCurrent())return;
+      if(!itemEditorOpeningMatches(selection.current,value)){
+        setError('품목을 선택한 뒤 자료가 바뀌었습니다. 창을 닫고 최신 품목을 다시 열어 주세요.');return;
+      }
+      setOpening(value);
+    }).catch(()=>{if(isCurrent())setError('품목 원본을 확인하지 못했습니다. 창을 닫고 다시 열어 주세요. 저장 요청은 보내지 않았습니다.');});
+    return()=>{current.current=false;};
+  },[scope]);
+  if(reference)return <ModalShell title="품목 저장 결과 확인" onClose={()=>{if(!recoveryBusy.current)props.onClose();}}><ItemEditorRecovery reference={reference} pending={pending} onInspect={props.onInspectItemEditor} onContinue={props.onContinueItemEditor} onCancel={props.onCancelItemEditor} onBusy={busy=>{recoveryBusy.current=busy;}} isCurrent={()=>current.current&&scopeRef.current===scope}/></ModalShell>;
+  if(!opening)return <ModalShell title={props.initialData?'품목 정보 수정':'신규 품목 등록'} onClose={props.onClose}><p role="status" className="p-6 text-sm text-slate-600">{error||'품목 원본을 확인하고 있습니다. 확인이 끝나면 작성할 수 있습니다.'}</p></ModalShell>;
+  return <ProductModalForm {...initialProps.current} opening={opening}/>;
+};
 export default ProductModal;

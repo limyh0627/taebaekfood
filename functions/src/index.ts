@@ -359,3 +359,4 @@ export { catalogOrderReferenceProof } from './catalogOrderReferenceProof';
 export { leaveRequestCommand } from './leaveRequestCommand';
 
 export {orderEditCommand} from './orderEditCommand';
+export {itemEditorCommand} from './itemEditorCommand';

@@ -925,6 +925,15 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  let isolated:RulesTestEnvironment;
  beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
  afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ it('품목 편집 영수증은 직원·관리자 모두 읽기와 일반 경로 우회 쓰기를 할 수 없다',async()=>{
+  await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'itemEditorOperations','item-editor-receipt'),{companyId:'taebaek',status:'active'});});
+  try{
+   for(const claims of [{employeeId:'editor-admin',companyId:'taebaek',isAdmin:true},{employeeId:'editor-staff',companyId:'taebaek',isAdmin:false},{employeeId:'editor-foreign',companyId:'punghoe',isAdmin:true},null]){
+    const store=claims?isolated.authenticatedContext('uid-'+claims.employeeId,claims).firestore():isolated.unauthenticatedContext().firestore(),target=doc(store,'itemEditorOperations','item-editor-receipt');
+    await assertFails(getDoc(target));await assertFails(getDocs(collection(store,'itemEditorOperations')));await assertFails(setDoc(target,{companyId:'taebaek'}));await assertFails(updateDoc(target,{status:'completed'}));await assertFails(deleteDoc(target));await assertFails(setDoc(doc(store,'itemEditorOperations','item-editor-receipt','nested','bypass'),{companyId:'taebaek'}));
+   }
+  }finally{await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'itemEditorOperations','item-editor-receipt'));});}
+ });
  it('관리자·직원·타회사·미로그인 모두 get/list/create/update/delete와 하위 경로 우회를 막는다',async()=>{for(const claims of [{employeeId:'admin',companyId:'taebaek',isAdmin:true},{employeeId:'e1',companyId:'taebaek',isAdmin:false},{employeeId:'other',companyId:'punghoe',isAdmin:true},null]){const context=claims?isolated.authenticatedContext('uid-'+claims.employeeId,claims):isolated.unauthenticatedContext(),database=context.firestore(),target=doc(database,'leaveRequestOperations','receipt');await assertFails(getDoc(target));await assertFails(getDocs(collection(database,'leaveRequestOperations')));await assertFails(setDoc(doc(database,'leaveRequestOperations','new'),{companyId:'taebaek'}));await assertFails(updateDoc(target,{status:'cancelled'}));await assertFails(deleteDoc(target));await assertFails(setDoc(doc(database,'leaveRequestOperations','receipt','nested','child'),{companyId:'taebaek'}));}});
  it('휴가 직접 상태·원문 수정은 관리자도 거절하고 기존 생성·본인대기삭제 범위는 유지한다',async()=>{
   const staff=isolated.authenticatedContext('mutation-staff',{employeeId:'mutation-e1',companyId:'taebaek',isAdmin:false}).firestore();

@@ -1,124 +1,62 @@
-import {buildCostFn} from '../../shared/bomCost';
-import {buildFormula as buildFormulaBom,formulaRowsOf} from './bom';
-/** @vitest-environment jsdom */
-import { readFileSync } from 'node:fs';
+import fs from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
-import { executeItemEditorSteps, createItemEditorProgress } from '../items/application/itemEditorSave';
-import { boxSpecUpdates } from '../../shared/boxSpec';
-import { crossCompanyBoms } from '../../shared/itemCompany';
-import { unpackComponent } from '../../shared/orderUnits';
-import { buildBomIndex } from '../../shared/bomIndex';
-import { buildPackIndex } from '../../shared/packIndex';
-import { COL } from '../../shared/collections';
-import type { Item, PartnerItem } from '../../shared/types';
-const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8'), ast = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-function expression(name: string) {
-    let found = '';
-    function visit(n: ts.Node) {
-        if (ts.isVariableDeclaration(n) && n.name.getText(ast) === name)
-            found = n.initializer!.getText(ast);
-        ts.forEachChild(n, visit);
-    }
-    visit(ast);
-    expect(found).not.toBe('');
-    return ts.transpileModule('const callback=' + found + ';return callback;', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+import type { ItemEditorProgress, ItemEditorSaveResult } from '../items/application/itemEditorSave';
+import { createItemEditorProgress } from '../items/application/itemEditorSave';
+const source = fs.readFileSync(new URL('./AdminApp.tsx', import.meta.url), 'utf8');
+function callback() {
+    const file = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let initializer: ts.Expression | undefined;
+    const visit = (node: ts.Node) => {
+        if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'saveItemEditorPrimary')
+            initializer = node.initializer;
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    if (!initializer)
+        throw Error('실제 품목 저장 콜백이 없습니다.');
+    return ts.transpileModule('return (' + initializer.getText(file) + ');', { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
 }
-const unit: Item = { id: 'unit', companyId: 'taebaek', name: '참기름', type: 'product', spec: '350ml', stock: 7, minStock: 0, unit: '병', image: 'old-url', imagePath: 'old-path' };
-const box: Item = { ...unit, id: 'box', name: '참기름 박스', spec: '350ml * 20' };
-const cap: Item = { ...unit, id: 'cap', name: '마개', type: 'submaterial' };
 function harness() {
     let current = true;
-    const allItems = [unit, box, cap], itemBoms = [{ id: 'box-line', parent_id: 'box', child_id: 'unit', quantity: 20 }, { id: 'bom-unit__cap', parent_id: 'unit', child_id: 'cap', quantity: 1 }];
-    const appData = { orderUnitInputs: { bom: buildBomIndex(allItems, itemBoms), pack: buildPackIndex() } };
-    const commit = vi.fn(async (_ops: Array<{
-        kind: string;
-        collection: string;
-        id: string;
-        data?: Record<string, unknown>;
-    }>) => {
-    }), cost = vi.fn(async () => {
-    }), prepare = vi.fn((ops: unknown[]) => ops), refresh = vi.fn();
-    const deps = {itemEditorCommittedSnapshot:{current:null},itemEditorToken:{}, isCurrentItemEditor: () => current, editingProduct: unit, allItems, itemBoms, itemFormulas: [], companyId: 'taebaek', appData, COL, crossCompanyBoms, boxSpecUpdates, commitCompanyWrites: commit, recomputeAllCosts: cost, executeItemEditorSteps, prepareCompanyWriteOperations: prepare, refreshStaticData: refresh };
-    const save = new Function(...Object.keys(deps), expression('saveItemEditorPrimary'))(...Object.values(deps));
-    return { save, commit, cost, prepare, refresh, appData, allItems, setCurrent: (v: boolean) => current = v };
+    const refresh = vi.fn(), submit = vi.fn(async (_scope: unknown, _input: unknown, progress: ItemEditorProgress, _isCurrent: () => boolean): Promise<ItemEditorSaveResult> => ({ progress, outcome: { status: 'unknown', message: '응답 미확인', nextAction: '결과 확인' } }));
+    const deps = { submitItemEditorSave: submit, itemEditorRequestScope: { companyId: 'taebaek', actorUid: 'actor' }, isCurrentItemEditor: () => current, refreshStaticData: refresh };
+    const save = new Function(...Object.keys(deps), callback())(...Object.values(deps));
+    return { save, submit, refresh, setCurrent: (value: boolean) => current = value };
 }
-it('품목·박스 규격·BOM을 단일 gateway에 보내고 오래된 재고·미변경 사진을 쓰지 않는다', async () => {
-    const h = harness(), progress = createItemEditorProgress(unit.id);
-    const result = await h.save({ ...unit, spec: '500ml', bomDraft: [{ childId: 'cap', qty: 2 }], photoChanged: false }, progress, () => true);
-    expect(result.outcome.status).toBe('saved');
-    expect(h.commit).toHaveBeenCalledOnce();
-    const ops = h.commit.mock.calls[0][0] as Array<{
-        kind: string;
-        collection: string;
-        id: string;
-        data?: Record<string, unknown>;
-    }>;
-    expect(ops.find(op => op.id === 'unit')).toMatchObject({ kind: 'update', data: { spec: '500ml' } });
-    expect(ops.find(op => op.id === 'unit')?.data).not.toHaveProperty('stock');
-    expect(ops.find(op => op.id === 'unit')?.data).not.toHaveProperty('image');
-    expect(ops.find(op => op.id === 'box')).toMatchObject({ kind: 'update', data: { spec: '500ml * 20' } });
-    expect(ops.filter(op => op.id === 'bom-unit__cap')).toHaveLength(1);
-    expect(progress.confirmedStageIds).toEqual(['primary', 'cost']);
+it('부모는 열 때 고정한 typed 입력과 진행 객체를 그대로 영속 writer에 전달한다', async () => {
+    const h = harness(), progress = createItemEditorProgress('unit'), input = { opening: { targetId: 'unit' }, draft: { metadata: { cost: 0 } } };
+    const result = await h.save(input, progress, () => true);
+    expect(h.submit).toHaveBeenCalledWith({ companyId: 'taebaek', actorUid: 'actor' }, input, progress, expect.any(Function));
+    expect(result.outcome.status).toBe('unknown');
+    expect(h.refresh).not.toHaveBeenCalled();
 });
-it('원가 실패는 primary ACK를 보존한 부분 완료이며 재호출로 주업무를 다시 쓰지 않는다', async () => {
-    const h = harness(), progress = createItemEditorProgress(unit.id);
-    h.cost.mockRejectedValue(Error('원가 응답 유실'));
-    const product = { ...unit, bomDraft: [{ childId: 'cap', qty: 2 }] };
-    expect((await h.save(product, progress, () => true)).outcome.status).toBe('partial');
-    expect(progress.unknownStageId).toBe('cost');
-    await h.save(product, progress, () => true);
-    expect(h.commit).toHaveBeenCalledOnce();
-    expect(h.cost).toHaveBeenCalledOnce();
-});
-it('순수 전송전 오류는 미확정 잠금 없이 거절하고 gateway를 호출하지 않는다', async () => {
-    const h = harness(), progress = createItemEditorProgress(unit.id);
-    h.prepare.mockImplementation(() => {
-        throw Error('쓰기 한도 초과');
+it('품목 단계 ACK는 갱신하되 부모가 후속 계산·개별쓰기를 다시 하지 않는다', async () => {
+    const h = harness(), progress = createItemEditorProgress('unit');
+    h.submit.mockImplementation(async (_scope, _input, p) => {
+        p.confirmedStageIds = ['primary'];
+        return { progress: p, outcome: { status: 'partial', reason: 'followup-unconfirmed', committedIds: ['unit'], unconfirmedIds: [], message: '일부 완료', nextAction: '결과 확인' } };
     });
-    const result = await h.save({ ...unit, bomDraft: [] }, progress, () => true);
-    expect(result.outcome.status).toBe('rejected');
-    expect(progress.unknownStageId).toBeUndefined();
-    expect(h.commit).not.toHaveBeenCalled();
+    const result = await h.save({}, progress, () => true);
+    expect(result.outcome.status).toBe('partial');
+    expect(h.refresh).toHaveBeenCalledOnce();
+    expect(callback()).not.toMatch(/commitCompanyWrites|recomputeAllCosts|updateItem|append/);
 });
-it('주업무 ACK 뒤 회사가 바뀌면 원가 후속 쓰기를 시작하지 않는다', async () => {
-    const h = harness(), progress = createItemEditorProgress(unit.id);
-    h.commit.mockImplementation(async () => {
+it('회사·UID 또는 모달 세대가 바뀌면 late ACK 후 부모 갱신도 하지 않는다', async () => {
+    const h = harness(), progress = createItemEditorProgress('unit');
+    h.submit.mockImplementation(async (_scope, _input, p) => {
+        p.confirmedStageIds = ['primary'];
         h.setCurrent(false);
+        return { progress: p, outcome: { status: 'saved' } };
     });
-    expect((await h.save({ ...unit, bomDraft: [] }, progress, () => true)).outcome.status).toBe('partial');
-    expect(h.cost).not.toHaveBeenCalled();
+    await h.save({}, progress, () => true);
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(h.submit.mock.calls[0][3]()).toBe(false);
 });
-it('낱개 자동연결 안내 대기 중 회사가 바뀌면 재귀 후속 쓰기를 하지 않는다', async () => {
-    const h = harness();
-    let current = true, finish!: () => void;
-    const set = vi.fn(async () => {
-    }), notice = vi.fn(() => new Promise<void>(resolve => finish = resolve));
-    const deps = { setDocument: set, setPartnerItems: vi.fn(), allItems: h.allItems, appData: h.appData, partnerItems: [], unpackComponent, awaitNotice: notice, deleteField: vi.fn() };
-    const body = 'const handleUpsertPartnerItem=' + expression('handleUpsertPartnerItem').replace(/^const callback = /, '').replace(/;\s*return callback;?\s*$/, '') + ';return handleUpsertPartnerItem;';
-    const handler = new Function(...Object.keys(deps), body)(...Object.values(deps));
-    const row: PartnerItem = { id: 'box_partner_in', itemId: 'box', partnerId: 'partner', Direction: 'in', price: 2000 };
-    const task = handler(row, 'in', () => current);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(notice).toHaveBeenCalledOnce();
-    current = false;
-    finish();
-    await expect(task).rejects.toThrow('바뀌었습니다');
-    expect(set).toHaveBeenCalledOnce();
+it('모달 저장과 복구 포트는 동일 회사·UID scope와 현재 세대를 묶는다', () => {
+    expect(source).toContain('onCaptureItemEditorOpening={(targetId,current)=>captureItemEditorOpening(itemEditorRequestScope,targetId,()=>isCurrentItemEditor()&&current())}');
+    for (const method of ['inspectItemEditorSave', 'continueItemEditorSave', 'cancelItemEditorSave'])
+        expect(source).toContain(method + '(itemEditorRequestScope,reference,progress,()=>isCurrentItemEditor()&&current())');
+    expect(source).toContain('<ItemEditorRecoveryList entries={itemEditorRecoveryEntries}');
+    expect(source).not.toContain('itemEditorCommittedSnapshot');
 });
-
-function costHarness(type:'product'|'wip'='product'){
- const original:Item={...unit,type,phantom:true,cost:100,costSource:'rollup'},child:Item={...cap,cost:50},ancestor:Item={...unit,id:'ancestor',name:'합성 상위 품목',cost:10,costSource:'rollup'};
- const allItems=[original,child,ancestor,{...cap,id:'raw',name:'원료',type:'raw' as const,cost:50}],itemBoms=[{id:'bom-unit__cap',parent_id:'unit',child_id:'cap',quantity:2},{id:'ancestor-line',parent_id:'ancestor',child_id:'unit',quantity:2}],itemFormulas:unknown[]=[];
- const costWrite=vi.fn(async(_collection:string,_id:string,_data:Record<string,unknown>)=>{}),commit=vi.fn(async(_ops:unknown[])=>{}),token={},snapshot:{current:null|{token:object;itemId:string;items:Item[];boms:typeof itemBoms}}={current:null};
- const calcDeps={allItems,itemBoms,itemFormulas,buildCostFn,buildFormulaBom,formulaRowsOf,updateItem:costWrite,useCallback:(fn:unknown)=>fn};
- const cost=new Function(...Object.keys(calcDeps),expression('recomputeAllCosts'))(...Object.values(calcDeps));
- const deps={isCurrentItemEditor:()=>true,editingProduct:original,allItems,itemBoms,itemFormulas,companyId:'taebaek',appData:{orderUnitInputs:{bom:buildBomIndex(allItems,itemBoms),pack:buildPackIndex()}},COL,crossCompanyBoms,boxSpecUpdates,commitCompanyWrites:commit,recomputeAllCosts:cost,executeItemEditorSteps,prepareCompanyWriteOperations:(ops:unknown[])=>ops,refreshStaticData:vi.fn(),itemEditorCommittedSnapshot:snapshot,itemEditorToken:token};
- const save=new Function(...Object.keys(deps),expression('saveItemEditorPrimary'))(...Object.values(deps));
- let formulaText='';function visit(n:ts.Node){if(ts.isJsxAttribute(n)&&n.name.getText(ast)==='onSaveItemFormula'&&n.initializer&&ts.isJsxExpression(n.initializer)&&n.initializer.expression)formulaText=n.initializer.expression.getText(ast);ts.forEachChild(n,visit);}visit(ast);
- const formula=new Function(...Object.keys(deps),ts.transpileModule('const callback='+formulaText+';return callback;',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(deps));
- return {save,formula,costWrite,original,snapshot};
-}
-it('실제 원가 정본은 primary에서 저장한 수동 0원을 이후 BOM·배합 갱신으로 덮지 않는다',async()=>{const h=costHarness('wip'),progress=createItemEditorProgress('unit');expect((await h.save({...h.original,cost:0,costSource:'manual',bomDraft:[{childId:'cap',qty:3}]},progress,()=>true)).outcome.status).toBe('saved');await h.formula(h.original.name,[{child_name:'원료',ratio:1,yield_rate:0.5}],undefined);expect(h.snapshot.current?.items.find(item=>item.id==='unit')).toMatchObject({cost:0,costSource:'manual',stock:7,image:'old-url'});expect(h.costWrite.mock.calls.filter(call=>call[1]==='unit')).toEqual([]);});
-it('자동 롤업은 새 BOM을 실제 원가 정본에 넣어 해당 품목과 상위 품목을 갱신한다',async()=>{const h=costHarness(),progress=createItemEditorProgress('unit');await h.save({...h.original,bomDraft:[{childId:'cap',qty:3}]},progress,()=>true);expect(h.costWrite).toHaveBeenCalledWith('items','unit',{cost:150});expect(h.costWrite).toHaveBeenCalledWith('items','ancestor',{cost:300});});

@@ -18,8 +18,8 @@ import type { Item } from './types';
  *
  * 서류용 이름이 없으면 실제 이름을 쓴다 — 부자재·박스처럼 서류에 안 나가는 것들이다.
  */
-export const docName = (item: { 품목?: string; name?: string } | undefined): string =>
-  (item?.품목 ?? '').trim() || (item?.name ?? '');
+import * as shared from '../../functions/src/shared/itemFormula';
+export const docName=((Reflect.get(shared,'default')??shared) as typeof shared).docName;
 
 /**
  * 실제 이름(+규격)으로 품목을 찾아 **서류용 이름**을 낸다 — 전표 인쇄처럼 품목 객체가

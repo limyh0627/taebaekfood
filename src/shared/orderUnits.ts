@@ -1,3 +1,5 @@
+import * as itemEditorDomainModule from '../../functions/src/shared/itemEditorDomain';
+const sharedEditorDomain=(Reflect.get(itemEditorDomainModule,'default')??itemEditorDomainModule) as typeof itemEditorDomainModule;
 import type { Item, OrderItem } from './types';
 import * as orderEditUnitsModule from '../../functions/src/shared/orderEditUnits';
 const {boxCountOf,orderItemQuantityLabel} = (Reflect.get(orderEditUnitsModule,'default') ?? orderEditUnitsModule) as Pick<typeof orderEditUnitsModule,'boxCountOf'|'orderItemQuantityLabel'>;
@@ -86,17 +88,7 @@ export function boxDerivedUnitPrice(
 export function boxSiblings<T extends Pick<Item, 'id' | 'archived'>>(
   loose: Pick<Item, 'id'>, all: T[], inputs?: OrderUnitInputs,
 ): { item: T; count: number }[] {
-  //  BOM 역방향으로 이 낱개를 문 부모만 본다 — 예전엔 전 품목을 훑으며 unpackComponent를
-  //  두 번씩 불렀다(품목 수 × 2회).
-  const byId = new Map(all.map(p => [p.id, p]));
-  const hits = new Map<string, { item: T; count: number }>();
-  for (const { parentId } of (inputs ? inputs.bom.parentsOf(loose.id) : bomParentsOf(loose.id))) {
-    const item = byId.get(parentId);
-    if (!item || item.archived) continue;
-    const uc = unpackComponent(item, inputs);
-    if (uc && uc.count > 1 && uc.itemId === loose.id) hits.set(parentId, { item, count: uc.count });
-  }
-  return [...hits.values()].sort((a, b) => a.count - b.count);
+  return sharedEditorDomain.editorBoxSiblings(loose,all,inputs?inputs.bom.parentsOf(loose.id):bomParentsOf(loose.id),id=>inputs?inputs.bom.of(id):bomOf(id));
 }
 
 /**

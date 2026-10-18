@@ -1,3 +1,4 @@
+import {ITEM_EDITOR_STAGES} from '../../../shared/itemEditorCommand';
 import { useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -71,7 +72,7 @@ export function useItemPhotoSave({ companyId, initialData, onSave, scopeKey }: I
                 return stopped();
             sent = true;
             const result = await onSave({ ...product, photoChanged: !!(photoFile || photoRemoved), bomDraft }, progress, isCurrent);
-            if (!result || result.progress !== progress || !result.outcome || !['saved', 'rejected', 'cancelled', 'unknown', 'partial'].includes(result.outcome.status) || result.outcome.status === 'saved' && !progress.confirmedStageIds.includes('primary')) {
+            if (!result || result.progress !== progress || !result.outcome || !['saved', 'rejected', 'cancelled', 'unknown', 'partial'].includes(result.outcome.status) || result.outcome.status === 'saved' && (progress.confirmedStageIds.length!==ITEM_EDITOR_STAGES.length || progress.confirmedStageIds.some((stage,index)=>stage!==ITEM_EDITOR_STAGES[index]))) {
                 progress.unknownStageId = 'save-result';
                 return { outcome: { status: 'unknown', message: '품목 저장 결과를 확인하지 못했습니다.', nextAction: '작성 내용과 사진을 유지했습니다. 현재 품목과 작업 결과를 확인해 주세요.' }, progress };
             }

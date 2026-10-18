@@ -130,9 +130,8 @@ export function partnerNamesByItem(
  *
  * 스위치가 새 방식이다. 옛 딱지는 아직 품목에 남아 있어 같이 본다.
  */
-export const isSmartStoreItem = (
-  item: { isSmartStore?: boolean; partnerIds?: readonly string[] } | undefined,
-): boolean => item?.isSmartStore === true || (item?.partnerIds ?? []).includes('SMARTSTORE');
+import * as itemEditorDomainModule from '../../functions/src/shared/itemEditorDomain';
+export const isSmartStoreItem=((Reflect.get(itemEditorDomainModule,'default')??itemEditorDomainModule) as typeof itemEditorDomainModule).isSmartStoreItem;
 
 /**
  * **과세·면세는 거래처–품목 연결이 안다** (2026-09-06 사장님: "품목에 과세 면세 정보가

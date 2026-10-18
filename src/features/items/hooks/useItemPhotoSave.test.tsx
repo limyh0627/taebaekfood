@@ -1,3 +1,4 @@
+import {ITEM_EDITOR_STAGES} from '../../../shared/itemEditorCommand';
 /** @vitest-environment jsdom */
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -11,7 +12,7 @@ import { useItemPhotoSave, type ItemPhotoProduct } from './useItemPhotoSave';
 const item: Item = { id: 'i', name: '합성', type: 'product', stock: 0, minStock: 0, unit: '병', image: 'old-url', imagePath: 'companies/taebaek/items/i/old.jpg' };
 const input = () => ({ finalProduct: { ...item }, photoFile: new File(['photo'], 'new.png', { type: 'image/png' }), photoRemoved: false, bomDraft: [{ childId: 'child', qty: 2 }], progress: createItemEditorProgress(item.id), isCurrent: () => true });
 const saved = async (_product: ItemPhotoProduct, progress: ItemEditorProgress): Promise<ItemEditorSaveResult> => {
-    progress.confirmedStageIds.push('primary');
+    progress.confirmedStageIds.push(...ITEM_EDITOR_STAGES);
     return { outcome: { status: 'saved' }, progress };
 };
 beforeEach(() => {
@@ -113,4 +114,10 @@ it.each(['throw', 'invalid'] as const)('런타임 %s 결과도 최초 사진과 
     expect(save).toHaveBeenCalledOnce();
     expect(mock.upload).toHaveBeenCalledOnce();
     expect(mock.remove).not.toHaveBeenCalled();
+});
+it('품목 단계만 ACK한 응답을 전체 저장 성공으로 처리하거나 구사진을 삭제하지 않는다',async()=>{
+ const save=vi.fn(async(_product:ItemPhotoProduct,progress:ItemEditorProgress):Promise<ItemEditorSaveResult>=>{progress.confirmedStageIds=['primary'];return {progress,outcome:{status:'saved'}};});
+ const view=renderHook(()=>useItemPhotoSave({companyId:'taebaek',initialData:item,onSave:save}));let result:ItemEditorSaveResult|undefined;
+ await act(async()=>{result=await view.result.current.saveItemPhoto(input());});
+ expect(result?.outcome.status).toBe('unknown');expect(result?.progress.unknownStageId).toBe('save-result');expect(mock.read).not.toHaveBeenCalled();expect(mock.remove).not.toHaveBeenCalled();
 });

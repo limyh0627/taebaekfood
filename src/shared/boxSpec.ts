@@ -1,3 +1,5 @@
+import * as moduleDomain from '../../functions/src/shared/itemEditorDomain';
+const shared=(Reflect.get(moduleDomain,'default')??moduleDomain) as typeof moduleDomain;
 import type { Item } from './types';
 import { boxSiblings, type OrderUnitInputs } from './orderUnits';
 
@@ -22,16 +24,10 @@ import { boxSiblings, type OrderUnitInputs } from './orderUnits';
  */
 
 /** 규격에서 개입수 꼬리(` * 20`)를 뗀다 — 낱개 쪽 용량만 남긴다 */
-export function specBase(spec?: string): string {
-  return String(spec ?? '').replace(/\s*[*x×].*$/i, '').trim();
-}
+export const specBase=shared.specBase;
 
 /** 낱개 규격 + 개입수 → 박스 규격. 낱개 규격이 없으면 만들 수 없다(빈 문자열). */
-export function boxSpecOf(looseSpec: string | undefined, count: number): string {
-  const base = specBase(looseSpec);
-  if (!base) return '';
-  return count > 1 ? `${base} * ${count}` : base;
-}
+export const boxSpecOf=shared.boxSpecOf;
 
 /**
  * **이 낱개를 문 박스들 중 규격이 어긋난 것.**
@@ -45,15 +41,7 @@ export function boxSpecUpdates(
   all: Item[],
   inputs?: OrderUnitInputs,
 ): { id: string; name?: string; from?: string; spec: string }[] {
-  const out: { id: string; name?: string; from?: string; spec: string }[] = [];
-  for (const { item, count } of boxSiblings(loose, all, inputs)) {
-    const want = boxSpecOf(loose.spec, count);
-    //  만들 수 없으면(낱개 규격이 비었다) 손대지 않는다 — 있는 글자를 지우면 더 나쁘다
-    if (!want) continue;
-    if (String(item.spec ?? '').trim() === want) continue;
-    out.push({ id: item.id, name: item.name, from: item.spec, spec: want });
-  }
-  return out;
+  return shared.boxSpecUpdatesForSiblings(loose,boxSiblings(loose,all,inputs));
 }
 
 

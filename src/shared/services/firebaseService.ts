@@ -67,10 +67,9 @@ import type { CashAccount, AccountCode } from '../types';
 const protocolCollections=new Set<string>(['items','orders','rawInventories','rawMaterialLedger','rawInventoryJobs','rawInventoryReversalGuards','productionRecords']);
 const orderInventoryFields=['status','items','inventoryOperation','inventoryGenerationCompletion','productionRecordIndex','producedAt','shippedOut','productConsumedLots','rawConsumedLots','itemInventory','inventorySnapshots','rawInventoryAttempt','deliveredAt'];
 const tombstoneRef=(store:Firestore,companyId:string,itemId:string)=>doc(store,COL.inventoryWriterDeletions,companyId+'__'+itemId);
-function assertTombstone(data:Record<string,any>|undefined,companyId:string,itemId:string):void{
- if(data?.mergedIntoItemId!==undefined)throw Error('통합된 품목은 다시 만들 수 없습니다. 남긴 품목을 선택해 주세요.');
- if(data&&(data.companyId!==companyId||data.itemId!==itemId||data.inventoryWriterProtocolVersion!==1||!Number.isSafeInteger(data.deletionRevision)||data.deletionRevision<1||!Number.isSafeInteger(data.lastDeletedItemRevision)||data.lastDeletedItemRevision<0||data.beforeRevision!==data.lastDeletedItemRevision))throw Error('품목 삭제의 회사·버전 기록이 다릅니다.');
-}
+import * as editorDomainModule from '../../../functions/src/shared/itemEditorDomain';
+const editorDomainImplementation=Reflect.get(editorDomainModule,'default')??editorDomainModule;
+const assertTombstone=editorDomainImplementation.assertItemEditorTombstone;
 function protocolWriteData(name:string,before:Record<string,any>|undefined,data:Record<string,any>,tombstone?:Record<string,any>):Record<string,any>{
  if(name==='items'){
   if(before){
