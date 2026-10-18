@@ -5,7 +5,8 @@ export interface LeaveApplicationOptions<T extends {
   id: string;
 } = LeaveRequest> {
   scopeKey: string;
-  submit: (request: T) => Promise<SaveOutcome> | SaveOutcome | void;
+  allowDifferentId?: boolean;
+  submit: (request: T) => Promise<SaveOutcome | void> | SaveOutcome | void;
   inspect?: (id: string) => Promise<SaveOutcome>;
   cancel?: (id: string) => Promise<SaveOutcome>;
   readPending?: () => T[];
@@ -68,7 +69,7 @@ export function useLeaveApplication<T extends {
     setPending(request);
     setMessage(saveOutcomeMessage(unknown()));
   };
-  const perform = async (request: T, action: () => Promise<SaveOutcome> | SaveOutcome | void, cancelling = false) => {
+  const perform = async (request: T, action: () => Promise<SaveOutcome | void> | SaveOutcome | void, cancelling = false) => {
     if (locked.current) return {
       committed: false,
       cancelled: false
@@ -111,6 +112,7 @@ export function useLeaveApplication<T extends {
   };
   return {
     busy,
+    notice: (outcome: SaveOutcome) => setMessage(saveOutcomeMessage(outcome)),
     message,
     pending,
     pendingRequests,
@@ -139,7 +141,7 @@ export function useLeaveApplication<T extends {
         }
       }
     },
-    submit: (request: T) => current.current ? Promise.resolve({
+    submit: (request: T) => current.current && (!options.allowDifferentId || current.current.id === request.id) ? Promise.resolve({
       committed: false,
       cancelled: false
     }) : perform(request, () => callbacks.current.submit(request)),

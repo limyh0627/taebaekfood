@@ -13,7 +13,42 @@ interface LeaveBatchRowBase {
   requestedAt: string; daysUsed: number;
 }
 export type LeaveBatchRow = LeaveBatchRowBase & ({status:'approved';deductsLeave:boolean}|{status:'pending';deductsLeave?:never});
-export interface LeaveBatchRequest extends LeaveBatchReference { version: 1; rows: LeaveBatchRow[] }
+export interface LeaveCreateRequest extends LeaveBatchReference { version: 1; rows: LeaveBatchRow[] }
+export type LeaveMutationAction =
+  | { action: 'approve' | 'reject' | 'request-cancel' | 'approve-modify' | 'reject-modify' }
+  | { action: 'cancel'; reason?: string }
+  | { action: 'request-modify'; modifyRequest: { startDate: string; endDate: string; reason: string; daysUsed: number } };
+export function leaveActionLabel(action: LeaveMutationAction['action']): string {
+  return {
+    approve:'신청 승인', reject:'신청 반려', 'request-cancel':'취소 신청', cancel:'휴가 취소',
+    'request-modify':'변경 신청', 'approve-modify':'변경 승인', 'reject-modify':'변경 반려',
+  }[action];
+}
+export type LeaveMutationRequest = LeaveBatchReference & LeaveMutationAction & {
+  version: 2; kind: 'mutation'; targetId: string; expected: Record<string, unknown>;
+};
+export type LeaveBatchRequest = LeaveCreateRequest | LeaveMutationRequest;
+export const LEAVE_EXPECTED_FIELDS = ['companyId','employeeId','employeeName','type','startDate','endDate','reason','status','requestedAt','daysUsed','deductsLeave','modifyRequest','cancelledAt','cancelledBy','cancelledByName','cancelReason'] as const;
+const MODIFY_FIELDS = ['startDate','endDate','reason','daysUsed','status'] as const;
+function jsonEvidence(value: unknown): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(jsonEvidence);
+  if (isRecord(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key,jsonEvidence(value[key])]));
+  throw Error('휴가 원문의 비교 근거를 확인해 주세요.');
+}
+/** 생성 검증과 달리 기존 값은 재해석하지 않는다. 없는 칸과 null·false·0을 구별한다. */
+export function leaveRequestExpected(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw Error('휴가 원문을 확인해 주세요.');
+  return Object.fromEntries(LEAVE_EXPECTED_FIELDS.filter(key => Object.prototype.hasOwnProperty.call(value,key)).map(key => {
+    const original = value[key];
+    const projected = key === 'modifyRequest' && isRecord(original)
+      ? Object.fromEntries(MODIFY_FIELDS.filter(field => Object.prototype.hasOwnProperty.call(original,field)).map(field => [field,original[field]]))
+      : original;
+    return [key,jsonEvidence(projected)];
+  }));
+}
+export const leaveRequestBusinessIds = (request: LeaveBatchRequest): string[] => request.version === 2 ? [request.targetId] : request.rows.map(row => row.id);
 export type LeaveBatchCommand = { mode: 'apply'; request: LeaveBatchRequest }
   | { mode: 'inspect' | 'cancel'; reference: LeaveBatchReference; requestHash?: string };
 export interface LeaveBatchResult extends LeaveBatchReference {
@@ -30,7 +65,11 @@ export function normalizeLeaveBatchReference(value: unknown): LeaveBatchReferenc
   if (!['taebaek','punghoe'].includes(String(value.companyId)) || !cleanupValidId(value.planId)) throw Error('단체 휴가의 회사와 작업 번호를 확인해 주세요.');
   return { companyId: value.companyId as LeaveBatchCompany, planId: value.planId };
 }
+export function normalizeLeaveBatchRequest(value: LeaveCreateRequest): LeaveCreateRequest;
+export function normalizeLeaveBatchRequest(value: LeaveMutationRequest): LeaveMutationRequest;
+export function normalizeLeaveBatchRequest(value: unknown): LeaveBatchRequest;
 export function normalizeLeaveBatchRequest(value: unknown): LeaveBatchRequest {
+  if (isRecord(value) && value.version === 2) return normalizeLeaveMutation(value);
   exact(value, ['version','companyId','planId','rows']);
   const reference = normalizeLeaveBatchReference({companyId:value.companyId,planId:value.planId});
   if (value.version !== 1 || !Array.isArray(value.rows) || !value.rows.length || value.rows.length > LEAVE_BATCH_MAX_ROWS) throw Error('단체 휴가는 한 번에 1~400명까지 등록할 수 있습니다.');
@@ -47,8 +86,30 @@ export function normalizeLeaveBatchRequest(value: unknown): LeaveBatchRequest {
     ids.add(row.id); employees.add(row.employeeId);
     return {id:row.id,employeeId:row.employeeId,employeeName:row.employeeName,type:row.type as LeaveBatchRow['type'],startDate:row.startDate,endDate:row.endDate,reason:row.reason,requestedAt:row.requestedAt,daysUsed:row.daysUsed,...(pending?{status:'pending' as const}:{status:'approved' as const,deductsLeave:row.deductsLeave as boolean})};
   });
-  const request: LeaveBatchRequest = {version:1,...reference,rows};
+  const request: LeaveCreateRequest = {version:1,...reference,rows};
   if (new TextEncoder().encode(JSON.stringify(request)).byteLength > LEAVE_BATCH_MAX_BYTES) throw Error('단체 휴가 요청이 너무 큽니다. 대상이나 사유를 나누어 주세요.');
+  return request;
+}
+function normalizeLeaveMutation(value: Record<string, unknown>): LeaveMutationRequest {
+  const action = value.action;
+  const actions = ['approve','reject','request-cancel','cancel','request-modify','approve-modify','reject-modify'];
+  exact(value,['version','kind','companyId','planId','targetId','expected','action',...(action === 'cancel' ? ['reason'] : action === 'request-modify' ? ['modifyRequest'] : [])]);
+  const reference = normalizeLeaveBatchReference({companyId:value.companyId,planId:value.planId});
+  if (value.kind !== 'mutation' || !cleanupValidId(value.targetId) || !actions.includes(String(action))) throw Error('휴가 변경 종류와 대상을 확인해 주세요.');
+  exact(value.expected,LEAVE_EXPECTED_FIELDS);
+  const expected = leaveRequestExpected(value.expected);
+  let payload: LeaveMutationAction;
+  if (action === 'cancel') {
+    if (value.reason !== undefined && typeof value.reason !== 'string') throw Error('취소 사유를 확인해 주세요.');
+    payload = {action,...(value.reason !== undefined ? {reason:value.reason as string} : {})};
+  } else if (action === 'request-modify') {
+    exact(value.modifyRequest,['startDate','endDate','reason','daysUsed']);
+    const change = value.modifyRequest;
+    if (!retirementCalendarDay(change.startDate) || !retirementCalendarDay(change.endDate) || change.startDate > change.endDate || typeof change.reason !== 'string' || !change.reason.trim() || typeof change.daysUsed !== 'number' || !Number.isFinite(change.daysUsed) || change.daysUsed < 0) throw Error('변경할 휴가 날짜·사유·일수를 확인해 주세요.');
+    payload = {action,modifyRequest:{startDate:change.startDate,endDate:change.endDate,reason:change.reason,daysUsed:change.daysUsed}};
+  } else payload = {action:action as Exclude<LeaveMutationAction['action'],'cancel'|'request-modify'>};
+  const request: LeaveMutationRequest = {version:2,kind:'mutation',...reference,targetId:value.targetId,expected,...payload};
+  if (new TextEncoder().encode(JSON.stringify(request)).byteLength > LEAVE_BATCH_MAX_BYTES) throw Error('휴가 변경 원문이 너무 큽니다.');
   return request;
 }
 /** 고정 필드 순서와 원래 행 순서를 보존해 브라우저·서버가 같은 원문을 비교한다. */

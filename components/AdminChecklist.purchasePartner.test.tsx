@@ -26,7 +26,7 @@ for (const mode of ['선입고', '발주예정'] as const) {
     const original = structuredClone({ po, partners, prices });
     const create = vi.fn();
     render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]}
-      onUpdateLeaveStatus={vi.fn()} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()}
+      onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()}
       partners={partners} partnerItems={prices} onCreatePurchaseStatement={create}
       {...(mode === '선입고' ? { receivedOrders: [po] } : { orderRequests: [po] })} />);
     fireEvent.click(screen.getByRole('button', { name: mode === '선입고' ? '매입전표 발행' : '매입전표 작성' }));
@@ -37,4 +37,4 @@ for (const mode of ['선입고', '발주예정'] as const) {
   });
 }
 
-it('선입고 이력의 상태 드롭다운과 초기화는 미발행 기본조건만 복원한다',()=>{HTMLElement.prototype.scrollIntoView=vi.fn();const create=vi.fn();render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]} onUpdateLeaveStatus={vi.fn()} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()} onCreatePurchaseStatement={create}/>);const query=screen.getByRole('region',{name:'선입고 이력 검색조건'}),filter=screen.getByRole('button',{name:'선입고 전표 상태'});fireEvent.click(filter);fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(filter).toHaveTextContent('전체');fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(filter).toHaveTextContent('전표 미발행만');expect(query).toContainElement(filter);expect(create).not.toHaveBeenCalled();});
+it('선입고 이력의 상태 드롭다운과 초기화는 미발행 기본조건만 복원한다',()=>{HTMLElement.prototype.scrollIntoView=vi.fn();const create=vi.fn();render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()} onCreatePurchaseStatement={create}/>);const query=screen.getByRole('region',{name:'선입고 이력 검색조건'}),filter=screen.getByRole('button',{name:'선입고 전표 상태'});fireEvent.click(filter);fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(filter).toHaveTextContent('전체');fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(filter).toHaveTextContent('전표 미발행만');expect(query).toContainElement(filter);expect(create).not.toHaveBeenCalled();});

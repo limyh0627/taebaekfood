@@ -1,3 +1,5 @@
+import {useLeaveActions,type LeaveActionBindings} from '../src/features/hr/hooks/useLeaveActions';
+import {LeaveActionRecovery} from './hr/LeaveApprovalList';
 import {useLeaveApplication} from '../src/features/hr/hooks/useLeaveApplication';
 import {type SaveOutcome} from '../src/shared/saveOutcome';
 import { DATE_RANGE_LAYOUT_CLASS } from '../src/shared/components/DateRangeInputs';
@@ -43,7 +45,7 @@ import {
   hasStarted,
 } from '../src/shared/leave';
 
-interface LeaveManagerProps {
+interface LeaveManagerProps extends LeaveActionBindings {
   requestScopeKey?:string;
   companyId: CompanyId;
   currentUser: Employee;
@@ -55,8 +57,6 @@ interface LeaveManagerProps {
   onCancelLeaveRequest?: (id:string) => Promise<SaveOutcome>;
   onReadLeaveReferences?:()=>{planId:string;readable:boolean}[];
   onCancelLeaveReference?:(planId:string)=>Promise<SaveOutcome>;
-  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
-  onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   /** 관리자만 조직도·비상연락망을 편집할 수 있다. 직원 앱에서는 읽기 전용. */
   isAdmin?: boolean;
 }
@@ -170,8 +170,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   employees,
   leaveRequests,
   onAddLeaveRequest, onInspectLeaveRequest, onReadPendingLeaveRequests,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
-  onUpdateLeaveStatus,
-  onUpdateLeave,
+  onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,
   isAdmin = false,
 }) => {
   const [activeTab, setActiveTab] = useState<LeaveTab>('my');
@@ -185,8 +184,20 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(currentUser.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const actions=useLeaveActions({scopeKey:companyId+':'+currentUser.id+':'+(requestScopeKey??''),onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
   const [modifyTarget, setModifyTarget] = useState<LeaveRequest | null>(null);
   const [modifyForm, setModifyForm] = useState({ startDate: '', endDate: '', reason: '' });
+  useEffect(()=>setModifyTarget(null),[companyId,currentUser.id,requestScopeKey]);
+  const closeModify=()=>{if(actions.close())setModifyTarget(null);};
+  const openModify=(row:LeaveRequest)=>{
+    const retained=actions.pendingActions.find(entry=>entry.id===row.id);
+    if(retained){
+      actions.openPending(retained);
+      if(!retained.row||retained.action.action!=='request-modify')return;
+      setModifyTarget(retained.row);setModifyForm({...retained.action.modifyRequest});return;
+    }
+    setModifyTarget(row);setModifyForm({startDate:row.startDate,endDate:row.endDate,reason:row.reason});
+  };
 
   // ── 조직도 / 직원 연락처 ──
   const [orgSaved, setOrgSaved] = useState<OrgChartConfig | null>(null);   // Firestore 저장본(없으면 null)
@@ -375,6 +386,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col pb-20">
+      {!modifyTarget&&<LeaveActionRecovery actions={actions}/>}
       <PageHeader
         title="연차 신청 및 확인"
         subtitle="임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요."
@@ -627,17 +639,17 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                               {req.status === 'cancel_pending' && <span className="bg-rose-100 text-rose-600 px-2.5 py-1 rounded-full text-[10px] font-black">취소 대기</span>}
                               {req.status === 'cancelled' && <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full text-[10px] font-black">취소됨</span>}
                               {req.status === 'rejected' && <span className="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-[10px] font-black">반려</span>}
-                              {req.modifyRequest?.status === 'pending' && <p className="text-[9px] text-violet-500 font-bold mt-0.5">변경 대기중</p>}
+                              {['approved','cancel_pending'].includes(req.status) && req.modifyRequest?.status === 'pending' && <p className="text-[9px] text-violet-500 font-bold mt-0.5">변경 대기중</p>}
                             </td>
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-center">
                               {req.status === 'approved' && (
                                 <div className="flex items-center justify-center gap-1.5">
                                   <button
-                                    onClick={() => { setModifyTarget(req); setModifyForm({ startDate: req.startDate, endDate: req.endDate, reason: req.reason }); }}
+                                    onClick={() => openModify(req)}
                                     className="text-[9px] font-black px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-all"
                                   >변경</button>
                                   <button
-                                    onClick={() => onUpdateLeaveStatus(req.id, 'cancel_pending')}
+                                    disabled={actions.busy||actions.pendingActions.some(entry=>entry.id===req.id)} onClick={() => actions.run(req,{action:'request-cancel'})}
                                     className="text-[9px] font-black px-2 py-1 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 transition-all"
                                   >취소</button>
                                 </div>
@@ -903,32 +915,34 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* 변경 신청 모달 */}
       {modifyTarget && (
-        <ModalShell title={`변경 신청 · ${modifyTarget.type} · 기존: ${modifyTarget.startDate} ~ ${modifyTarget.endDate}`} onClose={() => setModifyTarget(null)} bodyClassName="!p-0">
+        <ModalShell title={`변경 신청 · ${modifyTarget.type} · 기존: ${modifyTarget.startDate} ~ ${modifyTarget.endDate}`} onClose={closeModify} bodyClassName="!p-0">
+          <LeaveActionRecovery actions={actions} onCommitted={()=>setModifyTarget(current=>current?.id===actions.pendingAction?.id?null:current)}/>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 시작일</label>
-                  <input type="date" value={modifyForm.startDate} onChange={(e) => setModifyForm(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
+                  <input type="date" disabled={actions.busy||actions.pendingAction?.id===modifyTarget.id} value={modifyForm.startDate} onChange={(e) => setModifyForm(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 종료일</label>
-                  <input type="date" value={modifyForm.endDate} onChange={(e) => setModifyForm(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
+                  <input type="date" disabled={actions.busy||actions.pendingAction?.id===modifyTarget.id} value={modifyForm.endDate} onChange={(e) => setModifyForm(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 사유</label>
-                <textarea rows={3} value={modifyForm.reason} onChange={(e) => setModifyForm(f => ({ ...f, reason: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500 resize-none" placeholder="변경 사유를 입력하세요." />
+                <textarea rows={3} disabled={actions.busy||actions.pendingAction?.id===modifyTarget.id} value={modifyForm.reason} onChange={(e) => setModifyForm(f => ({ ...f, reason: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500 resize-none" placeholder="변경 사유를 입력하세요." />
               </div>
             </div>
             <div className="p-6 border-t border-slate-100 flex gap-3">
-              <button onClick={() => setModifyTarget(null)} className="flex-1 py-3 rounded-2xl font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+              <button disabled={actions.busy} onClick={closeModify} className="flex-1 py-3 rounded-2xl font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
               <button
-                onClick={() => {
+                disabled={actions.busy||actions.pendingActions.some(entry=>entry.id===modifyTarget.id)}
+                onClick={async () => {
                   if (!modifyForm.startDate || !modifyForm.endDate || !modifyForm.reason.trim()) return;
                   const newDays = calculateRequestDays(modifyForm.startDate, modifyForm.endDate, modifyTarget.type);
-                  const modifyRequest = { startDate: modifyForm.startDate, endDate: modifyForm.endDate, reason: modifyForm.reason, daysUsed: newDays, status: 'pending' as const };
-                  onUpdateLeave(modifyTarget.id, { modifyRequest });
-                  setModifyTarget(null);
+                  const modifyRequest = { startDate: modifyForm.startDate, endDate: modifyForm.endDate, reason: modifyForm.reason, daysUsed: newDays };
+                  const result=await actions.run(modifyTarget,{action:'request-modify',modifyRequest});
+                  if(result.committed)setModifyTarget(null);
                 }}
                 className="flex-[2] py-3 rounded-2xl font-black text-white bg-violet-600 hover:bg-violet-700 transition-all flex items-center justify-center gap-2"
               >

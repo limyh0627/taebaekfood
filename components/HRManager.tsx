@@ -1,10 +1,12 @@
+import {useLeaveActions,type LeaveActionBindings} from '../src/features/hr/hooks/useLeaveActions';
+import {LeaveActionRecovery} from './hr/LeaveApprovalList';
 import {useLeaveApplication} from '../src/features/hr/hooks/useLeaveApplication';
 import type {SaveOutcome} from '../src/shared/saveOutcome';
 import type {PendingLeaveGroup} from '../src/features/hr/infrastructure/leaveRequestWrites';
 import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
 import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import { EmployeeDirectory } from './hr/EmployeeDirectory';
-import { LeaveApprovalList } from './hr/LeaveApprovalList';
+import { LeaveApprovalRows } from './hr/LeaveApprovalList';
 import ActionButton from '../src/shared/components/ActionButton';
 import RetirementBenefitPanel from './hr/RetirementBenefitPanel';
 import { readRetirement, retirementActor } from '../src/shared/services/retirementBenefitCommands';
@@ -14,7 +16,7 @@ import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 import type { CashAccount } from '../src/shared/types';
 
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 //  이 파일엔 `const today = new Date()`(Date 객체)가 이미 있어 별칭으로 받는다
 import { today as todayStr, dateOfLocal } from '../src/shared/day';
 import ConfirmModal from './ConfirmModal';
@@ -51,7 +53,7 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
 
-interface HRManagerProps {
+interface HRManagerProps extends LeaveActionBindings {
   requestScopeKey?:string;
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
   companyId?: CompanyId;
@@ -61,9 +63,6 @@ interface HRManagerProps {
   onUpdateEmployee: (_emp: Employee) => void;
   onAddEmployee: (_emp: Employee) => void;
   onDeleteEmployee: (_id: string) => Promise<void> | void;
-  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
-  onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
-  onDeleteLeaveRequest: (_id: string) => void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<SaveOutcome> | SaveOutcome | void;
   onReadPendingLeaveGroups?:()=>PendingLeaveGroup[];
@@ -81,10 +80,12 @@ const HRManager: React.FC<HRManagerProps> = ({
   onUpdateEmployee,
   onAddEmployee,
   onDeleteEmployee,
-  onUpdateLeaveStatus,
-  onUpdateLeave,
+  onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,
   onAddLeaveRequests,onReadPendingLeaveGroups,onInspectLeaveRequest,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
 }) => {
+  const actionScopeKey=companyId+':'+(requestScopeKey??'');
+  const actionScope=useRef(actionScopeKey);actionScope.current=actionScopeKey;
+  const actions=useLeaveActions({scopeKey:actionScopeKey,onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
    * 회사가 안 붙은 옛 기록은 태백으로 본다(companyOf). 관리자 계정(admin)은 어느 쪽에도 안 센다.
@@ -290,7 +291,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   );
 
   const pendingRequests = leaveRequests.filter(r =>
-    r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending'
+    r.status === 'pending' || r.status === 'cancel_pending' || r.status === 'approved' && r.modifyRequest?.status === 'pending'
   );
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -314,6 +315,7 @@ const HRManager: React.FC<HRManagerProps> = ({
 
   return (
     <div className="min-w-0 max-w-full space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
+      {activeTab!=='leave-approval'&&<LeaveActionRecovery actions={actions}/>}
       <PageHeader
         title="인사 관리"
         subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
@@ -408,7 +410,7 @@ const HRManager: React.FC<HRManagerProps> = ({
         )}
 
         {activeTab === 'leave-approval' && (
-          <LeaveApprovalList pendingRequests={pendingRequests} onUpdateLeaveStatus={onUpdateLeaveStatus} onUpdateLeave={onUpdateLeave} />
+          <LeaveApprovalRows pendingRequests={pendingRequests} actions={actions} />
         )}
 
         {activeTab === 'leave-balance' && (
@@ -1050,7 +1052,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                                           <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-600 text-white' : r.type === '휴가' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>{r.type}</span>
                                           <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
                                           {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
-                                          {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}
+                                          {['approved','cancel_pending'].includes(r.status) && r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}
                                         </div>
                                         <p className="text-sm font-black text-slate-800 mt-1.5">
                                           {r.startDate}{r.endDate && r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}
@@ -1074,14 +1076,16 @@ const HRManager: React.FC<HRManagerProps> = ({
                                              사장님이 남의 연차를 무를 길이 없었다(이지영 09-04 는 스크립트로 지웠다). */}
                                         {canCancel(r) && (
                                           <button
+                                            disabled={actions.busy||actions.pendingActions.some(entry=>entry.id===r.id)}
                                             onClick={async () => {
+                                              const scope=actionScope.current;
                                               const why = await appPrompt({
                                                 title: '연차 취소',
                                                 message: `${r.employeeName} ${r.startDate} 연차를 취소합니다.\n사유를 입력해 주세요. (선택)`,
                                                 defaultValue: '',
                                               });
-                                              if (why === null) return;
-                                              onUpdateLeaveStatus(r.id, 'cancelled', why);
+                                              if (why === null || actionScope.current!==scope) return;
+                                              await actions.run(r,{action:'cancel',reason:why});
                                             }}
                                             className="mt-1 text-[9px] font-black px-2 py-1 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all"
                                           >취소</button>

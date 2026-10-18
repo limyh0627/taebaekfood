@@ -10,7 +10,7 @@ import type { ReturnRequest } from '../src/shared/types';
 const request = { id: 'r', companyId: 'taebaek', partnerId: 'p', partnerName: '합성 거래처', status: 'pending', createdAt: '2026-10-07T00:00:00Z',
   linkedStatementId: 's', totalAmount: 100, items: [{ itemId: 'box', name: '박스', quantity: 1, price: 100, reason: '기타', isResellable: false }] } as ReturnRequest;
 const base = { leaveRequests: [], adjustmentRequests: [], employees: [], returnRequests: [request],
-  onUpdateLeaveStatus: vi.fn(), onUpdateAdjustmentStatus: vi.fn(), onProcessAdjustment: vi.fn() };
+  onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}), onUpdateAdjustmentStatus: vi.fn(), onProcessAdjustment: vi.fn() };
 beforeEach(() => { vi.resetAllMocks(); m.confirm.mockResolvedValue(true); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
 afterEach(cleanup);
 it('관리자 확인창에서 원자 처리 callback을 기다리며 옛 writer와 임의 전표 작성창은 없다', async () => {

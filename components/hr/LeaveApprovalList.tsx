@@ -1,25 +1,24 @@
-import {saveOutcomeMessage,type SaveOutcome} from '../../src/shared/saveOutcome';
-import React,{useState,useRef,useEffect} from 'react';
+import {useLeaveActions,type LeaveActionBindings} from '../../src/features/hr/hooks/useLeaveActions';
+import React from 'react';
 import { Check, X, CalendarCheck } from 'lucide-react';
-import type { LeaveRequest, LeaveStatus } from '../../src/shared/types';
+import type { LeaveRequest } from '../../src/shared/types';
 
-export function LeaveApprovalList({pendingRequests,onUpdateLeaveStatus,onUpdateLeave}:{
- pendingRequests:LeaveRequest[];
- onUpdateLeaveStatus:(_id:string,_status:LeaveStatus,_reason?:string)=>Promise<SaveOutcome>|SaveOutcome|void;
- onUpdateLeave:(_id:string,_updates:Partial<LeaveRequest>)=>Promise<SaveOutcome>|SaveOutcome|void;
-}) {
- const [busy,setBusy]=useState<string[]>([]),[messages,setMessages]=useState<Record<string,string>>({});
- const locked=useRef(new Set<string>()),alive=useRef(true);
- useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
- const rowDisabled=(req:LeaveRequest)=>busy.includes(req.id);
- const run=async(id:string,action:()=>Promise<SaveOutcome>|SaveOutcome|void)=>{
-  if(locked.current.has(id))return;locked.current.add(id);setBusy(ids=>[...ids,id]);setMessages(current=>({...current,[id]:''}));
-  try{const result=await action();if(alive.current)setMessages(current=>({...current,[id]:saveOutcomeMessage(result??{status:'unknown',message:'결재 저장 결과를 확인하지 못했습니다.',nextAction:'휴가 목록에서 현재 상태를 확인한 뒤 처리해 주세요. 같은 결재를 반복하지 마세요.'})}));}
-  catch{if(alive.current)setMessages(current=>({...current,[id]:'결재 저장 결과를 확인하지 못했습니다. 휴가 목록의 현재 상태를 확인해 주세요. 같은 결재를 반복하지 마세요.'}));}
-  finally{locked.current.delete(id);if(alive.current)setBusy(ids=>ids.filter(value=>value!==id));}
- };
+export function LeaveActionRecovery({actions,onCommitted}:{actions:ReturnType<typeof useLeaveActions>;onCommitted?:()=>void}) {
+ return <div className="space-y-2 text-xs text-slate-600">
+  {actions.message&&<p role={actions.pendingAction?'alert':'status'} className="whitespace-pre-line">{actions.message}</p>}
+  {actions.pendingActions.map(entry=><button key={entry.planId??entry.id} type="button" disabled={actions.busy} className="block underline" onClick={()=>actions.openPending(entry)}>보관된 휴가 작업 확인 · {entry.description}</button>)}
+  {actions.pendingAction&&<div className="flex flex-wrap gap-3"><button type="button" disabled={actions.busy} className="underline" onClick={async()=>{const result=await actions.inspect();if(result.committed)onCommitted?.();}}>휴가 작업 결과 확인</button><button type="button" disabled={actions.busy} className="underline" onClick={()=>actions.cancel()}>휴가 작업 요청 중단</button></div>}
+  {actions.damagedReferences.map(id=><button key={id} type="button" disabled={actions.busy} className="block underline" onClick={()=>actions.cancelDamaged(id)}>손상된 휴가 작업 중단 · {id}</button>)}
+ </div>;
+}
+export function LeaveApprovalList({pendingRequests,...bindings}:{pendingRequests:LeaveRequest[]}&LeaveActionBindings) {
+ const actions=useLeaveActions({scopeKey:bindings.requestScopeKey??'',onAction:bindings.onLeaveAction,readPending:bindings.onReadPendingLeaveActions,inspect:bindings.onInspectLeaveAction,cancel:bindings.onCancelLeaveAction,readReferences:bindings.onReadLeaveReferences,cancelReference:bindings.onCancelLeaveReference});
+ return <LeaveApprovalRows pendingRequests={pendingRequests} actions={actions}/>;
+}
+export function LeaveApprovalRows({pendingRequests,actions}:{pendingRequests:LeaveRequest[];actions:ReturnType<typeof useLeaveActions>}) {
+ const rowDisabled=(req:LeaveRequest)=>actions.busy||actions.pendingActions.some(entry=>entry.id===req.id);
  return (
-<div className="flex-1 overflow-auto custom-scrollbar">
+<div className="flex-1 overflow-auto custom-scrollbar"><LeaveActionRecovery actions={actions}/>
             <table className="w-full text-left min-w-[580px]">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
@@ -32,7 +31,7 @@ export function LeaveApprovalList({pendingRequests,onUpdateLeaveStatus,onUpdateL
               <tbody className="divide-y divide-slate-50">
                 {pendingRequests.map(req => {
                   const isCancel = req.status === 'cancel_pending';
-                  const isModify = req.modifyRequest?.status === 'pending';
+                  const isModify = ['approved','cancel_pending'].includes(req.status) && req.modifyRequest?.status === 'pending';
                   return (
                   <tr key={req.id} className={`transition-colors ${isCancel ? 'hover:bg-rose-50/20' : isModify ? 'hover:bg-violet-50/20' : 'hover:bg-amber-50/20'}`}>
                     <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
@@ -65,24 +64,17 @@ export function LeaveApprovalList({pendingRequests,onUpdateLeaveStatus,onUpdateL
                              있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다 — 취소를 거절했는데
                              오히려 취소가 확정돼 연차가 사라졌다. */}
                         {isCancel &&
-                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'cancelled'))} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
+                          <button disabled={rowDisabled(req)} onClick={() => actions.run(req,{action:'cancel'})} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
                         {isModify && <>
-                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeave(req.id, {
-                            startDate: req.modifyRequest!.startDate,
-                            endDate: req.modifyRequest!.endDate,
-                            reason: req.modifyRequest!.reason,
-                            daysUsed: req.modifyRequest!.daysUsed,
-                            modifyRequest: { ...req.modifyRequest!, status: 'approved' },
-                          }))} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
-                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeave(req.id, { modifyRequest: { ...req.modifyRequest!, status: 'rejected' } }))} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => actions.run(req,{action:'approve-modify'})} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => actions.run(req,{action:'reject-modify'})} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
                         </>}
-                        {!isCancel && !isModify && <>
-                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'approved'))} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"><Check size={14} /><span>승인</span></button>
-                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'rejected'))} className="flex items-center space-x-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"><X size={14} /><span>반려</span></button>
+                        {req.status==='pending' && !isModify && <>
+                          <button disabled={rowDisabled(req)} onClick={() => actions.run(req,{action:'approve'})} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"><Check size={14} /><span>승인</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => actions.run(req,{action:'reject'})} className="flex items-center space-x-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"><X size={14} /><span>반려</span></button>
                         </>}
                       </div>
-                      {messages[req.id]&&<p role="alert" className="mt-2 text-xs whitespace-pre-line">{messages[req.id]}</p>}
-                    </td>
+                                          </td>
                   </tr>
                   );
                 })}

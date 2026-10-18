@@ -8,7 +8,7 @@ vi.mock('./hr/RetirementBenefitPanel', () => ({ default: ({ employee, onClose }:
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: vi.fn(() => () => {}), setDocument: vi.fn() }));
 import HRManager from './HRManager';
 const employee = { id: 'e1', companyId: 'taebaek' as const, name: '합성직원', position: '', department: '', joinDate: '2020-01-01', phone: '', status: 'working' as const };
-const props = () => ({ employees: [employee], leaveRequests: [], onUpdateEmployee: vi.fn(), onAddEmployee: vi.fn(), onDeleteEmployee: vi.fn(async () => {}), onUpdateLeaveStatus: vi.fn(), onUpdateLeave: vi.fn(), onDeleteLeaveRequest: vi.fn() });
+const props = () => ({ employees: [employee], leaveRequests: [], onUpdateEmployee: vi.fn(), onAddEmployee: vi.fn(), onDeleteEmployee: vi.fn(async () => {}), onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}) });
 beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue({ profile: null }); });
 function requestDelete(container: HTMLElement) { fireEvent.click(container.querySelector('button:has(svg.lucide-trash2)')!); fireEvent.click(screen.getByRole('button', { name: '삭제' })); }
 it('직원 행의 퇴직금 진입은 회사·직원을 유지한다', async () => { render(<HRManager {...props()} companyId="taebaek" />); fireEvent.click(screen.getByText('퇴직금')); expect(screen.getByText('퇴직금패널 합성직원')).toBeInTheDocument(); });
@@ -33,8 +33,8 @@ it('상단 탭 선택과 직원 등록·휴가 액션은 기존 화면을 연다
  fireEvent.click(screen.getByRole('button',{name:'신규 직원 등록 닫기'}));fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));expect(screen.getByRole('button',{name:'연차 관리'})).toHaveAttribute('aria-pressed','true');
  const vacation=screen.getByRole('button',{name:'휴가'});expect(vacation).toHaveClass('h-9','text-xs','font-semibold','bg-indigo-600');fireEvent.click(vacation);expect(screen.getByRole('dialog')).toBeInTheDocument();
 });
-it('실제 인사 화면은 전폭 탭 다음 우측 행동과 검색을 두고 탭 선택색을 통일한다',()=>{
+it('실제 인사 화면은 전폭의 우측 탭과 별도 작업·검색 행을 유지한다',()=>{
  render(<HRManager {...props()} companyId="taebaek"/>);
- const tabs=screen.getByRole('group',{name:'인사 메뉴'}),actions=screen.getByRole('group',{name:'인사 관리 작업'}),search=screen.getByPlaceholderText('이름 또는 부서 검색...');expect(tabs.compareDocumentPosition(actions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(actions.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tabs.parentElement).toHaveClass('w-full','justify-start');expect(actions).toHaveClass('w-full','justify-end','flex-wrap');expect(search).toHaveClass('h-10','bg-white');
+ const tabs=screen.getByRole('group',{name:'인사 메뉴'}),actions=screen.getByRole('group',{name:'인사 관리 작업'}),search=screen.getByPlaceholderText('이름 또는 부서 검색...');expect(tabs.compareDocumentPosition(actions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(actions.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(tabs.parentElement).toHaveClass('w-full','justify-end');expect(actions).toHaveClass('w-full','justify-end','flex-wrap');expect(search).toHaveClass('h-10','bg-slate-50');
  fireEvent.click(within(tabs).getByRole('button',{name:'승인 대기'}));expect(within(tabs).getByRole('button',{name:'승인 대기'})).toHaveClass('!text-indigo-600');expect(screen.queryByRole('group',{name:'인사 관리 작업'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'직원 등록'})).not.toBeInTheDocument();fireEvent.click(within(tabs).getByRole('button',{name:'임직원'}));expect(screen.getByRole('button',{name:'직원 등록'})).toHaveClass('h-9');
 });

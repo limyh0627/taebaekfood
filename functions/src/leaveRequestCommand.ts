@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import {
   LEAVE_BATCH_OPERATIONS, normalizeLeaveBatchReference, normalizeLeaveBatchRequest,
-  normalizeLeaveBatchResult, serializeLeaveBatchRequest,
+  normalizeLeaveBatchResult, serializeLeaveBatchRequest, leaveRequestExpected, leaveRequestBusinessIds,
   type LeaveBatchCommand, type LeaveBatchReference, type LeaveBatchRequest, type LeaveBatchResult,
 } from './shared/leaveRequestCommand';
 import { cleanupValidId } from './shared/partnerItemCleanup';
+import {canCancel,leaveStatusPatch} from './shared/leaveStatus';
 
 type Actor = { uid: string; token: Record<string, unknown> };
 type Scope = LeaveBatchReference & { actorUid: string };
@@ -33,7 +34,7 @@ function receiptResult(snapshot: admin.firestore.DocumentSnapshot, scope: Scope,
     } else {
       if (typeof receipt.requestText !== 'string' || sha(receipt.requestText) !== receipt.requestHash) throw Error();
       const request = normalizeLeaveBatchRequest(JSON.parse(receipt.requestText));
-      if (serializeLeaveBatchRequest(request) !== receipt.requestText || request.companyId !== scope.companyId || request.planId !== scope.planId || JSON.stringify(request.rows.map(row=>row.id)) !== JSON.stringify(receipt.requestIds)) throw Error();
+      if (serializeLeaveBatchRequest(request) !== receipt.requestText || request.companyId !== scope.companyId || request.planId !== scope.planId || JSON.stringify(leaveRequestBusinessIds(request)) !== JSON.stringify(receipt.requestIds)) throw Error();
     }
     if (expectedHash !== undefined && receipt.requestHash !== null && receipt.requestHash !== expectedHash) throw new HttpsError('already-exists', '같은 휴가 작업 번호의 최초 내용이 다릅니다. 보관된 요청을 확인해 주세요.');
     return response;
@@ -68,7 +69,8 @@ export async function executeLeaveRequestCommand(db: admin.firestore.Firestore, 
     throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '휴가 요청을 확인해 주세요.');
   }
   if (reference.companyId !== actor.token.companyId) throw new HttpsError('permission-denied', '다른 회사의 휴가는 처리할 수 없습니다.');
-  if (request && actor.token.isAdmin !== true && (request.rows.length !== 1 || request.rows[0].status !== 'pending' || request.rows[0].employeeId !== actor.token.employeeId)) throw new HttpsError('permission-denied', '본인의 개인 휴가 신청만 등록할 수 있습니다.');
+  if (request?.version === 1 && actor.token.isAdmin !== true && (request.rows.length !== 1 || request.rows[0].status !== 'pending' || request.rows[0].employeeId !== actor.token.employeeId)) throw new HttpsError('permission-denied', '본인의 개인 휴가 신청만 등록할 수 있습니다.');
+  if (request?.version === 2 && actor.token.isAdmin !== true && !['request-cancel','request-modify'].includes(request.action)) throw new HttpsError('permission-denied','휴가 결재는 관리자만 처리할 수 있습니다.');
   const scope: Scope = {...reference,actorUid:actor.uid};
   const operationRef = db.collection(LEAVE_BATCH_OPERATIONS).doc(leaveBatchReceiptId(reference.companyId,actor.uid,reference.planId));
   return db.runTransaction(async tx => {
@@ -86,6 +88,57 @@ export async function executeLeaveRequestCommand(db: admin.firestore.Firestore, 
       return response;
     };
     if (input.mode === 'cancel') return saveReceipt(result(scope,'cancelled',null,[],'이 휴가 요청을 중단했습니다. 늦게 도착한 등록도 막았습니다.'),null);
+    if (request!.version === 2) {
+      const mutation = request!;
+      const targetRef = db.collection('leaveRequests').doc(mutation.targetId);
+      const target = await tx.get(targetRef);
+      const current = target.data();
+      const ids = [mutation.targetId];
+      const reject = (message: string) => saveReceipt(result(scope,'rejected',requestHash!,ids,message),text);
+      if (!target.exists || !current || (current.companyId ?? 'taebaek') !== scope.companyId) return reject('대상 휴가가 없거나 현재 회사의 휴가가 아닙니다. 다시 조회해 주세요.');
+      if (!cleanupValidId(current.employeeId)) return reject('대상 직원의 원문을 확인해 주세요.');
+      const targetEmployee = await tx.get(db.collection('employees').doc(current.employeeId));
+      if (!targetEmployee.exists || (targetEmployee.data()?.companyId ?? 'taebaek') !== scope.companyId) return reject('현재 회사에 속한 실제 직원인지 확인해 주세요.');
+      if (actor.token.isAdmin !== true && current.employeeId !== actor.token.employeeId) throw new HttpsError('permission-denied','본인의 휴가만 변경 신청할 수 있습니다.');
+      let currentEvidence: Record<string,unknown>;
+      try { currentEvidence = leaveRequestExpected(current); } catch { return reject('현재 휴가 원문을 비교하지 못했습니다. 다시 조회해 주세요.'); }
+      if (JSON.stringify(currentEvidence) !== JSON.stringify(mutation.expected)) return reject('휴가 내용이 변경되었습니다. 다시 조회한 뒤 처리해 주세요.');
+      const modify = current.modifyRequest as Record<string,unknown> | undefined;
+      let patch: Record<string,unknown>;
+      switch (mutation.action) {
+        case 'approve':
+        case 'reject':
+          if (current.status !== 'pending') return reject('현재 대기 중인 휴가만 승인·반려할 수 있습니다.');
+          patch = leaveStatusPatch(mutation.action === 'approve' ? 'approved' : 'rejected');
+          break;
+        case 'request-cancel':
+          if (current.status !== 'approved') return reject('승인된 휴가만 취소 신청할 수 있습니다.');
+          patch = leaveStatusPatch('cancel_pending');
+          break;
+        case 'cancel': {
+          if (!canCancel({status:current.status})) return reject('이미 취소·반려된 휴가는 다시 취소할 수 없습니다.');
+          const cancellingEmployee = await tx.get(db.collection('employees').doc(actor.token.employeeId as string));
+          const cancellingData = cancellingEmployee.data();
+          if (!cancellingEmployee.exists || (cancellingData?.companyId ?? 'taebaek') !== scope.companyId || typeof cancellingData?.name !== 'string' || !cancellingData.name.trim()) return reject('취소 처리자의 직원 정보를 확인해 주세요.');
+          patch = leaveStatusPatch('cancelled',{id:actor.token.employeeId as string,name:cancellingData.name},mutation.reason);
+          break;
+        }
+        case 'request-modify':
+          if (current.status !== 'approved') return reject('승인된 휴가만 변경 신청할 수 있습니다.');
+          patch = {modifyRequest:{...mutation.modifyRequest,status:'pending'}};
+          break;
+        case 'approve-modify':
+        case 'reject-modify':
+          if (!['approved','cancel_pending'].includes(current.status) || !modify || modify.status !== 'pending') return reject('현재 대기 중인 변경 요청만 승인·반려할 수 있습니다.');
+          if (mutation.action === 'approve-modify' && ['startDate','endDate','reason','daysUsed'].some(field => !Object.prototype.hasOwnProperty.call(modify,field))) return reject('변경 요청의 적용할 원문이 부족합니다. 내용을 확인해 주세요.');
+          patch = mutation.action === 'approve-modify'
+            ? {startDate:modify.startDate,endDate:modify.endDate,reason:modify.reason,daysUsed:modify.daysUsed,modifyRequest:{...modify,status:'approved'}}
+            : {modifyRequest:{...modify,status:'rejected'}};
+          break;
+      }
+      tx.update(targetRef,patch);
+      return saveReceipt(result(scope,'applied',requestHash!,ids,'휴가 처리를 완료했습니다.'),text);
+    }
     const rows = request!.rows;
     // 모든 대상과 기존 휴가를 읽은 뒤에만 첫 쓰기를 만든다. 일부만 등록하는 경로는 없다.
     const employeeRefs = rows.map(row=>db.collection('employees').doc(row.employeeId));

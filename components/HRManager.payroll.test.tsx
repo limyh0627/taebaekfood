@@ -18,7 +18,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 const props = {
   employees: [], leaveRequests: [],
   onUpdateEmployee: vi.fn(), onAddEmployee: vi.fn(), onDeleteEmployee: vi.fn(),
-  onUpdateLeaveStatus: vi.fn(), onUpdateLeave: vi.fn(), onDeleteLeaveRequest: vi.fn(),
+  onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}),
 };
 
 describe('회사별 급여대장 구독', () => {

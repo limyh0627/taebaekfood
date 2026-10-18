@@ -4,7 +4,7 @@ import { auth, authReady, db, functions } from '../../../shared/firebase';
 import { canEnterAdmin } from '../../../shared/adminAccess';
 import { companyOf, type CompanyId, type Employee, type LeaveRequest } from '../../../shared/types';
 import type { SaveOutcome } from '../../../shared/saveOutcome';
-import { normalizeLeaveBatchRequest, normalizeLeaveBatchReference, normalizeLeaveBatchResult, serializeLeaveBatchRequest, type LeaveBatchRequest, type LeaveBatchCommand, type LeaveBatchResult } from '../../../shared/leaveRequestCommand';
+import { normalizeLeaveBatchRequest, normalizeLeaveBatchReference, normalizeLeaveBatchResult, serializeLeaveBatchRequest, leaveRequestBusinessIds, leaveRequestExpected, leaveActionLabel, type LeaveMutationAction, type LeaveCreateRequest, type LeaveBatchRequest, type LeaveBatchCommand, type LeaveBatchResult } from '../../../shared/leaveRequestCommand';
 export interface LeaveScope {
   companyId: CompanyId;
   actorUid: string;
@@ -58,7 +58,11 @@ function parsePlan(raw: string | null, scope: LeaveScope): LeavePlan {
   }
 }
 export function createLeaveRequestWriter(port: LeaveWritePort) {
-  const read = (scope: LeaveScope, planId: string) => parsePlan(port.storage.getItem(prefix(scope) + planId), scope);
+  const read = (scope: LeaveScope, planId: string) => {
+    const plan = parsePlan(port.storage.getItem(prefix(scope) + planId), scope);
+    if (plan.planId !== planId) throw Error('보관 요청의 저장 위치와 계획 번호가 다릅니다. 원문을 보존하고 요청 중단으로 확인해 주세요.');
+    return plan;
+  };
   const list = (scope: LeaveScope) => {
     const plans: LeavePlan[] = [];
     for (let i = 0; i < port.storage.length; i++) {
@@ -120,9 +124,9 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
         })
       };
     });
-    const prior = list(scope).find(plan => plan.request.rows.some(row => rows.some(r => r.id === row.id)));
+    const prior = list(scope).find(plan => plan.request.version === 1 && plan.request.rows.some(row => rows.some(r => r.id === row.id)));
     if (prior) {
-      if (text(prior.request.rows) !== text(rows)) throw Error('보관된 최초 휴가 요청과 입력이 다릅니다. 먼저 보관 요청을 확인해 주세요.');
+      if (prior.request.version !== 1 || text(prior.request.rows) !== text(rows)) throw Error('보관된 최초 휴가 요청과 입력이 다릅니다. 먼저 보관 요청을 확인해 주세요.');
       return prior;
     }
     const request = normalizeLeaveBatchRequest({
@@ -144,8 +148,34 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
     persist(plan);
     return plan;
   };
+  const prepareAction = async (scope: LeaveScope, row: LeaveRequest, action: LeaveMutationAction) => {
+    if (!scope.actorUid) throw Error('현재 로그인 계정을 확인해 주세요.');
+    // 같은 휴가의 앞선 미확정 원문을 다른 화면에서 새 계획으로 덮지 않는다.
+    if (list(scope).some(plan => plan.request.version === 2 && leaveRequestBusinessIds(plan.request).includes(row.id))) throw Error('이 휴가의 보관 요청이 있습니다. 결과 확인 또는 요청 중단을 먼저 선택해 주세요.');
+    const request = normalizeLeaveBatchRequest({
+      version: 2,
+      kind: 'mutation',
+      companyId: scope.companyId,
+      planId: port.id(),
+      targetId: row.id,
+      expected: leaveRequestExpected(row),
+      ...action
+    });
+    const plan: LeavePlan = {
+      version: 1,
+      scope: clean(scope),
+      planId: request.planId,
+      request,
+      requestHash: await digest(serializeLeaveBatchRequest(request)),
+      state: 'prepared',
+      notify: false,
+      createdAt: port.now()
+    };
+    persist(plan);
+    return plan;
+  };
   const complete = async (plan: LeavePlan, response: unknown, employees: readonly Employee[] = []): Promise<LeaveWriteResult> => {
-    const ids = plan.request.rows.map(row => row.id);
+    const ids = leaveRequestBusinessIds(plan.request);
     const result = normalizeLeaveBatchResult(response, {
       companyId: plan.scope.companyId,
       planId: plan.planId
@@ -163,7 +193,7 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
         outcome: {
           status: result.status === 'cancelled' ? 'cancelled' : 'rejected',
           message: result.message,
-          nextAction: '작성 내용을 확인한 뒤 새 요청으로 등록할 수 있습니다.'
+          nextAction: plan.request.version === 2 ? '창을 닫고 해당 휴가를 다시 열어 현재 내용을 확인한 뒤 필요한 작업을 선택해 주세요.' : '작성 내용을 확인한 뒤 새 요청으로 등록할 수 있습니다.'
         },
         plan,
         confirmedIds: [],
@@ -185,7 +215,7 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
         nextAction: '휴가 목록을 확인해 주세요. 다시 신청하지 마세요.'
       };
     }
-    if (plan.notify && plan.request.rows.length === 1) {
+    if (plan.notify && plan.request.version === 1 && plan.request.rows.length === 1) {
       const row = plan.request.rows[0],
         recipient = employees.find(e => companyOf(e) === plan.scope.companyId && canEnterAdmin(e));
       try {
@@ -231,7 +261,7 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
           outcome,
           plan,
           confirmedIds: [],
-          unconfirmedIds: outcome.status === 'unknown' ? plan.request.rows.map(row => row.id) : []
+          unconfirmedIds: outcome.status === 'unknown' ? leaveRequestBusinessIds(plan.request) : []
         } as LeaveWriteResult;
       }
       throw Error('보관된 휴가 원문의 해시가 다릅니다. 삭제하지 말고 요청 중단으로 확인해 주세요.');
@@ -259,7 +289,7 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
         outcome: unknownOutcome(),
         plan,
         confirmedIds: [],
-        unconfirmedIds: plan.request.rows.map(row => row.id)
+        unconfirmedIds: leaveRequestBusinessIds(plan.request)
       } as LeaveWriteResult;
     }
   };
@@ -297,6 +327,7 @@ export function createLeaveRequestWriter(port: LeaveWritePort) {
   };
   return {
     prepare,
+    prepareAction,
     read,
     list,
     persist,
@@ -313,15 +344,16 @@ async function assertScope(scope: LeaveScope) {
   const token = await user.getIdTokenResult();
   if (auth.currentUser?.uid !== scope.actorUid || token.claims.companyId !== scope.companyId || typeof token.claims.employeeId !== 'string') throw Error('휴가 요청의 회사·로그인 권한을 확인해 주세요.');
 }
+async function sendLeaveCommand(scope: LeaveScope, command: LeaveBatchCommand): Promise<LeaveBatchResult> {
+  await assertScope(scope);
+  return (await httpsCallable<LeaveBatchCommand, LeaveBatchResult>(functions, 'leaveRequestCommand')(command)).data;
+}
 const writer = () => createLeaveRequestWriter({
   storage: localStorage,
   assertScope,
   now: () => new Date().toISOString(),
   id: () => crypto.randomUUID(),
-  command: async (scope, command) => {
-    await assertScope(scope);
-    return (await httpsCallable<LeaveBatchCommand, LeaveBatchResult>(functions, 'leaveRequestCommand')(command)).data;
-  },
+  command: sendLeaveCommand,
   notify: async (scope, id, data) => {
     await assertScope(scope);
     await runTransaction(db, async tx => {
@@ -361,7 +393,7 @@ export async function submitLeaveRequests(scope: LeaveScope, requests: LeaveRequ
   } catch (error) {
     let uncertain = false;
     try {
-      uncertain = listLeaveReferences(scope).some(reference => !reference.readable) || service.list(scope).some(prior => prior.request.rows.some(row => requests.some(request => request.id === row.id)));
+      uncertain = listLeaveReferences(scope).some(reference => !reference.readable) || service.list(scope).some(prior => leaveRequestBusinessIds(prior.request).some(id => requests.some(request => request.id === id)));
     } catch {/* 읽을 수 없는 저장소에는 새 요청도 전송하지 않았다. */}
     return {
       outcome: uncertain ? unknownOutcome(error instanceof Error ? error.message : undefined) : {
@@ -376,22 +408,24 @@ export async function submitLeaveRequests(scope: LeaveScope, requests: LeaveRequ
   }
   return service.execute(scope, plan.planId, employees);
 }
-export const pendingLeaveRequests = (scope: LeaveScope): LeaveRequest[] => listLeavePlans(scope).flatMap(plan => plan.request.rows.filter(row => row.status === 'pending'));
+export const pendingLeaveRequests = (scope: LeaveScope): LeaveRequest[] => listLeavePlans(scope).flatMap(plan => plan.request.version === 1 ? plan.request.rows.filter(row => row.status === 'pending') : []);
 export async function inspectLeaveRequest(scope: LeaveScope, requestId: string, employees: readonly Employee[] = []): Promise<SaveOutcome> {
   const service = writer(),
-    plan = service.list(scope).find(p => p.request.rows.some(r => r.id === requestId));
+    plan = service.list(scope).find(p => p.request.version === 1 && leaveRequestBusinessIds(p.request).includes(requestId));
   return plan ? (await service.inspect(scope, plan.planId, employees)).outcome : unknownOutcome('보관된 최초 휴가 원문을 찾지 못했습니다.');
 }
 export async function cancelLeaveRequest(scope: LeaveScope, requestId: string): Promise<SaveOutcome> {
   const service = writer(),
-    plan = service.list(scope).find(p => p.request.rows.some(r => r.id === requestId));
+    plan = service.list(scope).find(p => p.request.version === 1 && leaveRequestBusinessIds(p.request).includes(requestId));
   return plan ? (await service.cancel(scope, plan.planId)).outcome : unknownOutcome('보관된 최초 휴가 요청을 찾지 못했습니다.');
 }
 export interface PendingLeaveGroup {
   id: string;
   requests: LeaveRequest[];
 }
-export const pendingLeaveGroups = (scope: LeaveScope): PendingLeaveGroup[] => listLeavePlans(scope).filter(plan => plan.request.rows.every(row => row.status === 'approved')).map(plan => ({
+export const pendingLeaveGroups = (scope: LeaveScope): PendingLeaveGroup[] => listLeavePlans(scope).filter((plan): plan is LeavePlan & {
+  request: LeaveCreateRequest;
+} => plan.request.version === 1 && plan.request.rows.every(row => row.status === 'approved')).map(plan => ({
   id: plan.request.rows[0].id,
   requests: plan.request.rows
 }));
@@ -411,7 +445,7 @@ export function listLeaveReferences(scope: LeaveScope): LeavePlanReference[] {
       });
       let readable = true;
       try {
-        parsePlan(localStorage.getItem(key), scope);
+        writer().read(scope, planId);
       } catch {
         readable = false;
       }
@@ -422,4 +456,121 @@ export function listLeaveReferences(scope: LeaveScope): LeavePlanReference[] {
     }
   }
   return rows;
+}
+export interface PendingLeaveAction {
+  id: string;
+  planId?: string;
+  action: LeaveMutationAction;
+  description: string;
+  row?: LeaveRequest;
+}
+export const pendingLeaveActions = (scope: LeaveScope): PendingLeaveAction[] => listLeavePlans(scope).flatMap(plan => {
+  const request = plan.request;
+  if (request.version !== 2) return [];
+  const action: LeaveMutationAction = request.action === 'request-modify' ? {
+    action: request.action,
+    modifyRequest: request.modifyRequest
+  } : request.action === 'cancel' ? {
+    action: request.action,
+    ...(request.reason === undefined ? {} : {
+      reason: request.reason
+    })
+  } : {
+    action: request.action
+  };
+  return [{
+    id: request.targetId,
+    planId: plan.planId,
+    action,
+    description: String(request.expected.employeeName ?? '직원') + ' · ' + String(request.expected.startDate ?? '날짜 확인 필요') + ' · ' + leaveActionLabel(request.action)
+  }];
+});
+export async function submitLeaveAction(scope: LeaveScope, row: LeaveRequest, action: LeaveMutationAction): Promise<LeaveWriteResult> {
+  const service = writer();
+  try {
+    await assertScope(scope);
+  } catch {
+    return {
+      outcome: {
+        status: 'cancelled',
+        message: '전송 전에 로그인 계정이나 회사가 바뀌어 저장을 시작하지 않았습니다.',
+        nextAction: '현재 계정을 확인한 뒤 다시 처리해 주세요.'
+      },
+      plan: null,
+      confirmedIds: [],
+      unconfirmedIds: []
+    };
+  }
+  let plan: LeavePlan;
+  try {
+    if (listLeaveReferences(scope).some(reference => !reference.readable)) throw Error('손상된 보관 요청을 먼저 중단 확인해 주세요.');
+    plan = await service.prepareAction(scope, row, action);
+  } catch (error) {
+    let uncertain = false;
+    try {
+      uncertain = listLeaveReferences(scope).some(reference => !reference.readable) || service.list(scope).some(prior => prior.request.version === 2 && leaveRequestBusinessIds(prior.request).includes(row.id));
+    } catch {}
+    return {
+      outcome: uncertain ? unknownOutcome(error instanceof Error ? error.message : undefined) : {
+        status: 'rejected',
+        message: error instanceof Error ? error.message : '휴가 변경 내용을 확인해 주세요.',
+        nextAction: '아직 전송하지 않았습니다. 입력과 기기 저장 공간을 확인한 뒤 다시 처리해 주세요.'
+      },
+      plan: null,
+      confirmedIds: [],
+      unconfirmedIds: uncertain ? [row.id] : []
+    };
+  }
+  return service.execute(scope, plan.planId);
+}
+
+/** 변경 요청은 휴가 ID가 아닌 최초 계획 ID로만 복구한다. */
+export async function inspectLeaveAction(scope: LeaveScope, planId: string): Promise<SaveOutcome> {
+  const service = writer();
+  let plan: LeavePlan | null = null;
+  try {
+    if (localStorage.getItem(prefix(scope) + planId) !== null) plan = service.read(scope, planId);
+  } catch {
+    return unknownOutcome('보관 원문이 손상됐습니다. 원문을 유지하고 요청 중단으로 서버 상태를 확인해 주세요.');
+  }
+  if (plan) return plan.request.version === 2 ? (await service.inspect(scope, planId)).outcome : unknownOutcome('변경 요청이 아닌 생성 계획입니다.');
+  // 다른 화면에서 로컬 원문을 정리했어도 같은 영수증의 결과만 조회한다.
+  try {
+    await assertScope(scope);
+    const reference = normalizeLeaveBatchReference({
+      companyId: scope.companyId,
+      planId
+    });
+    const response = await sendLeaveCommand(scope, {
+      mode: 'inspect',
+      reference
+    });
+    await assertScope(scope);
+    const result = normalizeLeaveBatchResult(response, reference, scope.actorUid);
+    if (result.status === 'applied' || result.status === 'duplicate') return {
+      status: 'saved'
+    };
+    if (result.status === 'cancelled') return {
+      status: 'cancelled',
+      message: '보관 요청이 중단됐습니다.'
+    };
+    if (result.status === 'rejected') return {
+      status: 'rejected',
+      message: result.message,
+      nextAction: '휴가 목록에서 현재 상태를 확인한 뒤 필요한 작업을 다시 선택해 주세요.'
+    };
+    return unknownOutcome(result.message);
+  } catch {
+    return unknownOutcome('보관 요청의 서버 결과를 확인하지 못했습니다.');
+  }
+}
+export async function cancelLeaveAction(scope: LeaveScope, planId: string): Promise<SaveOutcome> {
+  const service = writer();
+  let plan: LeavePlan | null = null;
+  try {
+    if (localStorage.getItem(prefix(scope) + planId) !== null) plan = service.read(scope, planId);
+  } catch {
+    return service.cancelReference(scope, planId);
+  }
+  return plan ? plan.request.version === 2 ? (await service.cancel(scope, planId)).outcome : unknownOutcome('변경 요청이 아닌 생성 계획입니다.') : service.cancelReference(scope, planId);
 }

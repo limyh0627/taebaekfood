@@ -1,3 +1,5 @@
+import {useLeaveActions,type LeaveActionBindings} from '../src/features/hr/hooks/useLeaveActions';
+import {LeaveActionRecovery} from './hr/LeaveApprovalList';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 
@@ -14,7 +16,7 @@ import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
 import { adjTypeLabel, adjTypeClass } from '../src/shared/adjustmentStyle';
 
-interface AdminChecklistProps {
+interface AdminChecklistProps extends LeaveActionBindings {
   leaveRequests: LeaveRequest[];
   adjustmentRequests: AdjustmentRequest[];
   employees: Employee[];
@@ -23,7 +25,6 @@ interface AdminChecklistProps {
   receivedOrders?: PurchaseOrder[];
   partners?: Partner[];
   issuedStatements?: IssuedStatement[];
-  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onDeleteAdjustmentRequest?: (_id: string) => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
@@ -52,7 +53,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   receivedOrders = [],
   partners = [],
   issuedStatements = [],
-  onUpdateLeaveStatus,
+  onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,onReadLeaveReferences,onCancelLeaveReference,requestScopeKey,
   onUpdateAdjustmentStatus,
   onDeleteAdjustmentRequest,
   onProcessAdjustment,
@@ -64,6 +65,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   partnerItems = [],
   onCreatePurchaseStatement,
 }) => {
+  const actions=useLeaveActions({scopeKey:requestScopeKey??'',onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction,readReferences:onReadLeaveReferences,cancelReference:onCancelLeaveReference});
+  const leaveDisabled=(row:LeaveRequest)=>actions.busy||actions.pendingActions.some(entry=>entry.id===row.id);
   // Compute derived variables
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [activeTab, setActiveTab] = useState<TabType>('ops'); // 기본: 거래명세서(전표/입고) 탭
@@ -88,7 +91,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   const [processingReturnId, setProcessingReturnId] = useState<string | null>(null);
 
   const pendingLeaves = useMemo(() =>
-    leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending')
+    leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.status === 'approved' && r.modifyRequest?.status === 'pending')
       .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()),
     [leaveRequests]
   );
@@ -201,6 +204,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+      <LeaveActionRecovery actions={actions}/>
       <PageHeader
         tabs={(
       <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1">
@@ -303,18 +307,16 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       <td className="px-3 py-3">{getLeaveStatusBadge(req)}</td>
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
-                          {req.status === 'cancel_pending' ? (
-                            /*  취소 요청은 **받아 주기만** 한다(2026-09-04 사장님:
-                                "직원이 취소한걸 반려하는 경우는 없어").
-                                전에 있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다.
-                                'approved' 를 보내서 **취소가 아무 일도 안 했다** — 이제 'cancelled' 다. */
-                            <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="px-2 py-1.5 bg-orange-500 text-white rounded-lg text-[10px] font-black hover:bg-orange-600 transition-all shadow-sm whitespace-nowrap">취소승인</button>
-                          ) : (
-                            <>
-                              <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap">승인</button>
-                              <button onClick={() => onUpdateLeaveStatus(req.id, 'rejected')} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black hover:bg-slate-50 transition-all">반려</button>
-                            </>
-                          )}
+                          {req.status==='cancel_pending'&&<button disabled={leaveDisabled(req)} onClick={()=>actions.run(req,{action:'cancel'})} className="px-2 py-1.5 bg-orange-500 text-white rounded-lg text-[10px] font-black">취소승인</button>}
+                          {['approved','cancel_pending'].includes(req.status)&&req.modifyRequest?.status==='pending'&&<>
+                            <button disabled={leaveDisabled(req)} onClick={()=>actions.run(req,{action:'approve-modify'})} className="px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black">변경 승인</button>
+                            <button disabled={leaveDisabled(req)} onClick={()=>actions.run(req,{action:'reject-modify'})} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black">변경 반려</button>
+                          </>}
+                          {req.status==='pending'&&<>
+                            <button disabled={leaveDisabled(req)} onClick={()=>actions.run(req,{action:'approve'})} className="px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black">승인</button>
+                            <button disabled={leaveDisabled(req)} onClick={()=>actions.run(req,{action:'reject'})} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black">반려</button>
+                          </>}
+
                         </div>
                       </td>
                     </tr>

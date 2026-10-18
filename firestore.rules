@@ -343,24 +343,8 @@ service cloud.firestore {
                             && request.resource.data.status == 'pending'
                             && request.resource.data.keys().hasOnly(['id', 'companyId', 'employeeId', 'employeeName',
                                 'type', 'startDate', 'endDate', 'reason', 'status', 'requestedAt', 'daysUsed'])));
-      /**
-       * 본인은 아직 결재 안 된 자기 신청만 고친다.
-       *
-       * **고칠 수 있는 칸을 못 박는다**(2026-09-16 코덱스 검수 4번). `status` 만 보다가
-       * 본인이 **신청자를 남으로 바꾸거나**(남의 연차를 만들어 냄) **회사를 옮기거나**
-       * 결재 칸(`approvedBy`)을 직접 채울 수 있었다. 바꿔도 되는 칸을 적고,
-       * 신청자·회사는 **바뀌지 않았는지** 따로 확인한다.
-       */
-      allow update: if (isAdmin() && createUpdateOk())
-                    || (isEmployee()
-                        && resource.data.employeeId == me()
-                        && canSee(resource.data.companyId)
-                        && resource.data.status == 'pending'
-                        && request.resource.data.status == 'pending'
-                        && request.resource.data.employeeId == resource.data.employeeId
-                        && request.resource.data.companyId == resource.data.companyId
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['startDate', 'endDate', 'days', 'reason', 'type', 'note', 'updatedAt']));
+      // 실제 상태 변경은 원문 CAS와 영수증을 함께 쓰는 서버 명령만 통과한다.
+      allow update: if false;
       allow delete: if (isAdmin() && deleteOk())
                             || (isEmployee()
                                 && resource.data.employeeId == me()

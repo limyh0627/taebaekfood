@@ -679,7 +679,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
 
     it('관리자는 승인한다', async () => {
-      await assertSucceeds(updateDoc(doc(관리자(), 'leaveRequests', 'lv-e1'), { status: 'approved', companyId: 'taebaek' }));
+      await assertFails(updateDoc(doc(관리자(), 'leaveRequests', 'lv-e1'), { status: 'approved', companyId: 'taebaek' }));
     });
 
     it('다른 회사 연차는 못 본다', async () => {
@@ -728,7 +728,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
 
     it('본인은 날짜·사유만 고친다', async () => {
-      await assertSucceeds(updateDoc(doc(태백직원(), 'leaveRequests', 'lv-e1'), { startDate: '2026-10-01', reason: '개인' }));
+      await assertFails(updateDoc(doc(태백직원(), 'leaveRequests', 'lv-e1'), { startDate: '2026-10-01', reason: '개인' }));
     });
 
     it('**본인이 결재 칸을 못 건드린다**', async () => {
@@ -926,6 +926,19 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
  afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
  it('관리자·직원·타회사·미로그인 모두 get/list/create/update/delete와 하위 경로 우회를 막는다',async()=>{for(const claims of [{employeeId:'admin',companyId:'taebaek',isAdmin:true},{employeeId:'e1',companyId:'taebaek',isAdmin:false},{employeeId:'other',companyId:'punghoe',isAdmin:true},null]){const context=claims?isolated.authenticatedContext('uid-'+claims.employeeId,claims):isolated.unauthenticatedContext(),database=context.firestore(),target=doc(database,'leaveRequestOperations','receipt');await assertFails(getDoc(target));await assertFails(getDocs(collection(database,'leaveRequestOperations')));await assertFails(setDoc(doc(database,'leaveRequestOperations','new'),{companyId:'taebaek'}));await assertFails(updateDoc(target,{status:'cancelled'}));await assertFails(deleteDoc(target));await assertFails(setDoc(doc(database,'leaveRequestOperations','receipt','nested','child'),{companyId:'taebaek'}));}});
+ it('휴가 직접 상태·원문 수정은 관리자도 거절하고 기존 생성·본인대기삭제 범위는 유지한다',async()=>{
+  const staff=isolated.authenticatedContext('mutation-staff',{employeeId:'mutation-e1',companyId:'taebaek',isAdmin:false}).firestore();
+  const manager=isolated.authenticatedContext('mutation-admin',{employeeId:'mutation-admin',companyId:'taebaek',isAdmin:true}).firestore();
+  const paths=[['employees','mutation-e1'],['leaveRequests','mutation-pending'],['leaveRequests','mutation-approved'],['leaveRequests','mutation-admin-created']];
+  await isolated.withSecurityRulesDisabled(async context=>{const store=context.firestore();await setDoc(doc(store,'employees','mutation-e1'),{companyId:'taebaek',name:'직원'});await setDoc(doc(store,'leaveRequests','mutation-approved'),{companyId:'taebaek',employeeId:'mutation-e1',status:'approved'});});
+  try {
+   await assertSucceeds(setDoc(doc(staff,'leaveRequests','mutation-pending'),{companyId:'taebaek',employeeId:'mutation-e1',status:'pending'}));
+   await assertSucceeds(setDoc(doc(manager,'leaveRequests','mutation-admin-created'),{companyId:'taebaek',employeeId:'mutation-e1',status:'approved'}));
+   for(const store of [staff,manager])for(const [id,patch] of [['mutation-pending',{status:'approved'}],['mutation-pending',{reason:'원문직접수정'}],['mutation-approved',{status:'cancel_pending'}],['mutation-approved',{modifyRequest:{status:'pending'}}]] as const)await assertFails(updateDoc(doc(store,'leaveRequests',id),patch));
+   await assertFails(deleteDoc(doc(staff,'leaveRequests','mutation-approved')));
+   await assertSucceeds(deleteDoc(doc(staff,'leaveRequests','mutation-pending')));
+  } finally {await isolated.withSecurityRulesDisabled(async context=>{for(const [collection,id] of paths)await deleteDoc(doc(context.firestore(),collection,id));});}
+ });
  it('휴가 알림은 없는 고정 ID를 읽고 같은 회사에 생성하며 목록·기존 문서는 회사 경계를 지킨다',async()=>{
   const staff=isolated.authenticatedContext('notice-staff',{employeeId:'notice-e1',companyId:'taebaek',isAdmin:false}).firestore();
   const created=doc(staff,'notifications','leave-fixed'),foreign=doc(staff,'notifications','leave-foreign');

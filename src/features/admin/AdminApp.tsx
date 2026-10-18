@@ -3,8 +3,8 @@ import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditSe
 import { primaryCommitted, saveOutcomeMessage } from '../../shared/saveOutcome';
 import type { SaveOutcome } from '../../shared/saveOutcome';
 import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
-import { submitLeaveRequests, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
-import type { LeaveStatus } from '../../shared/types';
+import { submitLeaveRequests, submitLeaveAction, inspectLeaveAction, cancelLeaveAction, pendingLeaveActions, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
+import type { LeaveMutationAction } from '../../shared/leaveRequestCommand';
 import { DATE_RANGE_LAYOUT_CLASS } from '../../shared/components/DateRangeInputs';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../shared/components/QueryFilterPanel';
 import RawDocUsageDetailModal from '../../../components/RawDocUsageDetailModal';
@@ -2160,28 +2160,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
     runLeaveAction(async scope => (await submitLeaveRequests(scope,requests,employees,notify)).outcome);
   const handleInspectLeaveRequest = (id: string) => runLeaveAction(scope => inspectLeaveRequest(scope,id,employees));
   const handleCancelLeaveRequest = (id: string) => runLeaveAction(scope => cancelLeaveRequest(scope,id));
+  const handleInspectLeaveAction = (planId: string) => runLeaveAction(scope => inspectLeaveAction(scope,planId));
+  const handleCancelLeaveAction = (planId: string) => runLeaveAction(scope => cancelLeaveAction(scope,planId));
   const handleCancelLeaveReference = (id: string) => runLeaveAction(scope => cancelLeaveReference(scope,id));
   const readPendingLeaveRequests = () => { const scope=currentLeaveScope();return scope ? pendingLeaveRequests(scope) : []; };
   const readPendingLeaveGroups = () => { const scope=currentLeaveScope();return scope ? pendingLeaveGroups(scope) : []; };
   const readLeaveReferences = () => { const scope=currentLeaveScope();return scope ? listLeaveReferences(scope) : []; };
-  const handleUpdateLeave = async (id: string, updates: Partial<LeaveRequest>): Promise<SaveOutcome> => {
-    if (!currentLeaveScope()) return leaveScopeRejected();
-    const request = leaveRequests.find(row => row.id === id);
-    const employee = employees.find(row => row.id === request?.employeeId);
-    if (!request || !employee || companyOf(employee) !== companyId) return {
-      status:'rejected',message:'현재 회사의 휴가 신청을 확인하지 못했습니다.',nextAction:'현재 회사의 신청 목록을 새로 확인한 뒤 변경해 주세요.',
-    };
-    try { await updateItem('leaveRequests',id,updates);return {status:'saved'}; }
-    catch { return {status:'unknown',message:'휴가 변경의 저장 결과를 확인하지 못했습니다.',nextAction:'현재 신청 상태를 확인한 뒤 다시 시도해 주세요.'}; }
-  };
-  const handleUpdateLeaveStatus = (id: string, status: LeaveStatus, reason?: string): Promise<SaveOutcome> =>
-    handleUpdateLeave(id,leaveStatusPatch(status,{id:currentUser.id,name:currentUser.name},reason));
-  const handleChecklistLeaveStatus = async (id: string, status: LeaveStatus, reason?: string): Promise<SaveOutcome> => {
-    const result = await handleUpdateLeaveStatus(id,status,reason);
-    // 확인사항 화면의 기존 void 콜백도 결과를 버린 채 실패를 숨기지 않도록 한다.
-    if (result.status !== 'saved' && currentLeaveScope()) setAppNotice({title:'휴가 변경 확인 필요',message:result.message,subMessage:result.nextAction ?? ''});
-    return result;
-  };
+  const handleLeaveAction = (row: LeaveRequest, action: LeaveMutationAction): Promise<SaveOutcome> =>
+    runLeaveAction(async scope => (await submitLeaveAction(scope,row,action)).outcome);
+  const readPendingLeaveActions = () => { const scope=currentLeaveScope();return scope ? pendingLeaveActions(scope) : []; };
 
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
   const seedItemFormulas = async () => {
@@ -2274,7 +2261,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-  const adminPendingCount = leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length + adjustmentRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length;
+  const adminPendingCount = leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.status === 'approved' && r.modifyRequest?.status === 'pending').length + adjustmentRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length;
   const menuGroups = isAdmin ? [{"id":"dash","label":"대시보드"},{"id":"work","label":"업무 관리"},{"id":"master","label":"기준정보 관리"},{"id":"ledger","label":"장부 / 원장 관리"},{"id":"biz","label":"경영 분석 및 통계"},{"id":"special","label":"특수 관리"},{"id":"ext","label":"외부 서비스"}] : [{"id":"staff-work","label":"현장 운영"},{"id":"staff-ext","label":"외부 서비스"}];
   const menuEntries = (isAdmin ? [{id:"dashboard",label:"대시보드",groupId:"dash",element:(<NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />)},
 {id:"data-integrity",label:"데이터 점검",groupId:"dash",element:(<NavItem icon={ShieldCheck} label="데이터 점검" active={currentView === 'data-integrity'} onClick={() => handleNavClick('data-integrity')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('data-integrity')} />)},
@@ -3149,9 +3136,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
               onAddEmployee={(emp) => addItem('employees', emp)}
               onDeleteEmployee={(id) => deleteItem('employees', id)}
-              onUpdateLeaveStatus={handleUpdateLeaveStatus}
-              onUpdateLeave={handleUpdateLeave}
-              onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
+              onLeaveAction={handleLeaveAction}
+              onReadPendingLeaveActions={readPendingLeaveActions}
+              onInspectLeaveAction={handleInspectLeaveAction}
+              onCancelLeaveAction={handleCancelLeaveAction}
               onAddLeaveRequests={requests => handleAddLeaveRequests(requests)}
               onReadPendingLeaveGroups={readPendingLeaveGroups}
               onInspectLeaveRequest={handleInspectLeaveRequest}
@@ -3173,7 +3161,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
                    코드가 정반대로 썼다 — '취소 승인'은 rejected 로, **'반려'(취소 거절)는
                    cancelled 로** 들어가 연차가 사라졌다. 화면이 바라는 결과를 그대로 준다. */
-              onUpdateLeaveStatus={handleChecklistLeaveStatus}
+              onLeaveAction={handleLeaveAction}
+              requestScopeKey={companyId+':'+(leaveRenderUid??'')}
+              onReadPendingLeaveActions={readPendingLeaveActions}
+              onInspectLeaveAction={handleInspectLeaveAction}
+              onCancelLeaveAction={handleCancelLeaveAction}
+              onReadLeaveReferences={readLeaveReferences}
+              onCancelLeaveReference={handleCancelLeaveReference}
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
@@ -4661,8 +4655,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onCancelLeaveRequest={handleCancelLeaveRequest}
               onReadLeaveReferences={readLeaveReferences}
               onCancelLeaveReference={handleCancelLeaveReference}
-              onUpdateLeaveStatus={handleUpdateLeaveStatus}
-              onUpdateLeave={handleUpdateLeave}
+              onLeaveAction={handleLeaveAction}
+              onReadPendingLeaveActions={readPendingLeaveActions}
+              onInspectLeaveAction={handleInspectLeaveAction}
+              onCancelLeaveAction={handleCancelLeaveAction}
             />
           )}
           {normalizeViewAlias(currentView) === 'item-management' && (

@@ -8,7 +8,7 @@ import type { SaveOutcome } from '../../shared/saveOutcome';
 
 const source=readFileSync('src/features/admin/AdminApp.tsx','utf8');
 const ast=ts.createSourceFile('AdminApp.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-const names=['leaveRenderUid','leaveRenderToken','currentLeaveScope','leaveScopeRejected','runLeaveAction','handleAddLeaveRequests','handleInspectLeaveRequest','handleCancelLeaveRequest','handleCancelLeaveReference','readPendingLeaveRequests','readPendingLeaveGroups','readLeaveReferences','handleUpdateLeave','handleUpdateLeaveStatus','handleChecklistLeaveStatus'];
+const names=['leaveRenderUid','leaveRenderToken','currentLeaveScope','leaveScopeRejected','runLeaveAction','handleAddLeaveRequests','handleInspectLeaveRequest','handleCancelLeaveRequest','handleCancelLeaveReference','readPendingLeaveRequests','readPendingLeaveGroups','readLeaveReferences','handleLeaveAction','readPendingLeaveActions','handleInspectLeaveAction','handleCancelLeaveAction'];
 function parentHarness() {
  const declarations:string[]=[];
  const visit=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(ast)))declarations.push(`const ${node.getText(ast)};`);ts.forEachChild(node,visit);};visit(ast);
@@ -16,13 +16,14 @@ function parentHarness() {
  const row:LeaveRequest={id:'leave',employeeId:'employee',employeeName:'합성 직원',type:'연차',startDate:'2025-02-03',endDate:'2025-02-03',reason:'합성 신청',status:'pending',requestedAt:'2025-02-01T00:00:00Z',daysUsed:1};
  const auth={currentUser:{uid:'actor'}},orderAskScope={current:{companyId:'taebaek',token:{}}};
  const submit=vi.fn(async()=>({outcome:{status:'saved'} as SaveOutcome})),inspect=vi.fn(async()=>({status:'saved'} as SaveOutcome)),cancel=vi.fn(async()=>({status:'cancelled',message:'요청 중단 확인'} as SaveOutcome));
+ const actionSubmit=vi.fn(async(..._args:unknown[])=>({outcome:{status:'saved'} as SaveOutcome})),inspectAction=vi.fn(async()=>({status:'unknown',message:'수정 미확인',nextAction:'수정 요청 중단'} as SaveOutcome)),cancelAction=vi.fn(async()=>({status:'cancelled',message:'수정 중단'} as SaveOutcome)),pendingActions=vi.fn(()=>[]);
  const pending=vi.fn(()=>[row]),groups=vi.fn(()=>[{id:row.id,requests:[row]}]),references=vi.fn(()=>[{planId:'damaged',readable:false}]),cancelReference=vi.fn(async()=>({status:'cancelled',message:'중단 확인'} as SaveOutcome));
  const update=vi.fn(async()=>{}),notice=vi.fn(),employees=[{id:'employee',companyId:'taebaek'}];
  const deps={auth,orderAskScope,companyId:'taebaek',employees,leaveRequests:[row],currentUser:{id:'employee',name:'관리자'},companyOf,leaveStatusPatch,updateItem:update,setAppNotice:notice,
-  submitLeaveRequests:submit,inspectLeaveRequest:inspect,cancelLeaveRequest:cancel,pendingLeaveRequests:pending,pendingLeaveGroups:groups,listLeaveReferences:references,cancelLeaveReference:cancelReference};
+  submitLeaveRequests:submit,submitLeaveAction:actionSubmit,inspectLeaveAction:inspectAction,cancelLeaveAction:cancelAction,pendingLeaveActions:pendingActions,inspectLeaveRequest:inspect,cancelLeaveRequest:cancel,pendingLeaveRequests:pending,pendingLeaveGroups:groups,listLeaveReferences:references,cancelLeaveReference:cancelReference};
  const body=ts.transpileModule(declarations.join('\n')+`\nreturn {${names.join(',')}};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const callbacks=new Function(...Object.keys(deps),body)(...Object.values(deps));
- return {...deps,callbacks,row,submit,inspect,cancel,pending,groups,references,cancelReference,update,notice};
+ return {...deps,callbacks,row,actionSubmit,inspectAction,cancelAction,pendingActions,submit,inspect,cancel,pending,groups,references,cancelReference,update,notice};
 }
 function jsxCallback(component:string,prop:string,bindings:Record<string,unknown>) {
  let expression:ts.Expression|undefined;
@@ -54,26 +55,24 @@ it('보관 원문·손상 참조·결과 확인·중단 API를 두 실제 화면
 });
 it.each(['uid','company','token'])('렌더 이후 %s 경계가 바뀌면 휴가 요청·보관 조회·변경 쓰기를 시작하지 않는다',async boundary=>{
  const h=parentHarness();if(boundary==='uid')h.auth.currentUser={uid:'other'};if(boundary==='company')h.orderAskScope.current.companyId='punghoe';if(boundary==='token')h.orderAskScope.current.token={};
- expect((await h.callbacks.handleAddLeaveRequests([h.row],true)).status).toBe('rejected');expect((await h.callbacks.handleUpdateLeave('leave',{status:'approved'})).status).toBe('rejected');
+ expect((await h.callbacks.handleAddLeaveRequests([h.row],true)).status).toBe('rejected');expect((await h.callbacks.handleLeaveAction(h.row,{action:'approve'})).status).toBe('rejected');
  expect(h.callbacks.readPendingLeaveRequests()).toEqual([]);expect(h.callbacks.readLeaveReferences()).toEqual([]);expect(h.submit).not.toHaveBeenCalled();expect(h.pending).not.toHaveBeenCalled();expect(h.references).not.toHaveBeenCalled();expect(h.update).not.toHaveBeenCalled();
 });
-it('휴가 변경은 ACK를 기다리고 상태·취소 사유 정본을 유지하며 송신 후 예외만 unknown으로 반환한다',async()=>{
- const h=parentHarness();let resolve!:()=>void;h.update.mockImplementationOnce(()=>new Promise<void>(done=>{resolve=done;}));
- let settled=false;const pending=h.callbacks.handleUpdateLeaveStatus('leave','cancelled','확인 사유').then((value:SaveOutcome)=>{settled=true;return value;});
- expect(settled).toBe(false);expect(h.update).toHaveBeenCalledWith('leaveRequests','leave',expect.objectContaining({status:'cancelled',cancelledBy:'employee',cancelledByName:'관리자',cancelReason:'확인 사유'}));
- resolve();expect(await pending).toEqual({status:'saved'});
- h.update.mockRejectedValueOnce(new Error('응답 유실'));expect(await h.callbacks.handleUpdateLeave('leave',{status:'approved'})).toMatchObject({status:'unknown',nextAction:expect.stringContaining('현재 신청 상태')});
- expect((await h.callbacks.handleUpdateLeave('outside',{status:'approved'})).status).toBe('rejected');expect(h.update).toHaveBeenCalledTimes(2);
+it('mutation은 UI가 표시한 원문을 그대로 전송하고 부모의 최신 목록으로 재조립하지 않는다',async()=>{
+ const h=parentHarness(),original={...h.row,reason:'작성 당시 원문'};h.leaveRequests[0]={...h.row,reason:'나중 목록'};
+ await h.callbacks.handleLeaveAction(original,{action:'approve-modify'});
+ expect(h.actionSubmit).toHaveBeenCalledExactlyOnceWith({companyId:'taebaek',actorUid:'actor'},original,{action:'approve-modify'});expect(h.actionSubmit.mock.calls[0][1]).toBe(original);expect(h.update).not.toHaveBeenCalled();
 });
-it('확인사항의 void 소비 경로도 Promise 결과를 반환하고 실패 안내를 남기며 늦은 다른 신원에는 띄우지 않는다',async()=>{
- const h=parentHarness(),callback=jsxCallback('AdminChecklist','onUpdateLeaveStatus',h.callbacks);
- h.update.mockRejectedValueOnce(new Error('응답 유실'));expect((await callback('leave','approved')).status).toBe('unknown');expect(h.notice).toHaveBeenCalledWith(expect.objectContaining({message:expect.stringContaining('결과를 확인하지 못했습니다'),subMessage:expect.stringContaining('현재 신청 상태')}));
- h.notice.mockClear();h.update.mockImplementationOnce(async()=>{h.auth.currentUser={uid:'other'};throw Error('늦은 오류');});await callback('leave','approved');expect(h.notice).not.toHaveBeenCalled();
-});
-it('부모는 휴가 직접 생성·for-await 단체 등록을 남기지 않고 모든 결재 콜백의 Promise를 전달한다',()=>{
- expect(source).not.toContain("addItem('leaveRequests'");expect(source).not.toContain("for (const r of reqs)");
- const h=parentHarness();for(const component of ['HRManager','LeaveManager']){
-  expect(jsxCallback(component,'onUpdateLeaveStatus',h.callbacks)).toBe(h.callbacks.handleUpdateLeaveStatus);
-  expect(jsxCallback(component,'onUpdateLeave',h.callbacks)).toBe(h.callbacks.handleUpdateLeave);
+it('create 완료와 mutation 미확인이 섞여도 수정 복구는 정확한 v2 plan API만 호출한다',async()=>{
+ const h=parentHarness();await h.callbacks.handleInspectLeaveRequest('leave');expect(h.inspect).toHaveBeenCalled();
+ for(const component of ['HRManager','LeaveManager','AdminChecklist']){
+  expect((await jsxCallback(component,'onInspectLeaveAction',h.callbacks)('mutation-plan')).status).toBe('unknown');
+  expect(h.inspectAction).toHaveBeenLastCalledWith({companyId:'taebaek',actorUid:'actor'},'mutation-plan');
+  await jsxCallback(component,'onCancelLeaveAction',h.callbacks)('mutation-plan');expect(h.cancelAction).toHaveBeenLastCalledWith({companyId:'taebaek',actorUid:'actor'},'mutation-plan');
  }
+ expect(h.inspect).toHaveBeenCalledTimes(1);
+});
+it('실제 3메뉴는 같은 action 콜백을 전달하고 휴가 직접 생성·수정 writer를 남기지 않는다',()=>{
+ expect(source).not.toContain("addItem('leaveRequests'");expect(source).not.toContain("updateItem('leaveRequests'");
+ const h=parentHarness();for(const component of ['HRManager','LeaveManager','AdminChecklist'])expect(jsxCallback(component,'onLeaveAction',h.callbacks)).toBe(h.callbacks.handleLeaveAction);
 });

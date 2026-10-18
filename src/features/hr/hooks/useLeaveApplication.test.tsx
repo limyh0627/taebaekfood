@@ -8,7 +8,9 @@ const request = {
 it('대기 중 중복을 막고 saved 또는 해당 업무 partial만 완료한다', async () => {
   let finish!: (v: any) => void;
   const submit = vi.fn(() => new Promise<any>(r => finish = r)),
-    hook = renderHook(() => useLeaveApplication<{id:string}>({
+    hook = renderHook(() => useLeaveApplication<{
+      id: string;
+    }>({
       scopeKey: 'A',
       submit
     }));
@@ -41,7 +43,9 @@ it('unknown은 원문을 유지하고 inspect 부재 후에도 새 제출을 허
     },
     submit = vi.fn().mockResolvedValue(outcome),
     inspect = vi.fn().mockResolvedValue(outcome);
-  const hook = renderHook(() => useLeaveApplication<{id:string}>({
+  const hook = renderHook(() => useLeaveApplication<{
+    id: string;
+  }>({
     scopeKey: 'A',
     submit,
     inspect
@@ -70,7 +74,9 @@ it('명시 중단 ACK는 초안을 새로 제출할 수 있게 하고 닫기나 
       message: '중단',
       nextAction: '새작성'
     });
-  const hook = renderHook(() => useLeaveApplication<{id:string}>({
+  const hook = renderHook(() => useLeaveApplication<{
+    id: string;
+  }>({
     scopeKey: 'A',
     submit,
     cancel,
@@ -96,7 +102,9 @@ it('회사 변경과 닫은 뒤 늦은 ACK는 새 화면을 완료시키지 않�
   const submit = vi.fn(() => new Promise<any>(r => finish = r)),
     hook = renderHook(({
       scopeKey
-    }) => useLeaveApplication<{id:string}>({
+    }) => useLeaveApplication<{
+      id: string;
+    }>({
       scopeKey,
       submit
     }), {
@@ -128,7 +136,9 @@ it('전송 전 명시 거절은 초안 controller를 동결하지 않고 수정 
   }).mockResolvedValueOnce({
     status: 'saved'
   });
-  const hook = renderHook(() => useLeaveApplication<{id:string}>({
+  const hook = renderHook(() => useLeaveApplication<{
+    id: string;
+  }>({
     scopeKey: 'A',
     submit
   }));
@@ -150,7 +160,9 @@ it('새 회사 보관 조회가 실패해도 이전 회사 요청과 손상 참�
   });
   const hook = renderHook(({
     scopeKey
-  }) => useLeaveApplication<{id:string}>({
+  }) => useLeaveApplication<{
+    id: string;
+  }>({
     scopeKey,
     submit: vi.fn(),
     readPending,
@@ -170,7 +182,61 @@ it('새 회사 보관 조회가 실패해도 이전 회사 요청과 손상 참�
   expect(hook.result.current.pendingRequests).toEqual([]);
   expect(hook.result.current.damagedReferences).toEqual([]);
 });
-
-it('전송 중 닫기는 ACK 수신까지 보류하고 완료 후 pending이 남는 함정을 막는다',async()=>{let finish!:(value:any)=>void;const submit=vi.fn(()=>new Promise<any>(resolve=>finish=resolve)),hook=renderHook(()=>useLeaveApplication<{id:string}>({scopeKey:'A',submit}));let work!:ReturnType<typeof hook.result.current.submit>;act(()=>{work=hook.result.current.submit(request);});act(()=>expect(hook.result.current.close()).toBe(false));expect(hook.result.current.message).toContain('확인하는 중');await act(async()=>{finish({status:'saved'});expect((await work).committed).toBe(true);});expect(hook.result.current.pending).toBeNull();expect(hook.result.current.pendingRequests).toEqual([]);act(()=>expect(hook.result.current.close()).toBe(true));});
-
-it('같은 회사라도 실제 UID scope가 바뀌면 보관 요청과 늦은 ACK를 새 계정에 적용하지 않는다',async()=>{let finish!:(value:any)=>void;const submit=vi.fn(()=>new Promise<any>(resolve=>finish=resolve));const hook=renderHook(({uid})=>useLeaveApplication<{id:string}>({scopeKey:'taebaek:'+uid,submit,readPending:()=>uid==='A'?[request]:[]}),{initialProps:{uid:'A'}});let work!:ReturnType<typeof hook.result.current.submit>;act(()=>{work=hook.result.current.submit(request);});hook.rerender({uid:'B'});expect(hook.result.current.pendingRequests).toEqual([]);await act(async()=>{finish({status:'saved'});expect((await work).committed).toBe(false);});expect(hook.result.current.message).toBe('');expect(hook.result.current.pending).toBeNull();});
+it('전송 중 닫기는 ACK 수신까지 보류하고 완료 후 pending이 남는 함정을 막는다', async () => {
+  let finish!: (value: any) => void;
+  const submit = vi.fn(() => new Promise<any>(resolve => finish = resolve)),
+    hook = renderHook(() => useLeaveApplication<{
+      id: string;
+    }>({
+      scopeKey: 'A',
+      submit
+    }));
+  let work!: ReturnType<typeof hook.result.current.submit>;
+  act(() => {
+    work = hook.result.current.submit(request);
+  });
+  act(() => expect(hook.result.current.close()).toBe(false));
+  expect(hook.result.current.message).toContain('확인하는 중');
+  await act(async () => {
+    finish({
+      status: 'saved'
+    });
+    expect((await work).committed).toBe(true);
+  });
+  expect(hook.result.current.pending).toBeNull();
+  expect(hook.result.current.pendingRequests).toEqual([]);
+  act(() => expect(hook.result.current.close()).toBe(true));
+});
+it('같은 회사라도 실제 UID scope가 바뀌면 보관 요청과 늦은 ACK를 새 계정에 적용하지 않는다', async () => {
+  let finish!: (value: any) => void;
+  const submit = vi.fn(() => new Promise<any>(resolve => finish = resolve));
+  const hook = renderHook(({
+    uid
+  }) => useLeaveApplication<{
+    id: string;
+  }>({
+    scopeKey: 'taebaek:' + uid,
+    submit,
+    readPending: () => uid === 'A' ? [request] : []
+  }), {
+    initialProps: {
+      uid: 'A'
+    }
+  });
+  let work!: ReturnType<typeof hook.result.current.submit>;
+  act(() => {
+    work = hook.result.current.submit(request);
+  });
+  hook.rerender({
+    uid: 'B'
+  });
+  expect(hook.result.current.pendingRequests).toEqual([]);
+  await act(async () => {
+    finish({
+      status: 'saved'
+    });
+    expect((await work).committed).toBe(false);
+  });
+  expect(hook.result.current.message).toBe('');
+  expect(hook.result.current.pending).toBeNull();
+});

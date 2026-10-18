@@ -23,8 +23,8 @@ vi.mock('../../../shared/firebase', () => ({
 vi.mock('firebase/functions', () => ({
   httpsCallable: () => runtime.call
 }));
-import { createLeaveRequestWriter, submitLeaveRequests, type LeaveWritePort } from './leaveRequestWrites';
-import { serializeLeaveBatchRequest, type LeaveBatchRequest } from '../../../shared/leaveRequestCommand';
+import { createLeaveRequestWriter, submitLeaveRequests, inspectLeaveAction, cancelLeaveAction, inspectLeaveRequest, listLeaveReferences, type LeaveWritePort } from './leaveRequestWrites';
+import { serializeLeaveBatchRequest, leaveRequestBusinessIds, type LeaveBatchRequest } from '../../../shared/leaveRequestCommand';
 import type { LeaveRequest, Employee } from '../../../shared/types';
 const scope = {
   companyId: 'taebaek' as const,
@@ -82,7 +82,7 @@ beforeEach(() => {
         actorUid: s.actorUid,
         planId: stored.planId,
         requestHash: await hash(stored),
-        requestIds: stored.rows.map(r => r.id),
+        requestIds: leaveRequestBusinessIds(stored),
         message: ''
       } : {
         status: command.mode === 'cancel' ? 'cancelled' : 'unknown',
@@ -274,4 +274,207 @@ it('해시 불일치 중단에서 서버가 이미 적용한 요청은 재발행
   expect(port.command).toHaveBeenCalledOnce();
   expect(vi.mocked(port.command).mock.calls[0][1].mode).toBe('cancel');
   expect(memory.size).toBe(0);
+});
+it('생성 보관본과 같은 휴가의 변경 계획을 분리하고 최초 행 스냅샷을 고정한다', async () => {
+  let sequence = 0;
+  port.id = () => `plan-${++sequence}`;
+  const service = createLeaveRequestWriter(port);
+  const create = await service.prepare(scope, [req()], employees);
+  const row = {
+    ...req(),
+    companyId: 'taebaek' as const,
+    daysUsed: 0,
+    deductsLeave: false
+  };
+  const mutation = await service.prepareAction(scope, row, {
+    action: 'approve'
+  });
+  row.reason = '나중 수정';
+  expect(mutation.request.version).toBe(2);
+  if (mutation.request.version !== 2) throw Error('mutation');
+  expect(mutation.request.expected).toMatchObject({
+    reason: '원문',
+    daysUsed: 0,
+    deductsLeave: false
+  });
+  expect(mutation.request.expected).not.toHaveProperty('cancelReason');
+  expect(create.request.version).toBe(1);
+  await expect(service.prepareAction(scope, row, {
+    action: 'reject'
+  })).rejects.toThrow('보관 요청');
+  expect(port.command).not.toHaveBeenCalled();
+  vi.mocked(port.command).mockImplementation(async (s, command) => ({
+    status: 'unknown',
+    companyId: s.companyId,
+    actorUid: s.actorUid,
+    planId: command.mode === 'apply' ? command.request.planId : command.reference.planId,
+    requestHash: null,
+    requestIds: [],
+    message: '미확인'
+  }));
+  await service.inspect(scope, mutation.planId);
+  expect(port.command).toHaveBeenLastCalledWith(scope, {
+    mode: 'inspect',
+    reference: {
+      companyId: 'taebaek',
+      planId: mutation.planId
+    },
+    requestHash: mutation.requestHash
+  });
+  await service.cancel(scope, mutation.planId);
+  expect(port.command).toHaveBeenLastCalledWith(scope, {
+    mode: 'cancel',
+    reference: {
+      companyId: 'taebaek',
+      planId: mutation.planId
+    },
+    requestHash: mutation.requestHash
+  });
+  expect(service.list(scope).map(p => p.planId)).toEqual([create.planId, mutation.planId]);
+});
+it('변경 ACK는 대상 ID를 검증하고 다른 ID 응답은 원문을 보존한다', async () => {
+  const service = createLeaveRequestWriter(port),
+    plan = await service.prepareAction(scope, req(), {
+      action: 'reject'
+    });
+  vi.mocked(port.command).mockResolvedValue({
+    status: 'applied',
+    companyId: 'taebaek',
+    actorUid: 'actor',
+    planId: plan.planId,
+    requestHash: plan.requestHash,
+    requestIds: ['다른 휴가'],
+    message: ''
+  });
+  expect((await service.execute(scope, plan.planId)).outcome.status).toBe('unknown');
+  expect(service.read(scope, plan.planId)?.request).toEqual(plan.request);
+});
+it('생성과 변경이 같은 휴가를 가리켜도 복구는 각 원문 계획만 조회한다', async () => {
+  vi.stubGlobal('localStorage', port.storage);
+  let n = 0;
+  port.id = () => `plan-${++n}`;
+  const service = createLeaveRequestWriter(port),
+    create = await service.prepare(scope, [req()], employees),
+    change = await service.prepareAction(scope, req(), {
+      action: 'approve'
+    });
+  runtime.call.mockImplementation(async command => ({
+    data: {
+      status: 'unknown',
+      ...command.reference,
+      actorUid: 'actor',
+      requestHash: null,
+      requestIds: [],
+      message: '미확인'
+    }
+  }));
+  await inspectLeaveAction(scope, change.planId);
+  expect(runtime.call).toHaveBeenLastCalledWith(expect.objectContaining({
+    reference: {
+      companyId: 'taebaek',
+      planId: change.planId
+    }
+  }));
+  await inspectLeaveRequest(scope, req().id);
+  expect(runtime.call).toHaveBeenLastCalledWith(expect.objectContaining({
+    reference: {
+      companyId: 'taebaek',
+      planId: create.planId
+    }
+  }));
+  await cancelLeaveAction(scope, change.planId);
+  expect(runtime.call).toHaveBeenLastCalledWith(expect.objectContaining({
+    mode: 'cancel',
+    reference: {
+      companyId: 'taebaek',
+      planId: change.planId
+    }
+  }));
+  // 다른 화면이 원문을 정리했을 때도 새 생성 없이 동일 서버 영수증을 확인한다.
+  memory.clear();
+  await inspectLeaveAction(scope, change.planId);
+  expect(runtime.call).toHaveBeenLastCalledWith({
+    mode: 'inspect',
+    reference: {
+      companyId: 'taebaek',
+      planId: change.planId
+    }
+  });
+});
+it('손상된 변경 원문은 inspect 전송하지 않고 명시 중단만 참조로 보낸다', async () => {
+  vi.stubGlobal('localStorage', port.storage);
+  const service = createLeaveRequestWriter(port),
+    plan = await service.prepareAction(scope, req(), {
+      action: 'approve'
+    });
+  const key = [...memory.keys()][0];
+  memory.set(key, '{손상');
+  runtime.call.mockClear();
+  expect((await inspectLeaveAction(scope, plan.planId)).status).toBe('unknown');
+  expect(runtime.call).not.toHaveBeenCalled();
+  runtime.call.mockResolvedValue({
+    data: {
+      status: 'cancelled',
+      companyId: 'taebaek',
+      actorUid: 'actor',
+      planId: plan.planId,
+      requestHash: null,
+      requestIds: [],
+      message: '중단'
+    }
+  });
+  expect((await cancelLeaveAction(scope, plan.planId)).status).toBe('cancelled');
+  expect(runtime.call).toHaveBeenCalledWith({
+    mode: 'cancel',
+    reference: {
+      companyId: 'taebaek',
+      planId: plan.planId
+    }
+  });
+});
+it('저장 키와 본문 계획 번호가 다르면 원문을 보존하고 실행을 차단한다', async () => {
+  const service = createLeaveRequestWriter(port),
+    plan = await service.prepareAction(scope, req(), {
+      action: 'approve'
+    });
+  const original = [...memory.keys()][0],
+    wrong = original.replace(plan.planId, 'wrong-plan');
+  memory.set(wrong, memory.get(original)!);
+  memory.delete(original);
+  expect(() => service.read(scope, 'wrong-plan')).toThrow('저장 위치');
+  expect(service.list(scope)).toEqual([]);
+  expect(memory.has(wrong)).toBe(true);
+  await expect(service.execute(scope, 'wrong-plan')).rejects.toThrow('저장 위치');
+  expect(port.command).not.toHaveBeenCalled();
+  vi.stubGlobal('localStorage', port.storage);
+  expect(listLeaveReferences(scope)).toEqual([{
+    planId: 'wrong-plan',
+    readable: false
+  }]);
+  runtime.call.mockResolvedValue({
+    data: {
+      status: 'cancelled',
+      companyId: 'taebaek',
+      actorUid: 'actor',
+      planId: 'wrong-plan',
+      requestHash: null,
+      requestIds: [],
+      message: '중단'
+    }
+  });
+  expect((await cancelLeaveAction(scope, 'wrong-plan')).status).toBe('cancelled');
+  expect(runtime.call).toHaveBeenLastCalledWith({
+    mode: 'cancel',
+    reference: {
+      companyId: 'taebaek',
+      planId: 'wrong-plan'
+    }
+  });
+});
+it('변경 거절은 서버 원인을 유지하고 새 등록 대신 현재 휴가를 다시 열도록 안내한다',async()=>{
+ const service=createLeaveRequestWriter(port),plan=await service.prepareAction(scope,req(),{action:'approve'});
+ vi.mocked(port.command).mockResolvedValue({status:'rejected',companyId:'taebaek',actorUid:'actor',planId:plan.planId,requestHash:plan.requestHash,requestIds:['leave-1'],message:'다른 관리자가 먼저 변경했습니다.'});
+ const result=await service.execute(scope,plan.planId);
+ expect(result.outcome).toMatchObject({status:'rejected',message:'다른 관리자가 먼저 변경했습니다.',nextAction:'창을 닫고 해당 휴가를 다시 열어 현재 내용을 확인한 뒤 필요한 작업을 선택해 주세요.'});
+ expect(port.command).toHaveBeenCalledOnce();
 });
