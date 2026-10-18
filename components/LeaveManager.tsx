@@ -1,3 +1,5 @@
+import {useLeaveApplication} from '../src/features/hr/hooks/useLeaveApplication';
+import {type SaveOutcome} from '../src/shared/saveOutcome';
 import { DATE_RANGE_LAYOUT_CLASS } from '../src/shared/components/DateRangeInputs';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 
@@ -42,11 +44,17 @@ import {
 } from '../src/shared/leave';
 
 interface LeaveManagerProps {
+  requestScopeKey?:string;
   companyId: CompanyId;
   currentUser: Employee;
   employees: Employee[];
   leaveRequests: LeaveRequest[];
-  onAddLeaveRequest: (_req: LeaveRequest) => void;
+  onAddLeaveRequest: (_req: LeaveRequest) => Promise<SaveOutcome> | SaveOutcome | void;
+  onInspectLeaveRequest?: (id:string) => Promise<SaveOutcome>;
+  onReadPendingLeaveRequests?: () => LeaveRequest[];
+  onCancelLeaveRequest?: (id:string) => Promise<SaveOutcome>;
+  onReadLeaveReferences?:()=>{planId:string;readable:boolean}[];
+  onCancelLeaveReference?:(planId:string)=>Promise<SaveOutcome>;
   onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   /** 관리자만 조직도·비상연락망을 편집할 수 있다. 직원 앱에서는 읽기 전용. */
@@ -157,11 +165,11 @@ const normalizeOrg = (cfg: OrgChartConfig): OrgChartConfig => ({
 });
 
 const LeaveManager: React.FC<LeaveManagerProps> = ({
-  companyId,
+  companyId,requestScopeKey,
   currentUser,
   employees,
   leaveRequests,
-  onAddLeaveRequest,
+  onAddLeaveRequest, onInspectLeaveRequest, onReadPendingLeaveRequests,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
   onUpdateLeaveStatus,
   onUpdateLeave,
   isAdmin = false,
@@ -169,6 +177,11 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const [activeTab, setActiveTab] = useState<LeaveTab>('my');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  useEffect(()=>setIsModalOpen(false),[companyId,currentUser.id,requestScopeKey]);
+  const application=useLeaveApplication({scopeKey:companyId+':'+currentUser.id+':'+(requestScopeKey??''),submit:onAddLeaveRequest,inspect:onInspectLeaveRequest,cancel:onCancelLeaveRequest,readPending:onReadPendingLeaveRequests,readReferences:onReadLeaveReferences,cancelReference:onCancelLeaveReference});
+  const closeApplication=()=>{if(application.close())setIsModalOpen(false);};
+  const inspectApplication=async()=>{const result=await application.inspect();if(result.committed){setIsModalOpen(false);resetForm();}};
+  const cancelApplication=async()=>{const result=await application.cancel();if(result.committed){setIsModalOpen(false);resetForm();}};
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(currentUser.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -326,8 +339,9 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   /** 신청 일수 — 공용 모듈 (평일 기준, 반차 0.5, 경조사·기타 0) */
   const calculateRequestDays = calcRequestDays;
 
-  const handleApply = (e: React.FormEvent) => {
+  const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(application.busy||application.pending)return;
     if (formData.type === '기타' && !formData.reason.trim()) {
       alert('기타 유형은 상세 사유를 반드시 입력해야 합니다.');
       return;
@@ -342,9 +356,8 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       reason: formData.reason, status: 'pending', requestedAt: today(),
       daysUsed
     };
-    onAddLeaveRequest(newReq);
-    setIsModalOpen(false);
-    resetForm();
+    const result=await application.submit(newReq);
+    if(result.committed){setIsModalOpen(false);resetForm();}
   };
 
   const resetForm = () => {
@@ -369,7 +382,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
           {([['my','내 휴가'],['calendar','임직원 캘린더'],['orgchart','조직도·연락망']] as const).map(([tab,label])=>
             <ActionButton key={tab} aria-pressed={activeTab===tab} onClick={()=>setActiveTab(tab)} className={activeTab===tab?'!border-indigo-300 !text-indigo-700':''}>{label}</ActionButton>)}
         </div>}
-        actions={(activeTab === 'my' || activeTab === 'calendar') ? <ActionButton tone="primary" aria-label="신규 연차 신청" onClick={()=>setIsModalOpen(true)}><Plus size={16}/><span>신규 연차 신청</span></ActionButton> : undefined}
+        actions={(activeTab === 'my' || activeTab === 'calendar') ? <ActionButton tone="primary" aria-label="신규 연차 신청" onClick={()=>{setSelectedEmployeeId(currentUser.id);setIsModalOpen(true);}}><Plus size={16}/><span>신규 연차 신청</span></ActionButton> : undefined}
       />
 
       {activeTab === 'calendar' && (
@@ -926,9 +939,15 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       )}
 
       {/* Modal - Unified Application */}
+      {!isModalOpen&&application.message&&<p role="status" className="text-xs whitespace-pre-line">{application.message}</p>}
+      {application.damagedReferences.map(planId=><p key={planId} className="text-xs">보관된 휴가 원문을 읽을 수 없습니다. 원문은 보존했습니다. <button type="button" disabled={application.busy} onClick={()=>application.cancelDamaged(planId)} className="underline">손상된 요청 중단 확인</button></p>)}
+      {!isModalOpen&&application.pendingRequests.map(request=><button key={request.id} type="button" className="text-xs underline" onClick={()=>{application.reopen(request);setSelectedEmployeeId(request.employeeId);setFormData({type:request.type,startDate:request.startDate,endDate:request.endDate,reason:request.reason});setIsModalOpen(true);}}>보관된 휴가 신청 확인 · {request.employeeName} · {request.startDate}</button>)}
       {isModalOpen && (
-        <ModalShell title="연차 신청서" onClose={() => setIsModalOpen(false)} bodyClassName="!p-0">
-            <form onSubmit={handleApply} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
+        <ModalShell title="연차 신청서" onClose={closeApplication} bodyClassName="!p-0">
+            {application.message&&<p role="alert" className="px-8 pt-4 text-xs whitespace-pre-line">{application.message}</p>}
+            {application.pending&&<button type="button" disabled={application.busy||!onInspectLeaveRequest} onClick={inspectApplication} className="mx-8 mt-3 text-xs underline">저장 결과 확인</button>}
+            {application.pending&&onCancelLeaveRequest&&<button type="button" disabled={application.busy} onClick={cancelApplication} className="mx-8 mt-3 text-xs underline">요청 중단</button>}
+            <form onSubmit={handleApply} className="p-8 space-y-6 overflow-y-auto custom-scrollbar"><fieldset disabled={application.busy||!!application.pending} className="contents">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">본인 확인</label>
                 <div className="p-4 rounded-2xl border border-indigo-600 bg-indigo-600 text-white shadow-lg font-bold text-sm">
@@ -968,10 +987,10 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                   }
                 </div>
               )}
-            </form>
+            </fieldset></form>
             <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex space-x-4 rounded-b-[40px]">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 rounded-3xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all">취소</button>
-              <button disabled={!selectedEmployeeId} type="submit" onClick={handleApply} className="flex-[2] py-5 rounded-3xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-50 flex items-center justify-center space-x-2"><Check size={22} /><span>신청 완료</span></button>
+              <button type="button" onClick={closeApplication} className="flex-1 py-5 rounded-3xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all">취소</button>
+              <button disabled={!selectedEmployeeId || application.busy || !!application.pending} type="submit" onClick={handleApply} className="flex-[2] py-5 rounded-3xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-50 flex items-center justify-center space-x-2"><Check size={22} /><span>{application.busy?'저장 확인 중…':'신청 완료'}</span></button>
             </div>
         </ModalShell>
       )}

@@ -1,11 +1,11 @@
 /** @vitest-environment jsdom */
 import {afterEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within,act} from '@testing-library/react';
 import {LeaveApprovalList} from './LeaveApprovalList';
 import type {LeaveRequest,LeaveModifyRequest} from '../../src/shared/types';
 const request=(id:string,over:Partial<LeaveRequest>={}):LeaveRequest=>({id,employeeId:'employee-'+id,employeeName:'직원 '+id,type:'연차',startDate:'2026-10-01',endDate:'2026-10-02',reason:'원래 사유',status:'pending',requestedAt:'2026-09-30T00:00:00Z',daysUsed:2,...over});
 const modification:LeaveModifyRequest={startDate:'2026-10-05',endDate:'2026-10-05',reason:'변경 사유',daysUsed:0.5,status:'pending'};
-const callbacks=()=>({onUpdateLeaveStatus:vi.fn(),onUpdateLeave:vi.fn()});
+const callbacks=()=>({onUpdateLeaveStatus:vi.fn().mockResolvedValue({status:'saved'}),onUpdateLeave:vi.fn().mockResolvedValue({status:'saved'})});
 afterEach(cleanup);
 it('일반 결재는 해당 행 ID와 승인·반려 상태만 전달하고 목록 순서를 보존한다',()=>{
  const c=callbacks(),rows=[request('b'),request('a')];render(<LeaveApprovalList pendingRequests={rows} {...c}/>);
@@ -28,12 +28,14 @@ it('변경 반려는 원래 승인 날짜·사유·일수를 덮어쓰지 않고
  const c=callbacks(),r=request('reject',{status:'approved',modifyRequest:modification}),before=JSON.stringify(r);render(<LeaveApprovalList pendingRequests={[r]} {...c}/>);
  fireEvent.click(screen.getByRole('button',{name:'반려'}));expect(c.onUpdateLeave).toHaveBeenCalledExactlyOnceWith('reject',{modifyRequest:{...modification,status:'rejected'}});expect(c.onUpdateLeaveStatus).not.toHaveBeenCalled();expect(JSON.stringify(r)).toBe(before);
 });
-it('취소와 변경이 동시에 있으면 두 독립 동작을 모두 제공하는 원문 조건을 유지한다',()=>{
+it('취소와 변경이 동시에 있으면 두 독립 동작을 모두 제공하는 원문 조건을 유지한다',async()=>{
  const c=callbacks();render(<LeaveApprovalList pendingRequests={[request('both',{status:'cancel_pending',modifyRequest:modification})]} {...c}/>);
  expect(screen.getByText('취소 신청')).toBeTruthy();expect(screen.getByText('변경 신청')).toBeTruthy();
  expect(screen.getAllByRole('button').map(b=>b.textContent)).toEqual(['취소 승인','변경 승인','반려']);
- fireEvent.click(screen.getByRole('button',{name:'취소 승인'}));fireEvent.click(screen.getByRole('button',{name:'변경 승인'}));expect(c.onUpdateLeaveStatus).toHaveBeenCalledExactlyOnceWith('both','cancelled');expect(c.onUpdateLeave).toHaveBeenCalledTimes(1);
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'취소 승인'})));fireEvent.click(screen.getByRole('button',{name:'변경 승인'}));expect(c.onUpdateLeaveStatus).toHaveBeenCalledExactlyOnceWith('both','cancelled');expect(c.onUpdateLeave).toHaveBeenCalledTimes(1);
 });
 it('빈 목록은 기존 안내와 표 머리만 표시하고 결재를 생성하지 않는다',()=>{
  const c=callbacks();render(<LeaveApprovalList pendingRequests={[]} {...c}/>);expect(screen.getByText('새로 들어온 승인 대기 내역이 없습니다.')).toBeTruthy();expect(screen.queryByRole('button')).toBeNull();expect(c.onUpdateLeave).not.toHaveBeenCalled();expect(c.onUpdateLeaveStatus).not.toHaveBeenCalled();
 });
+
+it('결재 응답 대기 중 중복을 막고 실패 원인을 보여 주며 권위 없는 영구 잠금은 만들지 않는다',async()=>{const c=callbacks();let reject!:(e:Error)=>void;c.onUpdateLeaveStatus.mockImplementation(()=>new Promise((_r,j)=>reject=j));const row=request('failure');const view=render(<LeaveApprovalList pendingRequests={[row]} {...c}/>);const approve=screen.getByRole('button',{name:'승인'});fireEvent.click(approve);fireEvent.click(approve);expect(c.onUpdateLeaveStatus).toHaveBeenCalledOnce();expect(approve).toBeDisabled();await act(async()=>reject(Error('오류')));expect(screen.getByRole('alert')).toHaveTextContent('저장 결과');expect(approve).toBeEnabled();view.rerender(<LeaveApprovalList pendingRequests={[{...row,status:'approved',modifyRequest:modification}]} {...c}/>);expect(screen.getByRole('button',{name:'변경 승인'})).toBeEnabled();});

@@ -1,6 +1,7 @@
+import type {LeaveRequest} from '../src/shared/types';
 /** @vitest-environment jsdom */
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import HRManager from './HRManager';
@@ -53,3 +54,8 @@ describe('격리 급여 명령 화면 후보',()=>{
  });});
 
 it('연차 관리에는 장문 설명 박스 대신 기존 표와 편집 기능만 남긴다',async()=>{render(<HRManager {...props} companyId="taebaek"/>);await userEvent.click(screen.getByRole('button',{name:'연차 관리'}));expect(screen.getByRole('button',{name:'연차 편집'})).toBeInTheDocument();expect(screen.getByText('월차')).toBeInTheDocument();expect(screen.queryByText(/연차 정보는 인사팀/)).toBeNull();expect(screen.queryByText(/사용 개수에 바로 차감/)).toBeNull();});
+
+describe('단체 휴가 저장 결과 계약',()=>{
+ it('전체 요청 ACK 전에는 창을 유지하고 중복 제출을 막는다',async()=>{let finish!:(v:any)=>void;const save=vi.fn((_requests:LeaveRequest[])=>new Promise<any>(resolve=>finish=resolve));render(<HRManager {...props} companyId="taebaek" onAddLeaveRequests={save}/>);fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));fireEvent.click(screen.getByRole('button',{name:'휴가'}));const dialog=screen.getByRole('dialog',{name:'회사 단체 휴가'}),dates=dialog.querySelectorAll('input[type="date"]');fireEvent.change(dates[0],{target:{value:'2026-10-19'}});fireEvent.change(dates[1],{target:{value:'2026-10-20'}});const submit=within(dialog).getByRole('button',{name:'휴가 등록'});fireEvent.click(submit);fireEvent.click(submit);expect(save).toHaveBeenCalledOnce();expect(dialog).toBeInTheDocument();expect(save.mock.calls[0][0]).toEqual([expect.objectContaining({employeeId:'e1',status:'approved',deductsLeave:true,daysUsed:2})]);await act(async()=>finish({status:'saved'}));expect(screen.queryByRole('dialog',{name:'회사 단체 휴가'})).toBeNull();});
+ it('미확정 단체 요청은 원문으로 재열고 결과 확인 또는 중단만 제공한다',async()=>{const save=vi.fn().mockResolvedValue({status:'unknown',message:'서버 확인 필요',nextAction:'보관 요청 확인'}),cancel=vi.fn().mockResolvedValue({status:'cancelled',message:'중단 완료',nextAction:'새 작성 가능'});render(<HRManager {...props} companyId="taebaek" onAddLeaveRequests={save} onCancelLeaveRequest={cancel}/>);fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));fireEvent.click(screen.getByRole('button',{name:'휴가'}));let dialog=screen.getByRole('dialog',{name:'회사 단체 휴가'});const dates=dialog.querySelectorAll('input[type="date"]');fireEvent.change(dates[0],{target:{value:'2026-10-19'}});fireEvent.change(dates[1],{target:{value:'2026-10-20'}});fireEvent.click(within(dialog).getByRole('button',{name:'휴가 등록'}));await waitFor(()=>expect(within(dialog).getByRole('alert')).toHaveTextContent('서버 확인 필요'));fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));fireEvent.click(screen.getByRole('button',{name:/보관된 단체 휴가 확인/}));dialog=screen.getByRole('dialog',{name:'회사 단체 휴가'});expect(within(dialog).getByRole('button',{name:'휴가 등록'})).toBeDisabled();expect(within(dialog).getByDisplayValue('2026-10-19')).toBeInTheDocument();fireEvent.click(within(dialog).getByRole('button',{name:'요청 중단'}));await waitFor(()=>expect(within(dialog).getByRole('button',{name:'휴가 등록'})).toBeEnabled());expect(cancel).toHaveBeenCalledWith(save.mock.calls[0][0][0].id);expect(save).toHaveBeenCalledOnce();});
+});

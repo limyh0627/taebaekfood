@@ -355,3 +355,5 @@ export { askHelp } from './helpChat';
 
 export { catalogItemMergeCommand } from './catalogItemMergeCommand';
 export { catalogOrderReferenceProof } from './catalogOrderReferenceProof';
+
+export { leaveRequestCommand } from './leaveRequestCommand';

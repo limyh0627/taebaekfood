@@ -688,7 +688,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onUpdateDeliveryDate,onUpdateItems,onUpdateNote,onSaveOrderEdit,onBeforeOpen:()=>{
+  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onSaveOrderEdit,onBeforeOpen:()=>{
     setPreviewOrderId(null);
     setEditingOrderId(null);
     setShowAddProductSelect(null);

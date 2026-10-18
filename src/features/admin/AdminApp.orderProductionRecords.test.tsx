@@ -10,25 +10,11 @@ it('실제 Admin callback은 순수 builder를 전달하고 일반 생산기록 
 it('실제 엔진 구성에 신규 순수 callback을 연결한다',()=>{let connected=false;function visit(n:ts.Node){if(ts.isCallExpression(n)&&n.expression.getText(ast)==='createOrderStockEngine'){const value=n.arguments[0];if(ts.isObjectLiteralExpression(value))connected=value.properties.some(p=>p.name?.getText(ast)==='createProductionRecordPlan');}ts.forEachChild(n,visit);}visit(ast);expect(connected).toBe(true);});
 it('원 주문 자동 생산기록의 옛 일반 writer가 실제 Admin 경로에 남지 않는다',()=>{expect(source).not.toContain('const createProductionRecordsForOrder');expect(source).not.toContain("await addItem('productionRecords', record)");expect(source).toContain("onAdd={(record) => addItem('productionRecords', record)}");});
 
-function editCallbacks(order:Order,overrides:{blocked?:boolean;cancel?:boolean;write?:ReturnType<typeof vi.fn>;history?:ReturnType<typeof vi.fn>}={}){
- const declarations=new Map<string,string>();function walk(n:ts.Node){if(ts.isVariableDeclaration(n)&&['saveOrderEditPatch','handleSaveOrderEdit'].includes(n.name.getText(ast)))declarations.set(n.name.getText(ast),n.initializer!.getText(ast));ts.forEachChild(n,walk);}walk(ast);
- const write=overrides.write??vi.fn(async()=>{}),history=overrides.history??vi.fn(async()=>{}),notify=vi.fn(),scope={current:{token:'scope'}},authState={currentUser:{uid:'actor'}},guard=vi.fn(()=>overrides.blocked?{kind:'blocked',line:order.items[0]}:{kind:'added',added:['추가']}),confirm=vi.fn(async()=>!overrides.cancel);
- const expression=Array.from(declarations).map(([name,expression])=>'const '+name+' = '+expression+';').join('\n')+'return handleSaveOrderEdit;';
- const run=new Function('allOrders','orders','companyId','orderAskScope','classifyOrderEdit','editBlockMessage','OrderStatus','appConfirm','stampOrderItemEdits','currentUser','workStatusFromItems','updateItem','diffOrderItems','addItem','alert','companyOf','isCalendarDay','auth',ts.transpileModule(expression,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)([order],[],'taebaek',scope,guard,()=> '완료품목',OrderStatus,confirm,(_old:unknown,items:unknown)=>items,{name:'직원'},()=>OrderStatus.PROCESSING,write,()=>[{text:'수량변경'}],history,notify,(o:Order)=>o.companyId,()=>true,authState);
- return {run,write,history,notify,guard,confirm,authState,scope};
-}
-const editOrder=()=>({id:'edit',companyId:'taebaek',status:OrderStatus.DISPATCHED,items:[{itemId:'p',name:'기존',quantity:1,price:1,checked:true}]} as Order);
-const editDraft={deliveryDate:'2026-10-19T00:00:00.000Z',items:[{itemId:'p',name:'기존',quantity:2,price:1}],note:'수정비고',noteImportant:true};
-it('전체 주문수정은 품목 가드·추가취소 전에 날짜나 비고도 쓰지 않는다',async()=>{for(const options of [{blocked:true},{cancel:true}]){const c=editCallbacks(editOrder(),options);expect((await c.run('edit',editDraft)).status).toBe(options.blocked?'blocked':'cancelled');expect(c.write).not.toHaveBeenCalled();expect(c.history).not.toHaveBeenCalled();}});
-it('전체 주문수정은 날짜·품목·비고를 하나의 patch로 ACK받은 뒤 이력을 쓴다',async()=>{
- let resolve!:()=>void;const write=vi.fn(()=>new Promise<void>(r=>resolve=r)),c=editCallbacks(editOrder(),{write});const result=c.run('edit',editDraft);await Promise.resolve();await Promise.resolve();expect(write).toHaveBeenCalledExactlyOnceWith('orders','edit',expect.objectContaining({deliveryDate:editDraft.deliveryDate,items:editDraft.items,note:'수정비고',noteImportant:true,status:OrderStatus.PROCESSING}));expect(c.history).not.toHaveBeenCalled();resolve();expect(await result).toEqual({status:'saved'});expect(c.history).toHaveBeenCalledOnce();
-});
-it('업무 저장 실패는 이력을 쓰지 않고 이력 실패는 저장 완료로 안내하며 업무를 재전송하지 않는다',async()=>{
- const failed=editCallbacks(editOrder(),{write:vi.fn(async()=>{throw Error('network');})});await expect(failed.run('edit',editDraft)).rejects.toThrow('network');expect(failed.history).not.toHaveBeenCalled();
- const history=editCallbacks(editOrder(),{history:vi.fn(async()=>{throw Error('history');})});expect(await history.run('edit',editDraft)).toEqual({status:'saved'});expect(history.write).toHaveBeenCalledOnce();expect(history.notify).toHaveBeenCalledWith(expect.stringContaining('주문 저장은 완료'));
-});
 it('실제 OrdersList 경로는 전체 초안 저장 callback에 연결한다',()=>{let hits=0;function walk(n:ts.Node){if((ts.isJsxOpeningElement(n)||ts.isJsxSelfClosingElement(n))&&n.tagName.getText(ast)==='OrdersList'){expect(n.attributes.properties.some(p=>ts.isJsxAttribute(p)&&p.name.getText(ast)==='onSaveOrderEdit'&&p.initializer?.getText(ast)==='{handleSaveOrderEdit}')).toBe(true);hits++;}ts.forEachChild(n,walk);}walk(ast);expect(hits).toBeGreaterThan(0);});
 
-it('같은 출고일의 비고 수정은 기존 시각을 덮지 않고 다른 날만 날짜를 포함한다',async()=>{const order={...editOrder(),deliveryDate:'2026-10-19T03:00:00Z'};const c=editCallbacks(order);await c.run('edit',editDraft);expect(c.write.mock.calls[0][2]).not.toHaveProperty('deliveryDate');const other=editCallbacks(order);await other.run('edit',{...editDraft,deliveryDate:'2026-10-20T00:00:00.000Z'});expect(other.write.mock.calls[0][2]).toHaveProperty('deliveryDate','2026-10-20T00:00:00.000Z');});
-
-it('옛 업무 ACK가 다른 로그인 뒤 돌아오면 새 회사 신원으로 이력을 쓰지 않는다',async()=>{let resolve!:()=>void;const c=editCallbacks(editOrder(),{write:vi.fn(()=>new Promise<void>(r=>resolve=r))});const pending=c.run('edit',editDraft);await Promise.resolve();await Promise.resolve();c.authState.currentUser={uid:'different-actor'};resolve();expect(await pending).toEqual({status:'saved'});expect(c.history).not.toHaveBeenCalled();});
+it('부모는 주문 수정 service에 단일 주문 patch와 별도 이력 gateway를 연결한다',()=>{
+ let expression='';function walk(node:ts.Node){if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='runOrderEdit')expression=node.initializer!.getText(ast);ts.forEachChild(node,walk);}walk(ast);
+ expect(expression).toContain('await saveOrderEdit(');expect(expression).not.toContain('classifyOrderEdit(');expect(expression).not.toContain('stampOrderItemEdits(');
+ expect(expression).toContain("updateItem('orders', id, patch)");expect(expression).toContain("addItem('orderItemEdits', history)");
+ expect(expression).toContain('auth.currentUser?.uid === uid');expect(expression).toContain('orderAskScope.current.token === token');
+});

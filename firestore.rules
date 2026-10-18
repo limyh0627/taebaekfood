@@ -124,7 +124,7 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
@@ -326,6 +326,9 @@ service cloud.firestore {
     }
 
     // ── 연차 — 본인이 내고, 관리자가 결재한다 ────────────────────
+    match /leaveRequestOperations/{document=**} {
+      allow read, write: if false;
+    }
     match /leaveRequests/{id} {
       allow read: if readOk();
       // 직원 신청에 결재·미차감 값을 섞지 못하고, 관리자는 같은 회사 실직원에게 단체휴가를 부여한다.
@@ -431,7 +434,9 @@ service cloud.firestore {
      * 개인 알림은 수신 직원의 회사와 알림 회사가 같아야 한다.
      */
     match /notifications/{nid} {
-      allow read: if readOk();
+      // 고정 알림 번호의 첫 저장은 없는 문서를 먼저 읽는다. 목록과 기존 문서는 회사 경계를 유지한다.
+      allow get: if getOk();
+      allow list: if readOk();
       allow create: if createUpdateOk()
                     && (!('targetId' in request.resource.data)
                         || (request.resource.data.targetId is string

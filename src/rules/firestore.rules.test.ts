@@ -919,3 +919,29 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
 });
 
+
+const leaveReceiptHost = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙', () => {
+ let isolated:RulesTestEnvironment;
+ beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
+ afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ it('관리자·직원·타회사·미로그인 모두 get/list/create/update/delete와 하위 경로 우회를 막는다',async()=>{for(const claims of [{employeeId:'admin',companyId:'taebaek',isAdmin:true},{employeeId:'e1',companyId:'taebaek',isAdmin:false},{employeeId:'other',companyId:'punghoe',isAdmin:true},null]){const context=claims?isolated.authenticatedContext('uid-'+claims.employeeId,claims):isolated.unauthenticatedContext(),database=context.firestore(),target=doc(database,'leaveRequestOperations','receipt');await assertFails(getDoc(target));await assertFails(getDocs(collection(database,'leaveRequestOperations')));await assertFails(setDoc(doc(database,'leaveRequestOperations','new'),{companyId:'taebaek'}));await assertFails(updateDoc(target,{status:'cancelled'}));await assertFails(deleteDoc(target));await assertFails(setDoc(doc(database,'leaveRequestOperations','receipt','nested','child'),{companyId:'taebaek'}));}});
+ it('휴가 알림은 없는 고정 ID를 읽고 같은 회사에 생성하며 목록·기존 문서는 회사 경계를 지킨다',async()=>{
+  const staff=isolated.authenticatedContext('notice-staff',{employeeId:'notice-e1',companyId:'taebaek',isAdmin:false}).firestore();
+  const created=doc(staff,'notifications','leave-fixed'),foreign=doc(staff,'notifications','leave-foreign');
+  await isolated.withSecurityRulesDisabled(async context=>{const database=context.firestore();await setDoc(doc(database,'employees','notice-e1'),{companyId:'taebaek',name:'태백직원'});await setDoc(doc(database,'employees','notice-e9'),{companyId:'punghoe',name:'풍회직원'});await setDoc(doc(database,'notifications','leave-foreign'),{companyId:'punghoe',title:'다른 회사 알림'});});
+  try {
+   expect((await assertSucceeds(getDoc(created))).exists()).toBe(false);
+   await assertSucceeds(runTransaction(staff,async transaction=>{const prior=await transaction.get(created);if(!prior.exists())transaction.set(created,{companyId:'taebaek',targetId:'notice-e1',title:'휴가 신청',readBy:[]});}));
+   await assertSucceeds(runTransaction(staff,async transaction=>{expect((await transaction.get(created)).get('title')).toBe('휴가 신청');}));
+   await assertFails(getDoc(foreign));
+   await assertFails(getDocs(collection(staff,'notifications')));
+   const own=await assertSucceeds(getDocs(query(collection(staff,'notifications'),where('companyId','==','taebaek'))));expect(own.docs.map(row=>row.id)).toContain('leave-fixed');
+   await assertFails(getDocs(query(collection(staff,'notifications'),where('companyId','==','punghoe'))));
+   await assertFails(setDoc(doc(staff,'notifications','wrong-company'),{companyId:'punghoe',targetId:'notice-e9'}));
+   await assertFails(setDoc(doc(staff,'notifications','wrong-target'),{companyId:'taebaek',targetId:'notice-e9'}));
+   await assertFails(getDoc(doc(isolated.unauthenticatedContext().firestore(),'notifications','missing')));
+   await assertFails(getDoc(doc(isolated.authenticatedContext('notice-anon',{}).firestore(),'notifications','missing')));
+  } finally { await isolated.withSecurityRulesDisabled(async context=>{const database=context.firestore();for(const [collection,id]of [['employees','notice-e1'],['employees','notice-e9'],['notifications','leave-fixed'],['notifications','leave-foreign'],['notifications','wrong-company'],['notifications','wrong-target']])await deleteDoc(doc(database,collection,id));}); }
+ },30000);
+});

@@ -1,4 +1,10 @@
 import type { OrderEditDraft, OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
+import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
+import { primaryCommitted, saveOutcomeMessage } from '../../shared/saveOutcome';
+import type { SaveOutcome } from '../../shared/saveOutcome';
+import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
+import { submitLeaveRequests, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
+import type { LeaveStatus } from '../../shared/types';
 import { DATE_RANGE_LAYOUT_CLASS } from '../../shared/components/DateRangeInputs';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../shared/components/QueryFilterPanel';
 import RawDocUsageDetailModal from '../../../components/RawDocUsageDetailModal';
@@ -51,7 +57,7 @@ import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeni
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { today, addMonths, endOfMonth, isCalendarDay } from '../../shared/day';
+import { today, addMonths, endOfMonth } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
@@ -149,9 +155,6 @@ import { downloadSalesJournal,prepareSalesJournal,completeSalesJournalOutput,new
 import {confirmWorkbookOutput,previewPreparedWorkbookOutput,type WorkbookOutputArtifact} from '../../shared/workbookOutput';
 import {useOutputScope} from '../../shared/hooks/useOutputScope';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
-import { classifyOrderEdit, editBlockMessage } from '../../shared/orderEditGuard';
-import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
-import { diffOrderItems } from '../../shared/orderItemDiff';
 import { shipQtyOfLine } from '../../shared/shipDeduction';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
@@ -2114,74 +2117,70 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   };
 
-  /**
-   * 주문 품목 고치기.
-   *
-   * **재고가 이미 움직인 주문은 막는다**(2026-09-09). 전에는 `items` 만 덮어썼고
-   * 재고·로트는 손도 안 댔다 — 그래서 200으로 출고된 뒤 20으로 고치면 로트에서는
-   * 200이 빠진 채 남았다(무경유통 볶음참깨, 2,000kg). 아무 표시도 안 났다.
-   *
-   * 여기서 차이를 계산해 재고를 손보지 않는다 — 되돌리기(reconcileOrderStock)와 두 벌이 되고
-   * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
-   */
-  const saveOrderEditPatch = async (orderId: string, items: OrderItem[], extra: Partial<Order> = {}): Promise<OrderEditSaveResult> => {
-    const askScope = orderAskScope.current.token;
-    const askUid = auth.currentUser?.uid;
-    const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
-    /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
-        "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
-        무관하니 안 막고, 생산된 **그 줄**의 수량·구성만 막는다. 판정은 `orderEditGuard`. */
-    if (!o || companyOf(o) !== companyId) return {status:'blocked',message:'현재 회사의 주문을 찾을 수 없습니다.'};
-    const 판정 = o ? classifyOrderEdit(o, items) : { kind: 'ok' as const };
-    if (판정.kind === 'blocked') return {status:'blocked',message:editBlockMessage(o, 판정.line)};
-    /*  **줄을 더한 것은 막지 않는다 — 묻고 작업중으로 돌린다**(2026-09-15 사장님:
-        "작업완료 주문에 품목추가하면 가드로 막지말고 알람띄우고 기존 완료 품목은 유지한
-        상태로, 작업중으로 돌려보내 굳이 막을 이유가 없음").
+  const runOrderEdit = async (orderId: string, edit: OrderEdit): Promise<OrderEditSaveResult> => {
+    const token = orderAskScope.current.token;
+    const uid = auth.currentUser?.uid;
+    const isCurrent = () => orderAskScope.current.token === token && orderAskScope.current.companyId === companyId && auth.currentUser?.uid === uid;
+    const result = await saveOrderEdit({
+      order: allOrders.find(order => order.id === orderId) ?? orders.find(order => order.id === orderId),
+      edit, companyId, actorUid: uid, actorName: currentUser?.name,
+    }, {
+      isCurrent, confirm: appConfirm, now: () => new Date().toISOString(),
+      saveOrderPatch: (id, patch) => updateItem('orders', id, patch),
+      appendItemHistory: history => addItem('orderItemEdits', history),
+    });
+    if (result.status === 'partial' && isCurrent()) setAppNotice({
+      title: '주문 저장 완료 · 수정 이력 확인 필요', message: result.message, subMessage: result.nextAction,
+    });
+    if (edit.kind === 'items' && isCurrent() && !primaryCommitted(result, orderId) && result.status !== 'cancelled') alert(saveOutcomeMessage(result));
+    return result;
+  };
+  const handleUpdateItems = async (orderId: string, items: OrderItem[]) => {
+    await runOrderEdit(orderId, {kind:'items',items});
+  };
+  const handleSaveOrderEdit = (orderId: string, draft: OrderEditDraft): Promise<OrderEditSaveResult> =>
+    runOrderEdit(orderId, {kind:'draft',draft});
 
-        더하는 건 재고를 안 건드린다 — 옛 줄은 그대로고 새 줄은 아직 아무것도 안 했다.
-        다만 **작업완료였던 주문에 할 일이 하나 생긴 것**이라 상태가 그대로면 거짓말이 된다.
-        이미 끝낸 줄의 체크와 재고는 **손대지 않는다**(`itemInventory` 를 안 건드린다) —
-        되돌리는 게 아니라 할 일이 붙는 것이다. */
-    if (판정.kind === 'added' && o?.status === OrderStatus.DISPATCHED) {
-      const 되돌릴수 = o.items.filter(줄 => 줄.checked).length;
-      if (!await appConfirm(
-        `작업완료된 주문에 품목을 더합니다 — ${판정.added.join(', ')}\n\n`
-        + `이미 끝낸 ${되돌릴수}개 품목의 작업완료와 재고는 그대로 둡니다.\n`
-        + `새로 더한 품목이 남아 있으므로 주문은 '작업중' 으로 돌아갑니다.\n\n계속할까요?`
-      )) return {status:'cancelled'};
-    }
-    /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
-        작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
-        자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
-    if ((orderAskScope.current.token !== askScope || auth.currentUser?.uid !== askUid)) return {status:'cancelled'};
-    const 지금 = new Date().toISOString();
-    const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, 지금) : items;
-    const 작업상태 = o && [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED].includes(o.status)
-      ? workStatusFromItems(찍은items)
-      : o?.status;
-    await updateItem('orders', orderId, { ...extra, items: 찍은items, ...(작업상태 ? { status: 작업상태 } : {}) });
-    if((orderAskScope.current.token!==askScope || auth.currentUser?.uid!==askUid))return {status:'saved'};
-    const changes = diffOrderItems(o.items, 찍은items);
-    if (changes.length) {
-      try {
-        await addItem('orderItemEdits', {orderId,at:지금,by:currentUser?.name?.trim()||'미기록',changes:changes.map(change=>change.text)} as Omit<OrderItemEdit,'id'>);
-      } catch(error) {
-        if(orderAskScope.current.token===askScope && auth.currentUser?.uid===askUid)alert('주문 저장은 완료됐지만 수정 이력을 남기지 못했습니다. 주문을 다시 저장하지 말고 이력을 확인해 주세요.');
-        console.error('[주문 품목 수정 기록 실패]',orderId,error);
-      }
-    }
-    return {status:'saved'};
+  const leaveRenderUid = auth.currentUser?.uid;
+  const leaveRenderToken = orderAskScope.current.token;
+  const currentLeaveScope = (): LeaveScope | null => {
+    if (!leaveRenderUid || auth.currentUser?.uid !== leaveRenderUid || orderAskScope.current.companyId !== companyId || orderAskScope.current.token !== leaveRenderToken) return null;
+    return {companyId,actorUid:leaveRenderUid};
   };
-  const handleUpdateItems = async (orderId:string,items:OrderItem[]) => {
-    const result=await saveOrderEditPatch(orderId,items);
-    if(result.status==='blocked')alert(result.message);
+  const leaveScopeRejected = (): SaveOutcome => ({
+    status:'rejected',message:'현재 로그인과 회사의 휴가 저장 연결을 확인하지 못했습니다.',nextAction:'작성 내용은 그대로 두고 현재 회사와 로그인을 확인해 주세요.',
+  });
+  const runLeaveAction = async (action: (scope: LeaveScope) => Promise<SaveOutcome>): Promise<SaveOutcome> => {
+    const scope = currentLeaveScope();
+    if (!scope) return leaveScopeRejected();
+    try { return await action(scope); }
+    catch { return {status:'unknown',message:'휴가 요청의 처리 결과를 확인하지 못했습니다.',nextAction:'보관 요청의 결과 확인 또는 요청 중단을 선택해 주세요. 새로 신청하지 마세요.'}; }
   };
-  const handleSaveOrderEdit = async (orderId:string,draft:OrderEditDraft): Promise<OrderEditSaveResult> => {
-    if(!isCalendarDay(draft.deliveryDate.split('T')[0]))return {status:'blocked',message:'출고예정일을 확인해 주세요.'};
-    const order=allOrders.find(candidate=>candidate.id===orderId)??orders.find(candidate=>candidate.id===orderId);
-    const dateChanged=draft.deliveryDate.split('T')[0]!==order?.deliveryDate?.split('T')[0];
-    const noteChanged=draft.note!==(order?.note||'')||draft.noteImportant!==!!order?.noteImportant;
-    return saveOrderEditPatch(orderId,draft.items,{...(dateChanged?{deliveryDate:draft.deliveryDate}:{}),note:draft.note,noteImportant:!!draft.note&&draft.noteImportant,...(noteChanged?{noteBy:currentUser?.name||'미기록',noteAt:new Date().toISOString()}:{})});
+  const handleAddLeaveRequests = (requests: LeaveRequest[], notify = false): Promise<SaveOutcome> =>
+    runLeaveAction(async scope => (await submitLeaveRequests(scope,requests,employees,notify)).outcome);
+  const handleInspectLeaveRequest = (id: string) => runLeaveAction(scope => inspectLeaveRequest(scope,id,employees));
+  const handleCancelLeaveRequest = (id: string) => runLeaveAction(scope => cancelLeaveRequest(scope,id));
+  const handleCancelLeaveReference = (id: string) => runLeaveAction(scope => cancelLeaveReference(scope,id));
+  const readPendingLeaveRequests = () => { const scope=currentLeaveScope();return scope ? pendingLeaveRequests(scope) : []; };
+  const readPendingLeaveGroups = () => { const scope=currentLeaveScope();return scope ? pendingLeaveGroups(scope) : []; };
+  const readLeaveReferences = () => { const scope=currentLeaveScope();return scope ? listLeaveReferences(scope) : []; };
+  const handleUpdateLeave = async (id: string, updates: Partial<LeaveRequest>): Promise<SaveOutcome> => {
+    if (!currentLeaveScope()) return leaveScopeRejected();
+    const request = leaveRequests.find(row => row.id === id);
+    const employee = employees.find(row => row.id === request?.employeeId);
+    if (!request || !employee || companyOf(employee) !== companyId) return {
+      status:'rejected',message:'현재 회사의 휴가 신청을 확인하지 못했습니다.',nextAction:'현재 회사의 신청 목록을 새로 확인한 뒤 변경해 주세요.',
+    };
+    try { await updateItem('leaveRequests',id,updates);return {status:'saved'}; }
+    catch { return {status:'unknown',message:'휴가 변경의 저장 결과를 확인하지 못했습니다.',nextAction:'현재 신청 상태를 확인한 뒤 다시 시도해 주세요.'}; }
+  };
+  const handleUpdateLeaveStatus = (id: string, status: LeaveStatus, reason?: string): Promise<SaveOutcome> =>
+    handleUpdateLeave(id,leaveStatusPatch(status,{id:currentUser.id,name:currentUser.name},reason));
+  const handleChecklistLeaveStatus = async (id: string, status: LeaveStatus, reason?: string): Promise<SaveOutcome> => {
+    const result = await handleUpdateLeaveStatus(id,status,reason);
+    // 확인사항 화면의 기존 void 콜백도 결과를 버린 채 실패를 숨기지 않도록 한다.
+    if (result.status !== 'saved' && currentLeaveScope()) setAppNotice({title:'휴가 변경 확인 필요',message:result.message,subMessage:result.nextAction ?? ''});
+    return result;
   };
 
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
@@ -3143,20 +3142,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'hr' && (
             <HRManager
               companyId={companyId}
+              requestScopeKey={leaveRenderUid ?? ''}
               cashAccounts={companyCashAccounts}
               employees={employees}
               leaveRequests={leaveRequests}
               onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
               onAddEmployee={(emp) => addItem('employees', emp)}
               onDeleteEmployee={(id) => deleteItem('employees', id)}
-              onUpdateLeaveStatus={(id, status, reason) =>
-                updateItem('leaveRequests', id,
-                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
-              onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
+              onUpdateLeaveStatus={handleUpdateLeaveStatus}
+              onUpdateLeave={handleUpdateLeave}
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
-              onAddLeaveRequests={async (reqs) => {
-                for (const r of reqs) await addItem('leaveRequests', r);
-              }}
+              onAddLeaveRequests={requests => handleAddLeaveRequests(requests)}
+              onReadPendingLeaveGroups={readPendingLeaveGroups}
+              onInspectLeaveRequest={handleInspectLeaveRequest}
+              onCancelLeaveRequest={handleCancelLeaveRequest}
+              onReadLeaveReferences={readLeaveReferences}
+              onCancelLeaveReference={handleCancelLeaveReference}
             />
           )}
           {currentView === 'admin-checklist' && (
@@ -3172,9 +3173,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
                    코드가 정반대로 썼다 — '취소 승인'은 rejected 로, **'반려'(취소 거절)는
                    cancelled 로** 들어가 연차가 사라졌다. 화면이 바라는 결과를 그대로 준다. */
-              onUpdateLeaveStatus={(id, status, reason) =>
-                updateItem('leaveRequests', id,
-                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
+              onUpdateLeaveStatus={handleChecklistLeaveStatus}
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
@@ -4651,28 +4650,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'leave-portal' && (
             <LeaveManager
               companyId={companyId}
+              requestScopeKey={leaveRenderUid ?? ''}
               currentUser={currentUser}
               isAdmin={isAdmin}
               employees={employees}
               leaveRequests={leaveRequests}
-              onAddLeaveRequest={async (req) => {
-                await addItem('leaveRequests', req);
-                const admin = employees.find(e => e.id === 'admin');
-                await addItem('notifications', {
-                  type: 'leave_request',
-                  title: '신규 연차 신청',
-                  body: `${req.employeeName}님이 ${req.type} (${req.startDate}${req.startDate !== req.endDate ? ` ~ ${req.endDate}` : ''}, ${req.daysUsed}일)을 신청했습니다.`,
-                  readBy: [],
-                  createdAt: new Date().toISOString(),
-                  senderId: req.employeeId,
-                  targetId: admin?.id ?? 'admin',
-                  linkedId: req.id,
-                } as Omit<AppNotification, 'id'>);
-              }}
-              onUpdateLeaveStatus={(id, status, reason) =>
-                updateItem('leaveRequests', id,
-                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
-              onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
+              onAddLeaveRequest={request => handleAddLeaveRequests([request],true)}
+              onReadPendingLeaveRequests={readPendingLeaveRequests}
+              onInspectLeaveRequest={handleInspectLeaveRequest}
+              onCancelLeaveRequest={handleCancelLeaveRequest}
+              onReadLeaveReferences={readLeaveReferences}
+              onCancelLeaveReference={handleCancelLeaveReference}
+              onUpdateLeaveStatus={handleUpdateLeaveStatus}
+              onUpdateLeave={handleUpdateLeave}
             />
           )}
           {normalizeViewAlias(currentView) === 'item-management' && (

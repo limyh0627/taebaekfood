@@ -1,12 +1,23 @@
-import React from 'react';
+import {saveOutcomeMessage,type SaveOutcome} from '../../src/shared/saveOutcome';
+import React,{useState,useRef,useEffect} from 'react';
 import { Check, X, CalendarCheck } from 'lucide-react';
 import type { LeaveRequest, LeaveStatus } from '../../src/shared/types';
 
 export function LeaveApprovalList({pendingRequests,onUpdateLeaveStatus,onUpdateLeave}:{
  pendingRequests:LeaveRequest[];
- onUpdateLeaveStatus:(_id:string,_status:LeaveStatus,_reason?:string)=>void;
- onUpdateLeave:(_id:string,_updates:Partial<LeaveRequest>)=>void;
+ onUpdateLeaveStatus:(_id:string,_status:LeaveStatus,_reason?:string)=>Promise<SaveOutcome>|SaveOutcome|void;
+ onUpdateLeave:(_id:string,_updates:Partial<LeaveRequest>)=>Promise<SaveOutcome>|SaveOutcome|void;
 }) {
+ const [busy,setBusy]=useState<string[]>([]),[messages,setMessages]=useState<Record<string,string>>({});
+ const locked=useRef(new Set<string>()),alive=useRef(true);
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+ const rowDisabled=(req:LeaveRequest)=>busy.includes(req.id);
+ const run=async(id:string,action:()=>Promise<SaveOutcome>|SaveOutcome|void)=>{
+  if(locked.current.has(id))return;locked.current.add(id);setBusy(ids=>[...ids,id]);setMessages(current=>({...current,[id]:''}));
+  try{const result=await action();if(alive.current)setMessages(current=>({...current,[id]:saveOutcomeMessage(result??{status:'unknown',message:'결재 저장 결과를 확인하지 못했습니다.',nextAction:'휴가 목록에서 현재 상태를 확인한 뒤 처리해 주세요. 같은 결재를 반복하지 마세요.'})}));}
+  catch{if(alive.current)setMessages(current=>({...current,[id]:'결재 저장 결과를 확인하지 못했습니다. 휴가 목록의 현재 상태를 확인해 주세요. 같은 결재를 반복하지 마세요.'}));}
+  finally{locked.current.delete(id);if(alive.current)setBusy(ids=>ids.filter(value=>value!==id));}
+ };
  return (
 <div className="flex-1 overflow-auto custom-scrollbar">
             <table className="w-full text-left min-w-[580px]">
@@ -54,22 +65,23 @@ export function LeaveApprovalList({pendingRequests,onUpdateLeaveStatus,onUpdateL
                              있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다 — 취소를 거절했는데
                              오히려 취소가 확정돼 연차가 사라졌다. */}
                         {isCancel &&
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
+                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'cancelled'))} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
                         {isModify && <>
-                          <button onClick={() => onUpdateLeave(req.id, {
+                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeave(req.id, {
                             startDate: req.modifyRequest!.startDate,
                             endDate: req.modifyRequest!.endDate,
                             reason: req.modifyRequest!.reason,
                             daysUsed: req.modifyRequest!.daysUsed,
                             modifyRequest: { ...req.modifyRequest!, status: 'approved' },
-                          })} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
-                          <button onClick={() => onUpdateLeave(req.id, { modifyRequest: { ...req.modifyRequest!, status: 'rejected' } })} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
+                          }))} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeave(req.id, { modifyRequest: { ...req.modifyRequest!, status: 'rejected' } }))} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
                         </>}
                         {!isCancel && !isModify && <>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"><Check size={14} /><span>승인</span></button>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'rejected')} className="flex items-center space-x-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"><X size={14} /><span>반려</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'approved'))} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"><Check size={14} /><span>승인</span></button>
+                          <button disabled={rowDisabled(req)} onClick={() => run(req.id,()=>onUpdateLeaveStatus(req.id, 'rejected'))} className="flex items-center space-x-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"><X size={14} /><span>반려</span></button>
                         </>}
                       </div>
+                      {messages[req.id]&&<p role="alert" className="mt-2 text-xs whitespace-pre-line">{messages[req.id]}</p>}
                     </td>
                   </tr>
                   );

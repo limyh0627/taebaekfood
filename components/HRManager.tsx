@@ -1,3 +1,6 @@
+import {useLeaveApplication} from '../src/features/hr/hooks/useLeaveApplication';
+import type {SaveOutcome} from '../src/shared/saveOutcome';
+import type {PendingLeaveGroup} from '../src/features/hr/infrastructure/leaveRequestWrites';
 import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
 import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import { EmployeeDirectory } from './hr/EmployeeDirectory';
@@ -49,6 +52,7 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
 import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
 
 interface HRManagerProps {
+  requestScopeKey?:string;
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
   companyId?: CompanyId;
   cashAccounts?: CashAccount[];
@@ -61,12 +65,17 @@ interface HRManagerProps {
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   onDeleteLeaveRequest: (_id: string) => void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
-  onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<void> | void;
+  onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<SaveOutcome> | SaveOutcome | void;
+  onReadPendingLeaveGroups?:()=>PendingLeaveGroup[];
+  onInspectLeaveRequest?:(id:string)=>Promise<SaveOutcome>;
+  onCancelLeaveRequest?:(id:string)=>Promise<SaveOutcome>;
+  onReadLeaveReferences?:()=>{planId:string;readable:boolean}[];
+  onCancelLeaveReference?:(id:string)=>Promise<SaveOutcome>;
 
 }
 
 const HRManager: React.FC<HRManagerProps> = ({
-  companyId = TAEBAEK, cashAccounts = [],
+  companyId = TAEBAEK, cashAccounts = [],requestScopeKey,
   employees: allEmployees,
   leaveRequests,
   onUpdateEmployee,
@@ -74,7 +83,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   onDeleteEmployee,
   onUpdateLeaveStatus,
   onUpdateLeave,
-  onAddLeaveRequests,
+  onAddLeaveRequests,onReadPendingLeaveGroups,onInspectLeaveRequest,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
 }) => {
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
@@ -118,10 +127,14 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [openLeaveMonths, setOpenLeaveMonths] = useState<Set<string>>(new Set());
   // 회사 단체 휴가 — 기본 전원 포함, 뺄 사람만 체크 해제
   const [showVacation, setShowVacation] = useState(false);
+  React.useEffect(()=>setShowVacation(false),[companyId,requestScopeKey]);
   const [vacationExcluded, setVacationExcluded] = useState<Set<string>>(new Set());
   const [vacationRange, setVacationRange] = useState({ start: '', end: '' });
   const [vacationReason, setVacationReason] = useState('');
-  const [vacationBusy, setVacationBusy] = useState(false);
+  const vacation=useLeaveApplication<PendingLeaveGroup>({scopeKey:companyId+':'+(requestScopeKey??''),submit:group=>onAddLeaveRequests?.(group.requests),inspect:onInspectLeaveRequest,cancel:onCancelLeaveRequest,readPending:onReadPendingLeaveGroups,readReferences:onReadLeaveReferences,cancelReference:onCancelLeaveReference});
+  const closeVacation=()=>{if(vacation.close())setShowVacation(false);};
+  const finishVacation=async(mode:'inspect'|'cancel')=>{const result=await vacation[mode]();if(result.committed)setShowVacation(false);};
+  const openRetainedVacation=(group:PendingLeaveGroup)=>{vacation.reopen(group);setVacationRange({start:group.requests[0].startDate,end:group.requests[0].endDate});setVacationReason(group.requests[0].reason);setVacationDeducts(group.requests[0].deductsLeave!==false);setVacationExcluded(new Set(employees.filter(e=>!group.requests.some(r=>r.employeeId===e.id)).map(e=>e.id)));setShowVacation(true);};
   /** 단체 휴가가 연차를 차감하는가 — 창립기념일·명절 추가휴무는 미차감, 집단 연차소진은 차감 */
   const [vacationDeducts, setVacationDeducts] = useState(true);
 
@@ -366,6 +379,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               </ActionButton>
               <ActionButton
                 onClick={() => {
+                  if(vacation.pending){openRetainedVacation(vacation.pending);return;}
                   setVacationExcluded(new Set());
                   setVacationRange({ start: today.toISOString().slice(0, 10), end: today.toISOString().slice(0, 10) });
                   setVacationReason('');
@@ -768,14 +782,17 @@ const HRManager: React.FC<HRManagerProps> = ({
         </ModalShell>
       )}
       {/* ── 회사 단체 휴가 일괄 등록 ── */}
+      {!showVacation&&vacation.message&&<p role="status" className="text-xs whitespace-pre-line">{vacation.message}</p>}
+      {vacation.damagedReferences.map(planId=><p key={planId} className="text-xs">보관된 휴가 원문을 읽을 수 없습니다. <button type="button" disabled={vacation.busy} onClick={()=>vacation.cancelDamaged(planId)} className="underline">손상된 요청 중단 확인</button></p>)}
+      {!showVacation&&vacation.pendingRequests.map(group=><button key={group.id} type="button" className="text-xs underline" onClick={()=>openRetainedVacation(group)}>보관된 단체 휴가 확인 · {group.requests.length}명</button>)}
       {showVacation && (() => {
-        const targets = employees.filter(e => !vacationExcluded.has(e.id));
+        const targets = employees.filter(e => companyOf(e)===companyId&&!vacationExcluded.has(e.id));
         const days = countWeekdays(vacationRange.start, vacationRange.end);
-        const canSave = targets.length > 0 && days > 0 && !!vacationRange.start && !!vacationRange.end && !vacationBusy;
+        const canSave = targets.length > 0 && days > 0 && !!vacationRange.start && !!vacationRange.end && !vacation.busy && !vacation.pending;
 
         const submit = async () => {
           if (!canSave || !onAddLeaveRequests) return;
-          setVacationBusy(true);
+
           try {
             const now = new Date().toISOString();
             const reqs: LeaveRequest[] = targets.map((emp, i) => ({
@@ -791,17 +808,17 @@ const HRManager: React.FC<HRManagerProps> = ({
               daysUsed: days,
               deductsLeave: vacationDeducts,
             }));
-            await onAddLeaveRequests(reqs);
-            setShowVacation(false);
+            const result=await vacation.submit({id:reqs[0].id,requests:reqs});
+            if(result.committed)setShowVacation(false);
           } catch (e) {
             alert(`휴가 등록 실패: ${(e as Error)?.message ?? String(e)}`);
-          } finally {
-            setVacationBusy(false);
           }
         };
 
         return (
-          <ModalShell title="회사 단체 휴가" onClose={() => setShowVacation(false)} bodyClassName="!p-0">
+          <ModalShell title="회사 단체 휴가" onClose={closeVacation} bodyClassName="!p-0">
+            {vacation.message&&<p role="alert" className="px-5 pt-4 text-xs whitespace-pre-line">{vacation.message}</p>}
+            <fieldset disabled={vacation.busy||!!vacation.pending} className="contents">
                   <p className="px-5 pt-4 text-xs text-slate-400 font-bold">
                     선택된 직원에게 &apos;휴가&apos;로 기록됩니다. <b className={vacationDeducts ? 'text-rose-500' : 'text-slate-500'}>
                     {vacationDeducts ? '연차에서 차감' : '연차 차감 없음'}</b> — 직원 앱 연차 내역에도 그대로 표시됩니다.
@@ -880,14 +897,16 @@ const HRManager: React.FC<HRManagerProps> = ({
                 </div>
               </div>
 
-              <div className="px-5 py-4 border-t border-slate-100 flex items-center gap-2">
+</fieldset>
+              <div className="px-5 py-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
                 <p className="text-[11px] font-bold text-slate-400 flex-1">
                   {targets.length}명 × {days}일 {vacationDeducts ? '연차 차감' : '휴무(연차 미차감)'}
                 </p>
-                <button onClick={() => setShowVacation(false)} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+                <button onClick={closeVacation} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+                {vacation.pending&&<><button type="button" disabled={vacation.busy||!onInspectLeaveRequest} onClick={()=>finishVacation('inspect')} className="text-xs underline">저장 결과 확인</button><button type="button" disabled={vacation.busy||!onCancelLeaveRequest} onClick={()=>finishVacation('cancel')} className="text-xs underline">요청 중단</button></>}
                 <button onClick={submit} disabled={!canSave}
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-30">
-                  {vacationBusy ? '등록 중…' : '휴가 등록'}
+                  {vacation.busy ? '등록 중…' : '휴가 등록'}
                 </button>
               </div>
           </ModalShell>
