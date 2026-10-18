@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   writes: [] as { kind: string; ref: string; data: any; options?: any }[],
-  claim: 'taebaek' as string | undefined,docs:new Map<string,any>(),
+  claim: 'taebaek' as string | undefined,docs:new Map<string,any>(), reads:[] as string[],transactions:0,
 }));
 vi.mock('../firebase', () => ({ db: {}, authReady: Promise.resolve(), functions: undefined,
   auth: { currentUser: { getIdTokenResult: async () => ({ claims: { companyId: state.claim } }) } } }));
@@ -9,14 +9,14 @@ vi.mock('firebase/firestore', async importOriginal => ({
   ...await importOriginal<typeof import('firebase/firestore')>(),
   doc: (_db: any, collection?: any, id?: string) => ({path:collection===undefined?`${_db}/generated`:typeof collection==='string'?`${collection}/${id??'generated'}`:`${collection.path}/generated`,id:id??'generated'}),
   collection: (_db: unknown, collection: string) => collection,
-  runTransaction:async (_db:unknown,fn:any)=>fn({get:async(ref:any)=>({exists:()=>state.docs.has(ref.path),data:()=>structuredClone(state.docs.get(ref.path)),id:ref.id}),set:(ref:any,data:any,options:any)=>{state.writes.push({kind:'set',ref:ref.path,data,options});state.docs.set(ref.path,options?.merge?{...state.docs.get(ref.path),...data}:data);},update:(ref:any,data:any)=>{state.writes.push({kind:'update',ref:ref.path,data});state.docs.set(ref.path,{...state.docs.get(ref.path),...data});},delete:(ref:any)=>{state.writes.push({kind:'delete',ref:ref.path,data:undefined});state.docs.delete(ref.path);}}),
+  runTransaction:async (_db:unknown,fn:any)=>{state.transactions++;let wrote=false;return fn({get:async(ref:any)=>{if(wrote)throw Error('write 이후 read');state.reads.push(ref.path);return {exists:()=>state.docs.has(ref.path),data:()=>structuredClone(state.docs.get(ref.path)),id:ref.id};},set:(ref:any,data:any,options:any)=>{wrote=true;state.writes.push({kind:'set',ref:ref.path,data,options});state.docs.set(ref.path,options?.merge?{...state.docs.get(ref.path),...data}:data);},update:(ref:any,data:any)=>{wrote=true;state.writes.push({kind:'update',ref:ref.path,data});state.docs.set(ref.path,{...state.docs.get(ref.path),...data});},delete:(ref:any)=>{wrote=true;state.writes.push({kind:'delete',ref:ref.path,data:undefined});state.docs.delete(ref.path);}});},
   setDoc: async (ref: string, data: any, options?: any) => { state.writes.push({ kind: 'set', ref, data, options }); },
   updateDoc: async (ref: string, data: any) => { state.writes.push({ kind: 'update', ref, data }); },
   addDoc: async (ref: string, data: any) => { state.writes.push({ kind: 'add', ref, data }); return { id: 'generated' }; },
   writeBatch: () => ({ set: (ref: string, data: any, options?: any) => { state.writes.push({ kind: 'batch', ref, data, options }); }, commit: async () => {} }),
 }));
-import { addItem, updateItem, setDocument, commitCompanyWrites } from './firebaseService';
-beforeEach(() => { state.writes = []; state.claim = 'taebaek'; state.docs.clear();state.docs.set('items/item',{companyId:'taebaek'}); });
+import { addItem, updateItem, setDocument, commitCompanyWrites,prepareCompanyWriteOperations } from './firebaseService';
+beforeEach(() => { state.writes = []; state.reads=[];state.transactions=0; state.claim = 'taebaek'; state.docs.clear();state.docs.set('items/item',{companyId:'taebaek'}); });
 const writers = [
   ['생성', (collection: any, data: any) => addItem(collection, { id: 'item', ...data })],
   ['수정', (collection: any, data: any) => updateItem(collection, 'item', data)],
@@ -96,4 +96,56 @@ it('서비스 전처리는 공식 SDK 값만 보존하고 임의 클래스·일�
   expect(saved.nested).not.toHaveProperty('absent'); expect(original.nested).toHaveProperty('absent');
   expect(saved.custom).toEqual({ keep: 1 }); expect(saved.custom).not.toBeInstanceOf(Custom);
   expect(saved.nullPrototype).toEqual({ keep: 2 }); expect(original.nullPrototype).toHaveProperty('absent');
+});
+
+it('품목·박스규격·BOM을 한 거래로 읽고 같은 품목 수정은 합쳐 사진과 재고를 보존한다',async()=>{
+ state.docs.set('items/item',{companyId:'taebaek',name:'원래',type:'product',stock:3,lots:[{id:'lot',quantity:3}],imageUrl:'기존사진',inventoryWriterProtocolVersion:1,inventoryWriteRevision:9});
+ state.docs.set('item_bom/old',{companyId:'taebaek',parent_id:'item',child_id:'old',quantity:1});
+ await commitCompanyWrites([
+  {kind:'update',collection:'items',id:'item',data:{name:'수정',cost:0}},
+  {kind:'update',collection:'items',id:'item',data:{spec:'1kg * 12'}},
+  {kind:'delete',collection:'item_bom',id:'old'},
+  {kind:'set',collection:'item_bom',id:'new',data:{parent_id:'item',child_id:'child',quantity:12}},
+ ]);
+ expect(state.transactions).toBe(1);expect(state.writes).toHaveLength(3);
+ expect(state.reads).toEqual(['items/item','item_bom/old','item_bom/new']);
+ expect(state.writes[0]).toMatchObject({kind:'update',ref:'items/item',data:{name:'수정',spec:'1kg * 12',cost:0,inventoryWriteRevision:9}});
+ expect(state.docs.get('items/item')).toMatchObject({imageUrl:'기존사진',stock:3,lots:[{id:'lot',quantity:3}]});
+});
+it('사라진 수정 대상·타회사·품목 사본의 옛 재고는 모든 연결 쓰기를 시작하기 전에 거절한다',async()=>{
+ for(const mode of ['missing','foreign','stock'] as const){
+  state.writes=[];state.reads=[];state.docs.set('items/item',{companyId:mode==='foreign'?'punghoe':'taebaek',stock:4});if(mode==='missing')state.docs.delete('items/item');
+  await expect(commitCompanyWrites([{kind:'set',collection:'item_bom',id:'first',data:{parent_id:'item'}},{kind:'update',collection:'items',id:'item',data:mode==='stock'?{name:'수정',stock:1}:{name:'수정'}}])).rejects.toThrow();
+  expect(state.writes).toEqual([]);expect(state.docs.has('item_bom/first')).toBe(false);
+ }
+});
+it('같은 단건 정본으로 SMARTSTORE 표식만 정리하고 거래처 배열을 입력에 섞지 않는다',async()=>{
+ const {arrayRemove}=await import('firebase/firestore');
+ const original={companyId:'taebaek',type:'product',partnerIds:['SMARTSTORE','다른거래처'],stock:2,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4};
+ state.docs.set('items/item',original);
+ await updateItem('items','item',{isSmartStore:false},{reconcileSmartStoreMarker:true});
+ const single=state.writes[0].data;state.writes=[];state.docs.set('items/item',original);
+ await commitCompanyWrites([{kind:'update',collection:'items',id:'item',data:{isSmartStore:false},options:{reconcileSmartStoreMarker:true}}]);
+ expect(state.writes[0].data).toEqual(single);expect(state.writes[0].data.partnerIds).toEqual(arrayRemove('SMARTSTORE'));expect(state.writes[0].data.inventoryWriteRevision).toBe(4);
+ state.writes=[];await expect(commitCompanyWrites([{kind:'update',collection:'items',id:'item',data:{isSmartStore:false,partnerIds:[]},options:{reconcileSmartStoreMarker:true}}])).rejects.toThrow('거래처');expect(state.writes).toEqual([]);
+});
+it('거래 한도 초과는 읽기·쓰기 전에 거절하며 서로 다른 저장 종류 중복도 추정하지 않는다',async()=>{
+ await expect(commitCompanyWrites(Array.from({length:501},(_,i)=>({kind:'set' as const,collection:'items' as const,id:'item-'+i,data:{cost:0}})))).rejects.toThrow('한도');expect(state.reads).toEqual([]);expect(state.transactions).toBe(0);
+ await expect(commitCompanyWrites([{kind:'update',collection:'items',id:'item',data:{name:'수정'}},{kind:'set',collection:'items',id:'item',data:{spec:'규격'},merge:true}])).rejects.toThrow('종류');expect(state.writes).toEqual([]);
+});
+it('같은 품목 중복 update는 실제 재고 효과가 있어도 revision을 한 번만 올린다',async()=>{
+ state.docs.set('items/item',{companyId:'taebaek',stock:1,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});
+ await commitCompanyWrites([{kind:'update',collection:'items',id:'item',data:{stock:2}},{kind:'update',collection:'items',id:'item',data:{cost:3}}]);
+ expect(state.writes).toHaveLength(1);expect(state.writes[0].kind).toBe('update');expect(state.writes[0].data).toMatchObject({stock:2,cost:3,inventoryWriteRevision:5});
+});
+it('새 품목 set 뒤 규격 update와 BOM delete 뒤 대체 set은 최종 한 번만 저장한다',async()=>{
+ state.docs.set('item_bom/bom',{companyId:'taebaek',old:true});
+ await commitCompanyWrites([{kind:'set',collection:'items',id:'new-item',data:{name:'신규',stock:0}},{kind:'update',collection:'items',id:'new-item',data:{spec:'12개입'}},{kind:'delete',collection:'item_bom',id:'bom'},{kind:'set',collection:'item_bom',id:'bom',data:{parent_id:'new-item',child_id:'child',quantity:12}}]);
+ expect(state.writes).toHaveLength(2);expect(state.docs.get('items/new-item')).toMatchObject({name:'신규',spec:'12개입',inventoryWriteRevision:1});expect(state.docs.get('item_bom/bom')).not.toHaveProperty('old');
+});
+it('화면 preflight는 writer와 같은 순수 정본으로 정규화하고 한도 오류를 전송 전에 돌려준다',()=>{
+ const input=[{kind:'update' as const,collection:'items' as const,id:'item',data:{name:'수정'}},{kind:'update' as const,collection:'items' as const,id:'item',data:{spec:'규격'}}];
+ expect(prepareCompanyWriteOperations(input)).toEqual([{...input[0],data:{name:'수정',spec:'규격'},options:undefined}]);
+ expect(()=>prepareCompanyWriteOperations(Array.from({length:501},(_,i)=>({kind:'delete',collection:'items',id:'item-'+i})))).toThrow('한도');
+ expect(state.transactions).toBe(0);expect(state.writes).toEqual([]);expect(input[0].data).toEqual({name:'수정'});
 });

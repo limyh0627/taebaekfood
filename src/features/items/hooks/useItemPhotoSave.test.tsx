@@ -2,25 +2,115 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Item } from '../../../shared/types';
+import { createItemEditorProgress, type ItemEditorProgress, type ItemEditorSaveResult } from '../application/itemEditorSave';
 const mock = vi.hoisted(() => ({ upload: vi.fn(), url: vi.fn(), remove: vi.fn(), read: vi.fn() }));
 vi.mock('firebase/firestore', () => ({ doc: (_db: unknown, _collection: string, id: string) => ({ id }), getDoc: mock.read }));
 vi.mock('firebase/storage', () => ({ ref: (_storage: unknown, path: string) => ({ path }), uploadBytes: mock.upload, getDownloadURL: mock.url, deleteObject: mock.remove }));
 vi.mock('../../../shared/firebase', () => ({ db: {}, storage: {} }));
-import { useItemPhotoSave } from './useItemPhotoSave';
+import { useItemPhotoSave, type ItemPhotoProduct } from './useItemPhotoSave';
 const item: Item = { id: 'i', name: '합성', type: 'product', stock: 0, minStock: 0, unit: '병', image: 'old-url', imagePath: 'companies/taebaek/items/i/old.jpg' };
-const path = 'companies/taebaek/items/i/photo-uuid.png';
-const input = () => ({ finalProduct: { ...item }, photoFile: new File(['photo'], 'new.png', { type: 'image/png' }), photoRemoved: false, bomDraft: [{ childId: 'child', qty: 2 }] });
-beforeEach(() => { vi.resetAllMocks(); mock.upload.mockResolvedValue(undefined); mock.url.mockResolvedValue('new-url'); mock.remove.mockResolvedValue(undefined); mock.read.mockResolvedValue({ exists: () => false }); vi.stubGlobal('crypto', { randomUUID: () => 'uuid' }); vi.spyOn(window, 'alert').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); });
-it('업로드→품목 ACK→구사진 참조조회·삭제 순서와 busy 수명을 유지한다', async () => {
- const events: string[] = []; let finish!: () => void; mock.upload.mockImplementation(() => { events.push('upload'); return new Promise<void>(resolve => { finish = resolve; }); }); mock.read.mockImplementation(async () => { events.push('read'); return { exists: () => true, data: () => ({ imagePath: path }) }; }); mock.remove.mockImplementation(async () => { events.push('remove'); }); const save = vi.fn(async () => { events.push('save'); });
- const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', initialData: item, onSave: save })); let pending!: Promise<boolean>; act(() => { pending = view.result.current.saveItemPhoto(input()); }); expect(view.result.current.saving).toBe(true); expect(view.result.current.savingRef.current).toBe(true); expect(save).not.toHaveBeenCalled(); let success = false; await act(async () => { finish(); success = await pending; });
- expect(success).toBe(true); expect(events).toEqual(['upload', 'save', 'read', 'remove']); expect(save).toHaveBeenCalledWith(expect.objectContaining({ image: 'new-url', imagePath: path, photoChanged: true, bomDraft: [{ childId: 'child', qty: 2 }] })); expect(mock.remove).toHaveBeenCalledWith({ path: item.imagePath }); expect(view.result.current.saving).toBe(false); expect(view.result.current.savingRef.current).toBe(false);
+const input = () => ({ finalProduct: { ...item }, photoFile: new File(['photo'], 'new.png', { type: 'image/png' }), photoRemoved: false, bomDraft: [{ childId: 'child', qty: 2 }], progress: createItemEditorProgress(item.id), isCurrent: () => true });
+const saved = async (_product: ItemPhotoProduct, progress: ItemEditorProgress): Promise<ItemEditorSaveResult> => {
+    progress.confirmedStageIds.push('primary');
+    return { outcome: { status: 'saved' }, progress };
+};
+beforeEach(() => {
+    vi.resetAllMocks();
+    mock.upload.mockResolvedValue(undefined);
+    mock.url.mockResolvedValue('new-url');
+    mock.remove.mockResolvedValue(undefined);
+    mock.read.mockResolvedValue({ exists: () => false });
+    vi.stubGlobal('crypto', { randomUUID: () => 'uuid' });
 });
-it.each(['referenced', 'unknown', 'absent'] as const)('저장 실패의 사진 상태 %s를 구분해 참조중·불확실 파일을 보존한다', async state => {
- if (state === 'unknown') mock.read.mockRejectedValue(Error('조회 실패')); else mock.read.mockResolvedValue({ exists: () => state === 'referenced', data: () => ({ imagePath: path }) });
- const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', initialData: item, onSave: vi.fn(async () => { throw Error('저장 실패'); }) })); let success = true; await act(async () => { success = await view.result.current.saveItemPhoto(input()); }); expect(success).toBe(false); expect(view.result.current.saving).toBe(false); expect(view.result.current.savingRef.current).toBe(false);
- if (state === 'absent') expect(mock.remove).toHaveBeenCalledExactlyOnceWith({ path }); else { expect(mock.remove).not.toHaveBeenCalled(); expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('파일은 유지')); }
+it('전체 ACK까지 busy를 유지하고 확정 후 구사진 참조를 확인한다', async () => {
+    let finish!: () => void;
+    const save = vi.fn(async (p: ItemPhotoProduct, progress: ItemEditorProgress) => {
+        await new Promise<void>(resolve => finish = resolve);
+        return saved(p, progress);
+    });
+    mock.read.mockResolvedValue({ exists: () => true, data: () => ({ imagePath: 'new-path' }) });
+    const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', initialData: item, onSave: save }));
+    let task!: Promise<ItemEditorSaveResult>;
+    act(() => {
+        task = view.result.current.saveItemPhoto(input());
+    });
+    await act(async () => {
+    });
+    expect(view.result.current.saving).toBe(true);
+    expect(mock.remove).not.toHaveBeenCalled();
+    await act(async () => {
+        finish();
+        await task;
+    });
+    expect(mock.remove).toHaveBeenCalledExactlyOnceWith({ path: item.imagePath });
+    expect(view.result.current.saving).toBe(false);
 });
-it('구사진을 다시 참조하는 경우 삭제하지 않는다', async () => {
- mock.read.mockResolvedValue({ exists: () => true, data: () => ({ imagePath: item.imagePath }) }); const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', initialData: item, onSave: vi.fn() })); await act(async () => { await view.result.current.saveItemPhoto({ ...input(), photoFile: null, photoRemoved: true }); }); expect(mock.remove).not.toHaveBeenCalled();
+it('원격 결과 미확정은 현재 문서가 없어도 새사진을 삭제하거나 다시 전송하지 않는다', async () => {
+    const save = vi.fn(async (_p: ItemPhotoProduct, progress: ItemEditorProgress): Promise<ItemEditorSaveResult> => ({ outcome: { status: 'unknown', message: '응답 미확인', nextAction: '현재 품목 확인' }, progress }));
+    const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', onSave: save })), submission = input();
+    await act(async () => {
+        await view.result.current.saveItemPhoto(submission);
+        await view.result.current.saveItemPhoto(submission);
+    });
+    expect(save).toHaveBeenCalledOnce();
+    expect(mock.upload).toHaveBeenCalledOnce();
+    expect(mock.read).not.toHaveBeenCalled();
+    expect(mock.remove).not.toHaveBeenCalled();
+});
+it('업로드 ACK 뒤 URL 준비 실패는 동일 UUID 경로를 재사용한다', async () => {
+    mock.url.mockRejectedValueOnce(Error('일시 URL 실패')).mockResolvedValue('new-url');
+    const view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', onSave: saved })), submission = input();
+    await act(async () => {
+        expect((await view.result.current.saveItemPhoto(submission)).outcome.status).toBe('rejected');
+    });
+    await act(async () => {
+        await view.result.current.saveItemPhoto(submission);
+    });
+    expect(mock.upload).toHaveBeenCalledOnce();
+    expect(mock.url).toHaveBeenCalledTimes(2);
+    expect(mock.remove).not.toHaveBeenCalled();
+});
+it('업로드 대기 중 scope가 바뀌면 품목·후속 저장과 파일 삭제를 시작하지 않는다', async () => {
+    let finish!: () => void, current = true;
+    mock.upload.mockImplementation(() => new Promise<void>(resolve => finish = resolve));
+    const save = vi.fn(saved), view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', onSave: save }));
+    let task!: Promise<ItemEditorSaveResult>;
+    act(() => {
+        task = view.result.current.saveItemPhoto({ ...input(), isCurrent: () => current });
+    });
+    current = false;
+    await act(async () => {
+        finish();
+        await task;
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(mock.remove).not.toHaveBeenCalled();
+});
+it('같은 파일과 품목이라도 회사·계정 세션 변경 뒤 옛 경로를 재사용하지 않는다', async () => {
+    const save = vi.fn(saved), submission = input(), view = renderHook((props: {
+        companyId: 'taebaek' | 'punghoe';
+        scopeKey: string;
+    }) => useItemPhotoSave({ ...props, onSave: save }), { initialProps: { companyId: 'taebaek', scopeKey: 'actor1' } });
+    await act(async () => {
+        await view.result.current.saveItemPhoto(submission);
+    });
+    view.rerender({ companyId: 'punghoe', scopeKey: 'actor2' });
+    await act(async () => {
+        await view.result.current.saveItemPhoto({ ...submission, progress: createItemEditorProgress('i') });
+    });
+    expect(mock.upload).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][0].imagePath).toBe('companies/punghoe/items/i/photo-uuid.png');
+});
+it.each(['throw', 'invalid'] as const)('런타임 %s 결과도 최초 사진과 미확정 표식을 보존하여 재전송하지 않는다', async (kind) => {
+    const save = kind === 'throw' ? vi.fn().mockRejectedValue(Error('응답 예외')) : vi.fn().mockResolvedValue(undefined), view = renderHook(() => useItemPhotoSave({ companyId: 'taebaek', onSave: save })), submission = input();
+    await act(async () => {
+        expect((await view.result.current.saveItemPhoto(submission)).outcome.status).toBe('unknown');
+    });
+    await act(async () => {
+        await view.result.current.saveItemPhoto(submission);
+    });
+    expect(submission.progress.unknownStageId).toBe('save-result');
+    expect(save).toHaveBeenCalledOnce();
+    expect(mock.upload).toHaveBeenCalledOnce();
+    expect(mock.remove).not.toHaveBeenCalled();
 });

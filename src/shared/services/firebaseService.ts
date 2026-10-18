@@ -96,6 +96,19 @@ function protocolWriteData(name:string,before:Record<string,any>|undefined,data:
  return protectInventoryWriterPatch(before,data);
 }
 export type ItemSaveOptions = { reconcileSmartStoreMarker?: true };
+function validateItemSaveOptions(data:Record<string,unknown>,options?:ItemSaveOptions):void {
+  if(options?.reconcileSmartStoreMarker===true&&Object.keys(data).some(key=>key==='partnerIds'||key.startsWith('partnerIds.')))
+    throw Error('품목 저장 호출에 거래처 연결 배열을 함께 보낼 수 없습니다.');
+}
+function applyItemSaveOptions(name:CollectionName,before:Record<string,any>|undefined,data:Record<string,any>,scoped:Record<string,any>,mode:string,options?:ItemSaveOptions):Record<string,any> {
+  // 최신 배열의 다른 거래처는 보존하며 단건과 복합 품목 저장이 같은 표식 정리를 사용한다.
+  if(options?.reconcileSmartStoreMarker===true&&name==='items'&&mode==='update'&&before?.type==='product'
+    &&Object.hasOwn(data,'isSmartStore')&&typeof data.isSmartStore==='boolean'
+    &&Array.isArray(before.partnerIds)&&before.partnerIds.every(value=>typeof value==='string')&&before.partnerIds.includes('SMARTSTORE')){
+    scoped.partnerIds=arrayRemove('SMARTSTORE');
+  }
+  return scoped;
+}
 async function protocolGatewayWrite(store:Firestore,name:CollectionName,ref:ReturnType<typeof doc>,data:Record<string,any>,mode:'set'|'merge'|'update',options?:ItemSaveOptions):Promise<void>{
  await runInventoryWriterTransaction(store,await captureInventoryWriterContext(store,{requestIdentity:JSON.stringify({name,id:ref.id,data,mode,options}),companyId:String(data.companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady}),async tx=>{
   const snap=await tx.get(ref),before=snap.exists()?snap.data():undefined;
@@ -104,12 +117,7 @@ async function protocolGatewayWrite(store:Firestore,name:CollectionName,ref:Retu
   if(tomb)assertTombstone(tomb.exists()?tomb.data():undefined,String(data.companyId),ref.id);
   if(mode==='update'&&!snap.exists())throw Error('수정할 문서를 찾을 수 없습니다.');
   const scoped=name==='purchaseOrders'?data:protocolWriteData(name,before,data,tomb?.exists()?tomb.data():undefined);
-  // 사용자가 저장한 체크값을 옛 채널 표식이 다시 켜지 않게 한다. 최신 배열의 다른 연결은 보존한다.
-  if(options?.reconcileSmartStoreMarker===true&&name==='items'&&mode==='update'&&before?.type==='product'
-    &&Object.hasOwn(data,'isSmartStore')&&typeof data.isSmartStore==='boolean'
-    &&Array.isArray(before.partnerIds)&&before.partnerIds.every(value=>typeof value==='string')&&before.partnerIds.includes('SMARTSTORE')){
-    scoped.partnerIds=arrayRemove('SMARTSTORE');
-  }
+  applyItemSaveOptions(name,before,data,scoped,mode,options);
   const commitData=name==='orders'||name==='purchaseOrders'?await prepareCatalogOrderCommit(store,tx,ref.id,before,scoped,mode==='set',name):scoped;
   if(mode==='update')tx.update(ref,commitData);else tx.set(ref,commitData,mode==='merge'?{merge:true}:{});
  });
@@ -531,8 +539,7 @@ export const addItem = async (collectionName: CollectionName, item: any, options
 };
 
 export const updateItem = async (collectionName: CollectionName, id: string, data: any, options?:ItemSaveOptions) => {
-  if(options?.reconcileSmartStoreMarker===true&&Object.keys(data).some(key=>key==='partnerIds'||key.startsWith('partnerIds.')))
-    throw Error('품목 저장 호출에 거래처 연결 배열을 함께 보낼 수 없습니다.');
+  validateItemSaveOptions(data,options);
   const docRef = doc(db, collectionName, id);
   // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
@@ -701,36 +708,82 @@ export { fetchWhere, fetchWhereIn, fetchByIds, subscribeWhere } from './firestor
  */
 export type CompanyWriteOperation =
   | { kind: 'set'; collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }
+  | { kind: 'update'; collection: CollectionName; id: string; data: Record<string, unknown>; options?:ItemSaveOptions }
   | { kind: 'delete'; collection: CollectionName; id: string };
+
+function mergeCompanyUpdateOperations(ops:CompanyWriteOperation[]):CompanyWriteOperation[] {
+  const merged=new Map<string,CompanyWriteOperation>();
+  for(const op of ops){
+    const key=op.collection+'/'+op.id,previous=merged.get(key);
+    if(!previous){merged.set(key,op);continue;}
+    if(previous.kind==='set'&&op.kind==='update'&&!op.options){
+      merged.set(key,{...previous,data:{...previous.data,...op.data}});
+      continue;
+    }
+    if(previous.kind==='delete'&&op.kind==='set'&&op.collection==='item_bom'){
+      merged.set(key,op);
+      continue;
+    }
+    if(previous.kind!=='update'||op.kind!=='update')throw Error('같은 문서의 다른 저장 종류를 한 요청에 섞을 수 없습니다.');
+    const data={...previous.data,...op.data};
+    const keys=Object.keys(data);
+    if(keys.some(key=>keys.some(other=>other!==key&&other.startsWith(key+'.'))))throw Error('같은 문서의 상위 칸과 하위 칸을 함께 수정할 수 없습니다.');
+    merged.set(key,{...previous,data,options:previous.options?.reconcileSmartStoreMarker||op.options?.reconcileSmartStoreMarker?{reconcileSmartStoreMarker:true}:undefined});
+  }
+  return [...merged.values()];
+}
+
+/** 화면의 전송 전 확인도 실제 writer와 같은 정규화·한도 검사를 쓴다. */
+export function prepareCompanyWriteOperations(input:CompanyWriteOperation[]):CompanyWriteOperation[] {
+  const inventory=input.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders');
+  const ops=inventory?mergeCompanyUpdateOperations(input):input;
+  if(inventory&&ops.length+ops.filter(op=>op.kind==='delete'&&op.collection==='items').length>500)throw Error('연결 품목 삭제·저장은 한 거래의 저장 한도를 초과합니다.');
+  for(const op of ops){
+    if(op.kind!=='delete'&&(!op.data||typeof op.data!=='object'||Array.isArray(op.data)))throw Error('저장할 문서 내용을 확인해 주세요.');
+    if(op.kind==='update')validateItemSaveOptions(op.data,op.options);
+  }
+  return ops;
+}
 
 /** 배치 생성도 단건 생성과 같은 claim 회사 경계를 반드시 통과한다. */
 export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise<void> => {
   if (!ops.length) return;
+  ops=prepareCompanyWriteOperations(ops);
   if(ops.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders')){
-    if(new Set(ops.map(op=>op.collection+'/'+op.id)).size!==ops.length)throw Error('같은 문서의 중복 저장은 한 원자 요청으로 합쳐 주세요.');
-    const scoped=await Promise.all(ops.map(op=>companyScopedWriteData(op.collection,op.kind==='set'?itemWritePayload(op.collection,stripUndefined(op.data)):{})));
-    if(ops.length+ops.filter(op=>op.kind==='delete'&&op.collection==='items').length>500)throw Error('연결 품목 삭제·저장은 한 거래의 저장 한도를 초과합니다.');
-    await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({ops,scoped}),companyId:String(scoped[0].companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady}),async tx=>{
+    const scoped=await Promise.all(ops.map(op=>companyScopedWriteData(op.collection,op.kind!=='delete'?itemWritePayload(op.collection,stripUndefined(op.data)):{})));
+    const context=await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({ops,scoped}),companyId:String(scoped[0].companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady});
+    if(context&&!await context.isStillCurrent())throw Error('품목 저장 계정이나 회사가 바뀌었습니다.');
+    await runInventoryWriterTransaction(db,context,async tx=>{
       const refs=ops.map(op=>doc(db,op.collection,op.id));
       const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
       const tombs=await Promise.all(ops.map((op,index)=>op.collection==='items'&&(op.kind==='delete'||!snaps[index].exists())?tx.get(tombstoneRef(db,String(scoped[index].companyId),op.id)):Promise.resolve(undefined)));
-      const commits=await Promise.all(ops.map((op,index)=>op.kind==='set'&&(op.collection==='orders'||op.collection==='purchaseOrders')?prepareCatalogOrderCommit(db,tx,op.id,snaps[index].exists()?snaps[index].data():undefined,scoped[index],!(op.merge??false),op.collection):Promise.resolve(scoped[index])));
+      const commits=await Promise.all(ops.map((op,index)=>op.kind!=='delete'&&(op.collection==='orders'||op.collection==='purchaseOrders')?prepareCatalogOrderCommit(db,tx,op.id,snaps[index].exists()?snaps[index].data():undefined,scoped[index],op.kind==='set'&&!(op.merge??false),op.collection):Promise.resolve(scoped[index])));
+      const writes:(()=>void)[]=[];
       ops.forEach((op,index)=>{
         const before=snaps[index].exists()?snaps[index].data():undefined;
         if(before&&companyOf(before)!==scoped[index].companyId)throw Error('다른 회사 문서를 수정할 수 없습니다.');
         const tomb=tombs[index]?.exists()?tombs[index]!.data():undefined;
         if(op.collection==='items')assertTombstone(tomb,String(scoped[index].companyId),op.id);
+        if(op.kind==='update'&&!before)throw Error('수정할 문서를 찾을 수 없습니다.');
         if(op.kind==='delete'){
           if(!before)return;
           if(op.collection==='items'&&before){
             const checked=advanceInventoryWriterProtocol(before,{}),beforeRevision=checked.inventoryWriteRevision-1;
             const deletionRevision=(tomb?.deletionRevision??0)+1;
             if(!Number.isSafeInteger(deletionRevision))throw Error('품목 삭제 기록 버전 한도를 초과했습니다.');
-            tx.set(tombstoneRef(db,String(scoped[index].companyId),op.id),{companyId:scoped[index].companyId,itemId:op.id,inventoryWriterProtocolVersion:1,deletionRevision,beforeRevision,lastDeletedItemRevision:beforeRevision,deletedAt:new Date().toISOString()});
+            writes.push(()=>tx.set(tombstoneRef(db,String(scoped[index].companyId),op.id),{companyId:scoped[index].companyId,itemId:op.id,inventoryWriterProtocolVersion:1,deletionRevision,beforeRevision,lastDeletedItemRevision:beforeRevision,deletedAt:new Date().toISOString()}));
           }
-          tx.delete(refs[index]);
-        }else tx.set(refs[index],protocolCollections.has(op.collection)?protocolWriteData(op.collection,before,commits[index],tomb):commits[index],{merge:op.merge??false});
+          writes.push(()=>tx.delete(refs[index]));
+        }else {
+          const data=protocolCollections.has(op.collection)?protocolWriteData(op.collection,before,commits[index],tomb):commits[index];
+          if(op.kind==='update'){
+            applyItemSaveOptions(op.collection,before,scoped[index],data,'update',op.options);
+            writes.push(()=>tx.update(refs[index],data));
+          }else writes.push(()=>tx.set(refs[index],data,{merge:op.merge??false}));
+        }
       });
+      if(context&&!await context.isStillCurrent())throw Error('품목 저장 계정이나 회사가 바뀌었습니다.');
+      writes.forEach(write=>write());
     });
     return;
   }
@@ -741,6 +794,10 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
       const ref = doc(db, op.collection, op.id);
       if (op.kind === 'delete') {
         batch.delete(ref);
+      } else if(op.kind==='update'){
+        validateItemSaveOptions(op.data,op.options);
+        const data=await companyScopedWriteData(op.collection,itemWritePayload(op.collection,stripUndefined(op.data)));
+        batch.update(ref,data);
       } else {
         const data = await companyScopedWriteData(op.collection, itemWritePayload(op.collection, stripUndefined(op.data)));
         batch.set(ref, data, { merge: op.merge ?? false });

@@ -1,3 +1,6 @@
+import {createItemEditorProgress,type ItemEditorProgress,type ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
+import {saveOutcomeMessage} from '../src/shared/saveOutcome';
+import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
 import { saveItemEditorRelations } from '../src/features/items/services/saveItemEditorRelations';
 import { useItemPhotoSave, PHOTO_TYPES } from '../src/features/items/hooks/useItemPhotoSave';
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -20,6 +23,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 
 interface ProductModalProps {
   companyId: CompanyId;
+  requestScopeKey?:string;
   orderUnitInputs?: OrderUnitInputs;
   initialData?: Item;
   allSubmaterials?: Item[];
@@ -27,9 +31,9 @@ interface ProductModalProps {
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   onClose: () => void;
-  onSave: (_product: Item & { bomDraft?: BomDraftLine[]; photoChanged?: boolean }) => void | Promise<void>;
-  onUpsertPartnerItem?: (ps: PartnerItem) => void;
-  onDeletePartnerItem?: (id: string) => void;
+  onSave: (product:ItemPhotoProduct,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
+  onUpsertPartnerItem?: (ps: PartnerItem) => Promise<void>;
+  onDeletePartnerItem?: (id: string) => Promise<void>;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
   rawItems?: Item[];
   itemFormulas?: import('../src/shared/types').ItemFormula[];
@@ -72,11 +76,13 @@ const normUnit = (u: string | undefined): SpecUnit =>
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 
-const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ companyId,requestScopeKey, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
+  const closeModalRef=useRef<()=>void>(()=>{});
+  const newItemId=useRef('p-'+Date.now());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [photoPreview, setPhotoPreview] = useState('');
-  const {saving,savingRef,saveItemPhoto} = useItemPhotoSave({companyId,initialData,onSave});
+
   useEffect(() => {
     if (!photoFile) { setPhotoPreview(''); return; }
     const url = URL.createObjectURL(photoFile);
@@ -221,7 +227,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
   const pumokRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModalRef.current(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
@@ -284,9 +290,72 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
     return list;
   }, [taxo, formData.type]);
 
+  type SaveSession = {
+      input: {
+          finalProduct: Item;
+          photoFile: File | null;
+          photoRemoved: boolean;
+          bomDraft: BomDraftLine[];
+      };
+      relations: Parameters<typeof saveItemEditorRelations>[0];
+      progress: ItemEditorProgress;
+      save: typeof onSave;
+      isCurrent: () => boolean;
+      close: () => void;
+  };
+  const sessionRef = useRef<SaveSession | null>(null);
+  const validationBusy = useRef(false);
+  const [preparing, setPreparing] = useState(false);
+  const [saveResult, setSaveResult] = useState<ItemEditorSaveResult | null>(null);
+  const alive = useRef(true), scope = companyId + ':' + (requestScopeKey ?? '') + ':' + (initialData?.id ?? 'new'), scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  useEffect(() => {
+      alive.current = true;
+      return () => {
+          alive.current = false;
+      };
+  }, []);
+  const { saving, savingRef, saveItemPhoto } = useItemPhotoSave({ companyId, initialData, scopeKey: scope, onSave: async (product, progress, isCurrent) => {
+          const session = sessionRef.current;
+          if (!session || !isCurrent())
+              return { outcome: { status: 'cancelled', message: '현재 작성 세션이 바뀌었습니다.' }, progress };
+          const primary = await session.save(product, progress, isCurrent);
+          if (primary.outcome.status !== 'saved')
+              return primary;
+          return saveItemEditorRelations(session.relations, progress, isCurrent);
+      } });
+  const closeModal = () => {
+      if (savingRef.current || validationBusy.current)
+          return;
+      if (sessionRef.current?.progress.unknownStageId || saveResult?.outcome.status === 'unknown') {
+          setSaveResult(current => current && ({ ...current, outcome: { ...current.outcome, message: '저장 결과가 불확실하여 최초 작성 내용과 사진을 유지하고 있습니다.', nextAction: '같은 요청을 다시 저장하지 말고 관리자에게 미확정 단계를 확인해 주세요.' } }));
+          return;
+      }
+      onClose();
+  };
+  closeModalRef.current = closeModal;
+  const continueSession = async () => {
+      const session = sessionRef.current;
+      if (!session || savingRef.current || !session.isCurrent() || session.progress.unknownStageId)
+          return;
+      const result = await saveItemPhoto({ ...session.input, progress: session.progress, isCurrent: session.isCurrent });
+      if (!session.isCurrent())
+          return;
+      setSaveResult(result);
+      if (result.outcome.status === 'saved')
+          session.close();
+      else if (!result.progress.confirmedStageIds.length && !result.progress.unknownStageId && result.outcome.status === 'rejected')
+          sessionRef.current = null;
+  };
+  const submissionLocked = !!sessionRef.current;
+
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
+    if(validationBusy.current)return;
+    validationBusy.current=true;setPreparing(true);
+    try {
     if (savingRef.current) return;
+    if(sessionRef.current){await continueSession();return;}
     if (!formData.name) return;
     if (initialData && (initialData.type === 'service') !== (formData.type === 'service')) {
       window.alert('기존 실물 품목과 비재고/용역 품목 사이의 유형 변경은 과거 재고·전표 해석을 바꾸므로 여기서 할 수 없습니다. 별도 이관이 필요합니다.');
@@ -306,7 +375,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
     const effectiveSpec = formData.spec;   // 칸을 고치는 즉시 들어간다 — 따로 담아 둘 게 없다
 
     const finalProduct: Item = {
-      id: initialData ? initialData.id : `p-${Date.now()}`,
+      id: initialData ? initialData.id : newItemId.current,
       name: formData.name,
       type: formData.type,
       ...(formData.category && { category: formData.category }),
@@ -338,18 +407,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
      * 받는 쪽은 `p.submaterials`를 계속 읽었으니 늘 빈 배열이었고, 그쪽 로직이
      * "기존 줄 전부 삭제 → 초안대로 다시 쓰기"라서 **품목을 저장할 때마다 BOM이 통째로 지워졌다.**
      */
-    if (!await saveItemPhoto({finalProduct,photoFile,photoRemoved,
-      bomDraft: formData.type === 'service' ? [] : formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) })) return;
-
-    await saveItemEditorRelations({formData,initialData,formulaRows,itemId:finalProduct.id,partnerIn,onSaveItemFormula,onUpsertPartnerItem,onDeletePartnerItem});
+    const currentScope=scope;
+    sessionRef.current={input:{finalProduct,photoFile,photoRemoved,bomDraft:formData.type==='service'?[]:formData.submaterials.map(line=>({childId:line.id,qty:typeof line.stock==='number'?line.stock:1}))},relations:{formData:{...formData,inPartnerIds:[...formData.inPartnerIds]},initialData,formulaRows:formulaRows.map(row=>({...row})),itemId:finalProduct.id,partnerIn:partnerIn.map(row=>({...row})),onSaveItemFormula,onUpsertPartnerItem,onDeletePartnerItem},progress:createItemEditorProgress(finalProduct.id),save:onSave,isCurrent:()=>alive.current&&scopeRef.current===currentScope,close:onClose};
+    await continueSession();
 
     // 거래처별 포장 설정(shipping_rule)은 폐기했다 — 겉박스·테이프는 박스 품목의 BOM으로만 잡는다.
+    }finally{validationBusy.current=false;setPreparing(false);}
   };
 
   return (
-    <ModalShell title={initialData ? '품목 정보 수정' : '신규 품목 등록'} onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
+    <ModalShell title={initialData ? '품목 정보 수정' : '신규 품목 등록'} onClose={closeModal} bodyClassName="!p-0">
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        <fieldset disabled={saving||preparing||submissionLocked} className="contents"><form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
           {/* 품목명 + 스마트스토어 토글 */}
           <div className="space-y-2">
@@ -386,9 +455,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
             <div className="flex flex-wrap items-center gap-3">
               {visiblePhoto ? <img src={visiblePhoto} alt={`${formData.name || '품목'} 사진 미리보기`} className="h-20 w-20 rounded-xl border border-slate-200 object-cover" /> : <div className="h-20 w-20 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[11px] text-slate-400 flex items-center justify-center">사진 없음</div>}
               <div className="flex flex-col gap-2 min-w-0">
-                <input aria-label="품목 사진 선택" type="file" accept="image/jpeg,image/png,image/webp" disabled={saving} onChange={e => { selectPhoto(e.target.files?.[0]); e.currentTarget.value = ''; }} className="block max-w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:font-bold file:text-indigo-700" />
+                <input aria-label="품목 사진 선택" type="file" accept="image/jpeg,image/png,image/webp" disabled={saving||preparing} onChange={e => { selectPhoto(e.target.files?.[0]); e.currentTarget.value = ''; }} className="block max-w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:font-bold file:text-indigo-700" />
                 <p className="text-[11px] text-slate-400">JPEG, PNG, WebP · 최대 5MB</p>
-                {visiblePhoto && <button type="button" disabled={saving} onClick={() => { setPhotoFile(null); setPhotoRemoved(true); }} className="self-start text-xs font-bold text-rose-600">사진 삭제</button>}
+                {visiblePhoto && <button type="button" disabled={saving||preparing} onClick={() => { setPhotoFile(null); setPhotoRemoved(true); }} className="self-start text-xs font-bold text-rose-600">사진 삭제</button>}
               </div>
             </div>
           </div>
@@ -1041,13 +1110,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
             </div>
           )}
 
-        </form>
+        </form></fieldset>
 
+        {saveResult&&saveResult.outcome.status!=='saved'&&<div role="status" className="mx-6 mb-3 whitespace-pre-line text-xs text-slate-600">{saveOutcomeMessage(saveResult.outcome)}{saveResult.progress.confirmedStageIds.length>0&&<p>확인된 단계: {saveResult.progress.confirmedStageIds.map(id=>id==='primary'?'품목·구성품':id==='cost'?'원가':id==='formula'?'배합·원가':id.startsWith('partner-upsert:')?'매입처 연결':id.startsWith('partner-delete:')?'매입처 연결 해제':'후속 처리').filter((label,index,labels)=>labels.indexOf(label)===index).join(', ')}</p>}</div>}
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex space-x-3">
           <button
             type="button"
-            onClick={() => { if (!saving) onClose(); }}
-            disabled={saving}
+            onClick={closeModal}
+            disabled={saving||preparing}
             className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
           >
             취소
@@ -1055,10 +1125,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving||preparing||!!sessionRef.current?.progress.unknownStageId||saveResult?.outcome.status==='unknown'}
             className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all"
           >
-            {saving ? '저장 중…' : initialData ? '수정 완료' : '등록 완료'}
+            {saving||preparing ? '저장 중…' : submissionLocked ? '미완료 단계 이어하기' : initialData ? '수정 완료' : '등록 완료'}
           </button>
         </div>
     </ModalShell>

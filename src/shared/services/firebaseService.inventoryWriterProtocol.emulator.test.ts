@@ -18,8 +18,8 @@ describe.skipIf(process.env.INVENTORY_WRITER_EMULATOR_TEST!=='true')('공용 gat
  const storage=new Map<string,string>(),previousStorage=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
  const projectId='demo-writer-'+randomUUID().slice(0,18),paths=new Set<string>();
  beforeAll(async()=>{
-  if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8082')throw Error('승인된 로컬 에뮬레이터 주소가 아닙니다.');
-  env=await initializeTestEnvironment({projectId,firestore:{host:'127.0.0.1',port:8082,rules:readFileSync('firestore.rules','utf8')}});
+  if(!['127.0.0.1:8082','127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST??''))throw Error('승인된 로컬 에뮬레이터 주소가 아닙니다.');
+  env=await initializeTestEnvironment({projectId,firestore:{host:'127.0.0.1',port:Number(process.env.FIRESTORE_EMULATOR_HOST!.split(':')[1]),rules:readFileSync('firestore.rules','utf8')}});
   gateway.db=env.authenticatedContext('writer',{companyId:'taebaek',employeeId:'writer',isAdmin:false}).firestore();
   adminApp=initializeAdminApp({projectId},projectId);adminDb=getAdminFirestore(adminApp);
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)}});
@@ -27,6 +27,30 @@ describe.skipIf(process.env.INVENTORY_WRITER_EMULATOR_TEST!=='true')('공용 gat
  afterAll(async()=>{if(env){await env.withSecurityRulesDisabled(async ctx=>{for(const path of paths){const {deleteDoc}=await import('firebase/firestore');await deleteDoc(doc(ctx.firestore(),path));}});await env.cleanup();}if(adminApp)await deleteAdminApp(adminApp);if(previousStorage)Object.defineProperty(globalThis,'localStorage',previousStorage);else delete (globalThis as any).localStorage;},30_000);
  async function seed(path:string,data:Record<string,unknown>){paths.add(path);await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),path),data));}
  async function read(path:string){return (await getDoc(doc(gateway.db,path))).data();}
+ it('품목편집 primary는 품목·규격·BOM과 SMARTSTORE 정리를 같은 실제 거래로 저장한다',async()=>{
+  const id='editor-primary-'+randomUUID(),child=id+'-child',bom=id+'-bom';
+  await seed('items/'+id,{companyId:'taebaek',name:'원래',type:'product',stock:3,lots:[],imageUrl:'사진원문',partnerIds:['SMARTSTORE','partner'],inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});
+  await seed('items/'+child,{companyId:'taebaek',name:'자식',stock:0,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
+  await seed('item_bom/'+bom,{companyId:'taebaek',parent_id:id,child_id:child,quantity:1,oldField:true});
+  await commitCompanyWrites([{kind:'update',collection:'items',id,data:{name:'수정',isSmartStore:false},options:{reconcileSmartStoreMarker:true}},{kind:'update',collection:'items',id,data:{spec:'12개입'}},{kind:'delete',collection:'item_bom',id:bom},{kind:'set',collection:'item_bom',id:bom,data:{parent_id:id,child_id:child,quantity:12}}]);
+  expect(await read('items/'+id)).toMatchObject({name:'수정',spec:'12개입',stock:3,imageUrl:'사진원문',partnerIds:['partner'],inventoryWriteRevision:4});
+  expect(await read('item_bom/'+bom)).toEqual({companyId:'taebaek',parent_id:id,child_id:child,quantity:12});
+ });
+ it('품목편집 primary는 삭제된 update를 부활시키지 않고 Rules 거절이면 품목·BOM 전체가 불변이다',async()=>{
+  const id='editor-reject-'+randomUUID(),child=id+'-foreign',bom=id+'-bom';
+  await seed('catalogItemMergeState/taebaek',{companyId:'taebaek',revision:1});
+  try {
+  await seed('items/'+id,{companyId:'taebaek',name:'원문',stock:2,lots:[],inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});
+  await seed('items/'+child,{companyId:'punghoe',name:'타회사',stock:0});
+  await seed('item_bom/'+bom,{companyId:'taebaek',parent_id:id,child_id:id,quantity:1});
+  const beforeItem=await adminDb.doc('items/'+id).get(),beforeBom=await adminDb.doc('item_bom/'+bom).get();
+  await expect(commitCompanyWrites([{kind:'update',collection:'items',id,data:{name:'거절되어야함'}},{kind:'set',collection:'item_bom',id:bom,data:{parent_id:id,child_id:child,quantity:12}}])).rejects.toMatchObject({code:'permission-denied'});
+  expect((await adminDb.doc('items/'+id).get()).updateTime!.isEqual(beforeItem.updateTime!)).toBe(true);expect((await adminDb.doc('item_bom/'+bom).get()).updateTime!.isEqual(beforeBom.updateTime!)).toBe(true);
+  await adminDb.doc('items/'+id).delete();
+  await expect(commitCompanyWrites([{kind:'set',collection:'item_bom',id:bom,data:{parent_id:id,child_id:id,quantity:2}},{kind:'update',collection:'items',id,data:{name:'부활금지'}}])).rejects.toThrow('문서');
+  expect((await adminDb.doc('items/'+id).get()).exists).toBe(false);expect((await adminDb.doc('item_bom/'+bom).get()).updateTime!.isEqual(beforeBom.updateTime!)).toBe(true);
+  } finally {await adminDb.doc('catalogItemMergeState/taebaek').delete();}
+ });
  it('초기 create1·민감변경2·metadata 유지와 구형stock update 거절',async()=>{
   paths.add('items/new');await addItem('items',{id:'new',name:'합성',stock:0,lots:[]});expect(await read('items/new')).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
   await updateItem('items','new',{stock:2});expect(await read('items/new')).toMatchObject({stock:2,inventoryWriteRevision:2});

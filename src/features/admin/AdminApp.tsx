@@ -1,3 +1,5 @@
+import {executeItemEditorSteps,type ItemEditorProgress,type ItemEditorSaveResult} from '../items/application/itemEditorSave';
+import type {ItemPhotoProduct} from '../items/hooks/useItemPhotoSave';
 import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit} from '../orders/infrastructure/orderEditWrites';
 import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
@@ -246,6 +248,7 @@ import {
   markNotificationForUser,
   claimOrderInventoryOperation,
   commitCompanyWrites,
+  prepareCompanyWriteOperations,
   writeMany,
   confirmUnitPurchaseOrderReceipt,
   deletePendingPurchaseOrder,
@@ -410,7 +413,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
   // 실패하면 throw한다 — 호출부(단가관리 저장 등)가 "저장됨"을 거짓으로 표시하지 않도록.
-  const handleUpsertPartnerItem = async (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
+  const handleUpsertPartnerItem = async (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out',isCurrent:()=>boolean=()=>true) => {
+    if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
     // partner_item은 itemId/partnerId/price/Direction/Account_Code/taxType만 저장한다.
     const { id, itemId, partnerId, price, Direction, Account_Code, taxType } = ps;
     const dir = Direction ?? defaultDir;
@@ -425,7 +429,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ...(taxType === null ? { taxType: deleteField() } : taxType !== undefined ? { taxType } : {}) } as PartnerItem;
     // merge 저장 — setDoc(덮어쓰기)이면 박스/테이프/포장 등 여기서 안 다루는 필드가 통째로 지워진다.
     const { id: _omit, ...fields } = docData;
+    if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
     await setDocument('partner_item', docId, fields);
+    if(!isCurrent())throw Error('거래처 연결 저장 뒤 회사 또는 작성창이 바뀌었습니다.');
     //  화면에는 지움 표식(sentinel)이 아니라 **없음**으로 넣는다 — 그대로 두면 객체가 들어간다.
     const 화면용 = { ...docData, ...(taxType === null ? { taxType: undefined } : {}) } as PartnerItem;
     setPartnerItems(prev => {
@@ -441,12 +447,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const looseItem = allItems.find(i => i.id === uc.itemId);
       const loosePrice = (typeof price === 'number' && price > 0) ? Math.round(price / uc.count) : undefined;
       await awaitNotice(`"${boxItem?.name}"은(는) 박스 품목입니다.\n낱개 품목 "${looseItem?.name ?? uc.itemId}"이(가) 이 거래처에 없어 함께 등록합니다.`);
+      if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
       await handleUpsertPartnerItem({
         id: `${uc.itemId}_${partnerId}_${dir}`, itemId: uc.itemId, partnerId, Direction: dir,
         ...(loosePrice !== undefined ? { price: loosePrice } : {}),
         ...(Account_Code !== undefined ? { Account_Code } : {}),
         ...(taxType !== undefined ? { taxType } : {}),
-      } as PartnerItem, dir);
+      } as PartnerItem, dir,isCurrent);
     }
   };
 
@@ -808,12 +815,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
     src: Item[] = allItems,
     formulas: typeof itemFormulas = itemFormulas,
     boms: typeof itemBoms = itemBoms,
+    isCurrent:()=>boolean=()=>true,
   ) => {
     const roll = buildCostFn({ allItems: src, itemBoms: boms, formulaOf: (k) => buildFormulaBom(k, formulas, src), formulaRowsOf: (k) => formulaRowsOf(k, formulas) });
     await Promise.all(src
       .map(i => ({ i, v: Math.round(roll(i)) }))
       .filter(({ i, v }) => v > 0 && Math.abs(v - (i.cost ?? 0)) > 0.5)
-      .map(({ i, v }) => updateItem('items', i.id, { cost: v })));
+      .map(({ i, v }) => {if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌어 원가 갱신을 중단했습니다.');return updateItem('items', i.id, { cost: v });}));
   }, [allItems, itemFormulas, itemBoms, updateItem]);
 
   /**
@@ -954,6 +962,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const copyEntries=copyActor?listPendingOrderCopies(companyId,copyActor):[];
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Item | null>(null);
+  const itemEditorActor=auth.currentUser?.uid;
+  const itemEditorScope=useRef({companyId,actor:itemEditorActor,editing:editingProduct,open:isProductModalOpen,token:{}});
+  if(itemEditorScope.current.companyId!==companyId||itemEditorScope.current.actor!==itemEditorActor||itemEditorScope.current.editing!==editingProduct||itemEditorScope.current.open!==isProductModalOpen)itemEditorScope.current={companyId,actor:itemEditorActor,editing:editingProduct,open:isProductModalOpen,token:{}};
+  const itemEditorToken=itemEditorScope.current.token;
+  const itemEditorCommittedSnapshot=useRef<{token:object;itemId:string;items:Item[];boms:typeof itemBoms}|null>(null);
+  const isCurrentItemEditor=()=>!!itemEditorActor&&auth.currentUser?.uid===itemEditorActor&&itemEditorScope.current.token===itemEditorToken;
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 1280);
   const [ledgerTab, setLedgerTab] = useState<'cash' | 'partner'>('cash');
@@ -2115,6 +2130,65 @@ const AdminApp: React.FC<AdminAppProps> = ({
       shipmentConfirmedBy: null,
       shipmentConfirmedAt: null,
     });
+  };
+
+  const saveItemEditorPrimary = async (p: ItemPhotoProduct, progress: ItemEditorProgress, modalCurrent: () => boolean): Promise<ItemEditorSaveResult> => {
+      const isCurrent = () => isCurrentItemEditor() && modalCurrent();
+      if (!isCurrent())
+          return { outcome: { status: 'cancelled', message: '회사 또는 품목 작성창이 바뀌어 저장을 시작하지 않았습니다.' }, progress };
+      const { partnerIds: _oldPartners, bomDraft, photoChanged, ...productData } = p;
+      const draftBoms = bomDraft?.map((line, index) => ({ id: 'draft-' + index, parent_id: p.id, child_id: line.childId, quantity: line.qty }));
+      if (draftBoms) {
+          const draftItems = allItems.some(item => item.id === p.id) ? allItems : [...allItems, { ...p, companyId }];
+          const crossed = crossCompanyBoms(draftBoms, draftItems);
+          if (crossed.length)
+              return { outcome: { status: 'rejected', message: '다른 회사 품목은 BOM에 넣을 수 없습니다: ' + crossed.map(row => allItems.find(item => item.id === row.childId)?.name ?? row.childId).join(', '), nextAction: '현재 회사의 구성품을 선택해 주세요.' }, progress };
+      }
+      const writes: Parameters<typeof commitCompanyWrites>[0] = [];
+      if (editingProduct) {
+          const { stock: _staleStock, ...safeData } = productData;
+          const { image: _oldImage, imagePath: _oldPath, ...metadata } = safeData;
+          writes.push({ kind: 'update', collection: COL.items, id: p.id, data: { ...(photoChanged ? safeData : metadata), companyId }, ...(p.type === 'product' && Object.hasOwn(p, 'isSmartStore') && typeof p.isSmartStore === 'boolean' ? { options: { reconcileSmartStoreMarker: true as const } } : {}) });
+          for (const update of boxSpecUpdates(p, allItems, appData.orderUnitInputs))
+              writes.push({ kind: 'update', collection: COL.items, id: update.id, data: { spec: update.spec } });
+      }
+      else
+          writes.push({ kind: 'set', collection: COL.items, id: p.id, data: { ...productData, companyId } });
+      const nextBomRows = bomDraft ? new Map(bomDraft.map(line => {
+          const id = ('bom-' + p.id + '__' + line.childId).replace(/[\/#$\[\].]/g, '_');
+          return [id, { parent_id: p.id, child_id: line.childId, quantity: line.qty }] as const;
+      })) : null;
+      if (nextBomRows) {
+          for (const previous of itemBoms.filter(row => row.parent_id === p.id))
+              if (!nextBomRows.has(previous.id))
+                  writes.push({ kind: 'delete', collection: COL.itemBom, id: previous.id });
+          for (const [id, data] of nextBomRows)
+              writes.push({ kind: 'set', collection: COL.itemBom, id, data });
+      }
+      let prepared: Parameters<typeof commitCompanyWrites>[0] = [];
+      const nextBoms=nextBomRows?[...itemBoms.filter(row=>row.parent_id!==p.id),...[...nextBomRows].map(([id,row])=>({id,...row}))] as typeof itemBoms:itemBoms;
+      const nextItems=():Item[]=>{
+          const byId=new Map<string,Item>(allItems.map(item=>[item.id,item]));
+          for(const operation of prepared){
+              if(operation.collection===COL.items&&(operation.kind==='set'||operation.kind==='update')){
+                  byId.set(operation.id,{...(byId.get(operation.id)??p),...operation.data,id:operation.id} as Item);
+              }
+          }
+          return [...byId.values()];
+      };
+      const steps = [{ id: 'primary', label: '품목·박스 규격·구성품 저장', run: async() => {
+          await commitCompanyWrites(prepared);
+          if(isCurrent())itemEditorCommittedSnapshot.current={token:itemEditorToken,itemId:p.id,items:nextItems(),boms:nextBoms};
+      } }];
+      if (nextBomRows)
+          steps.push({ id: 'cost', label: '구성품 반영 후 원가 갱신', run: () => recomputeAllCosts(nextItems(), itemFormulas, nextBoms, isCurrent) });
+      const result = await executeItemEditorSteps(p.id, steps, progress, isCurrent, () => {
+          prepared = prepareCompanyWriteOperations(writes);
+          return null;
+      });
+      if (isCurrent() && progress.confirmedStageIds.includes('primary'))
+          refreshStaticData();
+      return result;
   };
 
   const orderEditRenderUid = auth.currentUser?.uid;
@@ -4912,6 +4986,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {isProductModalOpen && (
         <ProductModal
+          key={companyId+':'+(itemEditorActor??'')+':'+(editingProduct?.id??'new')}
+          requestScopeKey={itemEditorActor??''}
           companyId={companyId}
           orderUnitInputs={appData.orderUnitInputs}
           initialData={editingProduct || undefined}
@@ -4921,6 +4997,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
           itemFormulas={itemFormulas}
           rollupCostOf={rollupCostOf}
           onSaveItemFormula={async (parentKey, rows, prevKey) => {
+            if(!isCurrentItemEditor())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
+            const committed=itemEditorCommittedSnapshot.current;
+            if(!committed||committed.token!==itemEditorToken)throw Error('현재 작성창에서 저장한 품목·구성품 원문을 확인하지 못했습니다.');
             const keys = new Set([parentKey, prevKey].filter(Boolean) as string[]);
             const writes: Parameters<typeof commitCompanyWrites>[0] = itemFormulas
               .filter(f => keys.has(f.parent_key))
@@ -4930,6 +5009,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               writes.push({ kind: 'set', collection: COL.itemFormula, id, data: { parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate } });
             });
             await commitCompanyWrites(writes);
+            if(!isCurrentItemEditor())throw Error('배합 저장 뒤 회사 또는 품목 작성창이 바뀌었습니다.');
             refreshStaticData();
             // 배합식이 바뀌면 그 품목과 이걸 재료로 쓰는 상위 품목 원가를 다시 굴린다.
             const nextFormulas = [
@@ -4937,112 +5017,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
               ...rows.map(r => ({ id: `formula-${parentKey}-${r.child_name}`.replace(/\s/g, '_'),
                 parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate })),
             ] as typeof itemFormulas;
-            await recomputeAllCosts(allItems, nextFormulas);
+            await recomputeAllCosts(committed.items, nextFormulas,committed.boms,isCurrentItemEditor);
           }}
           partners={partners}
           partnerItems={partnerItems}
-          onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
-          onUpsertPartnerItem={(ps: PartnerItem) => upsertPartnerItemSafe(ps, 'in')}
-          onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
+          onClose={() => {if(isCurrentItemEditor()){setIsProductModalOpen(false);setEditingProduct(null);}}}
+          onUpsertPartnerItem={(ps: PartnerItem) => handleUpsertPartnerItem(ps, 'in',isCurrentItemEditor)}
+          onDeletePartnerItem={async(id: string) => { if(!isCurrentItemEditor())throw Error('품목 작성창이 바뀌었습니다.');await deleteItem('partner_item', id);if(isCurrentItemEditor())refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, image: '', companyId });
             return id as string;
           }}
-          onSave={async (p) => {
-            const collectionName = COL.items;
-            if (p.bomDraft) {
-              const draftBoms = p.bomDraft.map((line, index) => ({
-                id: `draft-${index}`, parent_id: p.id, child_id: line.childId, quantity: line.qty,
-              }));
-              const draftItems = allItems.some(item => item.id === p.id)
-                ? allItems
-                : [...allItems, { ...p, companyId }];
-              const crossed = crossCompanyBoms(draftBoms, draftItems);
-              if (crossed.length > 0) {
-                const names = crossed.map(row => allItems.find(item => item.id === row.childId)?.name ?? row.childId);
-                const message = `다른 회사 품목은 BOM에 넣을 수 없습니다: ${names.join(', ')}`;
-                if (p.photoChanged) throw new Error(message); // 선행 업로드한 사진을 모달이 회수한다.
-                alert(message);
-                return;
-              }
-            }
-            // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
-            if (editingProduct) {
-              const prevCollection = COL.items;
-              if (prevCollection !== collectionName) {
-                await deleteItem(prevCollection, p.id);
-              }
-            }
-            // 품목 저장(순수 쓰기)을 최우선으로 — 거래처 매핑(setProductClients)은 getDocs(읽기)가
-            // 필요해 읽기 한도(429) 시 throw 되는데, 예전엔 그게 품목 저장 자체를 막아 "저장이 안 됨"
-            // 으로 보였다. 품목부터 저장하고 매핑은 부수효과로 분리한다(Blaze 후에도 유지할 순서).
-            const { partnerIds: _cids, bomDraft, photoChanged, ...productData } = p;
-            if (editingProduct) {
-              // 기존 품목은 필드 병합(updateDoc)으로만 수정 — addItem(setDoc 전체교체)을 쓰면
-              // 폼이 모르는 필드(원료 lots·mixEnabled 등)가 통째로 지워진다(6/29 원료 로트 소실 사고 원인).
-              // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
-              const { stock: _staleStock, ...safeData } = productData;
-              const { image: _oldImage, imagePath: _oldImagePath, ...metadata } = safeData;
-              const itemPatch = { ...(photoChanged ? safeData : metadata), companyId };
-              if (p.type === 'product' && Object.hasOwn(p, 'isSmartStore') && typeof p.isSmartStore === 'boolean') {
-                await updateItem(collectionName, p.id, itemPatch, { reconcileSmartStoreMarker: true });
-              } else {
-                await updateItem(collectionName, p.id, itemPatch);
-              }
-              /**
-               * **낱개 규격을 고쳤으면 그 낱개를 문 박스도 따라간다.**
-               *
-               * 박스 규격(`350ml * 20`)은 낱개 규격 + 개입수를 따라 적는 글자다. 그런데
-               * 다시 만드는 코드가 품목 편집창의 '개입수' 칸 안에만 있어서, 그 칸을 손으로
-               * 건드릴 때만 돌았다 — 낱개 용량을 300ml → 350ml 로 고쳐도 박스는
-               * `300ml * 20` 그대로 남았다(실제로 여섯 품목이 그 상태였다).
-               *
-               * 개입수 자체는 BOM 이 정한다. 여기서 맞추는 건 사람이 읽는 글자다.
-               */
-              for (const up of boxSpecUpdates(p, allItems, appData.orderUnitInputs)) {
-                await updateItem(COL.items, up.id, { spec: up.spec });
-              }
-            } else {
-              //  **지금 보고 있는 회사를 붙인다.** 안 붙이면 전부 태백으로 잡혀
-              //  풍회 화면에서 만든 품목이 그 목록에서 바로 사라진다.
-              await addItem(collectionName, { ...productData, companyId });
-            }
-            /**
-             * BOM(구성품) → item_bom 동기화. item_bom이 단일원천이므로 편집을 여기에 반영한다.
-             *
-             * **초안이 없으면 손대지 않는다.** 예전엔 `p.submaterials`를 읽었는데 저장 payload에서
-             * 그 필드가 빠진 뒤로 늘 빈 배열이었고, 아래가 "전부 지우고 다시 쓰기"라서
-             * 품목을 저장할 때마다 BOM이 통째로 날아갔다. 구성을 편집하는 화면만 초안을 보낸다.
-             */
-            try {
-              if (!bomDraft) throw new Error('__skip_bom__');
-              const writes: Parameters<typeof commitCompanyWrites>[0] = itemBoms
-                .filter(b => b.parent_id === p.id)
-                .map(b => ({ kind: 'delete', collection: COL.itemBom, id: b.id }));
-              bomDraft.forEach(l => {
-                const bid = `bom-${p.id}__${l.childId}`.replace(/[/#$[\].]/g, '_');
-                writes.push({ kind: 'set', collection: COL.itemBom, id: bid, data: { parent_id: p.id, child_id: l.childId, quantity: l.qty } });
-              });
-              await commitCompanyWrites(writes);
-              refreshStaticData();
-              // BOM이 바뀌면 원가도 바뀐다 — 방금 저장한 item_bom 구성으로 다시 굴린다.
-              await recomputeAllCosts(allItems, itemFormulas, [
-                ...itemBoms.filter(b => b.parent_id !== p.id),
-                ...bomDraft.map(l => ({
-                  id: `bom-${p.id}__${l.childId}`.replace(/[/#$[\].]/g, '_'),
-                  parent_id: p.id, child_id: l.childId, quantity: l.qty,
-                })),
-              ] as typeof itemBoms);
-            } catch (e) {
-              if ((e as Error).message !== '__skip_bom__') console.error('[품목 저장] item_bom 동기화 실패:', e);
-            }
-            // 매출 거래처 연결은 품목관리의 연결/해제 동작만 고친다.
-            // 품목 모달 payload에는 옛 partnerIds가 없어서 여기서 전체 동기화하면
-            // 이름·규격만 저장해도 기존 partner_item(out)이 전부 삭제된다.
-            setIsProductModalOpen(false);
-            setEditingProduct(null);
-          }} 
+          onSave={saveItemEditorPrimary}
         />
       )}
 

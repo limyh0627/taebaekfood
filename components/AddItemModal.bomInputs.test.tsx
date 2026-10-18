@@ -1,3 +1,6 @@
+import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
+import type {ItemEditorProgress,ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
+const saved=async(_product:ItemPhotoProduct,progress:ItemEditorProgress):Promise<ItemEditorSaveResult>=>{progress.confirmedStageIds.push('primary');return {outcome:{status:'saved'},progress};};
 /** @vitest-environment jsdom */
 import React from 'react';
 import {afterEach,expect,it,vi} from 'vitest';
@@ -17,7 +20,7 @@ const items=(companyId:'taebaek'|'punghoe')=>[
  {id:'cap',name:companyId==='taebaek'?'태백 캡':'풍회 캡',type:'submaterial',unit:'개',companyId,stock:0,minStock:0,image:''},
 ] as Item[];
 const inputs=(rows:Item[],qty=20):OrderUnitInputs=>({bom:buildBomIndex(rows,[{parent_id:'box',child_id:'unit',quantity:qty},{parent_id:'unit',child_id:'cap',quantity:1}]),pack:buildPackIndex([])});
-const props=(rows:Item[],orderUnitInputs?:OrderUnitInputs)=>({companyId:rows[0].companyId!,initialData:rows[0],items:rows,allSubmaterials:rows,orderUnitInputs,onClose:vi.fn(),onSave:vi.fn(async()=>{})});
+const props=(rows:Item[],orderUnitInputs?:OrderUnitInputs)=>({companyId:rows[0].companyId!,initialData:rows[0],items:rows,allSubmaterials:rows,orderUnitInputs,onClose:vi.fn(),onSave:vi.fn(saved)});
 it('두 회사 실제 편집창 초기 구성과 자식 부자재는 명시 BOM을 쓰고 같은 회사 입력 갱신도 반영한다',()=>{
  const a=items('taebaek'),b=items('punghoe'),ai=inputs(a),bi=inputs(b,1);setBomIndex(bi.bom);
  const first=render(<ProductModal {...props(a,ai)}/>);
@@ -43,6 +46,6 @@ it('명시 BOM으로 열린 박스는 개입수를 지워도 초안 칸을 유�
  view.unmount();setBomIndex(ai.bom);
  const fallbackProps=props(a),fallback=render(<ProductModal {...fallbackProps}/>);
  fireEvent.click(within(fallback.container).getByRole('button',{name:'수정 완료'}));
- await waitFor(()=>expect(fallbackProps.onSave).toHaveBeenCalledWith(expect.objectContaining({bomDraft:[expect.objectContaining({childId:'unit',qty:20})]})));
+ await waitFor(()=>expect(fallbackProps.onSave).toHaveBeenCalledWith(expect.objectContaining({bomDraft:[expect.objectContaining({childId:'unit',qty:20})]}),expect.any(Object),expect.any(Function)));
  expect(getBomIndex()).toBe(ai.bom);
 });

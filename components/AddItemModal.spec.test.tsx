@@ -1,3 +1,6 @@
+import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
+import type {ItemEditorProgress,ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
+const saved=async(_product:ItemPhotoProduct,progress:ItemEditorProgress):Promise<ItemEditorSaveResult>=>{progress.confirmedStageIds.push('primary');return {outcome:{status:'saved'},progress};};
 /** @vitest-environment jsdom */
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -17,27 +20,27 @@ const item = { id: 'spec-item', name: '생들기름-캔', type: 'wip', category:
 describe('규격 숫자·단위 입력', () => {
   beforeEach(() => { getDoc.mockResolvedValue({ exists: () => false }); });
   it.each([['16.5kg', '16.5kg'], ['400g', '400g'], ['2L', '2L']])('단위 포함 %s를 붙여넣어도 단위를 중복하지 않는다', async (entered, expected) => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onSave = vi.fn(saved);
     render(<ProductModal companyId="taebaek" initialData={item} items={[]} onSave={onSave} onClose={vi.fn()} />);
     fireEvent.change(screen.getByPlaceholderText('예: 350'), { target: { value: entered } });
     fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ spec: expected, cost: 190004, stock: 0 })));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ spec: expected, cost: 190004, stock: 0 }),expect.any(Object),expect.any(Function)));
   });
   it('박스 꼬리는 보존하고 유효하지 않은 단위 문자열은 받지 않는다', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onSave = vi.fn(saved);
     render(<ProductModal companyId="taebaek" initialData={{ ...item, spec: '350ml * 20' }} items={[]} onSave={onSave} onClose={vi.fn()} />);
     const input = screen.getByPlaceholderText('예: 350');
     fireEvent.change(input, { target: { value: '16.5kg' } });
     fireEvent.change(input, { target: { value: '16.5kgml' } });
     fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ spec: '16.5kg * 20' })));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ spec: '16.5kg * 20' }),expect.any(Object),expect.any(Function)));
   });
 });
 
 describe('원가 입력의 빈칸과 명시0', () => {
   it('기존 양수 원가를 명시0으로 수정하여 실제 저장 콜백에 전달한다', async () => {
     let stored = {...item, cost: 380, costSource: 'manual'};
-    const onSave = vi.fn(async (patch: typeof item) => { stored = {...stored, ...patch}; });
+    const onSave = vi.fn(async (patch: typeof item,progress:ItemEditorProgress) => { stored = {...stored, ...patch}; return saved(patch,progress); });
     render(<ProductModal companyId="taebaek" initialData={stored} items={[]} onSave={onSave} onClose={vi.fn()} />);
     fireEvent.change(screen.getByPlaceholderText('매입원가 직접 입력 (예: 380)'), {target:{value:'0'}});
     expect(screen.getByPlaceholderText('매입원가 직접 입력 (예: 380)')).toHaveValue(0);
@@ -84,7 +87,7 @@ describe('스마트스토어 채널 초기값', () => {
     const toggle = screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;
     expect(toggle.querySelector('span')?.className).toContain('translate-x-4');
     fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: true })));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: true }),expect.any(Object),expect.any(Function)));
     expect(onSave.mock.calls[0][0]).not.toHaveProperty('partnerIds');
     expect(JSON.stringify(original)).toBe(before);
   });
@@ -92,7 +95,7 @@ describe('스마트스토어 채널 초기값', () => {
     const onSave = vi.fn();
     render(<ProductModal companyId="taebaek" initialData={{ ...item, type: 'product', isSmartStore: false, partnerIds: ['ordinary'] }} items={[]} onSave={onSave} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false })));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false }),expect.any(Object),expect.any(Function)));
   });
   it('신규 품목은 채널을 선택하지 않으면 false로 등록한다', async () => {
     const onSave = vi.fn();
@@ -100,7 +103,7 @@ describe('스마트스토어 채널 초기값', () => {
     fireEvent.change(screen.getByPlaceholderText('예: 프리미엄 참기름 (300ml)'), { target: { value: '신규 일반 품목' } });
     fireEvent.change(screen.getByPlaceholderText('예: 시골향참기름1'), { target: { value: '신규 일반' } });
     fireEvent.click(screen.getByRole('button', { name: '등록 완료' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false })));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false }),expect.any(Object),expect.any(Function)));
   });
 });
 
@@ -111,16 +114,16 @@ describe('스마트스토어 사용자 체크 해제 저장',()=>{
     const toggle=screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;
     expect(toggle.querySelector('span')?.className).toContain('translate-x-4');fireEvent.click(toggle);
     fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));
-    await waitFor(()=>expect(onSave).toHaveBeenCalledWith(expect.objectContaining({isSmartStore:false})));
+    await waitFor(()=>expect(onSave).toHaveBeenCalledWith(expect.objectContaining({isSmartStore:false}),expect.any(Object),expect.any(Function)));
     expect(onSave.mock.calls[0][0]).not.toHaveProperty('partnerIds');expect(JSON.stringify(original)).toBe(before);
   });
   it('저장 실패 뒤 체크 해제 입력을 유지하여 다시 저장할 수 있다',async()=>{
-    const alert=vi.spyOn(window,'alert').mockImplementation(()=>{}),onClose=vi.fn(),onSave=vi.fn().mockRejectedValueOnce(Error('합성 저장 실패')).mockResolvedValueOnce(undefined);
+    const alert=vi.spyOn(window,'alert').mockImplementation(()=>{}),onClose=vi.fn(),onSave=vi.fn(saved).mockImplementationOnce(async(_p,progress)=>({outcome:{status:'rejected',message:'합성 저장 사전 확인 실패'},progress}));
     try {
       render(<ProductModal companyId="taebaek" initialData={{...item,type:'product',partnerIds:['SMARTSTORE']}} items={[]} onSave={onSave} onClose={onClose}/>);
       const toggle=screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;fireEvent.click(toggle);
       fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));
-      await waitFor(()=>expect(alert).toHaveBeenCalled());expect(onClose).not.toHaveBeenCalled();expect(toggle.querySelector('span')?.className).toContain('translate-x-0.5');
+      await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('합성 저장 사전 확인 실패'));expect(onClose).not.toHaveBeenCalled();expect(toggle.querySelector('span')?.className).toContain('translate-x-0.5');
       fireEvent.click(screen.getByRole('button',{name:'수정 완료'}));await waitFor(()=>expect(onSave).toHaveBeenCalledTimes(2));expect(onSave.mock.calls[1][0].isSmartStore).toBe(false);
     } finally {alert.mockRestore();}
   });
