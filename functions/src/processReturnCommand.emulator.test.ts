@@ -212,11 +212,11 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
   });
 
   it('원료 매출·매입 반품은 실제 원료 상태·로트·수불부·금융을 함께 한 번만 반영한다', async () => {
-    for (const purchase of [false, true]) {
+    for (const { purchase, unit } of [false, true].flatMap(purchase => ['kg', 'L'].map(unit => ({ purchase, unit })))) {
       if (purchase) await seedPurchase(); else await seed();
       const lot = { id: 'raw-existing', material: '참깨', supplierName: '매입', qtyIn: 5,
         kgIn: 5, kgRemaining: 5, receivedDate: date, status: 'active' };
-      await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', lots: [lot], inventoryWriterProtocolVersion:1,inventoryWriteRevision:7 });
+      await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit, lots: [lot], inventoryWriterProtocolVersion:1,inventoryWriteRevision:7 });
       const stateId = inventoryDocId('taebaek', itemId);
       await put('rawInventories', stateId, { id: stateId, companyId, rawItemId: itemId, materialSnapshot: '참깨',
         stockKg: 5, activeLots: [lot], recentDepletedLots: [], revision: 0, lastProcessedAt: `${date}T00:00:00Z` });
@@ -239,6 +239,27 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
       await expect(issue(data)).rejects.toThrow('원료 반품 이력');
       expect((await ref('rawInventories', stateId).get()).data()?.revision).toBe(1);
     }
+  });
+
+  it.each([false, true])('원료 포장 중량이 없는 반품은 수량을 kg로 추정하지 않고 업무 쓰기를 막는다 purchase=%s', async purchase => {
+    if (purchase) await seedPurchase(); else await seed();
+    const lot = { id: 'raw-existing', material: '참깨', supplierName: '매입', kgIn: 5, kgRemaining: 5, receivedDate: date, status: 'active' };
+    await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: '캔', spec: '', lots: [lot], inventoryWriterProtocolVersion: 1, inventoryWriteRevision: 7 });
+    const stateId = inventoryDocId(companyId, itemId);
+    await put('rawInventories', stateId, { id: stateId, companyId, rawItemId: itemId, materialSnapshot: '참깨', stockKg: 5, activeLots: [lot], recentDepletedLots: [], revision: 0, lastProcessedAt: date + 'T00:00:00Z' });
+    const data = input('raw-no-package-' + purchase);
+    await expect(issue(data)).rejects.toThrow('kg 환산값');
+    expect((await ref('rawInventories', stateId).get()).data()?.stockKg).toBe(5);
+    expect((await ref('rawInventories', stateId).get()).data()?.revision).toBe(0);
+    expect((await ref('items', itemId).get()).data()?.stock).toBe(5);
+    expect((await ref('appMeta', counterId).get()).data()?.last).toBe(0);
+    expect((await ref('returnOperations', data.operationId).get()).data()?.status).toBe('rejected');
+    expect((await ref('returnRequests', requestId).get()).data()?.status).toBe('pending');
+    const movements = await db.collection('rawMaterialLedger').where('returnOperationId', '==', data.operationId).get();
+    expect(movements.empty).toBe(true);
+    await ref('items', itemId).update({ packageKg: 2 });
+    expect((await issue(input('raw-valid-package-' + purchase))).status).toBe('applied');
+    expect((await ref('rawInventories', stateId).get()).data()?.stockKg).toBe(purchase ? 3 : 7);
   });
 
   it('같은 원료 홀더로 두 품목이 돌아오면 가상 상태를 누적해 두 입고를 모두 보존한다', async () => {

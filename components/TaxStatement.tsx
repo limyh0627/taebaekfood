@@ -25,6 +25,7 @@ import type { TaxIssueScope } from '../src/features/tax-documents/domain/taxIssu
 import {auth} from '../src/shared/firebase';
 import {getPendingTaxIssue,resumeTaxIssue,type TaxIssueCommand} from '../src/features/tax-documents/infrastructure/applyTaxIssueWrites';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
+import { readTaxIssueHistory, type TaxIssueHistoryGroup } from '../src/features/tax-documents/infrastructure/taxIssueHistory';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -99,6 +100,21 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     liveStatements.forEach(s => map.set(s.id, s));
     return Array.from(map.values()).filter(s => companyOf(s) === companyId);
   }, [liveStatements, extraStatements, companyId]);
+  const [issueHistory, setIssueHistory] = useState<{key:string;groups:TaxIssueHistoryGroup[];error:string;loading:boolean}|null>(null);
+  const issueHistorySource = JSON.stringify(issuedStatements);
+  const issueHistoryKey = JSON.stringify([companyId, historyActorUid, historyActor.generation, historyRetry, issueHistorySource]);
+  useEffect(() => {
+    if (activeTab !== 'history' || !historyActorUid || auth.currentUser?.uid !== historyActorUid) return;
+    let active = true;
+    const generation = historyActor.generation;
+    const isCurrent = () => active && historyCompany.current === companyId && auth.currentUser?.uid === historyActorUid && historyGeneration.current === generation;
+    setIssueHistory({key:issueHistoryKey,groups:[],error:'',loading:true});
+    readTaxIssueHistory(companyId, JSON.parse(issueHistorySource), isCurrent)
+      .then(result => { if (isCurrent()) setIssueHistory({key:issueHistoryKey,...result,loading:false}); })
+      .catch(() => { if (isCurrent()) setIssueHistory({key:issueHistoryKey,groups:[],error:'발행 기록을 불러오지 못했습니다. 다시 불러와 주세요.',loading:false}); });
+    return () => { active = false; };
+  }, [activeTab, companyId, historyActorUid, historyActor.generation, issueHistoryKey, issueHistorySource]);
+  const currentIssueHistory = issueHistory?.key === issueHistoryKey ? issueHistory : null;
 
   // ── 발행 탭 상태 ──
   const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
@@ -330,44 +346,25 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   // ── 조회 탭 로직 ──
+  const allHistGroups = currentIssueHistory?.groups ?? [];
   const issuedClients = useMemo(() =>
     partners
-      .filter(c => issuedStatements.some(s => s.partnerId === c.id && s.type === '매출' && !!s.taxIssuedAt))
+      .filter(c => allHistGroups.some(group => group.partnerId === c.id))
       .filter(c => matchesSearch(c.name, histClientSearch))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),   // 가나다순
-    [partners, issuedStatements, histClientSearch]
+    [partners, allHistGroups, histClientSearch]
   );
 
   const histStmts = useMemo(() =>
-    issuedStatements
-      .filter(s => s.type === '매출' && !!s.taxIssuedAt && (!histClientId || s.partnerId === histClientId))
-      .sort((a, b) => (b.taxIssuedAt ?? '').localeCompare(a.taxIssuedAt ?? '')),
-    [issuedStatements, histClientId]
+    allHistGroups.filter(group => !histClientId || group.partnerId === histClientId).flatMap(group => group.stmts),
+    [allHistGroups, histClientId]
   );
 
   // ── 조회 탭 그룹핑 ──
-  const histGroups = useMemo(() => {
-    const groups = new Map<string, IssuedStatement[]>();
-    histStmts.forEach(s => {
-      const key = s.taxIssuedAt ?? s.id;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(s);
-    });
-    return [...groups.entries()]
-      .map(([key, stmts]) => ({
-        key,
-        stmts: stmts.sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)),
-        totalAmount: stmts.reduce((a, s) => a + s.totalAmount, 0),
-        isBundle: stmts.length > 1,
-        issuedAt: key,
-        partnerId: stmts[0].partnerId,
-        partnerName: stmts[0].partnerName,
-      }))
-      .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
-  }, [histStmts]);
+  const histGroups = useMemo(() => allHistGroups.filter(group => !histClientId || group.partnerId === histClientId), [allHistGroups, histClientId]);
 
   // ── 미리보기용 그룹 ──
-  const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey) : null;
+  const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey && g.originalVerified) : null;
   const previewClient = previewGroup ? partners.find(c => c.id === previewGroup.partnerId) : null;
   const previewSnapshot = previewGroup?.stmts.find(s => s.partySnapshot)?.partySnapshot;
   const previewParties = 서류당사자스냅샷우선(previewSnapshot, {
@@ -799,7 +796,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
               <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">발행 현황</p>
               <p className="text-xs text-slate-600">총 <b>{histGroups.length}</b>건 ({histStmts.length}매)</p>
-              <p className="text-sm font-black text-amber-700">{fmt(histStmts.reduce((s, r) => s + r.totalAmount, 0))}원</p>
+              <p className="text-sm font-black text-amber-700">{fmt(histGroups.reduce((s, r) => s + r.totalAmount, 0))}원</p>
             </div>
           </div>
 
@@ -807,10 +804,13 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
           <div className="flex-1 flex flex-col lg:flex-row gap-4 min-w-0">
             {/* 목록 */}
             <div className="flex-1 flex flex-col gap-2 min-w-0">
+              <p className="text-xs text-slate-500">현재 조회 전표에 연결된 발행 기록 · 원본 확인 필요 항목의 금액은 현재 전표 참고값입니다.</p>
+              {currentIssueHistory?.loading && <p role="status" className="text-xs text-slate-500">발행 기록을 불러오는 중입니다.</p>}
+              {currentIssueHistory?.error && <p role="alert" className="text-xs text-slate-600">{currentIssueHistory.error} <button type="button" onClick={() => setHistoryRetry(value => value + 1)} className="underline">발행 기록 다시 불러오기</button></p>}
               {histGroups.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-dashed border-slate-200 py-20">
                   <Receipt size={36} className="text-slate-200 mb-3"/>
-                  <p className="text-slate-400 text-sm font-bold">발행된 세금계산서가 없습니다</p>
+                  <p className="text-slate-400 text-sm font-bold">{currentIssueHistory?.loading ? '발행 기록 확인 중' : currentIssueHistory?.error ? '발행 기록 조회를 완료하지 못했습니다' : '발행된 세금계산서가 없습니다'}</p>
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
@@ -836,7 +836,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                             <div className="flex items-center gap-2 flex-wrap">
                               <Building2 size={13} className="text-slate-400 shrink-0"/>
                               <span className="text-sm font-black text-slate-800">{cl?.name ?? group.partnerName ?? '-'}</span>
-                              <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">발행완료</span>
+                              <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">{group.originalVerified ? '발행완료' : '원본 확인 필요'}</span>
+                              <span className="text-[10px] text-slate-500">{group.kind === 'taxable' ? '과세' : group.kind === 'exempt' ? '면세' : '과거 발행 표시'}</span>
                               {group.isBundle && (
                                 <span className="text-[10px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                                   <Package size={8}/>묶음 {group.stmts.length}건
@@ -859,12 +860,13 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                                 {group.stmts[0].docNo} · {group.stmts[0].items.slice(0,2).map(i=>i.name).join(', ')}{group.stmts[0].items.length>2?` 외 ${group.stmts[0].items.length-2}건`:''}
                               </div>
                             )}
+                            {group.notice && <p className="text-xs text-slate-500 mt-1">{group.notice}</p>}
                           </div>
                           <span className="text-xs text-slate-600 text-center">{dateRange}</span>
                           <span className="text-xs text-slate-600 text-center">{dateOfLocal(group.issuedAt)}</span>
                           <span className="text-sm font-black text-slate-800 text-right">{fmt(group.totalAmount)}</span>
                           <div className="flex justify-center">
-                            <button onClick={() => setHistPreviewGroupKey(isSelected ? null : group.key)}
+                            <button disabled={!group.originalVerified} title={group.notice || '최초 발행 원문 보기'} aria-label={group.originalVerified ? '최초 발행 원문 보기' : '원본 확인 필요'} onClick={() => setHistPreviewGroupKey(isSelected ? null : group.key)}
                               className={`p-2 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                               <Eye size={15}/>
                             </button>

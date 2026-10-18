@@ -16,16 +16,24 @@ it('다른 주문으로 넘어간 뒤 옛 행 변경과 추가 콜백은 새 초
  act(() => view.result.current.openOrderEditor('b')); act(() => { patch(0, { quantity: 99 }); add(); }); expect(view.result.current.listOrderEditor?.orderId).toBe('b'); expect(view.result.current.listOrderEditor?.items).toHaveLength(1); expect(view.result.current.listOrderEditor?.items[0].quantity).toBe(20);
 });
 it('박스 수량이 낱개보다 우선하며 0박스·날짜공란·품목없음은 저장하지 않는다', () => {
- const p = props(), view = renderHook(() => useOrderEditorDraft(p)); act(() => view.result.current.openOrderEditor('a')); act(() => view.result.current.updateDraftItem(0, { boxQuantity: 0, quantity: 20 })); expect(view.result.current.saveDisabled).toBe(true); act(() => view.result.current.saveEditor()); expect(p.onUpdateItems).not.toHaveBeenCalled();
+ const p = props(), view = renderHook(() => useOrderEditorDraft(p)); act(() => view.result.current.openOrderEditor('a')); act(() => view.result.current.updateDraftItem(0, { boxQuantity: 0, quantity: 20 })); expect(view.result.current.saveDisabled).toBe(true); act(() => { void view.result.current.saveEditor(); }); expect(p.onUpdateItems).not.toHaveBeenCalled();
  act(() => view.result.current.updateDraftItem(0, { boxQuantity: 2, quantity: 0 })); expect(view.result.current.saveDisabled).toBe(false);
- act(() => view.result.current.setListOrderEditor(current => current && { ...current, deliveryDate: '' })); expect(view.result.current.saveDisabled).toBe(true); act(() => view.result.current.saveEditor()); expect(p.onUpdateItems).not.toHaveBeenCalled();
- act(() => view.result.current.openOrderEditor('a')); act(() => view.result.current.updateDraftItem(0, { itemId: '' })); expect(view.result.current.saveDisabled).toBe(true); act(() => view.result.current.saveEditor()); expect(p.onUpdateItems).not.toHaveBeenCalled();
+ act(() => view.result.current.setListOrderEditor(current => current && { ...current, deliveryDate: '' })); expect(view.result.current.saveDisabled).toBe(true); act(() => { void view.result.current.saveEditor(); }); expect(p.onUpdateItems).not.toHaveBeenCalled();
+ act(() => view.result.current.openOrderEditor('a')); act(() => view.result.current.updateDraftItem(0, { itemId: '' })); expect(view.result.current.saveDisabled).toBe(true); act(() => { void view.result.current.saveEditor(); }); expect(p.onUpdateItems).not.toHaveBeenCalled();
 });
-it('날짜→품목→변경 비고 순서로 호출하고 ACK를 기다리지 않고 즉시 닫는다', () => {
- const events: string[] = [], p = props(); p.onUpdateDeliveryDate.mockImplementation(() => { events.push('date'); }); p.onUpdateItems.mockImplementation(() => { events.push('items'); return new Promise<void>(() => {}); }); p.onUpdateNote.mockImplementation(() => { events.push('note'); });
- const view = renderHook(() => useOrderEditorDraft(p)); act(() => view.result.current.openOrderEditor('a')); act(() => view.result.current.setListOrderEditor(current => current && { ...current, deliveryDate: '2026-10-19', note: ' 새비고 ', noteImportant: true })); act(() => view.result.current.saveEditor());
- expect(events).toEqual(['date', 'items', 'note']); expect(p.onUpdateDeliveryDate).toHaveBeenCalledWith('a', new Date('2026-10-19').toISOString()); expect(p.onUpdateNote).toHaveBeenCalledWith('a', '새비고', true); expect(view.result.current.listOrderEditor).toBeNull();
+it('전체 초안은 한 번 전송하고 ACK까지 열린 채로 두며 중복 저장을 막는다',async()=>{
+ let resolve!:(result:{status:'saved'})=>void;const save=vi.fn(()=>new Promise<{status:'saved'}>(r=>resolve=r)),p=props(),view=renderHook(()=>useOrderEditorDraft({...p,onSaveOrderEdit:save}));
+ act(()=>view.result.current.openOrderEditor('a'));act(()=>view.result.current.setListOrderEditor(current=>current&&{...current,deliveryDate:'2026-10-19',note:' 새비고 ',noteImportant:true}));
+ act(()=>{void view.result.current.saveEditor();void view.result.current.saveEditor();});expect(save).toHaveBeenCalledOnce();expect(save).toHaveBeenCalledWith('a',expect.objectContaining({deliveryDate:new Date('2026-10-19').toISOString(),note:'새비고',noteImportant:true}));expect(view.result.current.saveDisabled).toBe(true);expect(view.result.current.listOrderEditor).not.toBeNull();expect(p.onUpdateDeliveryDate).not.toHaveBeenCalled();expect(p.onUpdateItems).not.toHaveBeenCalled();expect(p.onUpdateNote).not.toHaveBeenCalled();
+ await act(async()=>resolve({status:'saved'}));expect(view.result.current.listOrderEditor).toBeNull();
 });
-it('변경하지 않은 날짜·비고는 전송하지 않고 현재 orders에서 수정 대상을 찾는다', () => {
- const p = props(), view = renderHook(input => useOrderEditorDraft(input), { initialProps: p }); act(() => view.result.current.openOrderEditor('a')); view.rerender({ ...p, orders: [{ ...p.orders[0], partnerName: '최신' }] }); expect(view.result.current.editorOrder?.partnerName).toBe('최신'); act(() => view.result.current.saveEditor()); expect(p.onUpdateItems).toHaveBeenCalledOnce(); expect(p.onUpdateNote).not.toHaveBeenCalled(); expect(p.onUpdateDeliveryDate).not.toHaveBeenCalled();
+it('저장 거절·취소·결과 미확정은 초안을 보존하고 늦은 ACK는 새 초안을 닫지 않는다',async()=>{
+ const save=vi.fn(),p=props(),view=renderHook(()=>useOrderEditorDraft({...p,onSaveOrderEdit:save}));act(()=>view.result.current.openOrderEditor('a'));
+ save.mockResolvedValueOnce({status:'blocked',message:'완료 품목 확인'});await act(async()=>view.result.current.saveEditor());expect(view.result.current.saveError).toBe('완료 품목 확인');expect(view.result.current.listOrderEditor?.orderId).toBe('a');
+ save.mockResolvedValueOnce({status:'cancelled'});await act(async()=>view.result.current.saveEditor());expect(view.result.current.listOrderEditor?.orderId).toBe('a');
+ save.mockRejectedValueOnce(Error('network'));await act(async()=>view.result.current.saveEditor());expect(view.result.current.saveError).toContain('현재 주문을 확인');expect(view.result.current.listOrderEditor?.orderId).toBe('a');expect(save).toHaveBeenCalledTimes(3);
+ let resolve!:(v:any)=>void;save.mockImplementationOnce(()=>new Promise(r=>resolve=r));act(()=>{void view.result.current.saveEditor();});act(()=>view.result.current.openOrderEditor('b'));await act(async()=>resolve({status:'saved'}));expect(view.result.current.listOrderEditor?.orderId).toBe('b');
+});
+it('변경하지 않은 날짜·비고는 전송하지 않고 현재 orders에서 수정 대상을 찾는다', async () => {
+ const p = props(), view = renderHook(input => useOrderEditorDraft(input), { initialProps: p }); act(() => view.result.current.openOrderEditor('a')); view.rerender({ ...p, orders: [{ ...p.orders[0], partnerName: '최신' }] }); expect(view.result.current.editorOrder?.partnerName).toBe('최신'); await act(async () => view.result.current.saveEditor()); expect(p.onUpdateItems).toHaveBeenCalledOnce(); expect(p.onUpdateNote).not.toHaveBeenCalled(); expect(p.onUpdateDeliveryDate).not.toHaveBeenCalled();
 });

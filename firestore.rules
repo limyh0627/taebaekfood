@@ -328,10 +328,18 @@ service cloud.firestore {
     // ── 연차 — 본인이 내고, 관리자가 결재한다 ────────────────────
     match /leaveRequests/{id} {
       allow read: if readOk();
-      //  낼 때는 **본인 것으로만.** 남의 이름으로 못 낸다.
-      allow create: if isEmployee()
-                    && canSee(request.resource.data.companyId)
-                    && request.resource.data.employeeId == me();
+      // 직원 신청에 결재·미차감 값을 섞지 못하고, 관리자는 같은 회사 실직원에게 단체휴가를 부여한다.
+      allow create: if isEmployee() && canSee(request.resource.data.companyId)
+                    && ((isAdmin()
+                         && request.resource.data.employeeId is string
+                         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
+                         && get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.companyId == myCompany()
+                         && request.resource.data.status in ['pending', 'approved'])
+                        || (!isAdmin()
+                            && request.resource.data.employeeId == me()
+                            && request.resource.data.status == 'pending'
+                            && request.resource.data.keys().hasOnly(['id', 'companyId', 'employeeId', 'employeeName',
+                                'type', 'startDate', 'endDate', 'reason', 'status', 'requestedAt', 'daysUsed'])));
       /**
        * 본인은 아직 결재 안 된 자기 신청만 고친다.
        *

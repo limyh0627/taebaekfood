@@ -299,6 +299,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await setDoc(doc(db, 'openingBalances', 'main'), { companyId: 'taebaek', date: '2026-07-31', amounts: { 103: 10000000 } });
       await setDoc(doc(db, 'openingBalances', 'main-punghoe'), { companyId: 'punghoe', date: '2026-07-31', amounts: { 103: 20000000 } });
       await setDoc(doc(db, 'employees', 'e1'), { companyId: 'taebaek', name: '이지영', fcmTokens: [] });
+      await setDoc(doc(db, 'employees', 'e2'), { companyId: 'taebaek', name: '같은 회사 직원' });
       await setDoc(doc(db, 'employees', 'e9'), { companyId: 'punghoe', name: '우용', fcmTokens: [] });
       await setDoc(doc(db, 'leaveRequests', 'lv-e1'), { companyId: 'taebaek', employeeId: 'e1', status: 'pending' });
       await setDoc(doc(db, 'leaveRequests', 'lv-e9'), { companyId: 'punghoe', employeeId: 'e9', status: 'pending' });
@@ -655,6 +656,22 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
 
     it('**남의 이름으로 못 낸다**', async () => {
       await assertFails(setDoc(doc(태백직원(), 'leaveRequests', 'lv-남'), { companyId: 'taebaek', employeeId: 'e2', status: 'pending' }));
+    });
+
+    it('직원은 신청 생성으로 승인·결재·수동 미차감을 우회하지 못한다', async () => {
+      for (const status of ['approved', 'rejected', 'cancelled'])
+        await assertFails(setDoc(doc(태백직원(), 'leaveRequests', 'lv-forged-' + status), { companyId: 'taebaek', employeeId: 'e1', status }));
+      for (const field of ['approvedBy', 'approvedAt', 'rejectedBy', 'cancelledAt', 'cancelledBy', 'cancelReason', 'modifyRequest', 'deductsLeave'])
+        await assertFails(setDoc(doc(태백직원(), 'leaveRequests', 'lv-field-' + field), { companyId: 'taebaek', employeeId: 'e1', status: 'pending', [field]: false }));
+    });
+
+    it('관리자 단체휴가는 같은 회사의 실직원 모두에게 승인 상태로 생성한다', async () => {
+      for (const employeeId of ['e1', 'e2'])
+        await assertSucceeds(setDoc(doc(관리자(), 'leaveRequests', 'lv-vac-' + Math.random()), { companyId: 'taebaek', employeeId, status: 'approved', deductsLeave: false }));
+      await assertSucceeds(setDoc(doc(관리자(), 'leaveRequests', 'lv-admin-pending'), { companyId: 'taebaek', employeeId: 'e1', status: 'pending' }));
+      for (const employeeId of ['e9', 'missing'])
+        await assertFails(setDoc(doc(관리자(), 'leaveRequests', 'lv-bad-target-' + employeeId), { companyId: 'taebaek', employeeId, status: 'approved' }));
+      await assertFails(setDoc(doc(관리자(), 'leaveRequests', 'lv-bad-company'), { companyId: 'punghoe', employeeId: 'e9', status: 'approved' }));
     });
 
     it('**본인이 자기 연차를 승인 못 한다**', async () => {

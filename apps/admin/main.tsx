@@ -1,3 +1,4 @@
+import { useEmployeeAuthSession } from '../../src/shared/hooks/useEmployeeAuthSession';
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
 // 청크 로드 실패(배포 후 구버전 캐시) 시 자동 새로고침
@@ -27,8 +28,8 @@ import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import AppDialogHost from '../../src/shared/components/AppDialogHost';
-import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
-import { auth, authReady, usingFirebaseEmulators } from '../../src/shared/firebase';
+import { employeeRuntime } from '../../src/shared/employeeSession';
+import { auth, usingFirebaseEmulators } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -49,30 +50,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-const AdminRoot: React.FC = () => {
+const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}> = ({currentUser,onSessionLogout}) => {
   //  숫자 칸 위에서 휠을 굴리면 값이 조용히 바뀐다 — 브라우저 기본 동작이다.
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
 
-  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   //  회사는 로그인 직원의 소속(`companyId`)으로 잠근다 — 화면에서 갈아탈 수 없다.
   //  회사 전환 UI를 열어 두면 태백·풍회 장부가 한 화면에서 섞인다.
   const companyId: CompanyId = currentUser?.companyId ?? 'taebaek';
-  // 옛 버전이 저장한 평문 비밀번호·연락처도 앱을 한 번 열면 즉시 최소 세션으로 덮는다.
-  useEffect(() => {
-    if (currentUser) localStorage.setItem('tb_user', JSON.stringify(employeeSession(currentUser)));
-  }, [currentUser]);
-  useEffect(() => {
-    void authReady.then(() => {
-      const saved = readEmployeeSession(localStorage.getItem('tb_user'));
-      if (auth.currentUser && !auth.currentUser.isAnonymous && saved) {
-        setCurrentUser(saved);
-      }
-      else localStorage.removeItem('tb_user');
-      setAuthChecked(true);
-    });
-  }, []);
   const [currentView, setCurrentView] = useState<ViewType>(() => {
     //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
     //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
@@ -99,36 +84,20 @@ const AdminRoot: React.FC = () => {
   const appData = useAppData(currentUser !== null, companyId, 관리자구독);
   const adminData = useAdminData(currentUser !== null, companyId);
 
-  const handleLogin = (user: Employee) => {
-    const session = employeeSession(user);
-    setCurrentUser(session);
-    localStorage.setItem('tb_user', JSON.stringify(session));
-    localStorage.removeItem('tb_company');
-  };
-
   const handleLogout = () => {
     //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
     //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
     if (currentUser) void unregisterPush(currentUser.id);
     void signOut(auth);
-    setCurrentUser(null);
-    localStorage.removeItem('tb_user');
+    onSessionLogout();
     setIsAdminAuthenticated(false);
     setCurrentView('dashboard');
   };
 
-  if (!authChecked) return <div className="min-h-screen bg-slate-50" />;
-
-  if (!currentUser) {
-    return (
-      <AuthPage app="admin" onLogin={handleLogin} />
-    );
-  }
-
   //  들어갈 수 있는지는 직원 기록의 `adminAccess` 칸이 정한다(canEnterAdmin).
   //  localStorage 에 박힌 사본은 낡으니, 지금 목록의 권한으로 덮어 본다.
-  const 접근가능 = canEnterAdmin(freshAccess(currentUser, appData.employees));
-  const runtimeUser = employeeRuntime(freshAccess(currentUser, appData.employees));
+  const 접근가능 = 관리자구독 && canEnterAdmin(freshAccess(currentUser, appData.employees));
+  const runtimeUser = employeeRuntime({...freshAccess(currentUser, appData.employees),adminAccess:currentUser.adminAccess});
 
   if (!접근가능 && !isAdminAuthenticated) {
     return (
@@ -169,6 +138,13 @@ const AdminRoot: React.FC = () => {
       </React.Suspense>
     </div>
   );
+};
+
+const AdminRoot: React.FC = () => {
+ const session=useEmployeeAuthSession();
+ if(!session.authChecked)return <div className="min-h-screen bg-slate-50"/>;
+ if(!session.currentUser)return <AuthPage app="admin" onLogin={session.onLogin}/>;
+ return <AdminSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.clearSession}/>;
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

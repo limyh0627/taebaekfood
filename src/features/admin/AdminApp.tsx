@@ -1,3 +1,4 @@
+import type { OrderEditDraft, OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { DATE_RANGE_LAYOUT_CLASS } from '../../shared/components/DateRangeInputs';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../shared/components/QueryFilterPanel';
 import RawDocUsageDetailModal from '../../../components/RawDocUsageDetailModal';
@@ -50,7 +51,7 @@ import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeni
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { today, addMonths, endOfMonth } from '../../shared/day';
+import { today, addMonths, endOfMonth, isCalendarDay } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
@@ -2123,14 +2124,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 여기서 차이를 계산해 재고를 손보지 않는다 — 되돌리기(reconcileOrderStock)와 두 벌이 되고
    * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
    */
-  const handleUpdateItems = async (orderId: string, items: OrderItem[]) => {
+  const saveOrderEditPatch = async (orderId: string, items: OrderItem[], extra: Partial<Order> = {}): Promise<OrderEditSaveResult> => {
     const askScope = orderAskScope.current.token;
+    const askUid = auth.currentUser?.uid;
     const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
     /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
         "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
         무관하니 안 막고, 생산된 **그 줄**의 수량·구성만 막는다. 판정은 `orderEditGuard`. */
+    if (!o || companyOf(o) !== companyId) return {status:'blocked',message:'현재 회사의 주문을 찾을 수 없습니다.'};
     const 판정 = o ? classifyOrderEdit(o, items) : { kind: 'ok' as const };
-    if (판정.kind === 'blocked') { alert(editBlockMessage(o, 판정.line)); return; }
+    if (판정.kind === 'blocked') return {status:'blocked',message:editBlockMessage(o, 판정.line)};
     /*  **줄을 더한 것은 막지 않는다 — 묻고 작업중으로 돌린다**(2026-09-15 사장님:
         "작업완료 주문에 품목추가하면 가드로 막지말고 알람띄우고 기존 완료 품목은 유지한
         상태로, 작업중으로 돌려보내 굳이 막을 이유가 없음").
@@ -2145,32 +2148,40 @@ const AdminApp: React.FC<AdminAppProps> = ({
         `작업완료된 주문에 품목을 더합니다 — ${판정.added.join(', ')}\n\n`
         + `이미 끝낸 ${되돌릴수}개 품목의 작업완료와 재고는 그대로 둡니다.\n`
         + `새로 더한 품목이 남아 있으므로 주문은 '작업중' 으로 돌아갑니다.\n\n계속할까요?`
-      )) return;
+      )) return {status:'cancelled'};
     }
     /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
         작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
         자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
-    if (orderAskScope.current.token !== askScope) return;
+    if ((orderAskScope.current.token !== askScope || auth.currentUser?.uid !== askUid)) return {status:'cancelled'};
     const 지금 = new Date().toISOString();
     const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, 지금) : items;
     const 작업상태 = o && [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED].includes(o.status)
       ? workStatusFromItems(찍은items)
       : o?.status;
-    updateItem('orders', orderId, { items: 찍은items, ...(작업상태 ? { status: 작업상태 } : {}) });
-    /*  **수량·단가·품목 교체·줄 추가/삭제는 밖에 적는다**(2026-09-14 사장님: "2번도 했으면").
-        지워진 줄은 주문 문서에 남길 자리가 아예 없고, 주문 안에 쌓으면 문서가 계속 커진다.
-        주문 저장을 막지는 않는다 — 기록을 못 남겼다고 고친 것까지 되돌리면 더 나쁘다. */
-    const 바뀐것 = o ? diffOrderItems(o.items, 찍은items) : [];
-    if (바뀐것.length) {
-      addItem('orderItemEdits', {
-        orderId, at: 지금, by: currentUser?.name?.trim() || '미기록',
-        changes: 바뀐것.map(change => change.text),
-      } as Omit<OrderItemEdit, 'id'>)
-        .catch(error => {
-          if (orderAskScope.current.token !== askScope) return;
-          console.error('[주문 품목 수정 기록 실패]', orderId, error);
-        });
+    await updateItem('orders', orderId, { ...extra, items: 찍은items, ...(작업상태 ? { status: 작업상태 } : {}) });
+    if((orderAskScope.current.token!==askScope || auth.currentUser?.uid!==askUid))return {status:'saved'};
+    const changes = diffOrderItems(o.items, 찍은items);
+    if (changes.length) {
+      try {
+        await addItem('orderItemEdits', {orderId,at:지금,by:currentUser?.name?.trim()||'미기록',changes:changes.map(change=>change.text)} as Omit<OrderItemEdit,'id'>);
+      } catch(error) {
+        if(orderAskScope.current.token===askScope && auth.currentUser?.uid===askUid)alert('주문 저장은 완료됐지만 수정 이력을 남기지 못했습니다. 주문을 다시 저장하지 말고 이력을 확인해 주세요.');
+        console.error('[주문 품목 수정 기록 실패]',orderId,error);
+      }
     }
+    return {status:'saved'};
+  };
+  const handleUpdateItems = async (orderId:string,items:OrderItem[]) => {
+    const result=await saveOrderEditPatch(orderId,items);
+    if(result.status==='blocked')alert(result.message);
+  };
+  const handleSaveOrderEdit = async (orderId:string,draft:OrderEditDraft): Promise<OrderEditSaveResult> => {
+    if(!isCalendarDay(draft.deliveryDate.split('T')[0]))return {status:'blocked',message:'출고예정일을 확인해 주세요.'};
+    const order=allOrders.find(candidate=>candidate.id===orderId)??orders.find(candidate=>candidate.id===orderId);
+    const dateChanged=draft.deliveryDate.split('T')[0]!==order?.deliveryDate?.split('T')[0];
+    const noteChanged=draft.note!==(order?.note||'')||draft.noteImportant!==!!order?.noteImportant;
+    return saveOrderEditPatch(orderId,draft.items,{...(dateChanged?{deliveryDate:draft.deliveryDate}:{}),note:draft.note,noteImportant:!!draft.note&&draft.noteImportant,...(noteChanged?{noteBy:currentUser?.name||'미기록',noteAt:new Date().toISOString()}:{})});
   };
 
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
@@ -2576,6 +2587,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
+
               onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
@@ -2614,6 +2626,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
                   onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
                   onUpdateItems={handleUpdateItems}
+
                   onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
                   onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
                   onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
@@ -2643,6 +2656,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               palletStocks={pallets}
               onToggleItemChecked={handleToggleItemChecked}
               onUpdateItems={handleUpdateItems}
+              onSaveOrderEdit={handleSaveOrderEdit}
               onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}

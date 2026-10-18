@@ -1,6 +1,6 @@
 import DateRangeInputs, { DATE_RANGE_LAYOUT_CLASS, DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
 import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
-import { useOrderEditorDraft } from '../src/features/orders/hooks/useOrderEditorDraft';
+import { useOrderEditorDraft, type OrderEditDraft, type OrderEditSaveResult } from '../src/features/orders/hooks/useOrderEditorDraft';
 import {OrderCard} from '../src/features/orders/ui/OrderCard';
 export {OrderCard} from '../src/features/orders/ui/OrderCard';
 import {OrderSourceGroup} from '../src/features/orders/ui/OrderSourceGroup';
@@ -255,6 +255,7 @@ interface OrdersListProps {
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateReceivedDate?: (id: string, date: string) => void;
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
+  onSaveOrderEdit?: (id:string,draft:OrderEditDraft)=>Promise<OrderEditSaveResult>;
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateNote?: (id: string, note: string, important: boolean) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
@@ -432,7 +433,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   companyId,
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [], orderUnitInputs,
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
-  onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes,
+  onUpdateItems, onUpdateNote, onSaveOrderEdit, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted,
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
@@ -687,7 +688,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onUpdateDeliveryDate,onUpdateItems,onUpdateNote,onBeforeOpen:()=>{
+  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onUpdateDeliveryDate,onUpdateItems,onUpdateNote,onSaveOrderEdit,onBeforeOpen:()=>{
     setPreviewOrderId(null);
     setEditingOrderId(null);
     setShowAddProductSelect(null);
@@ -3057,7 +3058,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
         return (
-          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled}
+          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled} saveError={saveError}
             headerAction={(
               /*  **로그 보기**(2026-09-14 사장님). 누르면 이 주문에 누가 무엇을 언제 했는지 뜬다.
                   수정 창은 열어 둔 채로 위에 겹쳐 뜬다 — 고치다 말고 닫히면 적던 것이 날아간다. */

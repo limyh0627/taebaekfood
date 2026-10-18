@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within, waitFor } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TaxStatement from './TaxStatement';
 import {fetchDateRange} from '../src/shared/services/firebaseService';
+import {readTaxIssueHistory} from '../src/features/tax-documents/infrastructure/taxIssueHistory';
 import {getPendingTaxIssue,resumeTaxIssue,type TaxIssueCommand} from '../src/features/tax-documents/infrastructure/applyTaxIssueWrites';
 const historyAuth=vi.hoisted(()=>({currentUser:{uid:'tax-ui-uid'} as {uid:string}|null,listeners:new Set<(user:{uid:string}|null)=>void>()}));
 beforeEach(()=>{historyAuth.currentUser={uid:'tax-ui-uid'};historyAuth.listeners.clear();vi.mocked(fetchDateRange).mockReset().mockResolvedValue([]);vi.mocked(getPendingTaxIssue).mockReturnValue(null);vi.mocked(resumeTaxIssue).mockReset().mockResolvedValue([]);});
@@ -17,6 +18,9 @@ vi.mock('../src/features/tax-documents/infrastructure/applyTaxIssueWrites',()=>(
 vi.mock('../src/shared/services/firebaseService', () => ({
   fetchDateRange: vi.fn().mockResolvedValue([]),
 }));
+// 아래 재출력 시험은 검증된 최초 원문을 서비스 경계에서 제공한다. legacy 검증은 별도 회귀로 확인한다.
+vi.mock('../src/features/tax-documents/infrastructure/taxIssueHistory',()=>({readTaxIssueHistory:vi.fn()}));
+beforeEach(()=>{vi.mocked(readTaxIssueHistory).mockReset().mockImplementation(async(_company,rows)=>({error:'',groups:rows.filter(row=>row.taxIssuedAt).map(row=>({key:row.id,stmts:[row],totalAmount:row.totalAmount,isBundle:false,issuedAt:row.taxIssuedAt!,partnerId:row.partnerId,partnerName:row.partnerName,kind:'taxable' as const,originalVerified:true,notice:''}))}));});
 
 const 이번달 = new Date().toISOString().slice(0, 7);
 it('발행 조회 탭 다음 검색조건을 표시하고 조회 전환으로 발행 writer를 호출하지 않는다',()=>{
@@ -137,7 +141,7 @@ describe('세금계산서 수량 표시 정밀도', () => {
     { qty: 1234567.890123, label: '1,234,567.890123' },
     { qty: Number.MAX_SAFE_INTEGER, label: '9,007,199,254,740,991' },
   ];
-  it.each(cases.flatMap(value => ['현재 발행', '발행 내역'].map(mode => ({ ...value, mode }))))('$mode 과세·면세 수량 $label을 원문 그대로 표시하고 금액을 유지한다', ({ qty, label, mode }) => {
+  it.each(cases.flatMap(value => ['현재 발행', '발행 내역'].map(mode => ({ ...value, mode }))))('$mode 과세·면세 수량 $label을 원문 그대로 표시하고 금액을 유지한다', async ({ qty, label, mode }) => {
     const statement = 전표('quantity-one', 거래처A.id, 'QTY-PRECISION-01', mode === '발행 내역' ? `${이번달}-09T10:00:00+09:00` : undefined);
     statement.items = [
       { itemId: 'quantity-taxable', name: '정밀 과세 품목', spec: '합성 규격', qty, price: 11000, supply: 10000, tax: 1000, total: 11000, isTaxExempt: false },
@@ -148,7 +152,7 @@ describe('세금계산서 수량 표시 정밀도', () => {
     render(<TaxStatement issuedStatements={[statement]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue} />);
     if (mode === '발행 내역') {
       fireEvent.click(screen.getByRole('button', { name: '조회' }));
-      const row = screen.getByText(/QTY-PRECISION-01/).parentElement!.parentElement!;
+      const row = (await screen.findByText(/QTY-PRECISION-01/)).parentElement!.parentElement!;
       fireEvent.click(within(row).getByRole('button'));
     } else {
       fireEvent.click(screen.getByRole('button', { name: /동명유통/ }));
@@ -199,7 +203,7 @@ describe('세금계산서 거래처 정보', () => {
     expectNoOtherPartnerValues(document, 거래처B값);
   });
 
-  it('조회 탭 재출력도 전표의 partnerId에 해당하는 거래처 전체 정보를 표시한다', () => {
+  it('조회 탭 재출력도 전표의 partnerId에 해당하는 거래처 전체 정보를 표시한다', async () => {
     const issuedAtA = `${이번달}-09T10:00:00+09:00`;
     const issuedAtB = `${이번달}-09T11:00:00+09:00`;
     render(
@@ -215,7 +219,7 @@ describe('세금계산서 거래처 정보', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
 
-    const aDocumentNo = screen.getByText(/HIST-A-01/);
+    const aDocumentNo = await screen.findByText(/HIST-A-01/);
     const historyRow = aDocumentNo.parentElement?.parentElement!;
     const previewButton = within(historyRow).getByRole('button');
     fireEvent.click(previewButton);
@@ -431,7 +435,7 @@ describe('세금계산서 명시적 출력',()=>{
   outputMocks.capture.mockResolvedValue({width:100,height,toDataURL:()=> 'data:image/png;base64,QA'});
   const issue=vi.fn(),st=전표('OUTPUT',거래처A.id,'OUTPUT',mode==='내역'?이번달+'-09T10:00:00+09:00':undefined);
   const view=render(<TaxStatement issuedStatements={[st]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue}/>);
-  if(mode==='내역'){fireEvent.click(screen.getByRole('button',{name:'조회'}));fireEvent.click(within(screen.getByText(/OUTPUT/).parentElement!.parentElement!).getByRole('button'));}
+  if(mode==='내역'){fireEvent.click(screen.getByRole('button',{name:'조회'}));fireEvent.click(within((await screen.findByText(/OUTPUT/)).parentElement!.parentElement!).getByRole('button'));}
   else{fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/OUTPUT/}));}
   fireEvent.click(screen.getByRole('button',{name:'인쇄'}));expect(outputMocks.html).toHaveBeenCalledOnce();const html=outputMocks.html.mock.calls[0][0];expect(html.html).toContain('참기름');expect(html.html).toContain('<style>');expect(html.signal.aborted).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:'PDF'}));await waitFor(()=>expect(outputMocks.pdf).toHaveBeenCalledOnce());const pdf=outputMocks.pdf.mock.calls[0][0];expect(pdf.pages).toEqual([{width:210,height:297,draws:[{image:'data:image/png;base64,QA',x:10,y:height===100?53.5:10,width:190,height:height*1.9}]}]);expect(issue).not.toHaveBeenCalled();
@@ -446,6 +450,34 @@ describe('세금계산서 명시적 출력',()=>{
 it('PDF 캡처 실패는 저장하지 않고 재시도 안내 후 같은 작성내용을 유지한다',async()=>{
  outputMocks.capture.mockRejectedValueOnce(new Error('capture'));outputMocks.pdf.mockClear();outputMocks.notice.mockClear();
  render(<TaxStatement issuedStatements={[전표('FAILPDF',거래처A.id,'FAILPDF')]} partners={[거래처A]} companyInfo={회사}/>);fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/FAILPDF/}));fireEvent.click(screen.getByRole('button',{name:'PDF'}));await waitFor(()=>expect(outputMocks.notice).toHaveBeenCalledOnce());expect(outputMocks.pdf).not.toHaveBeenCalled();expect(taxDocument()).toHaveTextContent('참기름');expect(screen.getByRole('button',{name:'PDF'})).toBeEnabled();
+});
+
+describe('최초 발행 원문 조회 경계',()=>{
+ it('조회 탭에서만 읽고 원본 미확인 항목은 이유를 보여 주며 재출력을 막는다',async()=>{
+  const row=전표('legacy-original',거래처A.id,'LEGACY-ORIGINAL',이번달+'-09T10:00:00+09:00');
+  vi.mocked(readTaxIssueHistory).mockResolvedValue({error:'',groups:[{key:'legacy',stmts:[row],totalAmount:row.totalAmount,isBundle:false,issuedAt:row.taxIssuedAt!,partnerId:row.partnerId,kind:'legacy',originalVerified:false,notice:'원본 확인 필요: 최초 발행 원문이 없습니다.'}]});
+  const writer=vi.fn();render(<TaxStatement issuedStatements={[row]} partners={[거래처A]} onApplyTaxIssue={writer}/>);
+  expect(readTaxIssueHistory).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'조회'}));
+  expect(await screen.findByText('원본 확인 필요: 최초 발행 원문이 없습니다.')).toBeVisible();
+  expect(screen.getByRole('button',{name:'원본 확인 필요'})).toBeDisabled();expect(screen.queryByRole('button',{name:'인쇄'})).toBeNull();
+  fireEvent.change(screen.getByRole('textbox',{name:'조회 거래처 검색'}),{target:{value:'동명'}});expect(readTaxIssueHistory).toHaveBeenCalledTimes(1);expect(writer).not.toHaveBeenCalled();
+ });
+ it('불러오기 실패는 빈 이력으로 단정하지 않고 읽기만 다시 시도한다',async()=>{
+  vi.mocked(readTaxIssueHistory).mockRejectedValueOnce(new Error('네트워크'));
+  const writer=vi.fn();render(<TaxStatement issuedStatements={[전표('retry',거래처A.id,'RETRY')]} partners={[거래처A]} onApplyTaxIssue={writer}/>);
+  fireEvent.click(screen.getByRole('button',{name:'조회'}));
+  expect(await screen.findByText('발행 기록 조회를 완료하지 못했습니다')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'발행 기록 다시 불러오기'}));await waitFor(()=>expect(readTaxIssueHistory).toHaveBeenCalledTimes(2));expect(writer).not.toHaveBeenCalled();
+ });
+ it('다른 회사로 이동한 뒤 늦은 원문 응답은 이전 회사 이력을 노출하지 않는다',async()=>{
+  let finish!:(value:Awaited<ReturnType<typeof readTaxIssueHistory>>)=>void;
+  const row=전표('late',거래처A.id,'LATE-ORIGINAL');
+  vi.mocked(readTaxIssueHistory).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  const view=render(<TaxStatement issuedStatements={[row]} partners={[거래처A]}/>);fireEvent.click(screen.getByRole('button',{name:'조회'}));
+  view.rerender(<TaxStatement companyId="punghoe" issuedStatements={[]} partners={[거래처A]}/>);
+  await act(async()=>finish({error:'',groups:[{key:'late',stmts:[row],totalAmount:110,isBundle:false,issuedAt:이번달+'-09',partnerId:row.partnerId,kind:'taxable',originalVerified:true,notice:''}]}));
+  expect(screen.queryByText(/LATE-ORIGINAL/)).toBeNull();expect(screen.queryByRole('button',{name:'최초 발행 원문 보기'})).toBeNull();
+ });
 });
 
 it('발행 월 변경은 이전 출력 수명을 중단한다',()=>{

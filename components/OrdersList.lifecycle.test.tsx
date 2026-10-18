@@ -1,3 +1,4 @@
+import OrderEditModalShell from './OrderEditModalShell';
 /** @vitest-environment jsdom */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -111,3 +112,7 @@ it('현재 회사와 로그인에서 정상 조회한 로그는 보이고 닫은
   expect(fixture.fetch).toHaveBeenCalledWith('orderItemEdits', 'orderId', 'order-a');
   expect(fixture.write).not.toHaveBeenCalled();
 });
+
+it('주문 저장 오류는 스크롤 본문 밖의 저장 버튼과 같은 footer에서 보인다',()=>{const view=render(<OrderEditModalShell title="저장 오류 검수" partnerName="합성" context="주문일" onClose={()=>{}} onSave={()=>{}} saveError="현재 주문을 확인해 주세요."><div>긴 본문</div></OrderEditModalShell>);const error=screen.getByRole('alert'),save=screen.getByRole('button',{name:'변경 저장'});expect(save.closest('[data-order-edit-footer]')).toContainElement(error);expect(error).toHaveTextContent('현재 주문을 확인');expect(error.compareDocumentPosition(save)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();view.unmount();});
+
+it('실제 주문 수정의 저장 거절 원인은 저장 버튼 바로 위에 남고 초안은 유지된다',async()=>{const p=props(),save=vi.fn(async()=>({status:'blocked' as const,message:'완료된 품목의 수량은 되돌린 뒤 수정해 주세요.'}));const row={...order(),items:[{itemId:'oil',name:'검수기름',quantity:1,price:0}],note:'보존할 초안'};render(<OrdersList {...p} orders={[row]} onSaveOrderEdit={save}/>);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'변경 저장'})));const error=screen.getByRole('alert'),button=screen.getByRole('button',{name:'변경 저장'});expect(error).toHaveTextContent('완료된 품목의 수량');expect(button.closest('[data-order-edit-footer]')).toContainElement(error);expect(screen.getByRole('dialog',{name:'거래처 주문 수정'})).toBeInTheDocument();expect(screen.getByDisplayValue('보존할 초안')).toBeInTheDocument();expect(save).toHaveBeenCalledOnce();});

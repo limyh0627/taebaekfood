@@ -9,6 +9,8 @@ import { readPartnerAdvanceSnapshot, resolveSelectedAdvance } from './partnerAdv
 import { activeAdvanceApplications, sourceKey } from './shared/partnerAdvance';
 import { readPartnerAdvanceWriteScope, prepareAdvanceCancellation, prepareAdvanceApplication, writePartnerAdvanceMutations } from './partnerAdvanceCommand';
 import { kstDateOf } from './shared/calculation';
+import { cleanupValidId } from './shared/partnerItemCleanup';
+import { openingCalendarDay } from './shared/financialOpening';
 
 type Approval = { pendingEditRequestId: string; pendingEditRequestHash: string };
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([key,item]) => [key,canonical(item)])) : value;
@@ -26,7 +28,7 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     throw new HttpsError('permission-denied', '이 회사의 전표 수정 권한이 없습니다.');
   }
   const { statementId, releaseId, expectedRevision, operationId, patch, pendingEditRequestId, pendingEditRequestHash } = request.data ?? {};
-  if (typeof statementId !== 'string' || !/^[\w-]{1,150}$/.test(statementId) ||
+  if (!cleanupValidId(statementId) || statementId.length > 150 ||
       typeof operationId !== 'string' || !/^[\w-]{8,150}$/.test(operationId) ||
       typeof releaseId !== 'string' || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0 ||
       !patch || typeof patch !== 'object' || Array.isArray(patch)) {
@@ -39,8 +41,7 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
   const names = Object.keys(patch);
   if (!names.length || names.some(name => !fields.has(name))) throw new HttpsError('invalid-argument', '수정할 수 없는 전표 항목이 포함됐습니다.');
   const requestHash = createHash('sha256').update(JSON.stringify({ statementId, expectedRevision, patch, ...(approval ?? {}) })).digest('hex');
-  if ('tradeDate' in patch && (typeof patch.tradeDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(patch.tradeDate) ||
-      Number.isNaN(Date.parse(`${patch.tradeDate}T00:00:00Z`)))) throw new HttpsError('invalid-argument', '거래일이 올바르지 않습니다.');
+  if ('tradeDate' in patch && !openingCalendarDay(patch.tradeDate)) throw new HttpsError('invalid-argument', '거래일이 올바르지 않습니다.');
   for (const key of ['totalSupply', 'totalTax', 'totalAmount']) {
     if (key in patch && !money(patch[key])) throw new HttpsError('invalid-argument', `${key} 금액이 올바르지 않습니다.`);
   }

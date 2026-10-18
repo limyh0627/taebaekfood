@@ -1,3 +1,4 @@
+import { useEmployeeAuthSession } from '../../src/shared/hooks/useEmployeeAuthSession';
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
 // 청크 로드 실패(배포 후 구버전 캐시) 시 자동 새로고침
@@ -27,8 +28,8 @@ import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import AppDialogHost from '../../src/shared/components/AppDialogHost';
-import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
-import { auth, authReady } from '../../src/shared/firebase';
+import { employeeRuntime } from '../../src/shared/employeeSession';
+import { auth } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -49,29 +50,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-const StaffRoot: React.FC = () => {
+const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}> = ({currentUser,onSessionLogout}) => {
   //  숫자 칸 위에서 휠을 굴리면 값이 조용히 바뀐다 — 브라우저 기본 동작이다.
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
 
-  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   //  회사는 로그인 직원의 소속(`companyId`)으로 잠근다 — 화면에서 갈아탈 수 없다.
   const companyId: CompanyId = currentUser?.companyId ?? 'taebaek';
-  // 옛 버전이 저장한 평문 비밀번호·연락처도 앱을 한 번 열면 즉시 최소 세션으로 덮는다.
-  useEffect(() => {
-    if (currentUser) localStorage.setItem('tb_user', JSON.stringify(employeeSession(currentUser)));
-  }, [currentUser]);
-  useEffect(() => {
-    void authReady.then(() => {
-      const saved = readEmployeeSession(localStorage.getItem('tb_user'));
-      if (auth.currentUser && !auth.currentUser.isAnonymous && saved) {
-        setCurrentUser(saved);
-      }
-      else localStorage.removeItem('tb_user');
-      setAuthChecked(true);
-    });
-  }, []);
   const [currentView, setCurrentView] = useState<ViewType>(() =>
     loadStartView<ViewType>('tb_staff_view', 'orders'));
   useEffect(() => { saveView('tb_staff_view', currentView); }, [currentView]);
@@ -85,20 +70,12 @@ const StaffRoot: React.FC = () => {
   const appData = useAppData(currentUser !== null, companyId, false);
   const adminData = useAdminData(false, companyId);
 
-  const handleLogin = (user: Employee) => {
-    const session = employeeSession(user);
-    setCurrentUser(session);
-    localStorage.setItem('tb_user', JSON.stringify(session));
-    localStorage.removeItem('tb_company');
-  };
-
   const handleLogout = () => {
     //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
     //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
     if (currentUser) void unregisterPush(currentUser.id);
     void signOut(auth);
-    setCurrentUser(null);
-    localStorage.removeItem('tb_user');
+    onSessionLogout();
     setCurrentView('orders');
   };
 
@@ -111,14 +88,6 @@ const StaffRoot: React.FC = () => {
         onOrderSubmit={(o) => addItem('orders', o)}
         onExit={() => setCurrentView('orders')}
       />
-    );
-  }
-
-  if (!authChecked) return <div className="min-h-screen bg-slate-50" />;
-
-  if (!currentUser) {
-    return (
-      <AuthPage app="staff" onLogin={handleLogin} />
     );
   }
 
@@ -137,6 +106,13 @@ const StaffRoot: React.FC = () => {
       adminData={adminData}
     />
   );
+};
+
+const StaffRoot: React.FC = () => {
+ const session=useEmployeeAuthSession();
+ if(!session.authChecked)return <div className="min-h-screen bg-slate-50"/>;
+ if(!session.currentUser)return <AuthPage app="staff" onLogin={session.onLogin}/>;
+ return <StaffSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.clearSession}/>;
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

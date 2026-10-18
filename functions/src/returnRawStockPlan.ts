@@ -35,6 +35,10 @@ export async function prepareReturnRawStock(db: admin.firestore.Firestore, tx: a
       child: byId.get(line.child_id) as Item & { type?: string } | undefined })));
   const packageKg = itemPackageKg(input.item, component !== null) || undefined;
   const unit = String(input.item.unit ?? '').toLowerCase();
+  // 포장 수량을 kg로 추정하지 않는다. 원매입 스냅샷이 없으면 실제 포장 중량이 필요하다.
+  if (input.explicitKg === undefined && unit !== 'kg' && unit !== 'l'
+    && (!packageKg || !Number.isFinite(packageKg) || packageKg <= 0))
+    throw new ReturnValidationError('원료 포장 단위의 kg 환산값이 없습니다. 품목의 포장 중량을 확인해 주세요.');
   const kg = input.explicitKg ?? receiptToKg({ quantity: Math.abs(input.quantityDelta), unit,
     density: DENSITY[target.baseName] ?? 1, packageKg });
   if (!Number.isFinite(kg) || kg <= 0) throw new ReturnValidationError('원료 반품 kg를 확인해 주세요.');

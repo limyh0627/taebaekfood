@@ -9,6 +9,7 @@ interface OrderEditModalShellProps {
   onClose: () => void;
   onSave: () => void;
   saveDisabled?: boolean;
+  saveError?: string;
   /**
    * 머리 오른쪽, 닫기 단추 왼쪽에 놓을 것 — 지금은 '로그' 단추가 여기 들어간다
    * (2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서").
@@ -24,6 +25,7 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
   onClose,
   onSave,
   saveDisabled = false,
+  saveError,
   headerAction,
   children,
 }) => (
@@ -31,12 +33,12 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
     title={title}
     subtitle={<span className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-normal"><span className="min-w-0 break-words">{partnerName} · {context}</span><span className="shrink-0">{headerAction}</span></span>}
     onClose={onClose}
-    footer={<ModalActionFooter
+    footer={<div data-order-edit-footer>{saveError && <p role="alert" className="mb-3 text-xs font-bold text-rose-600">{saveError}</p>}<ModalActionFooter
         onCancel={onClose}
         onPrimary={onSave}
         primaryLabel="변경 저장"
         primaryDisabled={saveDisabled}
-      />}
+      /></div>}
   >
     {children}
   </ModalShell>

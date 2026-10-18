@@ -12,6 +12,21 @@ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(canonical
 const patch={tradeDate:'2026-10-08',partnerId:'same',partnerName:'같은 거래처',totalSupply:100,totalTax:10,totalAmount:110,items:[{name:'상품',qty:1,price:100,supply:100,tax:10,total:110}]};
 const pending={companyId:'taebaek',statementId,status:'pending',createdAt:'2026-10-08T00:00:00Z',createdBy:'직원',proposedData:patch};
 const command=()=>({auth:{uid:'uid',token:{isAdmin:true,employeeId:'employee',companyId:'taebaek'}},data:{statementId,patch,expectedRevision:0,operationId,releaseId:runId,pendingEditRequestId:pendingId,pendingEditRequestHash:hash(pending)}});
+describe('수정 요청의 경로·달력 경계', () => {
+ it('한글 legacy ID와 유효 윤일은 요청 검사를 통과해 DB 경계에 도달한다', async () => {
+  const input = command();input.data.statementId='stmt-open-C019-매출';input.data.patch={...patch,tradeDate:'2024-02-29'};
+  const boundary={doc:()=>{throw new Error('DB 경계 도달');}} as unknown as admin.firestore.Firestore;
+  await expect(editIssuedStatement(boundary,input)).rejects.toThrow('DB 경계 도달');
+ });
+ it.each(['', '.', '..', '잘못/전표', 'a'.repeat(151)])('잘못된 전표 경로 %s는 DB 접근 전에 거절한다', async id => {
+  const input = command(); input.data.statementId = id;
+  await expect(editIssuedStatement({} as admin.firestore.Firestore, input)).rejects.toMatchObject({code:'invalid-argument'});
+ });
+ it.each(['2026-02-30','2026-13-01',' 2026-02-01','2025-02-29'])('존재하지 않는 거래일 %s는 DB 접근 전에 거절한다', async tradeDate => {
+  const input = command(); input.data.patch = {...patch, tradeDate};
+  await expect(editIssuedStatement({} as admin.firestore.Firestore, input)).rejects.toMatchObject({code:'invalid-argument'});
+ });
+});
 async function seed(){await ref('voucherMutationOperations',operationId).delete();await Promise.all([
  ref('appMeta','releaseCutover').set({status:'active',releaseId:runId,testRunId:runId}),
  ref('issuedStatements',statementId).set({companyId:'taebaek',partnerId:'same',totalSupply:200,totalTax:20,totalAmount:220,mutationRevision:0}),
@@ -20,6 +35,17 @@ async function seed(){await ref('voucherMutationOperations',operationId).delete(
 describe.skipIf(!available)('전표 수정 요청의 원자 승인',{timeout:30000},()=>{
  beforeAll(()=>{app=admin.initializeApp({projectId:'demo-edit-'+randomUUID().slice(0,8)},runId);db=admin.firestore(app);});
  afterAll(async()=>{if(!db)return;for(const [group,id]of [['issuedStatements',statementId],['pendingStatementEdits',pendingId],['voucherMutationOperations',operationId]])await ref(group,id).delete();const gate=ref('appMeta','releaseCutover');if((await gate.get()).get('testRunId')===runId)await gate.delete();await app.delete();});
+ it('한글 legacy ID와 윤년 거래일은 정상 수정하고 동일 재시도는 중복 기록하지 않는다', async () => {
+  await seed();
+  const id = `${runId}-매출`, op = `${operationId}-legacy`;
+  try {
+   await ref('issuedStatements', id).set((await ref('issuedStatements', statementId).get()).data()!);
+   const input = {auth:command().auth,data:{statementId:id,operationId:op,releaseId:runId,expectedRevision:0,patch:{tradeDate:'2024-02-29',memo:'한글 전표 수정'}}};
+   expect((await editIssuedStatement(db,input)).status).toBe('applied');
+   expect((await editIssuedStatement(db,input)).status).toBe('duplicate');
+   expect((await ref('issuedStatements',id).get()).data()).toMatchObject({tradeDate:'2024-02-29',mutationRevision:1});
+  } finally { await Promise.all([ref('issuedStatements',id).delete(),ref('voucherMutationOperations',op).delete()]); }
+ });
  it('동시 승인과 동일 재시도는 전표·요청을 한 번만 바꾼다',async()=>{await seed();const results=await Promise.all([editIssuedStatement(db,command()),editIssuedStatement(db,command())]);expect(results.map(r=>r.status).sort()).toEqual(['applied','duplicate']);expect((await ref('issuedStatements',statementId).get()).data()).toMatchObject({...patch,mutationRevision:1});expect((await ref('pendingStatementEdits',pendingId).get()).data()).toMatchObject({status:'approved',approvalOperationId:operationId,approvedBy:'employee'});const before=await ref('issuedStatements',statementId).get();expect((await editIssuedStatement(db,command())).status).toBe('duplicate');expect((await ref('issuedStatements',statementId).get()).updateTime?.isEqual(before.updateTime!)).toBe(true);});
  it('원문 요청 변경·다른 회사·revision 충돌은 두 원문을 보존한다',async()=>{for(const mode of ['changed','foreign','revision']){await seed();if(mode==='changed')await ref('pendingStatementEdits',pendingId).update({createdAt:'2026-10-09T00:00:00Z'});if(mode==='foreign')await ref('pendingStatementEdits',pendingId).update({companyId:'punghoe'});if(mode==='revision')await ref('issuedStatements',statementId).update({mutationRevision:1});const before=await Promise.all([ref('issuedStatements',statementId).get(),ref('pendingStatementEdits',pendingId).get()]);await expect(editIssuedStatement(db,command())).rejects.toThrow();const after=await Promise.all([ref('issuedStatements',statementId).get(),ref('pendingStatementEdits',pendingId).get()]);after.forEach((snap,i)=>expect(snap.updateTime?.isEqual(before[i].updateTime!)).toBe(true));expect((await ref('voucherMutationOperations',operationId).get()).exists).toBe(false);}});
  it('서버 합계 검증 실패 또는 변경 patch는 승인 상태를 남기지 않는다',async()=>{await seed();const bad={...patch,totalAmount:90};await ref('pendingStatementEdits',pendingId).update({proposedData:bad});const input=command();input.data.patch=bad;input.data.pendingEditRequestHash=hash({...pending,proposedData:bad});await expect(editIssuedStatement(db,input)).rejects.toThrow('합계');expect((await ref('pendingStatementEdits',pendingId).get()).get('status')).toBe('pending');expect((await ref('issuedStatements',statementId).get()).get('mutationRevision')).toBe(0);await seed();const forged=command();forged.data.patch={...patch,partnerName:'바꾼 표시'};await expect(editIssuedStatement(db,forged)).rejects.toThrow('변경');});
