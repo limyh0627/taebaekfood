@@ -1,9 +1,11 @@
+import {usePartnerItemTermsEditor} from '../src/features/items/hooks/usePartnerItemTermsEditor';
+import type {PartnerItemTermsBindings,PartnerItemTermsTarget} from '../src/features/items/infrastructure/partnerItemTermsWrites';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { ItemMergeDialog } from '../src/features/items/ui/ItemMergeDialog';
 import { ItemCostCalculator } from '../src/features/items/ui/ItemCostCalculator';
 import ActionButton from '../src/shared/components/ActionButton';
 import {PartnerItemCleanupDialog} from '../src/features/items/ui/PartnerItemCleanupDialog';
-import {ServiceTerms} from '../src/features/items/ui/ServiceTerms';
+import {ServiceTerms,PartnerItemTermsRecovery} from '../src/features/items/ui/ServiceTerms';
 export {ServiceTerms} from '../src/features/items/ui/ServiceTerms';
 
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -35,7 +37,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 import PurchaseUnitManagerModal from '../src/features/items/PurchaseUnitManagerModal';
 import { isRawPurchaseItem } from '../functions/src/shared/purchaseCost';
 
-interface ItemManagerProps {
+interface ItemManagerProps extends PartnerItemTermsBindings {
   companyId: CompanyId;
   orderUnitInputs?: OrderUnitInputs;
   items: Item[];
@@ -53,8 +55,6 @@ interface ItemManagerProps {
   onUnlinkSupplier?: (_productId: string, _supplierId: string) => void;
   onMergeItems?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
-  onUpsertPartnerItem?: (_ps: PartnerItem) => void | Promise<void>;
-  onSaveServiceTerms?: (_ps: PartnerItem) => Promise<void>;
   /** 낱개 → 박스 품목 생성. 품목과 item_bom(낱개×개입수 + 겉박스·테이프)을 함께 만든다. */
   onCreateBoxItem?: (_unit: Item, _opts: { name: string; count: number; components: { id: string; qty: number }[] }) => Promise<void>;
   /**
@@ -137,7 +137,9 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveServiceTerms, onCreateBoxItem, onCalcCost, costOf, onPartnerItemCleanupChanged, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms, onCreateBoxItem, onCalcCost, costOf, onPartnerItemCleanupChanged, isAdmin = true }) => {
+  const termsEditor=usePartnerItemTermsEditor({scopeKey:(companyId??'taebaek')+':'+(requestScopeKey??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms});
+
   const readBom = (id: string) => orderUnitInputs ? orderUnitInputs.bom.of(id) : bomOf(id);
   const shownCostOf = (item: Item): number | undefined => {
     const rolled = costOf?.(item);
@@ -323,7 +325,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
   const [partnerScopeTab, setPartnerScopeTab] = useState<'sales' | 'purchase'>('sales');
-  const [salesPriceEdits, setSalesPriceEdits] = useState<Record<string, string>>({});
   // 카드에서 고른 변형(낱개/N개입) — 낱개 id → 보여줄 품목 id
   const [variantPick, setVariantPick] = useState<Record<string, string>>({});
 
@@ -955,19 +956,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                           {isAdmin && item.type !== 'service' && partnerScopeTab === 'sales' && (() => {
                             const psOut = partnerOut.find(ps => ps.itemId === item.id && ps.partnerId === selectedClientId);
                             const curPrice = psOut?.price;
-                            const editKey = `${item.id}_${selectedClientId}`;
-                            const editVal = salesPriceEdits[editKey];
-                            const savePrice = () => {
-                              if (editVal === undefined || !onUpsertPartnerItem) return;
-                              const num = editVal === '' ? 0 : Number(editVal);
-                              if (isNaN(num)) return;
-                              onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, itemId: item.id, partnerId: selectedClientId, Direction: 'out', price: num } as PartnerItem);
-                              setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
-                            };
-                            const cancelEdit = () => setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
+                            const target:PartnerItemTermsTarget={itemId:item.id,partnerId:selectedClientId,direction:'out',...(psOut?.id?{existingLinkId:psOut.id}:{}),opening:psOut??null};
+                            const editKey=termsEditor.keyFor(target);
+                            const editVal=termsEditor.draftFor(editKey)?.price;
+                            const savePrice=()=>void termsEditor.submit(editKey);
+                            const cancelEdit=()=>termsEditor.cancelEdit(editKey);
                             return editVal === undefined ? (
                               <button
-                                onClick={e => { e.stopPropagation(); setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') })); }}
+                                onClick={e => { e.stopPropagation(); termsEditor.open(target); }}
                                 className="flex items-center gap-1 text-[11px] font-black px-1.5 py-0.5 rounded-md hover:bg-indigo-50 transition-all whitespace-nowrap"
                                 title="판매단가 수정">
                                 {/*  **원가 › 공급가 › 판매단가** 차례로 둔다(2026-09-06 사장님).
@@ -1006,13 +1002,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                             ) : (
                               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                                 <input
-                                  type="number" min={0} autoFocus value={editVal} placeholder="단가"
-                                  onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
+                                  type="number" min={0} autoFocus disabled={termsEditor.locked(editKey)} value={editVal} placeholder="단가"
+                                  onChange={e => termsEditor.change(editKey,'price',e.target.value)}
                                   onKeyDown={e => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') cancelEdit(); }}
                                   className="w-16 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
                                 />
-                                <button onClick={savePrice} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shrink-0" title="저장"><Save size={12} /></button>
-                                <button onClick={cancelEdit} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 shrink-0" title="취소"><X size={12} /></button>
+                                <button onClick={savePrice} disabled={termsEditor.locked(editKey)} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shrink-0" title="저장"><Save size={12} /></button>
+                                {termsEditor.outcomes[editKey]?.requiresReopen ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 shrink-0" title="취소"><X size={12} /></button>}
                               </div>
                             );
                           })()}
@@ -1028,12 +1024,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                           >해제</button>
                         )}
                       </div>
-                      {item.type === 'service' && isAdmin && onSaveServiceTerms && (
-                        <ServiceTerms key={`${item.id}_${selectedClientId}_${partnerScopeTab}`}
+                      {item.type === 'service' && isAdmin && onSavePartnerItemTerms && (
+                        <ServiceTerms key={`${companyId}_${requestScopeKey??''}_${item.id}_${selectedClientId}_${partnerScopeTab}`}
                           item={item} partnerId={selectedClientId}
                           direction={partnerScopeTab === 'sales' ? 'out' : 'in'}
                           value={(partnerScopeTab === 'sales' ? partnerOut : partnerIn).find(ps => ps.itemId === item.id && ps.partnerId === selectedClientId)}
-                          accountCodes={accountCodes} accountGroups={accountGroups} onSave={onSaveServiceTerms} />
+                          accountCodes={accountCodes} accountGroups={accountGroups} editor={termsEditor} />
                       )}
                     </ProductCard>
                   );
@@ -1198,16 +1194,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     {(isAdmin && mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
                       const psOut = partnerOut.find(ps => (ps.itemId) === item.id && (ps.partnerId) === selectedClientId);
                       const curPrice = psOut?.price ?? psOut?.price;
-                      const editKey = `${item.id}_${selectedClientId}`;
-                      const editVal = salesPriceEdits[editKey];
-                      const savePrice = () => {
-                        if (editVal === undefined || !onUpsertPartnerItem) return;
-                        const num = editVal === '' ? 0 : Number(editVal);
-                        if (isNaN(num)) return;
-                        onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, itemId: item.id, partnerId: selectedClientId, Direction: 'out', price: num } as PartnerItem);
-                        setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
-                      };
-                      const cancelEdit = () => setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
+                      const target:PartnerItemTermsTarget={itemId:item.id,partnerId:selectedClientId,direction:'out',...(psOut?.id?{existingLinkId:psOut.id}:{}),opening:psOut??null};
+                            const editKey=termsEditor.keyFor(target);
+                            const editVal=termsEditor.draftFor(editKey)?.price;
+                            const savePrice=()=>void termsEditor.submit(editKey);
+                            const cancelEdit=()=>termsEditor.cancelEdit(editKey);
                       return (
                         <td className="px-2 py-3 text-right">
                           {editVal === undefined ? (
@@ -1217,7 +1208,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                                   {curPrice != null ? `${Number(curPrice).toLocaleString()}원` : '미설정'}
                                 </span>
                                 <button
-                                  onClick={() => setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') }))}
+                                  onClick={() => termsEditor.open(target)}
                                   className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shrink-0"
                                   title="판매단가 수정">
                                   <Edit size={13} />
@@ -1238,18 +1229,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                                 type="number"
                                 min={0}
                                 autoFocus
-                                value={editVal}
-                                onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
+                                disabled={termsEditor.locked(editKey)} value={editVal}
+                                onChange={e => termsEditor.change(editKey,'price',e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') cancelEdit(); }}
                                 placeholder="단가"
                                 className="w-16 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
                               />
-                              <button onClick={savePrice} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-all shrink-0" title="저장">
+                              <button onClick={savePrice} disabled={termsEditor.locked(editKey)} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-all shrink-0" title="저장">
                                 <Save size={12} />
                               </button>
-                              <button onClick={cancelEdit} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 transition-all shrink-0" title="취소">
-                                <X size={12} />
-                              </button>
+                              {termsEditor.outcomes[editKey]?.requiresReopen ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 transition-all shrink-0" title="취소"><X size={12} /></button>}
                             </div>
                           )}
                         </td>
@@ -1327,6 +1316,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
 
   return (
     <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+      <PartnerItemTermsRecovery editor={termsEditor}/>
       <PageHeader
         title="품목 정보 관리"
         subtitle="거래처를 선택하거나 전체 품목을 조회하세요."

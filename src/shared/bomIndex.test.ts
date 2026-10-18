@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildBomIndex, setBomIndex, bomOf, bomParentsOf, resetBomIndex } from './bomIndex';
 import type { Item } from './types';
+import {buildBomIndex as sharedBuildBomIndex} from '../../functions/src/shared/bomIndex';
 
 /**
  * BOM 단일원천 — 구성은 item_bom에서만 읽는다.
@@ -18,6 +19,11 @@ const 박스20 = it_({ id: 'box20', name: '볶음참깨/1kg (20개입)', type: '
 
 const bom = (parent: string, child: string, quantity?: number) =>
   ({ parent_id: parent, child_id: child, quantity } as { parent_id: string; child_id: string; quantity?: number });
+it('클라이언트는 서버와 같은 BOM 정본이며 null·누락은 1, 명시 0과 숫자 원값은 보존한다',()=>{
+ expect(buildBomIndex).toBe(sharedBuildBomIndex);
+ const index=buildBomIndex([박스10,낱개], [undefined,null,0,2.5].map(quantity=>({parent_id:'box10',child_id:'loose',quantity})) as {parent_id:string;child_id:string;quantity?:number}[]);
+ expect(index.of('box10').map(line=>line.qty)).toEqual([1,1,0,2.5]);expect(index.parentsOf('loose').map(line=>line.qty)).toEqual([1,1,0,2.5]);expect(index.of('box10')[0].child).toBe(낱개);
+});
 
 beforeEach(() => {
   setBomIndex(buildBomIndex([벌크, 낱개, 비닐, 박스10, 박스20], [

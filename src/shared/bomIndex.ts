@@ -1,4 +1,7 @@
 import type { Item } from './types';
+import * as sharedBomIndex from '../../functions/src/shared/bomIndex';
+const implementation=Reflect.get(sharedBomIndex,'default')??sharedBomIndex;
+export const buildBomIndex:(items:Item[],itemBoms:{parent_id:string;child_id:string;quantity?:number}[])=>BomIndex=implementation.buildBomIndex;
 
 /**
  * BOM 단일 원천 = `item_bom` 컬렉션. **품목은 제 구성을 안 들고 다닌다.**
@@ -53,31 +56,6 @@ export interface BomIndex {
 }
 
 const EMPTY: BomIndex = { of: () => [], parentsOf: () => [] };
-
-const push = <T>(m: Map<string, T[]>, k: string, v: T) => {
-  const arr = m.get(k);
-  if (arr) arr.push(v); else m.set(k, [v]);
-};
-
-export function buildBomIndex(
-  items: Item[],
-  //  quantity가 빈 옛 줄이 있어 선택으로 받는다 — 없으면 1로 본다.
-  itemBoms: { parent_id: string; child_id: string; quantity?: number }[],
-): BomIndex {
-  const byId = new Map(items.map(i => [i.id, i]));
-  const children = new Map<string, BomLine[]>();
-  const parents = new Map<string, BomParentLine[]>();
-  for (const b of itemBoms) {
-    if (!b?.parent_id || !b?.child_id) continue;
-    const qty = typeof b.quantity === 'number' ? b.quantity : 1;
-    push(children, b.parent_id, { childId: b.child_id, qty, child: byId.get(b.child_id) });
-    push(parents, b.child_id, { parentId: b.parent_id, qty, parent: byId.get(b.parent_id) });
-  }
-  return {
-    of: (parentId) => children.get(parentId) ?? [],
-    parentsOf: (childId) => parents.get(childId) ?? [],
-  };
-}
 
 /**
  * 앱이 지금 보고 있는 BOM.

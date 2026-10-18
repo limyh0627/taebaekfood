@@ -1,3 +1,5 @@
+import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
+import type {PartnerItemTermsReference} from '../../shared/partnerItemTermsCommand';
 import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
 import type {EmployeeEditReference} from '../../shared/employeeEditCommand';
 import type {ItemEditorProgress,ItemEditorSaveResult} from '../items/application/itemEditorSave';
@@ -412,58 +414,27 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const partnerIn = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
   const partnerOut   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
 
-  // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
-  // 실패하면 throw한다 — 호출부(단가관리 저장 등)가 "저장됨"을 거짓으로 표시하지 않도록.
-  const handleUpsertPartnerItem = async (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out',isCurrent:()=>boolean=()=>true) => {
-    if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
-    // partner_item은 itemId/partnerId/price/Direction/Account_Code/taxType만 저장한다.
-    const { id, itemId, partnerId, price, Direction, Account_Code, taxType } = ps;
-    const dir = Direction ?? defaultDir;
-    if (!itemId || !partnerId) throw new Error('품목/거래처 정보가 없어 저장할 수 없습니다.');
-    // id가 비어 있으면 결정적 id로 만든다 — 없으면 addDoc이 매번 새 문서를 만들어 중복이 쌓인다.
-    const docId = id || `${itemId}_${partnerId}_${dir}`;
-    const docData = { id: docId, itemId, partnerId, Direction: dir,
-      ...(price !== undefined ? { price } : {}),
-      ...(Account_Code !== undefined ? { Account_Code } : {}),
-      //  **`null` 은 칸을 지운다** — 정한 적 없는 상태로 되돌리는 길(2026-09-14).
-      //  빈 글자를 넣어 두면 나중에 `''`·`null`·없음 셋을 다 따져야 한다.
-      ...(taxType === null ? { taxType: deleteField() } : taxType !== undefined ? { taxType } : {}) } as PartnerItem;
-    // merge 저장 — setDoc(덮어쓰기)이면 박스/테이프/포장 등 여기서 안 다루는 필드가 통째로 지워진다.
-    const { id: _omit, ...fields } = docData;
-    if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
-    await setDocument('partner_item', docId, fields);
-    if(!isCurrent())throw Error('거래처 연결 저장 뒤 회사 또는 작성창이 바뀌었습니다.');
-    //  화면에는 지움 표식(sentinel)이 아니라 **없음**으로 넣는다 — 그대로 두면 객체가 들어간다.
-    const 화면용 = { ...docData, ...(taxType === null ? { taxType: undefined } : {}) } as PartnerItem;
-    setPartnerItems(prev => {
-      const idx = prev.findIndex(p => p.id && p.id === 화면용.id);
-      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...화면용 }; return n; }
-      return [...prev, 화면용];
-    });
-    // 박스 품목을 등록하면 낱개도 함께 — "낱개 없이 박스만 물리는" 경우 방지.
-    //   낱개가 이 거래처(같은 방향)에 없으면 알림 띄우고 낱개 partner_item까지 자동 추가.
-    const boxItem = allItems.find(i => i.id === itemId);
-    const uc = boxItem ? unpackComponent(boxItem, appData.orderUnitInputs) : null;
-    if (uc && !partnerItems.some(pi => pi.itemId === uc.itemId && pi.partnerId === partnerId && (pi.Direction ?? 'out') === dir)) {
-      const looseItem = allItems.find(i => i.id === uc.itemId);
-      const loosePrice = (typeof price === 'number' && price > 0) ? Math.round(price / uc.count) : undefined;
-      await awaitNotice(`"${boxItem?.name}"은(는) 박스 품목입니다.\n낱개 품목 "${looseItem?.name ?? uc.itemId}"이(가) 이 거래처에 없어 함께 등록합니다.`);
-      if(!isCurrent())throw Error('회사 또는 품목 작성창이 바뀌었습니다.');
-      await handleUpsertPartnerItem({
-        id: `${uc.itemId}_${partnerId}_${dir}`, itemId: uc.itemId, partnerId, Direction: dir,
-        ...(loosePrice !== undefined ? { price: loosePrice } : {}),
-        ...(Account_Code !== undefined ? { Account_Code } : {}),
-        ...(taxType !== undefined ? { taxType } : {}),
-      } as PartnerItem, dir,isCurrent);
+  const termsActor=auth.currentUser?.uid;
+  const termsScope=useRef({companyId,actorUid:termsActor});
+  if(termsScope.current.companyId!==companyId||termsScope.current.actorUid!==termsActor)termsScope.current={companyId,actorUid:termsActor};
+  const termsRenderScope=termsScope.current;
+  const termsAlive=useRef(true);
+  useEffect(()=>{termsAlive.current=true;return()=>{termsAlive.current=false;};},[]);
+  const isCurrentPartnerTerms=()=>termsAlive.current&&!!termsActor&&auth.currentUser?.uid===termsActor&&termsScope.current===termsRenderScope;
+  const runPartnerItemTerms=async(work:(scope:{companyId:CompanyId;actorUid:string})=>Promise<PartnerItemTermsOutcome>):Promise<PartnerItemTermsOutcome>=>{
+    if(!isCurrentPartnerTerms()||!termsActor)return {status:'rejected',message:'회사 또는 로그인 정보가 바뀌어 거래조건 저장을 전송하지 않았습니다.',nextAction:'현재 회사에서 품목을 다시 열어 주세요.'};
+    const result=await work({companyId,actorUid:termsActor});
+    if(result.status==='saved'&&isCurrentPartnerTerms()){
+      try{await refreshStaticData();}catch{if(isCurrentPartnerTerms())setAppNotice({message:'거래조건은 저장됐지만 화면을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 새로고침해 주세요.'});}
     }
+    return result;
   };
-
-  // 결과를 기다리지 않는 호출부용 래퍼 — 실패를 조용히 삼키지 말고 알린다.
-  const upsertPartnerItemSafe = (ps: PartnerItem, dir: 'in' | 'out' = 'out') =>
-    handleUpsertPartnerItem(ps, dir).catch((e: any) => {
-      console.error('거래처 품목 저장 실패:', e);
-      alert('거래처 품목 저장 실패: ' + (e?.message ?? String(e)));
-    });
+  const savePartnerItemTerms=(input:PartnerItemTermsInput)=>runPartnerItemTerms(scope=>submitPartnerItemTerms(scope,input,awaitNotice,isCurrentPartnerTerms));
+  const inspectPartnerTerms=(reference:PartnerItemTermsReference)=>runPartnerItemTerms(scope=>inspectPartnerItemTerms(scope,reference,isCurrentPartnerTerms));
+  const cancelPartnerTerms=(reference:PartnerItemTermsReference)=>runPartnerItemTerms(scope=>cancelPartnerItemTerms(scope,reference,isCurrentPartnerTerms));
+  const readPendingPartnerTerms=()=>isCurrentPartnerTerms()&&termsActor?pendingPartnerItemTerms({companyId,actorUid:termsActor}):[];
+  const readPartnerTermsReferences=()=>isCurrentPartnerTerms()&&termsActor?partnerItemTermsReferences({companyId,actorUid:termsActor}):[];
+  const partnerTermsBindings={requestScopeKey:termsActor??'',onSavePartnerItemTerms:savePartnerItemTerms,onReadPendingPartnerItemTerms:readPendingPartnerTerms,onReadPartnerItemTermsReferences:readPartnerTermsReferences,onInspectPartnerItemTerms:inspectPartnerTerms,onCancelPartnerItemTerms:cancelPartnerTerms};
 
   // partners 컬렉션
 
@@ -4294,7 +4265,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}
               issuedStatements={issuedStatements}
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
-              onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
+              {...partnerTermsBindings}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               companyId={companyId}
               onAddIssuedStatement={(stmt) => issueNumberedStatement({ ...stmt, companyId, createdBy: stmt.createdBy ?? currentUser?.name })}
@@ -4786,8 +4757,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   onMergeItems={async () => { await refreshStaticData(); }}
                   itemBoms={itemBoms}
-                  onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
-                  onSaveServiceTerms={(ps) => handleUpsertPartnerItem(ps, ps.Direction === 'in' ? 'in' : 'out')}
+                  {...partnerTermsBindings}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');

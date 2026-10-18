@@ -925,6 +925,17 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  let isolated:RulesTestEnvironment;
  beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
  afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ it('거래조건 영수증은 서버 전용이고 기존 같은 회사 직원 연결 쓰기 권한은 유지한다',async()=>{
+  const staff=isolated.authenticatedContext('terms-staff',{employeeId:'terms-staff',companyId:'taebaek',isAdmin:false}).firestore();
+  const manager=isolated.authenticatedContext('terms-manager',{employeeId:'terms-manager',companyId:'taebaek',isAdmin:true}).firestore();
+  const foreign=isolated.authenticatedContext('terms-foreign',{employeeId:'terms-foreign',companyId:'punghoe',isAdmin:true}).firestore();
+  const paths=[['partnerItemTermsOperations','terms-proof'],['partner_item','terms-link'],['employees','terms-staff'],['items','terms-item'],['partners','terms-partner']];
+  await isolated.withSecurityRulesDisabled(async context=>{const store=context.firestore();await setDoc(doc(store,'partnerItemTermsOperations','terms-proof'),{companyId:'taebaek',status:'applied'});await setDoc(doc(store,'employees','terms-staff'),{companyId:'taebaek',name:'직원'});await setDoc(doc(store,'items','terms-item'),{companyId:'taebaek',name:'품목'});await setDoc(doc(store,'partners','terms-partner'),{companyId:'taebaek',name:'거래처'});});
+  try{
+   for(const store of [staff,manager,foreign,isolated.unauthenticatedContext().firestore()]){const proof=doc(store,'partnerItemTermsOperations','terms-proof');await assertFails(getDoc(proof));await assertFails(getDocs(collection(store,'partnerItemTermsOperations')));await assertFails(setDoc(proof,{companyId:'taebaek'}));await assertFails(updateDoc(proof,{status:'cancelled'}));await assertFails(deleteDoc(proof));await assertFails(setDoc(doc(store,'partnerItemTermsOperations','terms-proof','nested','bypass'),{companyId:'taebaek'}));}
+   await assertSucceeds(setDoc(doc(staff,'partner_item','terms-link'),{companyId:'taebaek',itemId:'terms-item',partnerId:'terms-partner',Direction:'out',price:0,packing:{keep:true}}));await assertSucceeds(updateDoc(doc(staff,'partner_item','terms-link'),{price:12}));await assertFails(updateDoc(doc(foreign,'partner_item','terms-link'),{price:99}));
+  }finally{await isolated.withSecurityRulesDisabled(async context=>{for(const [collection,id] of paths)await deleteDoc(doc(context.firestore(),collection,id));});}
+ });
  it('직원 편집 영수증만 서버 전용으로 보호하고 기존 직원 관리자·본인 FCM 경로는 유지한다',async()=>{
   const adminStore=isolated.authenticatedContext('employee-rule-admin',{employeeId:'employee-rule-admin',companyId:'taebaek',isAdmin:true}).firestore();
   const staff=isolated.authenticatedContext('employee-rule-staff',{employeeId:'employee-rule-staff',companyId:'taebaek',isAdmin:false}).firestore();

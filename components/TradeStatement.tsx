@@ -1,3 +1,8 @@
+import {termsFromOpening} from '../src/shared/partnerItemTermsCommand';
+import {usePartnerItemTermsEditor} from '../src/features/items/hooks/usePartnerItemTermsEditor';
+import {PartnerItemTermsRecovery} from '../src/features/items/ui/ServiceTerms';
+import type {PartnerItemTermsBindings,PartnerItemTerms,PartnerItemTermsOutcome} from '../src/features/items/infrastructure/partnerItemTermsWrites';
+import {saveOutcomeMessage} from '../src/shared/saveOutcome';
 import { invalidPurchaseUnitRow, defaultManualPurchaseUnitRowFields } from '../src/shared/purchaseUnitRow';
 import { formatQuantity } from '../src/shared/quantityDisplay';
 import { readPurchaseUnitSnapshot } from '../src/shared/purchaseUnit';
@@ -102,7 +107,7 @@ import ActionButton from '../src/shared/components/ActionButton';
 import { completeTradeStatementRequest, recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
-interface TradeStatementProps {
+interface TradeStatementProps extends PartnerItemTermsBindings {
   orderUnitInputs?: OrderUnitInputs;
   returnOperations?: readonly ReadonlyReturnOperation[];
   advanceStatements?: readonly IssuedStatement[];
@@ -140,7 +145,6 @@ interface TradeStatementProps {
   embedded?: boolean;   // 상위(전표 탭)가 헤더·탭을 그림 → 여기선 헤더 생략, 내용만
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
-  onUpsertPartnerItem?: (ps: PartnerItem) => void | Promise<void>;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void | Promise<unknown>;
   /**
    * **전표 한 장을 한 덩이로 저장한다**(설계 §2, 3단계).
@@ -250,7 +254,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
   voucherMode = 'full',
-  issuedStatements, onUpdateStatus, onUpsertPartnerItem,
+  issuedStatements, onUpdateStatus, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,
   onAddIssuedStatement,
   onApplyStatement,
   onUpdateIssuedStatement,
@@ -301,6 +305,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [pickerTaxEdits, setPickerTaxEdits] = useState<Record<string, '과세' | '면세' | null>>({});
   // 연결 저장 직후 구독이 도착하기 전에도 같은 전표에서 다시 묻지 않는다.
   const [confirmedLinkIds, setConfirmedLinkIds] = useState<Set<string>>(() => new Set());
+  const [linkSaveSummary,setLinkSaveSummary]=useState<{confirmed:string[];unconfirmed:string|null}>({confirmed:[],unconfirmed:null});
   const {
     createMode, setCreateMode, selectedClientId, setSelectedClientId, selectedOrderIds, setSelectedOrderIds,
     partnerSearch, setPartnerSearch, onlyActive, setOnlyActive, activeVisible, setActiveVisible,
@@ -440,6 +445,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   recoverySelectionRef.current=recoverySelection;
   const [issuePendingError,setIssuePendingError]=useState('');
   const issueActor=auth.currentUser?.uid;
+  const termsEditor=usePartnerItemTermsEditor({scopeKey:companyId+':'+(requestScopeKey??issueActor??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms});
+  const savePartnerTermsRow=async(pc:PartnerItem,terms:PartnerItemTerms,opening:PartnerItem|null=pc):Promise<PartnerItemTermsOutcome>=>{
+    if(!pc.itemId||!pc.partnerId)return {status:'rejected',message:'품목 또는 거래처 번호가 없어 저장하지 않았습니다.'};
+    const target={itemId:pc.itemId,partnerId:pc.partnerId,direction:pc.Direction??(createMode==='매입'?'in' as const:'out' as const),...(opening?.id?{existingLinkId:opening.id}:{}),opening};
+    const key=termsEditor.keyFor(target);
+    const original=termsEditor.sessionFor(key)?.target??target;
+    return termsEditor.saveRow({target:original,terms:termsFromOpening(original.opening,terms)});
+  };
+
   const excelScope = useRef<{ companyId: string; uid: string | undefined; controller: AbortController } | null>(null);
   useEffect(() => {
     const controller = new AbortController(), uid = auth.currentUser?.uid;
@@ -1100,6 +1114,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 기존 전표 수정 ──
   const [editingStmt, setEditingStmt] = useState<IssuedStatement | null>(null);
+  const termsComposerKey=JSON.stringify([companyId,issueActor,selectedClientId,createMode,editingStmt?.id]);
+  const termsComposerRef=useRef({key:termsComposerKey,token:{}});
+  if(termsComposerRef.current.key!==termsComposerKey)termsComposerRef.current={key:termsComposerKey,token:{}};
+
   const deleteViewKey = `${companyId}:${detailStmt?.id ?? ''}:${editingStmt?.id ?? ''}:${createMode ?? ''}`;
   const deleteViewRef = useRef({ key: deleteViewKey, companyId, alive: true, token: {} });
   if (deleteViewRef.current.key !== deleteViewKey)
@@ -1476,7 +1494,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
   const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false) => {
-    if (!onUpsertPartnerItem) return;
+    if (!onSavePartnerItemTerms) throw Error('거래조건 저장 기능이 연결되지 않았습니다.');
     /*
      * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
      * 거래처 단가는 "지금 파는 값"이라, 6월 전표의 오타를 고쳤다고 오늘 값이 6월로
@@ -1488,9 +1506,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
       isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
     });
-    for (const u of upserts) await onUpsertPartnerItem(u);
-    for (const c of costUpdates) await onUpdateItemCost?.(c.itemId, c.price);
-  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
+    const completed:string[]=[];
+    for(const u of upserts){
+      const opening=[...partnerOut,...partnerIn].find(row=>row.id===u.id)??null;
+      const result=await savePartnerTermsRow(u,{...(u.price!==undefined?{price:u.price}:{}),...(u.taxType!==undefined?{taxType:u.taxType}:{}),...(u.Account_Code!==undefined?{Account_Code:u.Account_Code}:{})},opening);
+      if(result.status!=='saved')throw Error((completed.length?'저장이 확인된 품목: '+completed.join(', ')+'\n':'')+saveOutcomeMessage(result));
+      if(u.itemId)completed.push(u.itemId);
+    }
+    for(const c of costUpdates){
+      if(auth.currentUser?.uid!==issueActor||cashEditScope.current.companyId!==companyId)throw Error('회사 또는 계정이 바뀌어 원가 후속 저장을 중단했습니다.');
+      if(!onUpdateItemCost)throw Error('거래조건은 저장됐지만 원가 저장 기능이 연결되지 않았습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');
+      try{await onUpdateItemCost(c.itemId,c.price);}catch{throw Error('거래조건은 저장됐지만 품목 '+c.itemId+' 원가 반영을 확인하지 못했습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');}
+    }
+  }, [onSavePartnerItemTerms, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
@@ -1585,7 +1613,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         await applyPriceSync(stmtType, skipLinkIds, true);
       } catch (error) {
         console.error('전표 발행 후 거래처 단가 동기화 실패', error);
-        alert(`전표 ${typeof 결과 === 'string' ? stmt.docNo : 결과.docNo} 발행은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 발행하지 말고 단가를 확인해 주세요.`);
+        alert(`전표 ${typeof 결과 === 'string' ? stmt.docNo : 결과.docNo} 발행은 완료됐지만 거래조건 후속 처리를 확인하지 못했습니다. ${error instanceof Error?error.message:String(error)} 전표를 다시 발행하지 말고 거래조건 결과를 확인해 주세요.`);
       }
     }
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
@@ -1611,7 +1639,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       return proceed ? new Set([...noLinkIds, ...unlinked.map(line => line.itemId!)]) : null;
     }
     const link = await appConfirm(`${selectedClient?.name ?? '이 거래처'}에 연결되지 않은 품목입니다.\n\n${names}\n\n거래처에 연결할까요?\n\n예 = 거래처 품목으로 등록\n아니요 = 이번 전표에만 사용`);
-    if (link && !onUpsertPartnerItem) {
+    if (link && !onSavePartnerItemTerms) {
       alert('거래처 품목 연결 기능이 없어 전표를 저장할 수 없습니다.');
       return null;
     }
@@ -1879,7 +1907,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         await applyPriceSync(editingStmt.type, skipLinkIds);
       } catch (error) {
         console.error('전표 수정 후 거래처 단가 동기화 실패', error);
-        alert(`전표 ${editingStmt.docNo} 수정은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 수정하지 말고 단가를 확인해 주세요.`);
+        alert(`전표 ${editingStmt.docNo} 수정은 완료됐지만 거래조건 후속 처리를 확인하지 못했습니다. ${error instanceof Error?error.message:String(error)} 전표를 다시 수정하지 말고 거래조건 결과를 확인해 주세요.`);
       }
       saveBusyRef.current = false;
       closeCreate();
@@ -2025,7 +2053,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }), [pickerRows, pickerTaxEdits]);
 
   //  거래처를 바꾸면 '이번만 쓰기'도 없던 일이 된다 — 다른 거래처 얘기다
-  useEffect(() => { setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setPickerTaxEdits({}); }, [selectedClientId]);
+  useEffect(() => { setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setLinkSaveSummary({confirmed:[],unconfirmed:null}); setPickerTaxEdits({}); }, [selectedClientId]);
 
   //  거래처에 이미 붙어 있는 품목 — 피커에서 "연결할까요?"를 물을지 가르는 기준
   const linkedItemIds = useMemo(
@@ -2036,12 +2064,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 단가 저장 (매출: price, 매입: price)
   // 저장은 비동기다 — 성공/실패를 화면에 표시하지 않으면 "눌러도 아무 일도 안 난다"로 보인다.
   const savePcPrice = async (pc: PartnerItem) => {
+    const composerToken=termsComposerRef.current.token;
     const raw = (pricePanelEdits[pc.id] ?? (pc.price !== undefined ? String(pc.price) : '')).trim();
     const val = Number(raw.replace(/[,\s원]/g, ''));   // "12,000" · "12000원" 도 허용
     if (!raw || !Number.isFinite(val) || val < 0) { alert('단가를 숫자로 입력하세요.'); return; }
     setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
     try {
-      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), price: val });
+      const outcome=await savePartnerTermsRow(pc,{price:val});
+      if(termsComposerRef.current.token!==composerToken)return;
+      if(outcome.status!=='saved'){setPriceSaveState(state=>({...state,[pc.id]:'error'}));return;}
+      termsEditor.cancelEdit(termsEditor.keyFor({itemId:pc.itemId!,partnerId:pc.partnerId!,direction:pc.Direction??(createMode==='매입'?'in':'out')}));
       setPricePanelEdits(prev => ({ ...prev, [pc.id]: String(val) }));
       setPriceSaveState(s => ({ ...s, [pc.id]: 'done' }));
       setTimeout(() => setPriceSaveState(s => { const n = { ...s }; if (n[pc.id] === 'done') delete n[pc.id]; return n; }), 1500);
@@ -2053,6 +2085,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // 연결된 품목만 즉시 저장한다. 미연결 품목을 여기서 저장하면 연결 확인을 건너뛴다.
   const setPcTax = async (pc: PartnerItem, taxType: '과세' | '면세' | null) => {
+    const composerToken=termsComposerRef.current.token;
     if (!pc.itemId) return;
     if (!linkedItemIds.has(pc.itemId)) {
       setPickerTaxEdits(prev => ({ ...prev, [pc.itemId!]: taxType }));
@@ -2060,7 +2093,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
     try {
-      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType });
+      const outcome=await savePartnerTermsRow(pc,{taxType});
+      if(termsComposerRef.current.token!==composerToken)return;
+      if(outcome.status!=='saved'){setPriceSaveState(state=>({...state,[pc.id]:'error'}));return;}
       setPickerTaxEdits(prev => ({ ...prev, [pc.itemId!]: taxType }));
       setPriceSaveState(s => { const n = { ...s }; delete n[pc.id]; return n; });
     } catch (e: any) {
@@ -2069,12 +2104,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
   };
 
-  const savePsPrice = (ps: PartnerItem, newPrice: number) => {
-    if (isNaN(newPrice) || newPrice < 0) return;
-    onUpsertPartnerItem?.({ ...ps, price: newPrice });
-    const itemId = ps.itemId;
-    if (itemId) onUpdateItemCost?.(itemId, newPrice);
-  };
 
   // ── 등록 품목 추가 (직접입력 모드) ──
   const addProductRow = useCallback((pc: typeof partnerItemRows[0]) => {
@@ -2328,6 +2357,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {recoveryDialogs()}
+      <PartnerItemTermsRecovery editor={termsEditor}/>
+      {(linkSaveSummary.confirmed.length>0||linkSaveSummary.unconfirmed)&&<p role="status" className="text-xs text-slate-600">{linkSaveSummary.confirmed.length>0&&`연결 저장 확인: ${linkSaveSummary.confirmed.join(', ')}. `}{linkSaveSummary.unconfirmed&&`저장 확인이 필요한 품목: ${linkSaveSummary.unconfirmed}. 위에서 결과를 확인하거나 요청을 중단한 뒤 현재 내용을 다시 열어 주세요.`}</p>}
       {composerOnly&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2"><ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton></div>}
       {!composerOnly && <>
       <PageHeader
@@ -2910,6 +2941,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 : effectivePickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q)))
                 .map(row => ({ pc: row.pc, product: row.product! }));
               const confirmPick = async () => {
+                const composerToken=termsComposerRef.current.token;
                 //  고른 것을 줄로 옮기는 셈은 shared/itemPick 에 있다 — 화면은 묻고 쓰기만 한다
                 const { toAdd, unlinked } = pickLines(pickerQtys, effectivePickerRows, linkedItemIds, pricePanelEdits);
                 if (toAdd.length === 0) { setShowItemPicker(false); return; }
@@ -2936,24 +2968,31 @@ ${names}
                     if (!ok) return;
                     setNoLinkIds(prev => new Set([...prev, ...unlinked.map(r => r.product!.id)]));
                   } else if (ok) {
-                    if (!onUpsertPartnerItem) {
+                    if (!onSavePartnerItemTerms) {
                       alert('거래처 품목 연결 기능이 없어 품목을 추가할 수 없습니다.');
                       return;
                     }
                     const dir = createMode === '매입' ? 'in' as const : 'out' as const;
                     try {
                       for (const w of linkWrites(unlinked, selectedClientId, dir, pricePanelEdits)) {
-                        await onUpsertPartnerItem(w);
+                        if(termsComposerRef.current.token!==composerToken)return;
+                        if(w.itemId&&confirmedLinkIds.has(w.itemId))continue;
+                        const opening=[...partnerOut,...partnerIn].find(row=>row.id===w.id)??null;
+                        const outcome=await savePartnerTermsRow(w,{...(w.price!==undefined?{price:w.price}:{}),...(w.taxType!==undefined?{taxType:w.taxType}:{})},opening);
+                        if(termsComposerRef.current.token!==composerToken)return;
+                        if(outcome.status!=='saved'){setLinkSaveSummary(previous=>({...previous,unconfirmed:w.itemId??w.id}));return;}
+                        if(w.itemId){setConfirmedLinkIds(previous=>new Set([...previous,w.itemId!]));setLinkSaveSummary(previous=>({confirmed:[...new Set([...previous.confirmed,w.itemId!])],unconfirmed:null}));}
                       }
                     } catch (error: any) {
                       alert(`거래처 품목 연결 실패: ${error?.message ?? String(error)}`);
                       return;
                     }
-                    setConfirmedLinkIds(prev => new Set([...prev, ...unlinked.map(r => r.product!.id)]));
+
                   } else {
                     setNoLinkIds(prev => { const n = new Set(prev); for (const r of unlinked) n.add(r.product!.id); return n; });
                   }
                 }
+                if(termsComposerRef.current.token!==composerToken)return;
                 setManualMode(true);
                 setManualItems(prev => {
                   const existing = prev.filter(r => r.name.trim());
@@ -2961,12 +3000,12 @@ ${names}
                 });
                 setShowItemPicker(false); setPickerSearch(''); setPickerQtys({});
               };
-              return <StatementItemPicker rows={filtered} search={pickerSearch} quantities={pickerQtys}
+              return <fieldset disabled={termsEditor.busy} className="contents"><StatementItemPicker rows={filtered} search={pickerSearch} quantities={pickerQtys}
                 priceEdits={pricePanelEdits} linkedItemIds={linkedItemIds} priceSaveState={priceSaveState} onSearchChange={setPickerSearch}
                 onToggleItem={itemId=>setPickerQtys(prev=>{const next={...prev};if(next[itemId])delete next[itemId];else next[itemId]='1';return next;})}
                 onQuantityChange={(itemId,value)=>setPickerQtys(prev=>({...prev,[itemId]:value}))}
-                onPriceChange={(id,value)=>{setPricePanelEdits(prev=>({...prev,[id]:value}));setPriceSaveState(state=>{const next={...state};delete next[id];return next;});}}
-                onSavePrice={savePcPrice} onSetTax={setPcTax} onClose={()=>setShowItemPicker(false)} onConfirm={confirmPick}/>;
+                onPriceChange={(id,value)=>{const row=(partnerItems??[]).find(pc=>pc.id===id);if(row?.itemId&&row.partnerId)termsEditor.open({itemId:row.itemId,partnerId:row.partnerId,direction:row.Direction??(createMode==='매입'?'in':'out'),existingLinkId:row.id,opening:row},{},'terms');setPricePanelEdits(prev=>({...prev,[id]:value}));setPriceSaveState(state=>{const next={...state};delete next[id];return next;});}}
+                onSavePrice={savePcPrice} onSetTax={setPcTax} onClose={()=>setShowItemPicker(false)} onConfirm={confirmPick}/></fieldset>;
             })()}
 
             {/* ── 주문 연결 안내 배너 ── */}
