@@ -21,3 +21,12 @@ export function preserveInventoryWriterProtocol(before: Row | undefined, next: R
   }
   return result;
 }
+
+const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,canonical(value[key])])):value;
+export const inventoryWriterSame=(a:unknown,b:unknown)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+/** 초기 snapshot을 넘긴다. 같은 거래의 virtual 명령들이 문서 revision을 각각 올리지 않는다. */
+export function protectInventoryWriterPatch(before:Record<string,any>|undefined,next:Record<string,any>,keys?:readonly string[]):Record<string,any>{
+ const fields=keys??Object.keys(next).filter(key=>key!=='inventoryWriterProtocolVersion'&&key!=='inventoryWriteRevision');
+ const changed=!before||!keys||fields.some(key=>key in next&&!inventoryWriterSame(key.split('.').reduce((value,part)=>value?.[part],before),next[key]));
+ return changed?advanceInventoryWriterProtocol(before,next):preserveInventoryWriterProtocol(before,next);
+}

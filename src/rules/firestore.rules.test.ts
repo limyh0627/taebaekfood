@@ -939,6 +939,22 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
    await assertSucceeds(deleteDoc(doc(staff,'leaveRequests','mutation-pending')));
   } finally {await isolated.withSecurityRulesDisabled(async context=>{for(const [collection,id] of paths)await deleteDoc(doc(context.firestore(),collection,id));});}
  });
+ it('주문 수정 영수증과 새 결정적 감사는 클라이언트 쓰기를 막고 옛 이력 조회·쓰기 정책을 유지한다',async()=>{
+  const manager=isolated.authenticatedContext('edit-manager',{employeeId:'edit-admin',companyId:'taebaek',isAdmin:true}).firestore();
+  const staff=isolated.authenticatedContext('edit-staff',{employeeId:'edit-staff',companyId:'taebaek',isAdmin:false}).firestore();
+  const foreign=isolated.authenticatedContext('edit-foreign',{employeeId:'edit-foreign',companyId:'punghoe',isAdmin:true}).firestore();
+  const paths=[['orderEditOperations','rule-receipt'],['orderItemEdits','order-edit-rule-receipt'],['orderItemEdits','old-random'],['orderItemEdits','old-created']];
+  await isolated.withSecurityRulesDisabled(async context=>{const store=context.firestore();await setDoc(doc(store,'orderEditOperations','rule-receipt'),{companyId:'taebaek',status:'applied'});for(const id of ['order-edit-rule-receipt','old-random'])await setDoc(doc(store,'orderItemEdits',id),{companyId:'taebaek',orderId:'order',changes:[]});});
+  try {
+   for(const store of [manager,staff,foreign,isolated.unauthenticatedContext().firestore()]){
+    const receipt=doc(store,'orderEditOperations','rule-receipt');
+    await assertFails(getDoc(receipt));await assertFails(getDocs(collection(store,'orderEditOperations')));await assertFails(setDoc(receipt,{companyId:'taebaek'}));await assertFails(updateDoc(receipt,{status:'cancelled'}));await assertFails(deleteDoc(receipt));await assertFails(setDoc(doc(store,'orderEditOperations','rule-receipt','nested','bypass'),{companyId:'taebaek'}));
+    const audit=doc(store,'orderItemEdits','order-edit-rule-receipt');await assertFails(setDoc(audit,{companyId:'taebaek'}));await assertFails(updateDoc(audit,{changes:['위조']}));await assertFails(deleteDoc(audit));
+   }
+   await assertSucceeds(getDoc(doc(staff,'orderItemEdits','order-edit-rule-receipt')));await assertSucceeds(getDoc(doc(staff,'orderItemEdits','old-random')));await assertFails(getDoc(doc(foreign,'orderItemEdits','old-random')));
+   await assertSucceeds(setDoc(doc(staff,'orderItemEdits','old-created'),{companyId:'taebaek',changes:[]}));await assertSucceeds(updateDoc(doc(staff,'orderItemEdits','old-created'),{changes:['옛정책']}));await assertSucceeds(deleteDoc(doc(staff,'orderItemEdits','old-created')));
+  } finally {await isolated.withSecurityRulesDisabled(async context=>{for(const [collection,id] of paths)await deleteDoc(doc(context.firestore(),collection,id));});}
+ });
  it('휴가 알림은 없는 고정 ID를 읽고 같은 회사에 생성하며 목록·기존 문서는 회사 경계를 지킨다',async()=>{
   const staff=isolated.authenticatedContext('notice-staff',{employeeId:'notice-e1',companyId:'taebaek',isAdmin:false}).firestore();
   const created=doc(staff,'notifications','leave-fixed'),foreign=doc(staff,'notifications','leave-foreign');

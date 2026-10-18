@@ -124,7 +124,7 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
@@ -326,6 +326,16 @@ service cloud.firestore {
     }
 
     // ── 연차 — 본인이 내고, 관리자가 결재한다 ────────────────────
+    match /orderEditOperations/{document=**} {
+      allow read, write: if false;
+    }
+    match /orderItemEdits/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      // 새 결정적 감사는 주문 수정과 같은 서버 거래에서만 만든다. 옛 이력 정책은 보존한다.
+      allow create, update: if !id.matches('order-edit-.+') && createUpdateOk();
+      allow delete: if !id.matches('order-edit-.+') && deleteOk();
+    }
     match /leaveRequestOperations/{document=**} {
       allow read, write: if false;
     }

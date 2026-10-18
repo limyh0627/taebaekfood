@@ -26,6 +26,7 @@ import { 달력열기 } from './orderDateInteraction';
 const baseName = (name: string): string => splitNameVolume({ name }).base;
 
 interface OrderCardProps {
+  renderOrderEditRecovery?: (order:Order)=>React.ReactNode;
   renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
   order: Order;
@@ -38,7 +39,7 @@ interface OrderCardProps {
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
   setShowAddProductSelect: (id: string | null) => void;
-  onUpdateItems?: (id: string, items: OrderItem[]) => void;
+  onUpdateItems?: (opening: Order, items: OrderItem[]) => Promise<{committed:boolean;cancelled:boolean}>;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
@@ -77,7 +78,7 @@ export const OrderCard = memo<OrderCardProps>(({
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
   //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
-  onRequestShip, renderOrderRecovery,
+  onRequestShip, renderOrderRecovery,renderOrderEditRecovery,
 }) => {
   // Compute derived variables
   const products = items;
@@ -134,6 +135,11 @@ export const OrderCard = memo<OrderCardProps>(({
   const rawName = partnerLabel(order.partnerName || partner?.name || '이름 없음', shipToOf(partner, order.shipToId)?.name);
   const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
 
+  const [itemSaving,setItemSaving]=useState(false);
+  const saveItems=async(items:OrderItem[])=>{
+    setItemSaving(true);
+    try{return await onUpdateItems?.(order,items);}finally{setItemSaving(false);}
+  };
   const handleDirectQtyChange = (idx: number, value: string) => {
     const qty = parseInt(value) || 0;
     const newItems = [...order.items];
@@ -147,13 +153,13 @@ export const OrderCard = memo<OrderCardProps>(({
     } else {
       newItems[idx] = { ...item, quantity: qty };
     }
-    onUpdateItems?.(order.id, newItems);
+    saveItems(newItems);
   };
 
   const handleExpirationDateChange = (idx: number, value: string) => {
     const newItems = [...order.items];
     newItems[idx] = { ...newItems[idx], mfgDate: value };
-    onUpdateItems?.(order.id, newItems);
+    saveItems(newItems);
   };
 
   const handleRemoveItem = (idx: number) => {
@@ -163,20 +169,21 @@ export const OrderCard = memo<OrderCardProps>(({
       message: `"${item.name}" 품목을 삭제할까요?`,
       subMessage: '주문에서 해당 품목이 제거됩니다.',
       confirmText: '삭제',
-      onConfirm: () => {
-        onUpdateItems?.(order.id, order.items.filter((_, i) => i !== idx));
-        setConfirmModal(null);
+      onConfirm: async () => {
+        const result=await saveItems(order.items.filter((_, i) => i !== idx));
+        if(result?.committed)setConfirmModal(null);
       },
     });
   };
 
-  const handleAddItem = (product: Item) => {
+  const handleAddItem = async (product: Item) => {
     const newItem: OrderItem = {
       itemId: product.id, name: product.name,
       quantity: 1, price: 0, checked: false,
     };
-    onUpdateItems?.(order.id, [...order.items, newItem]);
-    setShowAddProductSelect(null);
+    const result=await saveItems([...order.items, newItem]);
+    if(result?.committed)setShowAddProductSelect(null);
+    return result?.committed??false;
   };
 
   return (
@@ -195,6 +202,7 @@ export const OrderCard = memo<OrderCardProps>(({
            **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
            색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
       <OrderRecoveryEntry order={order} renderOrderRecovery={readOnly ? undefined : renderOrderRecovery} />
+      {!readOnly&&renderOrderEditRecovery?.(order)}
       <div className={`flex flex-col rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         {/*  **첫 줄은 주문번호와 상태, 둘째 줄은 거래처명 통째로**(2026-09-14 사장님:
@@ -343,7 +351,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         <span className="text-[8px] font-bold text-slate-400">{editProductInfo?.unit || '개'}</span>
                       </div>
                     )}
-                    <button onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
+                    <button aria-label={item.name+' 품목 삭제'} onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
                   {!개입수있음 && (
                     <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
@@ -537,7 +545,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()} onPointerDown={누르는동안끌기끄기}>
                       <select
                         value={current} disabled={readOnly}
-                        onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
+                        onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order, ni); }}
                         aria-label={`${item.name} 라벨 상태`}
                         className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-slate-700 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
                       >
@@ -730,7 +738,7 @@ export const OrderCard = memo<OrderCardProps>(({
                                   <span className="text-[10px] font-bold text-slate-700 truncate flex-1 min-w-0">{p.name}</span>
                                   {variants.map(v => (
                                     <button key={v.item.id} type="button"
-                                      onClick={e => { e.stopPropagation(); handleAddItem(v.item); setAddItemQuery(''); }}
+                                      onClick={async e => { e.stopPropagation(); if(await handleAddItem(v.item))setAddItemQuery(''); }}
                                       title={`${p.name} ${v.spec}`}
                                       className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 text-[9px] font-black text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 transition-all">
                                       <Plus size={8} strokeWidth={3}/>{v.label}
@@ -746,7 +754,7 @@ export const OrderCard = memo<OrderCardProps>(({
                   </div>
                 );
               })()}
-              <button onClick={() => { setShowAddProductSelect(null); setAddItemQuery(''); }} className="w-full py-1 text-[8px] font-black text-slate-400 uppercase hover:text-slate-600">취소</button>
+              <button onClick={() => { if(!itemSaving){setShowAddProductSelect(null); setAddItemQuery('');} }} className="w-full py-1 text-[8px] font-black text-slate-400 uppercase hover:text-slate-600">취소</button>
             </div>
           ) : (
             <button onClick={() => setShowAddProductSelect(order.id)}
@@ -938,11 +946,11 @@ export const OrderCard = memo<OrderCardProps>(({
           icon={confirmModal.icon}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
-          body={confirmModal.body}
-          confirmDisabled={confirmModal.confirmDisabled}
+          body={<>{confirmModal.body}{renderOrderEditRecovery?.(order)}</>}
+          confirmDisabled={itemSaving||confirmModal.confirmDisabled}
           footerNote={confirmModal.footerNote}
           onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
+          onCancel={() => {if(!itemSaving)setConfirmModal(null);}}
         />
       )}
     </div>

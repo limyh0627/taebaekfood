@@ -6,6 +6,7 @@ import {channelStyle} from '../../../shared/channelStyle';
 import {OrderCard} from './OrderCard';
 
 interface OrderSourceGroupProps {
+  renderOrderEditRecovery?: (order:Order)=>React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
   colId: string;
   source: OrderSource;
@@ -20,7 +21,7 @@ interface OrderSourceGroupProps {
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
   setShowAddProductSelect: (id: string | null) => void;
-  onUpdateItems?: (id: string, items: OrderItem[]) => void;
+  onUpdateItems?: (opening: Order, items: OrderItem[]) => Promise<{committed:boolean;cancelled:boolean}>;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   /**

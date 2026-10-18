@@ -1,4 +1,6 @@
 import type { Item, OrderItem } from './types';
+import * as orderEditUnitsModule from '../../functions/src/shared/orderEditUnits';
+const {boxCountOf,orderItemQuantityLabel} = (Reflect.get(orderEditUnitsModule,'default') ?? orderEditUnitsModule) as Pick<typeof orderEditUnitsModule,'boxCountOf'|'orderItemQuantityLabel'>;
 import { bomOf, bomParentsOf, type BomIndex } from './bomIndex';
 import { packUnitsOf, type PackIndex } from './packIndex';
 import * as stockUnitMeasureModule from '../../functions/src/shared/stockUnitMeasure';
@@ -144,8 +146,7 @@ export function stockUnits(
  * ⚠ **박스 품목에만 쓴다.** 향미유·고춧가루처럼 재고가 낱개인 상품은 다르다 —
  * 거기서는 `isBoxUnit` 이 진짜 정보라 `quantity / 개입수` 로 박스 수를 낸다.
  */
-export const boxCountOf = (item: Pick<OrderItem, 'quantity' | 'boxQuantity'>): number =>
-  item.boxQuantity ?? item.quantity;
+export {boxCountOf,orderItemQuantityLabel};
 
 /**
  * 전표의 미발행 주문 두 목록에 적을 수량 — 어느 화면에서 보든 같은 말을 쓰게 한다.
@@ -153,16 +154,6 @@ export const boxCountOf = (item: Pick<OrderItem, 'quantity' | 'boxQuantity'>): n
  * 박스로 받은 주문은 `quantity`에 낱개 수량, `boxQuantity`에 주문한 박스 수가 든다.
  * 요약 화면에는 주문한 수량만 표시한다. 내부 환산수량은 재고·금액 계산에만 쓴다.
  */
-export function orderItemQuantityLabel(
-  item: Pick<OrderItem, 'quantity' | 'isBoxUnit' | 'boxQuantity' | 'unitsPerBox'>,
-  unit = '개',
-): string {
-  if (item.isBoxUnit && item.boxQuantity) {
-    return `${item.boxQuantity}박스`;
-  }
-  return `${item.quantity}${unit || '개'}`;
-}
-
 /**
  * 한 박스에 낱개가 몇 개 드는가.
  *

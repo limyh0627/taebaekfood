@@ -1,3 +1,5 @@
+import {useOrderEditApplication,type OrderEditBindings} from '../src/features/orders/hooks/useOrderEditApplication';
+import {OrderEditRecovery} from '../src/features/orders/ui/OrderEditRecovery';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import DeliveryCalendarCard from '../src/features/orders/ui/DeliveryCalendarCard';
@@ -48,7 +50,7 @@ import { companySettingDocId, companySettingPatch } from '../src/shared/companyS
 
 import { OrderItem, InvoiceType } from '../types';
 
-interface DeliveryManagerProps {
+interface DeliveryManagerProps extends OrderEditBindings {
   renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderRecoveryOrphans?: React.ReactNode;
   companyId: CompanyId;
@@ -70,7 +72,7 @@ interface DeliveryManagerProps {
   currentUserName?: string;
   onUpdateDeliveryDate?: (_id: string, _date: string) => void | Promise<void>;
   onUpdateStatus?: (_id: string, _status: OrderStatus) => void;
-  onUpdateItems?: (_id: string, _items: OrderItem[]) => void;
+
   onUpdateNote?: (_id: string, _note: string, _important: boolean) => void;
   onUpdatePallets?: (_id: string, _pallets: OrderPallet[]) => void;
   //  송장은 세 단계다 — 뜻은 OrdersList 의 같은 props 주석 참고.
@@ -98,7 +100,10 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, renderOrderRecovery, orderRecoveryOrphans }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onSaveOrderEdit,requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, renderOrderRecovery, orderRecoveryOrphans }) => {
+  const orderEdits=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??''),onSaveOrderEdit,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference});
+  const onUpdateItems=(opening:Order,items:OrderItem[])=>orderEdits.run(opening,{kind:'items',items});
+  const renderEditRecovery=(order:Order)=><OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>;
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -815,6 +820,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
+      <OrderEditRecovery application={orderEdits} allTargets/>
       {!calendarOnly && <PageHeader
         title="배송 관리"
         subtitle="배송 일정과 출고 진행 상태를 관리합니다."
@@ -884,7 +890,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
       {!calendarOnly && deliveryTab === '리스트' && (
         <div className="min-w-0">
-        <OrdersList
+        <OrdersList editApplication={orderEdits} hideOrderEditPanel
           renderOrderRecovery={renderOrderRecovery}
           companyId={companyId}
           title="배송 목록"
@@ -903,7 +909,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           onUpdateStatus={(id, status) => onUpdateStatus?.(id, status)}
           onUpdateDeliveryDate={(id, date) => onUpdateDeliveryDate?.(id, date)}
           onUpdatePallets={(id, nextPallets) => onUpdatePallets?.(id, nextPallets)}
-          onUpdateItems={(id, nextItems) => onUpdateItems?.(id, nextItems)}
+
           onUpdateNote={onUpdateNote}
           onToggleInvoicePrinted={(id, value) => onToggleInvoicePrinted?.(id, value)}
           onUpdateInvoiceType={(id, value) => onUpdateInvoiceType?.(id, value)}
@@ -1359,7 +1365,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                             setEditingOrderId={setEditingOrderId}
                             showAddProductSelect={showAddProductSelect}
                             setShowAddProductSelect={setShowAddProductSelect}
-                            onUpdateItems={onUpdateItems}
+                            onUpdateItems={onUpdateItems} renderOrderEditRecovery={renderEditRecovery}
                             onUpdateDeliveryDate={onUpdateDeliveryDate!}
                             onUpdateStatus={onUpdateStatus!}
                             onToggleItemChecked={onToggleItemChecked}
@@ -1431,7 +1437,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                       setEditingOrderId={setEditingOrderId}
                       showAddProductSelect={showAddProductSelect}
                       setShowAddProductSelect={setShowAddProductSelect}
-                      onUpdateItems={onUpdateItems}
+                      onUpdateItems={onUpdateItems} renderOrderEditRecovery={renderEditRecovery}
                       onUpdateDeliveryDate={onUpdateDeliveryDate!}
                       onUpdateStatus={onUpdateStatus!}
                       onToggleItemChecked={onToggleItemChecked}
@@ -1471,7 +1477,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                       setEditingOrderId={setEditingOrderId}
                       showAddProductSelect={showAddProductSelect}
                       setShowAddProductSelect={setShowAddProductSelect}
-                      onUpdateItems={onUpdateItems}
+                      onUpdateItems={onUpdateItems} renderOrderEditRecovery={renderEditRecovery}
                       onUpdateDeliveryDate={onUpdateDeliveryDate!}
                       onUpdateStatus={onUpdateStatus!}
                       onToggleItemChecked={onToggleItemChecked}
@@ -1721,7 +1727,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                   setEditingOrderId={setEditingOrderId}
                   showAddProductSelect={showAddProductSelect}
                   setShowAddProductSelect={setShowAddProductSelect}
-                  onUpdateItems={onUpdateItems}
+                  onUpdateItems={onUpdateItems} renderOrderEditRecovery={renderEditRecovery}
                   onUpdateDeliveryDate={onUpdateDeliveryDate ?? (() => {})}
                   onUpdateStatus={onUpdateStatus ?? (() => {})}
                   onToggleItemChecked={onToggleItemChecked}

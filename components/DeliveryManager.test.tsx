@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeliveryManager from './DeliveryManager';
 import { today } from '../src/shared/day';
@@ -179,3 +179,5 @@ it('주문일 빠른기간 자동선택·수동변경·기간전체와 검색전
 });
 
 it('배송 조회도 날짜·조건·검색 고정 행을 사용하고 조건 값과 전체검색을 분리한다',()=>{render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);const query=screen.getByRole('region',{name:'검색조건'});expect(Array.from(query.querySelectorAll('[data-query-row]')).map(row=>row.getAttribute('data-query-row'))).toEqual(['date','condition','search']);expect(screen.getByRole('button',{name:'조건 값'}).closest('[data-query-row="condition"]')).not.toBeNull();expect(screen.getByPlaceholderText('거래처, 주소, 품목, 비고 검색').closest('[data-query-row="search"]')).not.toBeNull();expect(setDocument).not.toHaveBeenCalled();});
+
+it('배송 페이지가 복구 패널을 소유하고 내장 목록으로 전환해도 한벌만 표시한다',async()=>{let pending=[{id:'missing-delivery',planId:'delivery-plan',description:'배송 주문 수정'}];const cancel=vi.fn(async()=>{pending=[];return {status:'cancelled' as const,message:'중단 확인'};});render(<DeliveryManager companyId="taebaek" orders={[주문('daily-delivery','p1',OrderStatus.PROCESSING),{...주문('daily-parcel','p2',OrderStatus.DISPATCHED),shipMethod:'택배'}]} partners={partners} items={items} onReadPendingOrderEdits={()=>pending} onCancelOrderEdit={cancel}/>);fireEvent.click(screen.getByRole('button',{name:/금일 배송순서/}));expect(screen.getAllByText(/현재 거래처 1/).length).toBeGreaterThan(0);expect(screen.getAllByText(/현재 거래처 2/).length).toBeGreaterThan(0);expect(screen.getAllByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'리스트'}));expect(screen.getAllByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveLength(1);expect(screen.getAllByRole('button',{name:'주문 수정 요청 중단'})).toHaveLength(1);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 요청 중단'})));expect(cancel).toHaveBeenCalledExactlyOnceWith('delivery-plan','missing-delivery');expect(screen.queryByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toBeNull();});

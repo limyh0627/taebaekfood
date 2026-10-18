@@ -1,6 +1,6 @@
 import OrderEditModalShell from './OrderEditModalShell';
 /** @vitest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import OrdersList from './OrdersList';
 import { OrderStatus, type Order } from '../types';
@@ -88,7 +88,7 @@ it('회사 A→B→A에서 로그를 닫고 이전 회사 지연 응답을 새 �
   view.rerender(<OrdersList {...p} companyId="punghoe" />); view.rerender(<OrdersList {...p} />);
   expect(screen.queryByRole('region', { name: '검수 주문 로그' })).toBeNull();
   await act(async () => { audits.resolve([]); edits.resolve([{ id: 'old', changes: ['늦은A수정'], at: today(), by: '검수' }]); });
-  fireEvent.click(screen.getByRole('button', { name: '로그' }));
+  fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);fireEvent.click(screen.getByRole('button',{name:'로그'}));
   await act(async () => {}); expect(screen.queryByText('늦은A수정')).toBeNull();
 });
 it('부모 재렌더 없이 실제 로그인 UID가 바뀌면 로그를 닫고 늦은 응답을 버린다', async () => {
@@ -97,7 +97,7 @@ it('부모 재렌더 없이 실제 로그인 UID가 바뀌면 로그를 닫고 �
   act(() => { fixture.auth.currentUser = { uid: 'uid-b' }; fixture.authCallbacks.forEach(callback => callback(fixture.auth.currentUser)); });
   expect(screen.queryByRole('region', { name: '검수 주문 로그' })).toBeNull();
   await act(async () => { audits.resolve([]); edits.resolve([{ id: 'old', changes: ['이전직원수정'], at: today(), by: '검수' }]); });
-  fireEvent.click(screen.getByRole('button', { name: '로그' })); await act(async () => {});
+  fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);fireEvent.click(screen.getByRole('button', { name: '로그' })); await act(async () => {});
   expect(screen.queryByText('이전직원수정')).toBeNull();
 });
 it('현재 회사와 로그인에서 정상 조회한 로그는 보이고 닫은 뒤 재조회한다', async () => {
@@ -115,4 +115,17 @@ it('현재 회사와 로그인에서 정상 조회한 로그는 보이고 닫은
 
 it('주문 저장 오류는 스크롤 본문 밖의 저장 버튼과 같은 footer에서 보인다',()=>{const view=render(<OrderEditModalShell title="저장 오류 검수" partnerName="합성" context="주문일" onClose={()=>{}} onSave={()=>{}} saveError="현재 주문을 확인해 주세요."><div>긴 본문</div></OrderEditModalShell>);const error=screen.getByRole('alert'),save=screen.getByRole('button',{name:'변경 저장'});expect(save.closest('[data-order-edit-footer]')).toContainElement(error);expect(error).toHaveTextContent('현재 주문을 확인');expect(error.compareDocumentPosition(save)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();view.unmount();});
 
-it('실제 주문 수정의 저장 거절 원인은 저장 버튼 바로 위에 남고 초안은 유지된다',async()=>{const p=props(),save=vi.fn(async()=>({status:'rejected' as const,message:'완료된 품목의 수량은 되돌린 뒤 수정해 주세요.'}));const row={...order(),items:[{itemId:'oil',name:'검수기름',quantity:1,price:0}],note:'보존할 초안'};render(<OrdersList {...p} orders={[row]} onSaveOrderEdit={save}/>);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'변경 저장'})));const error=screen.getByRole('alert'),button=screen.getByRole('button',{name:'변경 저장'});expect(error).toHaveTextContent('완료된 품목의 수량');expect(button.closest('[data-order-edit-footer]')).toContainElement(error);expect(screen.getByRole('dialog',{name:'거래처 주문 수정'})).toBeInTheDocument();expect(screen.getByDisplayValue('보존할 초안')).toBeInTheDocument();expect(save).toHaveBeenCalledOnce();});
+it('실제 주문 수정의 거절은 모달 복구 안내에 남고 초안은 유지된다',async()=>{const p=props(),save=vi.fn(async()=>({status:'rejected' as const,message:'완료된 품목의 수량은 되돌린 뒤 수정해 주세요.'}));const row={...order(),items:[{itemId:'oil',name:'검수기름',quantity:1,price:0}],note:'보존할 초안'};render(<OrdersList {...p} orders={[row]} onSaveOrderEdit={save}/>);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'변경 저장'})));const dialog=screen.getByRole('dialog',{name:'거래처 주문 수정'}),button=within(dialog).getByRole('button',{name:'변경 저장'});expect(within(dialog).getByRole('status')).toHaveTextContent('완료된 품목의 수량');expect(button.closest('[data-order-edit-footer]')).not.toContainElement(within(dialog).getByRole('status'));expect(within(dialog).queryByRole('alert')).toBeNull();expect(screen.getByRole('dialog',{name:'거래처 주문 수정'})).toBeInTheDocument();expect(screen.getByDisplayValue('보존할 초안')).toBeInTheDocument();expect(save).toHaveBeenCalledOnce();});
+
+it('같은 주문을 다시 연 새 초안은 이전 보관 요청의 결과 확인으로 닫히지 않는다',async()=>{
+ const p=props(),row={...order(),items:[{itemId:'oil',name:'검수기름',quantity:1,price:0}],note:'보관 초안'};let pending:Array<{id:string;planId:string;description:string}>=[];
+ const save=vi.fn(async()=>{pending=[{id:row.id,planId:'edit-plan',description:'보관 수정'}];return {status:'unknown' as const,message:'주문 응답 미확인',nextAction:'결과 확인 또는 요청 중단'};}),inspect=vi.fn(async()=>{pending=[];return {status:'saved' as const};});
+ render(<OrdersList {...p} orders={[row]} onSaveOrderEdit={save} onReadPendingOrderEdits={()=>pending} onInspectOrderEdit={inspect}/>);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'변경 저장'})));const dialog=screen.getByRole('dialog',{name:'거래처 주문 수정'});expect(within(dialog).getByRole('button',{name:'변경 저장'})).toBeDisabled();expect(within(dialog).getByDisplayValue('보관 초안')).toBeInTheDocument();
+ fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);const reopened=screen.getByRole('dialog',{name:'거래처 주문 수정'});fireEvent.change(within(reopened).getByDisplayValue('보관 초안'),{target:{value:'재열기 새 초안'}});
+ await act(async()=>fireEvent.click(within(reopened).getByRole('button',{name:'주문 수정 결과 확인'})));expect(inspect).toHaveBeenCalledExactlyOnceWith('edit-plan',row.id);expect(save).toHaveBeenCalledOnce();expect(screen.getByRole('dialog',{name:'거래처 주문 수정'})).toBe(reopened);expect(within(reopened).getByDisplayValue('재열기 새 초안')).toBeInTheDocument();
+});
+it('보관 저장소 접근 오류는 모든 카드에 복제하지 않고 열려는 수정창에도 안내한다',()=>{render(<OrdersList {...props()} onReadPendingOrderEdits={()=>{throw Error('blocked');}}/>);expect(screen.getAllByText(/기기 저장소 접근/)).toHaveLength(1);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);expect(within(screen.getByRole('dialog',{name:'거래처 주문 수정'})).getByRole('status')).toHaveTextContent('기기 저장소 접근');});
+
+it('필터로 숨겨진 주문도 한곳에서 확인하고 다시 표시해도 복구 버튼은 중복되지 않는다',async()=>{const p=props(),pending=[{id:'order-a',planId:'retained-plan',description:'보관 수정'}],inspect=vi.fn(async()=>({status:'unknown' as const,message:'응답 미확인',nextAction:'중단 또는 다시 확인'}));render(<OrdersList {...p} onReadPendingOrderEdits={()=>pending} onInspectOrderEdit={inspect}/>);expect(screen.getAllByRole('button',{name:'주문 수정 결과 확인'})).toHaveLength(1);const search=screen.getByPlaceholderText('거래처, 품목, 제조, 라벨, 포장, 팔레트 검색');fireEvent.change(search,{target:{value:'검색 결과 없음'}});expect(screen.queryByRole('button',{name:'검수거래처 주문 수정'})).toBeNull();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 결과 확인'})));expect(inspect).toHaveBeenCalledExactlyOnceWith('retained-plan','order-a');fireEvent.change(search,{target:{value:''}});expect(screen.getAllByRole('button',{name:'주문 수정 결과 확인'})).toHaveLength(1);});
+it('실제 주문 행이 없어도 정확한 보관 참조를 중단하고 빈 패널은 없어진다',async()=>{let pending=[{id:'removed-order',planId:'removed-plan',description:'행이 없는 수정'}];const cancel=vi.fn(async()=>{pending=[];return {status:'cancelled' as const,message:'요청 중단 확인'};});render(<OrdersList {...props()} orders={[]} onReadPendingOrderEdits={()=>pending} onCancelOrderEdit={cancel}/>);expect(screen.getByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveTextContent('removed-order');await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 요청 중단'})));expect(cancel).toHaveBeenCalledExactlyOnceWith('removed-plan','removed-order');expect(screen.queryByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toBeNull();});

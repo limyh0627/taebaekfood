@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { OrderCard } from './OrderCard';
 import { OrderStatus, type Order, type Item } from '../../../../types';
@@ -17,3 +17,6 @@ it('실패 원문 주문은 복구 슬롯에 그대로 전달하고 readonly에�
 it('카드 날짜 입력 동안 카드 끌기를 끄고 pointerup 뒤 복원한다',()=>{
  const p=base();const view=render(<div draggable="true" data-testid="drag"><OrderCard {...p}/></div>);const input=screen.getByLabelText('합성참기름 소비기한 수정용 제조일');const host=screen.getByTestId('drag');fireEvent.pointerDown(input);expect(host).toHaveAttribute('draggable','false');fireEvent.pointerUp(window);expect(host).toHaveAttribute('draggable','true');expect(p.onUpdateItems).not.toHaveBeenCalled();view.unmount();
 });
+
+it('인라인 제조일은 현재 표시 원문 전체를 전달하고 다른 품목을 바꾸지 않는다',()=>{const p=base();render(<OrderCard {...p}/>);fireEvent.change(screen.getByLabelText('합성참기름 소비기한 수정용 제조일'),{target:{value:'2025-02-03'}});expect(p.onUpdateItems).toHaveBeenCalledExactlyOnceWith(order,[{...order.items[0],mfgDate:'2025-02-03'}]);});
+it('품목 삭제 확인은 ACK 전 닫히지 않고 미확정 뒤에도 복구 안내를 유지한다',async()=>{let finish!:(v:{committed:boolean;cancelled:boolean})=>void;const update=vi.fn(()=>new Promise<{committed:boolean;cancelled:boolean}>(resolve=>finish=resolve)),p=base();render(<OrderCard {...p} editingOrderId={order.id} onUpdateItems={update} renderOrderEditRecovery={()=><p>미확정은 결과 확인 또는 요청 중단</p>}/>);fireEvent.click(screen.getByRole('button',{name:'합성참기름 품목 삭제'}));let dialog=screen.getByRole('dialog');fireEvent.click(within(dialog).getByRole('button',{name:'삭제'}));fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));expect(dialog).toBeInTheDocument();expect(within(dialog).getByRole('button',{name:'삭제'})).toBeDisabled();expect(update).toHaveBeenCalledExactlyOnceWith(order,[]);await act(async()=>finish({committed:false,cancelled:false}));expect(screen.getByRole('dialog')).toBe(dialog);expect(within(dialog).getByText('미확정은 결과 확인 또는 요청 중단')).toBeInTheDocument();});

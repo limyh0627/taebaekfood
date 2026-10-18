@@ -21,11 +21,8 @@ export function hasCompleteOrderItems(items: Order['items']) {
 }
 
 /** 작업 전 세 단계는 별도 선택값이 아니라 품목 체크 수의 결과다. */
-export function workStatusFromItems(items: Order['items']): OrderStatus {
-  const checked = items.filter(item => item.checked === true).length;
-  if (items.length > 0 && checked === items.length) return OrderStatus.DISPATCHED;
-  return checked > 0 ? OrderStatus.PROCESSING : OrderStatus.PENDING;
-}
+import {workStatusFromItems as sharedWorkStatusFromItems} from '../../functions/src/shared/orderWorkStatus';
+export function workStatusFromItems(items:Order['items']):OrderStatus { return sharedWorkStatusFromItems(items) as OrderStatus; }
 
 /** 결정적 작업번호가 있는 품목 작업끼리만 실패 지점에서 자동 재개한다. */
 export function canResumeFailedInventoryOperation(

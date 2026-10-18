@@ -1,3 +1,5 @@
+import {useOrderEditApplication,type OrderEditBindings} from '../src/features/orders/hooks/useOrderEditApplication';
+import {OrderEditRecovery} from '../src/features/orders/ui/OrderEditRecovery';
 import DateRangeInputs, { DATE_RANGE_LAYOUT_CLASS, DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
 import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { useOrderEditorDraft, type OrderEditDraft, type OrderEditSaveResult } from '../src/features/orders/hooks/useOrderEditorDraft';
@@ -230,7 +232,7 @@ const seoulWeekStart = () => {
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
 
-interface OrdersListProps {
+interface OrdersListProps extends OrderEditBindings {
   renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderRecoveryOrphans?: React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
@@ -255,8 +257,9 @@ interface OrdersListProps {
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateReceivedDate?: (id: string, date: string) => void;
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
-  onSaveOrderEdit?: (id:string,draft:OrderEditDraft)=>Promise<OrderEditSaveResult>;
-  onUpdateItems?: (id: string, items: OrderItem[]) => void;
+  editApplication?:ReturnType<typeof useOrderEditApplication>;
+  hideOrderEditPanel?:boolean;
+
   onUpdateNote?: (id: string, note: string, important: boolean) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
   /**
@@ -433,7 +436,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   companyId,
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [], orderUnitInputs,
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
-  onUpdateItems, onUpdateNote, onSaveOrderEdit, onUpdateDeliveryBoxes,
+  onUpdateNote, onSaveOrderEdit, onUpdateDeliveryBoxes,
+  requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,editApplication,hideOrderEditPanel=false,
   onToggleInvoicePrinted,
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
@@ -688,7 +692,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,onSaveOrderEdit,onBeforeOpen:()=>{
+  const ownEditApplication=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),onSaveOrderEdit:editApplication?undefined:onSaveOrderEdit,onReadPendingOrderEdits:editApplication?undefined:onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference});
+  const orderEdits=editApplication??ownEditApplication;
+  const onUpdateItems=(opening:Order,items:OrderItem[])=>orderEdits.run(opening,{kind:'items',items});
+  const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),application:orderEdits,onBeforeOpen:()=>{
     setPreviewOrderId(null);
     setEditingOrderId(null);
     setShowAddProductSelect(null);
@@ -1102,6 +1109,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
     renderOrderRecovery,
+    renderOrderEditRecovery:(order:Order)=><OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>,
     partners, items, partnerItems, palletStocks, itemBoms, orderUnitInputs,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
@@ -1209,6 +1217,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
+      {!hideOrderEditPanel&&<OrderEditRecovery application={orderEdits} allTargets/>}
+      {!listOrderEditor&&orderEdits.messageTargetId===null&&orderEdits.message&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{orderEdits.message}</p>}
       {savedOrderNotice&&<p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">{savedOrderNotice}</p>}
       {orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {/*  **최상단 헤더는 없앴다**(2026-09-11 사장님: "주문배송 메뉴의 최상단 헤더도 중복되니까
@@ -1563,7 +1573,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   if (!order || lineIdx < 0) return;
                   const 다음 = [...order.items];
                   다음[lineIdx] = { ...다음[lineIdx], ...조각 };
-                  onUpdateItems?.(order.id, 다음);
+                  onUpdateItems?.(order, 다음);
                 };
                 const 라벨 = 줄?.labelType ?? '대기';
                 return (
@@ -2093,6 +2103,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       <span>출고예정 {fmtYYMMDD(new Date(order.deliveryDate))}</span>
                     </div>
                     <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
+                    <OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>
                     <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
                       {visibleItems.map((item, index) => <div key={`${item.itemId}-${index}`} className="flex justify-between gap-2 text-xs"><span className="min-w-0 font-bold text-slate-700">{item.name}</span><span className="shrink-0 font-black text-indigo-600">{item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`}</span></div>)}
                     </div>
@@ -2196,6 +2207,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             {!embeddedListOnly && <Edit2 size={12} className="shrink-0 text-slate-300 group-hover:text-indigo-500" aria-hidden="true" />}
                           </button>
                           <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
+                    <OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>
                         </div>
                         {embeddedListOnly && <div role="cell" className="flex min-w-0 items-center border-r border-slate-300 px-3 text-[10px] font-bold text-slate-600">
                           <span className="truncate" title={partnerAddress || '주소 미등록'}>{partnerAddress || '주소 미등록'}</span>
@@ -2299,7 +2311,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     onChange={event => {
                                       const nextItems = [...order.items];
                                       nextItems[originalIndex] = { ...nextItems[originalIndex], labelType: event.target.value as '대기' | '날인' | '부착' };
-                                      onUpdateItems?.(order.id, nextItems);
+                                      onUpdateItems?.(order, nextItems);
                                     }}
                                     className={`w-full appearance-none !pl-2 !pr-5 ${listInlineSelectClass} disabled:cursor-default disabled:opacity-100 ${(item.labelType || '대기') === '대기' ? '!border-slate-200 !bg-slate-100 !font-bold !text-slate-700 enabled:hover:!bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
                                     aria-label={`${item.name} 라벨 상태`}
@@ -2318,7 +2330,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     onChange={event => {
                                       const nextItems = [...order.items];
                                       nextItems[originalIndex] = { ...nextItems[originalIndex], mfgDate: event.target.value };
-                                      onUpdateItems?.(order.id, nextItems);
+                                      onUpdateItems?.(order, nextItems);
                                     }}
                                     className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
                                     aria-label={`${item.name} 소비기한 수정용 제조일`}
@@ -3067,6 +3079,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <History size={13} aria-hidden="true" />로그
               </button>
             )}>
+            <OrderEditRecovery application={orderEdits} orderId={listOrderEditor.orderId} includeScopeMessage/>
             <div className="space-y-4">
               <section aria-labelledby="order-schedule-heading">
                 <h4 id="order-schedule-heading" className="mb-1.5 text-xs font-black text-slate-700">출고 일정</h4>

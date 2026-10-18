@@ -357,3 +357,5 @@ export { catalogItemMergeCommand } from './catalogItemMergeCommand';
 export { catalogOrderReferenceProof } from './catalogOrderReferenceProof';
 
 export { leaveRequestCommand } from './leaveRequestCommand';
+
+export {orderEditCommand} from './orderEditCommand';

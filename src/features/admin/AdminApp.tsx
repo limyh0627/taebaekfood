@@ -1,6 +1,6 @@
-import type { OrderEditDraft, OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
+import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit} from '../orders/infrastructure/orderEditWrites';
+import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
-import { primaryCommitted, saveOutcomeMessage } from '../../shared/saveOutcome';
 import type { SaveOutcome } from '../../shared/saveOutcome';
 import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
 import { submitLeaveRequests, submitLeaveAction, inspectLeaveAction, cancelLeaveAction, pendingLeaveActions, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
@@ -2117,29 +2117,35 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   };
 
-  const runOrderEdit = async (orderId: string, edit: OrderEdit): Promise<OrderEditSaveResult> => {
-    const token = orderAskScope.current.token;
-    const uid = auth.currentUser?.uid;
-    const isCurrent = () => orderAskScope.current.token === token && orderAskScope.current.companyId === companyId && auth.currentUser?.uid === uid;
-    const result = await saveOrderEdit({
-      order: allOrders.find(order => order.id === orderId) ?? orders.find(order => order.id === orderId),
-      edit, companyId, actorUid: uid, actorName: currentUser?.name,
-    }, {
-      isCurrent, confirm: appConfirm, now: () => new Date().toISOString(),
-      saveOrderPatch: (id, patch) => updateItem('orders', id, patch),
-      appendItemHistory: history => addItem('orderItemEdits', history),
-    });
-    if (result.status === 'partial' && isCurrent()) setAppNotice({
-      title: '주문 저장 완료 · 수정 이력 확인 필요', message: result.message, subMessage: result.nextAction,
-    });
-    if (edit.kind === 'items' && isCurrent() && !primaryCommitted(result, orderId) && result.status !== 'cancelled') alert(saveOutcomeMessage(result));
-    return result;
+  const orderEditRenderUid = auth.currentUser?.uid;
+  const orderEditRenderToken = orderAskScope.current.token;
+  const currentOrderEditScope = () => {
+      if (!orderEditRenderUid || auth.currentUser?.uid !== orderEditRenderUid || orderAskScope.current.token !== orderEditRenderToken || orderAskScope.current.companyId !== companyId)
+          return null;
+      return { companyId, actorUid: orderEditRenderUid };
   };
-  const handleUpdateItems = async (orderId: string, items: OrderItem[]) => {
-    await runOrderEdit(orderId, {kind:'items',items});
+  const orderEditScopeRejected = (): OrderEditSaveResult => ({ status: 'rejected', message: '회사 또는 로그인 정보가 바뀌어 주문 수정을 전송하지 않았습니다.', nextAction: '현재 회사에서 주문을 다시 열어 주세요.' });
+  const runOrderEdit = async (opening: Order, edit: OrderEdit): Promise<OrderEditSaveResult> => {
+      const scope = currentOrderEditScope();
+      if (!scope)
+          return orderEditScopeRejected();
+      return saveOrderEdit({ order: opening, edit, companyId: scope.companyId, actorUid: scope.actorUid, actorName: currentUser?.name }, {
+          isCurrent: () => currentOrderEditScope() !== null, confirm: appConfirm,
+          submit: (order, change, confirmed) => submitOrderEdit(scope, order, change, confirmed),
+      });
   };
-  const handleSaveOrderEdit = (orderId: string, draft: OrderEditDraft): Promise<OrderEditSaveResult> =>
-    runOrderEdit(orderId, {kind:'draft',draft});
+  const handleSaveOrderEdit = runOrderEdit;
+  const readPendingOrderEdits = () => { const scope = currentOrderEditScope(); return scope ? pendingOrderEdits(scope) : []; };
+  const readOrderEditReferences = () => { const scope = currentOrderEditScope(); return scope ? orderEditReferences(scope) : []; };
+  const handleInspectOrderEdit = (planId: string, targetId: string): Promise<OrderEditSaveResult> => {
+      const scope = currentOrderEditScope();
+      return scope ? inspectOrderEdit(scope, planId, targetId) : Promise.resolve(orderEditScopeRejected());
+  };
+  const handleCancelOrderEdit = (planId: string, targetId: string): Promise<OrderEditSaveResult> => {
+      const scope = currentOrderEditScope();
+      return scope ? cancelOrderEdit(scope, planId, targetId) : Promise.resolve(orderEditScopeRejected());
+  };
+  const orderEditBindings = { requestScopeKey: orderEditRenderUid ?? '', onSaveOrderEdit: handleSaveOrderEdit, onReadPendingOrderEdits: readPendingOrderEdits, onReadOrderEditReferences: readOrderEditReferences, onInspectOrderEdit: handleInspectOrderEdit, onCancelOrderEdit: handleCancelOrderEdit, onCancelOrderEditReference: handleCancelOrderEdit };
 
   const leaveRenderUid = auth.currentUser?.uid;
   const leaveRenderToken = orderAskScope.current.token;
@@ -2572,7 +2578,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               currentUserName={currentUser?.name}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
-              onUpdateItems={handleUpdateItems}
+              {...orderEditBindings}
 
               onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
@@ -2611,7 +2617,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   currentUserName={currentUser?.name}
                   onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
                   onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
-                  onUpdateItems={handleUpdateItems}
+                  {...orderEditBindings}
 
                   onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
                   onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
@@ -2641,8 +2647,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdatePallets={(id, p) => updateItem('orders', id, { pallets: p })}
               palletStocks={pallets}
               onToggleItemChecked={handleToggleItemChecked}
-              onUpdateItems={handleUpdateItems}
-              onSaveOrderEdit={handleSaveOrderEdit}
+              {...orderEditBindings}
               onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
