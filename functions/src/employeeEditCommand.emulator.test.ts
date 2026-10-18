@@ -1,8 +1,8 @@
 import {beforeAll,afterAll,describe,it,expect} from 'vitest';
 import * as admin from 'firebase-admin';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {executeEmployeeEditCommand,employeeEditReceiptId} from './employeeEditCommand';
-import {EMPLOYEE_EDIT_OPERATIONS,employeeEditExpected,type EmployeeEditRequest,type EmployeeEditReference,type EmployeeProfileDraft,type CatalogValueAdapter} from './shared/employeeEditCommand';
+import {EMPLOYEE_EDIT_OPERATIONS,employeeEditExpected,serializeEmployeeEditRequest,type EmployeeEditRequest,type EmployeeEditReference,type EmployeeProfileDraft,type CatalogValueAdapter} from './shared/employeeEditCommand';
 const enabled=process.env.FIRESTORE_EMULATOR_HOST==='127.0.0.1:8182';
 const actor={uid:'employee-edit-admin',token:{employeeId:'employee-edit-admin',companyId:'taebaek',isAdmin:true}};
 const codec:Pick<CatalogValueAdapter,'special'>={special:value=>value instanceof admin.firestore.Timestamp?['timestamp',value.seconds,value.nanoseconds]:undefined};
@@ -14,7 +14,7 @@ const reference=(request:EmployeeEditReference):EmployeeEditReference=>({company
 const receipt=(request:EmployeeEditReference)=>ref(EMPLOYEE_EDIT_OPERATIONS+'/'+employeeEditReceiptId(request.companyId,actor.uid,request.planId));
 const apply=(request:EmployeeEditRequest)=>executeEmployeeEditCommand(db,actor,{mode:'apply',request});
 async function fixture(create=false){
- const id='employee-'+randomUUID(),target=ref('employees/'+id),original={name:'기존 직원',position:'옛 직책',department:'생산',joinDate:'old',birthDate:'',phone:'old',status:'재직',healthCertDate:admin.firestore.Timestamp.fromMillis(10),annualLeave:{carryOverLeave:1,bonusLeave:0,usedLeave:7,custom:{keep:true}},authUid:'login-uid',isAdmin:true,fcmTokens:['device'],salary:777};
+ const id='employee-'+randomUUID(),target=ref('employees/'+id),original={companyId:'taebaek',name:'기존 직원',position:'옛 직책',department:'생산',joinDate:'old',birthDate:'',phone:'old',status:'재직',healthCertDate:admin.firestore.Timestamp.fromMillis(10),annualLeave:{carryOverLeave:1,bonusLeave:0,usedLeave:7,custom:{keep:true}},authUid:'login-uid',isAdmin:true,fcmTokens:['device'],salary:777};
  if(!create)await target.set(original);
  const base={version:1 as const,companyId:'taebaek' as const,targetId:id,planId:'plan-'+randomUUID()};
  const request:EmployeeEditRequest=create?{...base,kind:'create',expected:null,profile}:{...base,kind:'profile',expected:employeeEditExpected(original,'profile',codec),profile};receipt(request);return {target,original,request};
@@ -27,8 +27,33 @@ describe.skipIf(!enabled)('직원 편집 단일 업무 실제 SDK',()=>{
   expect(await executeEmployeeEditCommand(db,actor,{mode:'inspect',reference:reference(f.request)})).toEqual(result);const before=await receipt(f.request).get();
   await f.target.delete();expect((await apply(f.request)).status).toBe('duplicate');expect((await f.target.get()).exists).toBe(false);expect((await receipt(f.request).get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
  });
- it('profile은 FCM·로그인·급여와 다른 연차 값을 보존하고 legacy 회사 누락을 태백으로 처리한다',async()=>{
-  const f=await fixture();expect((await apply(f.request)).status).toBe('applied');expect((await f.target.get()).data()).toMatchObject({name:profile.name,authUid:'login-uid',isAdmin:true,fcmTokens:['device'],salary:777,annualLeave:{carryOverLeave:2,bonusLeave:3,usedLeave:7,custom:{keep:true}}});expect((await f.target.get()).get('companyId')).toBeUndefined();
+ it('명시 회사 profile은 FCM·로그인·급여와 다른 연차 값을 보존하고 actor legacy 인증은 유지한다',async()=>{
+  const f=await fixture();expect((await apply(f.request)).status).toBe('applied');expect((await f.target.get()).data()).toMatchObject({companyId:'taebaek',name:profile.name,authUid:'login-uid',isAdmin:true,fcmTokens:['device'],salary:777,annualLeave:{carryOverLeave:2,bonusLeave:3,usedLeave:7,custom:{keep:true}}});
+ });
+ it('회사 누락·null·타회사 profile과 balance는 현재 직원 원문을 보존하고 거절 영수증으로 종결한다',async()=>{
+  for(const company of [undefined,null,'punghoe'])for(const kind of ['profile','balance'] as const){
+   const f=await fixture();
+   await f.target.update({companyId:company===undefined?admin.firestore.FieldValue.delete():company});
+   const before=await f.target.get();
+   const base={version:1 as const,...reference(f.request),expected:employeeEditExpected(before.data()!,kind,codec)};
+   const request:EmployeeEditRequest=kind==='profile'?{...base,kind,profile}:{...base,kind,balance:{carryOverLeave:9,bonusLeave:8}};
+   const result=await apply(request);expect(result.status).toBe('rejected');expect(result.message).toContain(company==null?'소속 회사가 지정되지 않아':'다른 회사 직원');
+   expect((await f.target.get()).data()).toEqual(before.data());
+   expect((await f.target.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
+   expect((await receipt(request).get()).get('status')).toBe('rejected');
+   expect(await executeEmployeeEditCommand(db,actor,{mode:'inspect',reference:reference(request)})).toEqual(result);
+   expect((await apply(request)).status).toBe('rejected');
+  }
+ });
+ it('회사 누락 대상의 종전 완료 영수증은 strict 검사보다 먼저 반환하고 삭제된 직원을 재생성하지 않는다',async()=>{
+  const f=await fixture();await f.target.update({companyId:admin.firestore.FieldValue.delete()});
+  const request={...f.request,expected:employeeEditExpected((await f.target.get()).data()!,'profile',codec)} as EmployeeEditRequest;
+  const requestText=serializeEmployeeEditRequest(request),requestHash=createHash('sha256').update(requestText).digest('hex');
+  await receipt(request).set({version:1,...reference(request),actorUid:actor.uid,status:'applied',requestHash,requestText,message:'종전 완료'});
+  const before=await f.target.get();expect((await apply(request)).status).toBe('duplicate');
+  expect((await f.target.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
+  expect((await executeEmployeeEditCommand(db,actor,{mode:'inspect',reference:reference(request)})).status).toBe('applied');
+  await f.target.delete();expect((await apply(request)).status).toBe('duplicate');expect((await f.target.get()).exists).toBe(false);
  });
  it('연차 두 값은 하나의 CAS로 저장하고 다른 직원·연차 필드의 최신값을 보존한다',async()=>{
   const f=await fixture(),request:EmployeeEditRequest={version:1,...reference(f.request),kind:'balance',expected:employeeEditExpected(f.original,'balance',codec),balance:{carryOverLeave:-2,bonusLeave:4}};

@@ -86,6 +86,16 @@ describe.skipIf(!active)('주문 수정 원자 명령 실제 SDK',()=>{
   const missing=await fixture();const noEmployee={uid:'missing-actor',token:{...actor.token,employeeId:'missing'}};ref(ORDER_EDIT_OPERATIONS+'/'+orderEditReceiptId(missing.request.companyId,noEmployee.uid,missing.request.planId));expect((await apply(missing.request,noEmployee)).status).toBe('rejected');
   await expect(apply({...missing.request,companyId:'punghoe'})).rejects.toMatchObject({code:'permission-denied'});
  });
+ it.each(['missing','null','foreign'] as const)('비고만 수정하는 실제 SDK에서도 대상 회사 %s는 업무0·거절 영수증으로 확정한다',async kind=>{
+  const f=await fixture();const order:Record<string,unknown>={...f.order};delete order.inventoryWriterProtocolVersion;delete order.inventoryWriteRevision;
+  if(kind==='missing')delete order.companyId;else order.companyId=kind==='null'?null:'punghoe';await f.target.set(order);
+  const before=await f.target.get();const request:OrderEditRequest={...f.request,expected:orderEditExpected(order),edit:{kind:'draft',draft:{deliveryDate:'2026-10-19',items:[f.item],note:'새 비고',noteImportant:true}}};
+  const result=await apply(request);expect(result.status).toBe('rejected');const after=await f.target.get();expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);expect(after.data()).toEqual(before.data());expect((await audit(request).get()).exists).toBe(false);expect((await receipt(request).get()).data()).toMatchObject({status:'rejected',requestHash:result.requestHash,requestText:serializeOrderEditRequest(request)});
+ });
+ it('정상 명시회사 비고 수정 ACK는 회사 누락·null·타회사 변경 뒤에도 먼저 조회하고 대상은 재수정하지 않는다',async()=>{
+  const f=await fixture();const request:OrderEditRequest={...f.request,edit:{kind:'draft',draft:{deliveryDate:'2026-10-19',items:[f.item],note:'정상 비고',noteImportant:true}}};expect((await apply(request)).status).toBe('applied');expect((await f.target.get()).get('note')).toBe('정상 비고');expect((await audit(request).get()).exists).toBe(false);
+  for(const company of ['missing','null','foreign'] as const){const target:Record<string,unknown>={...f.order,note:'후속 원문'};if(company==='missing')delete target.companyId;else target.companyId=company==='null'?null:'punghoe';await f.target.set(target);const before=await f.target.get();expect((await apply(request)).status).toBe('duplicate');expect((await executeOrderEditCommand(db,actor,{mode:'inspect',reference:reference(request)})).status).toBe('applied');expect((await f.target.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);}
+ });
  it('진짜 Timestamp 원문은 동일codec으로비교하고 손상 receipt는 추가쓰기를 막는다',async()=>{
   const f=await fixture({noteAt:new admin.firestore.Timestamp(1,2)});
   f.request.expected=orderEditExpected((await f.target.get()).data()!,{special:value=>value instanceof admin.firestore.Timestamp?['timestamp',value.seconds,value.nanoseconds]:undefined});

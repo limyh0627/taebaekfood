@@ -86,7 +86,9 @@ export async function executeOrderEditCommand(db:admin.firestore.Firestore,actor
     const orderRef=db.collection('orders').doc(scope.targetId);
     const [snapshot,employee]=await tx.getAll(orderRef,db.collection('employees').doc(actor.token.employeeId as string));
     const current=snapshot.data();
-    if(!snapshot.exists||!current||(current.companyId??'taebaek')!==scope.companyId)return reject('대상 주문이 없거나 현재 회사의 주문이 아닙니다. 다시 조회해 주세요.');
+    if(!snapshot.exists||!current)return reject('대상 주문을 찾을 수 없습니다. 현재 주문 목록을 다시 조회해 주세요.');
+    if(current.companyId===undefined||current.companyId===null)return reject('대상 주문의 소속 회사가 지정되지 않아 저장하지 않았습니다. 주문의 소속 정보를 확인한 뒤 다시 열어 주세요.');
+    if(current.companyId!==scope.companyId)return reject('현재 회사의 주문이 아니므로 저장하지 않았습니다. 주문과 현재 선택한 회사를 확인해 주세요.');
     if(!employee.exists||(employee.get('companyId')??'taebaek')!==scope.companyId||typeof employee.get('name')!=='string'||!employee.get('name').trim())return reject('현재 회사 직원의 처리자 정보를 확인해 주세요.');
     if(JSON.stringify(orderEditExpected(current,codec))!==JSON.stringify(request!.expected))return reject('주문 내용이 변경되었습니다. 다시 조회한 뒤 수정해 주세요.');
     if(!Array.isArray(current.items))return reject('현재 주문 품목 원문을 확인해 주세요.');

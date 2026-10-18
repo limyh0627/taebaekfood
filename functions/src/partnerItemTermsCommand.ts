@@ -66,8 +66,8 @@ async function prepare(db: admin.firestore.Firestore, tx: admin.firestore.Transa
         return snapshot.docs;
     };
     const target = await tx.get(db.collection('partner_item').doc(scope.targetId)), raw = target.data();
-    if (raw && companyOf(raw) !== scope.companyId)
-        throw new TermsConflict('선택한 거래조건이 다른 회사 자료여서 저장하지 않았습니다.');
+    if (raw && raw.companyId !== scope.companyId)
+        throw new TermsConflict(raw.companyId == null ? '거래조건의 소속 회사가 지정되지 않아 저장하지 않았습니다. 해당 연결의 소속 정보를 확인한 뒤 다시 열어 주세요.' : '선택한 거래조건이 다른 회사 자료여서 저장하지 않았습니다.');
     if (raw && Object.prototype.hasOwnProperty.call(raw, 'id') && raw.id !== scope.targetId)
         throw new TermsConflict('선택한 거래조건의 문서 번호와 저장된 번호가 다릅니다. 해당 연결을 확인해 주세요.');
     if (raw && (raw.itemId !== scope.itemId || raw.partnerId !== scope.partnerId || (raw.Direction ?? 'out') !== scope.direction))
@@ -131,7 +131,7 @@ async function prepare(db: admin.firestore.Firestore, tx: admin.firestore.Transa
         if (!documentId(operation.id))
             throw new TermsConflict('저장할 연결의 문서 번호가 너무 깁니다.');
         const actual = await tx.get(db.collection('partner_item').doc(operation.id));
-        if (actual.exists !== operation.exists || actual.exists && companyOf(actual.data()!) !== scope.companyId)
+        if (actual.exists !== operation.exists || actual.exists && actual.get('companyId') !== scope.companyId)
             throw new TermsConflict('저장할 연결 번호가 기존 자료와 겹치거나 삭제되어 저장하지 않았습니다.');
     }
     const evidence: PartnerItemTermsEvidence = { schemaVersion: 1, queries: sorted(queries, row => row.kind + '|' + row.itemId), documents: sorted(documents, row => row.kind + '|' + row.id) };

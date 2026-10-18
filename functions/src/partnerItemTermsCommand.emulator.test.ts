@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import * as admin from 'firebase-admin';
 import { executePartnerItemTermsCommand, partnerItemTermsReceiptId } from './partnerItemTermsCommand';
-import { PARTNER_ITEM_TERMS_OPERATIONS, partnerItemTermsOpening, normalizePartnerItemTermsPreview, normalizePartnerItemTermsRequest, normalizePartnerItemTermsResult, termsFromOpening, type PartnerItemTerms, type PartnerItemTermsReference, type PartnerItemTermsRequest, type PartnerItemTermsCommand } from './shared/partnerItemTermsCommand';
+import { PARTNER_ITEM_TERMS_OPERATIONS, partnerItemTermsOpening, partnerItemTermsExpected, normalizePartnerItemTermsPreview, normalizePartnerItemTermsRequest, normalizePartnerItemTermsResult, termsFromOpening, type PartnerItemTerms, type PartnerItemTermsReference, type PartnerItemTermsRequest, type PartnerItemTermsCommand } from './shared/partnerItemTermsCommand';
 
 const active = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
 const actor = { uid: 'terms-actor', token: { employeeId: 'terms-employee', companyId: 'taebaek' } };
@@ -51,6 +51,33 @@ describe.skipIf(!active)('거래처 품목 거래조건 실제 SDK 원자 계약
     await f.target.delete(); await f.loose.delete();
     expect((await apply(request)).status).toBe('duplicate');
     expect((await f.target.get()).exists).toBe(false); expect((await f.loose.get()).exists).toBe(false);
+  });
+
+  it('기존 쓰기대상 회사 누락·null·타회사는 preview 거절과 유효 reject receipt만 남긴다', async () => {
+    for (const company of [undefined, null, 'punghoe']) {
+      const f = await fixture(), request = await f.request({ price: 2400 });
+      await f.target.update({ companyId: company === undefined ? admin.firestore.FieldValue.delete() : company });
+      const raw = (await f.target.get()).data()!;
+      await expect(executePartnerItemTermsCommand(db, actor, { mode: 'preview', input: { version: 1, ...f.reference, opening: partnerItemTermsOpening(raw), terms: { price: 2400 } } })).rejects.toMatchObject({ code: 'failed-precondition' });
+      expect((await receipt(f.reference).get()).exists).toBe(false);
+      // 과거 원문 형태를 가진 유효 요청도 회사 누락을 신규 쓰기 권한으로 해석하지 않는다.
+      const originalRequest = normalizePartnerItemTermsRequest({ ...request, expected: partnerItemTermsExpected(raw) });
+      const rejected = await apply(originalRequest); expect(rejected.status).toBe('rejected'); expect(rejected.message).toContain(company == null ? '소속 회사가 지정되지' : '다른 회사');
+      expect((await f.target.get()).data()).toEqual(raw); expect((await f.loose.get()).exists).toBe(false);
+      expect((await receipt(f.reference).get()).data()).toMatchObject({ status: 'rejected', requestHash: expect.stringMatching(/^[a-f0-9]{64}$/), requestText: expect.any(String) });
+      await f.target.update({ companyId: 'taebaek' }); expect((await apply(originalRequest)).status).toBe('rejected'); expect((await f.target.get()).get('price')).toBe(1200);
+    }
+  });
+
+  it('신규 회사 주입과 참조·실직원 legacy 회사 판독은 기존대로 유지한다', async () => {
+    const f = await fixture(false);
+    await doc('items/' + f.box).update({ companyId: admin.firestore.FieldValue.delete() });
+    await doc('partners/' + f.partner).update({ companyId: null });
+    await doc('employees/' + actor.token.employeeId).update({ companyId: admin.firestore.FieldValue.delete() });
+    try {
+      expect((await apply(await f.request({ price: 2400 }))).status).toBe('applied');
+      expect((await f.target.get()).get('companyId')).toBe('taebaek'); expect((await f.loose.get()).get('companyId')).toBe('taebaek');
+    } finally { await doc('employees/' + actor.token.employeeId).set({ companyId: 'taebaek', name: '합성 직원' }); }
   });
 
   it('기존 낱개는 가격·과세·계정·포장을 그대로 두고 상자만 수정한다', async () => {

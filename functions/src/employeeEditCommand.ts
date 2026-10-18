@@ -93,8 +93,10 @@ export async function executeEmployeeEditCommand(db: admin.firestore.Firestore, 
             return writeReceipt(outcome(scope, 'cancelled', null, '이 직원 저장 요청을 중단했습니다. 늦게 도착한 저장도 막았습니다.'));
         const reject = (message: string) => writeReceipt(outcome(scope, 'rejected', hash!, message));
         const targetRef = db.collection('employees').doc(scope.targetId), target = await tx.get(targetRef), current = target.data();
-        if (current && (current.companyId ?? 'taebaek') !== scope.companyId)
-            return reject('같은 번호의 다른 회사 직원이 있어 저장하지 않았습니다.');
+        if (current && current.companyId !== scope.companyId)
+            return reject(current.companyId == null
+                ? '직원 정보의 소속 회사가 지정되지 않아 저장하지 않았습니다. 직원의 소속 정보를 확인한 뒤 다시 열어 주세요.'
+                : '같은 번호의 다른 회사 직원이 있어 저장하지 않았습니다.');
         if (request!.kind === 'create' ? target.exists : !target.exists)
             return reject(request!.kind === 'create' ? '같은 번호의 직원이 이미 있어 덮어쓰지 않았습니다.' : '직원 정보가 삭제되어 다시 만들지 않았습니다.');
         if (request!.kind !== 'create' && JSON.stringify(employeeEditExpected(current!, request!.kind, codec)) !== JSON.stringify(request!.expected))
