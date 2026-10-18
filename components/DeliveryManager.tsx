@@ -1,10 +1,10 @@
 import SearchableSelect from '../src/shared/components/SearchableSelect';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import DeliveryCalendarCard from '../src/features/orders/ui/DeliveryCalendarCard';
 import {queryDateKey} from '../src/features/orders/domain/deliveryQueryDate';
 import {queryFields,queryValuesFor as queryValuesForInputs,filterDeliverySearchOrders} from '../src/features/orders/domain/deliveryQuery';
 import {buildDeliverySchedules,buildDeliveredSchedules} from '../src/features/orders/domain/deliverySchedules';
-import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
+import DateRangeInputs, { DATE_RANGE_LAYOUT_CLASS, DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, Plus } from 'lucide-react';
@@ -853,10 +853,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         recovery={orderRecoveryOrphans ? <section aria-label="주문 없는 처리 확인 기록" className="rounded-lg border border-slate-200 bg-white p-3">{orderRecoveryOrphans}</section> : undefined}
       />}
 
-      {!calendarOnly && <QueryFilterPanel id="delivery-query-title" onReset={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }}>
-          <label className={QUERY_FILTER_LABEL_CLASS}>
+      {!calendarOnly && <QueryFilterPanel id="delivery-query-title" onReset={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} dateRow={<><label className={QUERY_FILTER_DATE_CLASS}>
             주문일
-            <span className="flex flex-wrap items-center gap-2">
+            <span className={DATE_RANGE_LAYOUT_CLASS}>
 
               <DateRangeInputs from={queryDateFrom} to={queryDateTo} onFromChange={setQueryDateFrom} onToChange={setQueryDateTo}
                 className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400"
@@ -869,24 +868,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                 })}
               <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className={dateRangeQuickButtonClass(!queryDateFrom&&!queryDateTo)}>전체</button></span>
             </span>
-          </label>
-          <span className="h-0 basis-full" aria-hidden="true" />
-          <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+          </label></>} conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>
             검색 필드
             <SearchableSelect ariaLabel="검색 필드" value={queryField} onChange={value=>{setQueryField(value);setQueryValue('');}} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'필드 선택'},...queryFields.map(([value,label])=>({value,label}))]}/>
-          </label>
-          <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+          </label><label className={QUERY_FILTER_FIELD_CLASS}>
             조건 값
             <SearchableSelect ariaLabel="조건 값" value={queryValue} disabled={!queryField} onChange={setQueryValue} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'전체'},...(queryValue&&!queryOptions.includes(queryValue)?[{value:queryValue,label:queryValue+' (결과 없음)'}]:[]),...queryOptions.map(value=>({value,label:value}))]}/>
-          </label>
-          <label className="flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
+          </label></>} searchRow={<><label className={QUERY_FILTER_SEARCH_CLASS}>
             전체 검색
             <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
               <input type="search" value={queryText} onChange={event => setQueryText(event.target.value)} placeholder="거래처, 주소, 품목, 비고 검색" className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
             </span>
-          </label>
-        </QueryFilterPanel>}
+          </label></>} />}
 
       {!calendarOnly && deliveryTab === '리스트' && (
         <div className="min-w-0">

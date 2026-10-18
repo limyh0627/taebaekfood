@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { Props } from '../src/features/statements/domain/cashLedger';
 import { fmt } from '../src/features/statements/ui/cashEntryDisplay';
 import { ACCOUNT_ICON } from '../src/features/statements/ui/cashAccountDisplay';
@@ -130,9 +130,11 @@ export default function CashLedger({
           </div>
         </div>
 
-        <QueryFilterPanel id="cash-query-title" onReset={()=>{setFrom(monthStart());setTo(today());setRangeQuick('당월');}}><label className={QUERY_FILTER_LABEL_CLASS}>기간
+        <QueryFilterPanel id="cash-query-title" onReset={()=>{setFrom(monthStart());setTo(today());setRangeQuick('당월');}} dateRow={<>
+<label className={QUERY_FILTER_DATE_CLASS}>기간
 <DateRangeFilter from={from} to={to} quick={rangeQuick} label="자금 조회"
-              onChange={(nextFrom, nextTo, quick) => { setFrom(nextFrom); setTo(nextTo); setRangeQuick(quick); }} /></label></QueryFilterPanel>
+              onChange={(nextFrom, nextTo, quick) => { setFrom(nextFrom); setTo(nextTo); setRangeQuick(quick); }} /></label>
+</>} />
         {/*  **표는 좁은 화면에서 가로로 민다.** `w-full` 만 있으면 폭에 맞춰 칸이 찌그러지고,
              한글이 한 글자씩 세로로 쌓여 아예 못 읽는다(2026-09-03 사장님 지적).
              최소 너비를 줘야 `overflow-x-auto` 가 실제로 넘쳐서 스크롤이 생긴다. */}

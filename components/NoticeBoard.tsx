@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { auth } from '../src/shared/firebase';
@@ -192,20 +192,20 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
             </button>
         </div> : undefined}
       />
-      <QueryFilterPanel onReset={() => setSearchTerm('')}>
-<label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
-<div className="relative w-full max-w-sm">
+      <QueryFilterPanel onReset={() => setSearchTerm('')} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span>
+<div className="relative w-full min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
             <input
               type="text"
               placeholder="공지 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              aria-label="공지 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
+              aria-label="공지 검색" className={(QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
             />
           </div>
 </label>
-</QueryFilterPanel>
+</>} />
 
 
       <div className="grid grid-cols-1 gap-4">

@@ -1,6 +1,6 @@
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { isCalendarDay } from '../src/shared/day';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { buildRawLedgerRows } from '../src/features/items/domain/rawLedgerRows';
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -100,10 +100,13 @@ const RawLedgerList: React.FC<Props> = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1 flex-wrap">
-        <div className="w-full" onClick={event=>event.stopPropagation()}><QueryFilterPanel onReset={()=>{ pick('전체'); resetDates(); setOpenDay(null); }}><label className={QUERY_FILTER_LABEL_CLASS + ' w-36'}>유형
+        <div className="w-full" onClick={event=>event.stopPropagation()}><QueryFilterPanel onReset={()=>{ pick('전체'); resetDates(); setOpenDay(null); }}
+ dateRow={<><div className={QUERY_FILTER_DATE_CLASS}><span>기록일</span><DateRangeFilter label="원료 기록일" from={from} to={to} quick={quick} onChange={changeDates}/></div></>}
+ conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>유형
           <SearchableSelect ariaLabel="유형" className={QUERY_FILTER_CONTROL_CLASS} value={filter} onChange={value=>pick(value as FilterType)} options={FILTERS.map(value=>({value,label:value}))}/>
-        </label><div className={QUERY_FILTER_LABEL_CLASS}><span>기록일</span><DateRangeFilter label="원료 기록일" from={from} to={to} quick={quick} onChange={changeDates}/></div>
-          <p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}개 묶음 제외 · 전체 기간에서 확인</p>}</QueryFilterPanel></div>
+        </label></>}
+ noteRow={<><p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>
+{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}개 묶음 제외 · 전체 기간에서 확인</p>}</>} /></div>
         <span className="ml-auto text-[10px] font-black text-slate-300">{filteredCount}건</span>
       </div>
 

@@ -1,6 +1,6 @@
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { isCalendarDay } from '../src/shared/day';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import type { QuotationLine, Quotation } from '../src/features/quotations/domain/quotation';
 export type {QuotationLine,Quotation} from '../src/features/quotations/domain/quotation';
@@ -207,17 +207,17 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           <Plus size={14} />견적서 작성
         </ActionButton>} />
 
-      <QueryFilterPanel onReset={() => { setSearch(''); resetDates(); }}>
-<label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
-<div className="relative flex-1 min-w-[200px] max-w-sm">
+      <QueryFilterPanel onReset={() => { setSearch(''); resetDates(); }} dateRow={<>
+<div className={QUERY_FILTER_DATE_CLASS}><span>견적일</span><DateRangeFilter label="견적일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div>
+</>} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span>
+<div className="relative w-full">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처·품목·번호"
-            aria-label="견적 검색" className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'} />
+            aria-label="견적 검색" className={(QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3') + ' w-full min-w-0 max-w-full'} />
         </div>
 </label>
-<div className={QUERY_FILTER_LABEL_CLASS}><span>견적일</span><DateRangeFilter label="견적일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div>
-{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>}
-</QueryFilterPanel>
+</>} noteRow={excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>} />
 
       {quoteError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">

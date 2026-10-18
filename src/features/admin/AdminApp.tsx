@@ -1,4 +1,5 @@
-import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../../shared/components/QueryFilterPanel';
+import { DATE_RANGE_LAYOUT_CLASS } from '../../shared/components/DateRangeInputs';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../shared/components/QueryFilterPanel';
 import RawDocUsageDetailModal from '../../../components/RawDocUsageDetailModal';
 import {collectRawDocOilUsage,rawDocNoteSummary,rawDocProductionReplacement,type RawDocLedgerRecord,type RawDocUsageSelection,type RawDocUsageContribution} from '../../shared/rawDocUsageDetail';
 import { useMenuPreferencesController } from './hooks/useMenuPreferencesController';
@@ -3621,13 +3622,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   return (
                     <div className="space-y-3">
                         <span className="text-xs font-black text-slate-500 uppercase tracking-widest">생산판매기록부 이력 ({logs.length}건)</span>
-                        <QueryFilterPanel ariaLabel="생산판매기록부 검색조건" onReset={() => markDocLogMonth(new Date().toISOString().slice(0,7))}>
-                        <div className={QUERY_FILTER_LABEL_CLASS}><span>조회 월</span><div className="flex items-center gap-2">
-                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() - 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">‹</button>
-                          <input type="month" value={docLogMonth} onChange={e => markDocLogMonth(e.target.value)} aria-label="생산판매기록부 조회 월" className={QUERY_FILTER_CONTROL_CLASS} />
-                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() + 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">›</button>
+                        <QueryFilterPanel ariaLabel="생산판매기록부 검색조건" onReset={() => markDocLogMonth(new Date().toISOString().slice(0,7))} dateRow={<>
+<div className={QUERY_FILTER_DATE_CLASS}><span>조회 월</span><div className={DATE_RANGE_LAYOUT_CLASS}>
+                          <input type="month" value={docLogMonth} onChange={e => markDocLogMonth(e.target.value)} aria-label="생산판매기록부 조회 월" className={QUERY_FILTER_CONTROL_CLASS + ' w-36 max-w-full'} /><span className="flex items-center gap-2"><button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() - 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-500">‹</button><button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() + 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-500">›</button></span>
                         </div></div>
-                        </QueryFilterPanel>
+</>} />
                       {logs.length === 0 ? (
                         <div className="py-16 text-center text-slate-300 text-sm">저장된 기록이 없습니다</div>
                       ) : (
@@ -3959,11 +3958,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   return (
                     <div className="space-y-4">
                       {rawUsageDetail && rawUsageDetail.companyId === companyId && rawUsageDetail.month === docYearMonth && rawUsageDetail.material === rmActiveMaterial && <RawDocUsageDetailModal detail={rawUsageDetail} onClose={() => setRawUsageDetail(null)} />}
-                      <QueryFilterPanel ariaLabel="원료수불부 검색조건" onReset={() => setDocYearMonth(new Date().toISOString().slice(0,7))}>
-                        <label className={QUERY_FILTER_LABEL_CLASS}>조회 월
+                      <QueryFilterPanel ariaLabel="원료수불부 검색조건" onReset={() => setDocYearMonth(new Date().toISOString().slice(0,7))} dateRow={<>
+<label className={QUERY_FILTER_FIELD_CLASS}>조회 월
                           <input type="month" aria-label="원료수불부 조회 월" value={docYearMonth} onChange={e => setDocYearMonth(e.target.value)} className={QUERY_FILTER_CONTROL_CLASS}/>
                         </label>
-                      </QueryFilterPanel>
+</>} />
                       {/* 헤더 */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">

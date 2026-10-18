@@ -13,7 +13,7 @@ it('입고 취소 정정은 이력을 표시하고 일반 삭제로 다시 원�
 
 it('원료 기간 조회는 정정 전후 잔량을 보존하고 날짜 변경 시 상세를 닫고 건수를 맞춘다',()=>{
  const rows=[{id:'before',date:'2026-10-08',received:100,used:0,note:'이전입고'},{id:'one',date:'2026-10-09',received:10,used:0,note:'당일입고'},{id:'after',date:'2026-10-10',received:20,used:0,note:'이후입고'}].map((r)=>({...r,companyId:'taebaek',material:'참깨',type:'manual',createdAt:r.date+'T01:00:00Z'})) as RawMaterialEntry[];
- const view=render(<RawLedgerList entries={rows} allEntries={rows}/>),ui=within(view.container);
+ const view=render(<RawLedgerList entries={rows} allEntries={rows}/>),ui=within(view.container);expect([...view.container.querySelectorAll('[data-query-row]')].map(row=>row.getAttribute('data-query-row'))).toEqual(['date','condition','note']);
  const row=ui.getByText('당일입고').closest('li')!,before=row.textContent;
  fireEvent.click(ui.getByText('당일입고'));expect(ui.getByText('기록자 없음')).toBeTruthy();
  fireEvent.change(ui.getByLabelText('원료 기록일 시작일'),{target:{value:'2026-10-09'}});

@@ -1,5 +1,6 @@
 import type {InputHTMLAttributes} from 'react';
 
+export const DATE_RANGE_LAYOUT_CLASS = 'flex min-w-0 max-w-full flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center';
 export const DATE_RANGE_INPUT_CLASS = 'date-narrow h-10 !min-w-0 max-w-full rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs';
 export const DATE_RANGE_PAIR_CLASS = 'flex min-w-0 max-w-full flex-nowrap items-center gap-1 sm:gap-2';
 export const DATE_RANGE_QUICK_GROUP_CLASS = 'flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white';

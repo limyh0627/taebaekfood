@@ -1,4 +1,4 @@
-import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { appNotice } from '../src/shared/components/appDialog';
 import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
 import { previewRasterPdf, snapshotOutputElement } from '../src/shared/rasterPdfOutput';
@@ -445,9 +445,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 월 선택 + 거래처 */}
           <div className="w-full lg:w-64 lg:shrink-0 flex flex-col gap-3">
-          <QueryFilterPanel id="tax-issue-query-title" onReset={() => { setSelectedMonth(today().slice(0,7)); setTaxClientId(''); setTaxStmtIds([]); setTaxClientSearch(''); setOnlyUnissued(false); }}>
-            {/* 월 선택 */}
-            <div className="w-full">
+          <QueryFilterPanel id="tax-issue-query-title" onReset={() => { setSelectedMonth(today().slice(0,7)); setTaxClientId(''); setTaxStmtIds([]); setTaxClientSearch(''); setOnlyUnissued(false); }} dateRow={<>
+<div className={QUERY_FILTER_FIELD_CLASS}>
               <label htmlFor="tax-issue-month" className={QUERY_FILTER_LABEL_CLASS}>발행 월</label>
               <select
                 id="tax-issue-month" value={selectedMonth}
@@ -463,17 +462,14 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 })()}
               </select>
             </div>
-
-            {/* 거래처 목록 */}
-            {/* 높이는 거래처통계와 같은 기준 — 400px 고정이라 아래가 비었다 */}
-
-              <div className="w-full space-y-2">
+</>} searchRow={<>
+<div className={QUERY_FILTER_SEARCH_CLASS + ' sm:!min-w-0 max-w-full'}>
                 <p className="text-[10px] font-bold text-slate-500">거래처</p>
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input aria-label="발행 거래처 검색" type="text" placeholder="거래처 검색..." value={taxClientSearch}
                     onChange={e => setTaxClientSearch(e.target.value)}
-                    className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-7 !pr-2`}/>
+                    className={(`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-7 !pr-2`) + ' w-full min-w-0 max-w-full'}/>
                 </div>
                 <button
                   onClick={() => setOnlyUnissued(p => !p)}
@@ -482,7 +478,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                   미발행 거래처만 보기
                 </button>
               </div>
-          </QueryFilterPanel>
+</>} />
             <div className="bg-white rounded-lg border border-slate-200 flex flex-col overflow-hidden max-h-[calc(100vh-260px)]">
               <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
                 {taxClients.map(c => {
@@ -771,17 +767,17 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 거래처 필터 */}
           <div className="w-full lg:w-56 lg:shrink-0 flex flex-col gap-3 lg:sticky lg:top-0">
-            <QueryFilterPanel ariaLabel="세금계산서 조회 검색조건" onReset={() => setHistClientSearch('')}>
-              <div className="w-full">
+            <QueryFilterPanel ariaLabel="세금계산서 조회 검색조건" onReset={() => setHistClientSearch('')} searchRow={<>
+<div className={QUERY_FILTER_SEARCH_CLASS + ' sm:!min-w-0 max-w-full'}>
                 <p className={QUERY_FILTER_LABEL_CLASS}>발행 거래처</p>
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input aria-label="조회 거래처 검색" type="text" placeholder="거래처 검색..." value={histClientSearch}
                     onChange={e => setHistClientSearch(e.target.value)}
-                    className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-7 !pr-2`}/>
+                    className={(`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-7 !pr-2`) + ' w-full min-w-0 max-w-full'}/>
                 </div>
               </div>
-            </QueryFilterPanel>
+</>} />
             <div className="bg-white rounded-lg border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
               <div className="overflow-y-auto divide-y divide-slate-50 max-h-[calc(100vh-260px)]">
                 <button onClick={() => { setHistClientId(''); setHistPreviewGroupKey(null); }}

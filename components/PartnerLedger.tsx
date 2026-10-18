@@ -1,4 +1,5 @@
-import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../src/shared/components/QueryFilterPanel';
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_LAYOUT_CLASS } from '../src/shared/components/DateRangeInputs';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import ActionButton from '../src/shared/components/ActionButton';
 import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
@@ -208,8 +209,8 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
         </div>
       </div>
 
-      <QueryFilterPanel ariaLabel="거래처 원장 검색조건" onReset={() => { setPeriodMode('custom'); setSelectedMonth(today().slice(0,7)); setCustomFrom(monthStart()); setCustomTo(today()); setSearch(''); setSelectedAccount(''); }}>
-        <div className={QUERY_FILTER_LABEL_CLASS}><span>기간</span><div className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+      <QueryFilterPanel ariaLabel="거래처 원장 검색조건" onReset={() => { setPeriodMode('custom'); setSelectedMonth(today().slice(0,7)); setCustomFrom(monthStart()); setCustomTo(today()); setSearch(''); setSelectedAccount(''); }} dateRow={<>
+<div className={QUERY_FILTER_DATE_CLASS}><span>기간</span><div className={DATE_RANGE_LAYOUT_CLASS}><div className="flex h-10 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
           {([['all', '전체'], ['month', '월별'], ['custom', '기간']] as const).map(([mode, text]) => (
             <button key={mode} type="button" onClick={() => setPeriodMode(mode)}
               className={`h-full px-3 text-[11px] transition-all ${
@@ -218,29 +219,23 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
               {text}
             </button>
           ))}
-        </div></div>
-        {periodMode === 'month' && (
+        </div>
+{periodMode === 'month' && (
           <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
             className={QUERY_FILTER_CONTROL_CLASS} />
         )}
-        {periodMode === 'custom' && (
-          <div className="flex items-center gap-1">
-            <input type="date" value={customFrom} max={customTo}
-              onChange={e => setCustomFrom(e.target.value)}
-              className={QUERY_FILTER_CONTROL_CLASS} />
-            <span className="text-slate-400 text-xs font-black">~</span>
-            <input type="date" value={customTo} min={customFrom}
-              onChange={e => setCustomTo(e.target.value)}
-              className={QUERY_FILTER_CONTROL_CLASS} />
-          </div>
+{periodMode === 'custom' && (
+          <DateRangeInputs from={customFrom} to={customTo} onFromChange={setCustomFrom} onToChange={setCustomTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="text-slate-400 text-xs font-black" fromInputProps={{max:customTo,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{min:customFrom,className:DATE_RANGE_INPUT_CLASS}}/>
         )}
-        <label className={`min-w-[180px] max-w-xs flex-1 ${QUERY_FILTER_LABEL_CLASS}`}>거래처
+</div></div>
+</>} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}>거래처
         <span className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처명"
-            className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8 !pr-3`} />
+            className={(`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8 !pr-3`) + ' w-full min-w-0 max-w-full'} />
         </span></label>
-      </QueryFilterPanel>
+</>} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
         {/* 거래처 목록 */}
@@ -427,12 +422,12 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
               <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
 
-              <QueryFilterPanel ariaLabel="원장 계정 검색조건" onReset={() => setSelectedAccount('')}>
-                <label className={QUERY_FILTER_LABEL_CLASS}>계정
-                  <SearchableSelect ariaLabel="계정 필터" value={activeAccount} onChange={setSelectedAccount} className={QUERY_FILTER_CONTROL_CLASS}
+              <QueryFilterPanel ariaLabel="원장 계정 검색조건" onReset={() => setSelectedAccount('')} conditionRow={<>
+<label className={QUERY_FILTER_FIELD_CLASS}>계정
+                  <SearchableSelect ariaLabel="계정 필터" value={activeAccount} onChange={setSelectedAccount} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'}
                     options={[{value:'',label:'모든 계정'},...historyCodes.map(code=>({value:code,label:code+' '+(codeName.get(code) ?? accountBalances.find(row=>row.code===code)?.name ?? '계정 미정')}))]} />
                 </label>
-              </QueryFilterPanel>
+</>} />
             </div>
             <div className="overflow-x-auto p-4">
               <table aria-label="거래처 계정별 잔액" className="w-full min-w-[600px] text-xs text-right">

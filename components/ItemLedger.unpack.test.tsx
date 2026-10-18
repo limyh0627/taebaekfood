@@ -18,6 +18,7 @@ it('제품별원장의 캔·벌크 선택 모두 같은 개봉 원본을 넘겨 
     received: 0, used: 0, canCount: 1, appliedDeltaKg: 16.5, note: '1캔 개봉', unit: 'kg',
   } as ItemInventoryEntry;
   render(<ItemLedger items={items} orders={[]} rawEntries={[entry]} companyId="taebaek" />);
+  const query=screen.getByRole('region',{name:'검색조건'});expect([...query.querySelectorAll('[data-query-row]')].map(row=>row.getAttribute('data-query-row'))).toEqual(['condition','search']);
   fireEvent.click(screen.getByRole('button', { name: /깨분참기름-캔/ }));
   expect(screen.getByText('캔 개봉')).toBeTruthy();
   expect(screen.getByText('-1')).toBeTruthy();

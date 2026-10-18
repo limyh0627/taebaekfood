@@ -24,6 +24,7 @@ it('조합 필터, 공백 있는 값, 이름/규격 검색, 초기화, 0건과 �
   render(<ItemManager companyId="taebaek" items={items} partners={partners}
     onEditProduct={vi.fn()} onAddItem={vi.fn()} onDeleteItem={vi.fn()}
     onLinkItem={onLinkItem} onUnlinkItem={vi.fn()} />);
+  const query=screen.getByRole('region',{name:'검색조건'});expect([...query.querySelectorAll('[data-query-row]')].map(row=>row.getAttribute('data-query-row'))).toEqual(['condition','search']);expect(query.querySelector('[data-query-row="search"]')).toContainElement(screen.getByRole('button',{name:'정렬'}));
   fireEvent.click(screen.getByRole('button', { name: '거래처별 품목' }));
   fireEvent.click(screen.getByRole('button', { name: /첫 거래처/ }));
   fireEvent.click(screen.getAllByRole('button', { name: '품목 연결' })[0]);

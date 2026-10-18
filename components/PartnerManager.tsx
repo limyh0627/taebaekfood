@@ -1,5 +1,5 @@
 import SearchableSelect from '../src/shared/components/SearchableSelect';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { PartnerEditModal } from '../src/features/partners/ui/PartnerEditModal';
 import ActionButton from '../src/shared/components/ActionButton';
 
@@ -150,27 +150,22 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         }
       />
 
-      <QueryFilterPanel onReset={() => { setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }}>
-
-
-
-        {(activeTab === '매출처' || activeTab === '전체') && (
-          <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>거래처 유형
-            <SearchableSelect ariaLabel="거래처 유형" className={QUERY_FILTER_CONTROL_CLASS} value={activeTypeTab}
+      <QueryFilterPanel onReset={() => { setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }} conditionRow={(activeTab === '매출처' || activeTab === '전체') && (
+          <label className={QUERY_FILTER_FIELD_CLASS}>거래처 유형
+            <SearchableSelect ariaLabel="거래처 유형" className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'} value={activeTypeTab}
               onChange={value => { setActiveTypeTab(value as PartnerChannel | '전체'); setPage(1); }}
               options={partnerChannelTypes.map(t => ({value:t.id,label:t.id === '전체' ? '전체' : t.label + ' ' + activePartners.filter(c => activeTab === '전체' || getEffectivePartnerType(c) === activeTab).filter(c => c.type === t.id).length}))}/>
           </label>
-        )}
-
-        <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}><span>전체 검색</span>
-<div className="relative w-full max-w-md">
+        )} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span>
+<div className="relative w-full min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
           <input
             type="text"
             placeholder={`${activeTab === '전체' ? '전체' : activeTab} 거래처 검색...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
+            className={(QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
           />
           {searchTerm && (
             <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -179,8 +174,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
           )}
         </div>
 </label>
-
-</QueryFilterPanel>
+</>} />
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

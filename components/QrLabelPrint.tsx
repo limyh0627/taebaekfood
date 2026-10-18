@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
 import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import React, { useState, useEffect } from 'react';
@@ -76,15 +76,17 @@ const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose, comp
   return (
     <ModalShell title="QR 라벨 인쇄" onClose={onClose} bodyClassName="!p-0">
         {/* 검색 + 전체선택 */}
-<QueryFilterPanel onReset={() => setSearch('')}><label className={QUERY_FILTER_LABEL_CLASS + ' w-full'}><span>전체 검색</span><div className="relative flex-1">
+<QueryFilterPanel onReset={() => setSearch('')} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span><div className="relative flex-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="품목 검색..."
-              className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3'}
+              className={(QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
             />
-          </div></label></QueryFilterPanel>
+          </div></label>
+</>} />
         <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
 
           <button

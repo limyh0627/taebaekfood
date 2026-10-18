@@ -1,6 +1,6 @@
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { isCalendarDay } from '../src/shared/day';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { ReturnStockOperation } from '../src/shared/returnStockMovement';
 import React, { useMemo, useState } from 'react';
 import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
@@ -87,11 +87,13 @@ const ItemLedger: React.FC<{
     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-auto lg:h-full min-h-0">
       {/* 품목 고르기 — 크기 고정. 검색으로 줄 수가 줄어도 창이 안 흔들린다. */}
       <div className="w-full lg:w-[280px] shrink-0 flex flex-col max-h-[38vh] lg:max-h-none bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <QueryFilterPanel onReset={() => { setQ(''); setType(ALL); setCat(ALL); }}><label className={QUERY_FILTER_LABEL_CLASS + ' w-full'}><span>전체 검색</span><div className="relative">
+        <QueryFilterPanel onReset={() => { setQ(''); setType(ALL); setCat(ALL); }}
+ conditionRow={<><ItemFilterBar items={pickable} type={type} setType={setType} category={cat} setCategory={setCat}/></>}
+ searchRow={<><label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span><div className="relative">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
               className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3'}/>
-          </div></label><ItemFilterBar items={pickable} type={type} setType={setType} category={cat} setCategory={setCat}/></QueryFilterPanel>
+          </div></label></>} />
         <div className="flex-1 overflow-y-auto">
           {shown.length === 0 && (
             <div className="px-3 py-8 text-center">
@@ -145,11 +147,10 @@ const ItemLedger: React.FC<{
               <span className="text-slate-700">재고 <span className="tabular-nums">{fmt(Number(picked.stock ?? 0))}</span>{picked.unit}</span>
             </div>
           </div>
-          <QueryFilterPanel onReset={resetDates}>
-            <div className={QUERY_FILTER_LABEL_CLASS}><span>기록일</span><DateRangeFilter label="제품 원장 기록일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div>
-            <p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>
-            {excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>}
-          </QueryFilterPanel>
+          <QueryFilterPanel onReset={resetDates}
+ dateRow={<><div className={QUERY_FILTER_DATE_CLASS}><span>기록일</span><DateRangeFilter label="제품 원장 기록일" from={from} to={to} quick={quick} onChange={(f, t, q) => { setFrom(f); setTo(t); setQuick(q); }}/></div></>}
+ noteRow={<><p className="w-full text-[10px] text-slate-500">잔량·누계: 전체 기록 기준</p>
+{excludedDates > 0 && <p className="w-full text-[10px] text-slate-500">날짜 미확인 {excludedDates}건 제외 · 전체 기간에서 확인</p>}</>} />
           {ledger.independentlyVerified ? (
             <div className={`px-5 py-2 border-b text-[11px] font-bold ${
               Math.abs(ledger.gap) <= 0.001

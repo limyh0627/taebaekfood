@@ -1,5 +1,5 @@
-import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../../shared/components/QueryFilterPanel';
-import DateRangeInputs from '../../shared/components/DateRangeInputs';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../shared/components/QueryFilterPanel';
+import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS } from '../../shared/components/DateRangeInputs';
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, LoaderCircle, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import type { IntegrityArea, IntegrityAuditInput, IntegritySeverity } from './dataIntegrityAudit';
@@ -26,10 +26,11 @@ const DataIntegrityMonitor: React.FC<IntegrityAuditInput & { onRefresh?: () => v
   if (props.loading) return <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-slate-500"><LoaderCircle className="animate-spin text-indigo-500" size={32} /><p className="font-bold">재고·원장 자료를 같은 시점으로 맞춰 불러오는 중입니다.</p><p className="text-xs">모두 도착하기 전에는 오류를 계산하지 않습니다.</p></div>;
   return <div className="space-y-4 pb-10">
     <div className="flex flex-col gap-3 md:flex-row md:items-end"><div><h1 className="text-xl font-black text-slate-900">데이터 점검</h1><p className="mt-1 text-sm text-slate-500">하루 동안 저장된 처리 근거를 서로 대조합니다. 이 화면에서는 데이터를 변경하지 않습니다.</p></div><div className="md:ml-auto">{props.onRefresh && <button type="button" onClick={props.onRefresh} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-600"><RotateCcw size={14} />새로고침</button>}</div></div>
-    <QueryFilterPanel ariaLabel="데이터 점검 검색조건" onReset={() => { setArea('전체'); setQuery(''); }}>
-      <div className={QUERY_FILTER_LABEL_CLASS}><span>점검 기간</span><div className="flex flex-wrap items-center gap-2"><DateRangeInputs from={from} to={to} onFromChange={setFrom} onToChange={setTo} className="contents" separatorClassName="text-slate-400" fromInputProps={{ 'aria-label': '점검 시작일', className: QUERY_FILTER_CONTROL_CLASS }} toInputProps={{ 'aria-label': '점검 종료일', className: QUERY_FILTER_CONTROL_CLASS }} /></div></div>
-      <label className={QUERY_FILTER_LABEL_CLASS}>검색<span className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="주문번호·전표번호·내용 검색" className={`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8`}/></span></label>
-    </QueryFilterPanel>
+    <QueryFilterPanel ariaLabel="데이터 점검 검색조건" onReset={() => { setArea('전체'); setQuery(''); }} dateRow={<>
+<div className={QUERY_FILTER_DATE_CLASS}><span>점검 기간</span><div className="flex flex-wrap items-center gap-2"><DateRangeInputs from={from} to={to} onFromChange={setFrom} onToChange={setTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="text-slate-400" fromInputProps={{ 'aria-label': '점검 시작일', className: DATE_RANGE_INPUT_CLASS }} toInputProps={{ 'aria-label': '점검 종료일', className: DATE_RANGE_INPUT_CLASS }} /></div></div>
+</>} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}>검색<span className="relative"><Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="주문번호·전표번호·내용 검색" className={(`${QUERY_FILTER_CONTROL_CLASS} w-full !pl-8`) + ' w-full min-w-0 max-w-full'}/></span></label>
+</>} />
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{AREAS.map(name => { const rows = issues.filter(i => i.area === name); const bad = rows.filter(i => i.severity === 'error').length; return <button key={name} onClick={() => setArea(name)} className={`rounded-2xl border bg-white p-4 text-left transition ${area === name ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}><div className="flex items-center justify-between"><span className="text-sm font-bold text-slate-700">{name}</span>{bad ? <XCircle size={18} className="text-rose-500" /> : <CheckCircle2 size={18} className="text-emerald-500" />}</div><div className="mt-3 text-2xl font-black text-slate-900">{rows.length}<span className="ml-1 text-xs font-medium text-slate-400">건</span></div></button>; })}</div>
     <div className="rounded-2xl border border-slate-200 bg-white">
       <div className="flex items-center gap-2 border-b border-slate-100 p-4 text-sm font-bold text-slate-700"><ShieldCheck size={18} className="text-indigo-600" /> 오류 {errors}건 · 확인 필요 {warnings}건</div>

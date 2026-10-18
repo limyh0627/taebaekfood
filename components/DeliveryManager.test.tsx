@@ -177,3 +177,5 @@ it('주문일 빠른기간 자동선택·수동변경·기간전체와 검색전
  const search=screen.getByPlaceholderText('거래처, 주소, 품목, 비고 검색');fireEvent.change(search,{target:{value:'참기름'}});
  fireEvent.click(screen.getByRole('button',{name:/^초기화$/}));expect(from).toHaveValue('');expect(to).toHaveValue('');expect(search).toHaveValue('');
 });
+
+it('배송 조회도 날짜·조건·검색 고정 행을 사용하고 조건 값과 전체검색을 분리한다',()=>{render(<DeliveryManager companyId="taebaek" orders={[]} partners={partners} items={items}/>);const query=screen.getByRole('region',{name:'검색조건'});expect(Array.from(query.querySelectorAll('[data-query-row]')).map(row=>row.getAttribute('data-query-row'))).toEqual(['date','condition','search']);expect(screen.getByRole('button',{name:'조건 값'}).closest('[data-query-row="condition"]')).not.toBeNull();expect(screen.getByPlaceholderText('거래처, 주소, 품목, 비고 검색').closest('[data-query-row="search"]')).not.toBeNull();expect(setDocument).not.toHaveBeenCalled();});

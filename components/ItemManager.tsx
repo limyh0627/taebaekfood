@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { ItemMergeDialog } from '../src/features/items/ui/ItemMergeDialog';
 import { ItemCostCalculator } from '../src/features/items/ui/ItemCostCalculator';
 import ActionButton from '../src/shared/components/ActionButton';
@@ -808,10 +808,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
           const subs = taxo.subtypesOf(activeCategory);
           const cats = taxo.categoriesOf(activeCategory);
           return (
-            <QueryFilterPanel id="item-query-title" onReset={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setSearchTerm(''); setItemSort('기본'); setFilterPartnerId(''); setPage(1); }}>
-
-                {subs.length > 0 && (
-                  <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+            <QueryFilterPanel id="item-query-title" onReset={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setSearchTerm(''); setItemSort('기본'); setFilterPartnerId(''); setPage(1); }}
+ conditionRow={<>{subs.length > 0 && (
+                  <label className={QUERY_FILTER_FIELD_CLASS}>
                     서브타입
                     <SearchableSelect
                       ariaLabel="서브타입" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -821,8 +820,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     />
                   </label>
                 )}
-                {cats.length > 0 && (
-                  <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+{cats.length > 0 && (
+                  <label className={QUERY_FILTER_FIELD_CLASS}>
                     분류
                     <SearchableSelect
                       ariaLabel="분류" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -832,8 +831,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     />
                   </label>
                 )}
-                {specOptions.length > 0 && (
-                  <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+{specOptions.length > 0 && (
+                  <label className={QUERY_FILTER_FIELD_CLASS}>
                     용량
                     <SearchableSelect
                       ariaLabel="용량" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -843,7 +842,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     />
                   </label>
                 )}
-                <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+<label className={QUERY_FILTER_FIELD_CLASS}>
                   등급
                   <SearchableSelect
                     ariaLabel="등급" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -852,7 +851,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     options={[{ value: '', label: '전체' }, ...GRADES.map(g => ({ value: g, label: g }))]}
                   />
                 </label>
-                <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+<label className={QUERY_FILTER_FIELD_CLASS}>
                   거래처
                   <SearchableSelect
                     ariaLabel="거래처" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -860,8 +859,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     onChange={value => { setFilterPartnerId(value); setPage(1); }}
                     options={[{ value: '', label: '전체' }, ...필터거래처들.map(partner => ({ value: partner.id, label: partner.name || '이름 없음' }))]}
                   />
-                </label>
-                <label className={QUERY_FILTER_LABEL_CLASS + ' w-36 shrink-0'}>
+                </label></>}
+ searchRow={<><label className={QUERY_FILTER_FIELD_CLASS}>
                   정렬
                   <SearchableSelect
                     ariaLabel="정렬" className={QUERY_FILTER_CONTROL_CLASS + ' w-full'}
@@ -874,7 +873,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                     ]}
                   />
                 </label>
-                <label className={QUERY_FILTER_LABEL_CLASS + ' min-w-52 flex-1 md:max-w-sm'}>
+<label className={QUERY_FILTER_SEARCH_CLASS}>
                   전체 검색
                   <span className="relative block">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
@@ -885,9 +884,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                       className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
                     />
                   </span>
-                </label>
-
-</QueryFilterPanel>
+                </label></>} />
           );
         })()}
 

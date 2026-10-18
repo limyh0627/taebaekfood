@@ -13,7 +13,7 @@ it('점검 날짜는 오늘 기본과 경계 없는 원래 입력 스타일·상
  render(<DataIntegrityMonitor {...props}/>);const today=new Date().toLocaleDateString('sv-SE');
  const from=screen.getByLabelText('점검 시작일'),to=screen.getByLabelText('점검 종료일');
  expect(from).toHaveValue(today);expect(to).toHaveValue(today);expect(from).toHaveClass('h-10','bg-slate-50','rounded-md');
- expect(from).not.toHaveAttribute('max');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(to).not.toHaveAttribute('min');expect(from.parentElement).toHaveClass('contents');
+ expect(from).not.toHaveAttribute('max');expect(from.nextElementSibling).not.toHaveAttribute('aria-hidden');expect(to).not.toHaveAttribute('min');expect(from.parentElement).toHaveClass('flex-nowrap','max-w-full');
  const before=vi.mocked(auditDataIntegrity).mock.calls.length;
  fireEvent.change(from,{target:{value:'2026-01-01'}});
  expect(auditDataIntegrity).toHaveBeenCalledTimes(before+1);expect(auditDataIntegrity).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom:'2026-01-01',dateTo:today}));

@@ -47,4 +47,7 @@ it('전체검색은 주문 조회 규격이고 열린 선택기는 기존 40px �
  for(const name of ['거래처 선택','계정 선택'])expect(screen.getByRole('button',{name})).toHaveClass('h-10','bg-slate-50');
  expect(screen.getByPlaceholderText('업체명 · 문서번호 · 계정과목 검색')).toHaveClass('h-10','bg-slate-50','rounded-md');
  for(const placeholder of ['거래처 이름으로 찾기','계정 이름·번호·묶음(재료비·판관비)'])expect(screen.getByPlaceholderText(placeholder)).toHaveClass('h-10','bg-white');
+ for(const input of [screen.getByPlaceholderText('거래처 이름으로 찾기'),screen.getByPlaceholderText('계정 이름·번호·묶음(재료비·판관비)')])expect(input.parentElement?.parentElement).toHaveClass('max-w-full','sm:max-w-none');
 });
+
+it('전표 조건과 전체검색은 고정 순서의 별도 행이며 원래 검색 값은 보존한다',()=>{const props=baseProps(),view=render(<StatementHistorySearchFields {...props}/>);const rows=Array.from(view.container.querySelectorAll('[data-query-row]')).map(row=>row.getAttribute('data-query-row'));expect(rows).toEqual(['condition','search']);const search=screen.getByPlaceholderText('업체명 · 문서번호 · 계정과목 검색');expect(search.closest('[data-query-row="search"]')).not.toBeNull();for(const name of ['거래처 선택','계정 선택']){const button=screen.getByRole('button',{name});expect(button).toHaveClass('w-full');expect(button.parentElement).toHaveClass('static','sm:relative');expect(button.closest('[data-query-row="condition"]')).toHaveClass('relative');}fireEvent.change(search,{target:{value:'보존 검색'}});expect(props.onSearch).toHaveBeenCalledWith('보존 검색');});

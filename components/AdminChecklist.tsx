@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -486,7 +486,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                       <History size={13} className="text-teal-600" /> 선입고 이력 {inboundFilter === 'pending_voucher' ? `(전표 미발행 ${pendingVoucherCount}건)` : `(전체 ${filteredReceipts.length}건)`}
                     </span>
-                    <QueryFilterPanel id="admin-inbound-query-title" ariaLabel="선입고 이력 검색조건" onReset={()=>setInboundFilter('pending_voucher')}><label className={QUERY_FILTER_LABEL_CLASS}>전표 발행 상태<SearchableSelect ariaLabel="선입고 전표 상태" value={inboundFilter} onChange={value=>setInboundFilter(value as typeof inboundFilter)} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'pending_voucher',label:'전표 미발행만'},{value:'all',label:'전체'}]}/></label></QueryFilterPanel>
+                    <QueryFilterPanel id="admin-inbound-query-title" ariaLabel="선입고 이력 검색조건" onReset={()=>setInboundFilter('pending_voucher')} conditionRow={<>
+<label className={QUERY_FILTER_FIELD_CLASS}>전표 발행 상태<SearchableSelect ariaLabel="선입고 전표 상태" value={inboundFilter} onChange={value=>setInboundFilter(value as typeof inboundFilter)} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'} options={[{value:'pending_voucher',label:'전표 미발행만'},{value:'all',label:'전체'}]}/></label>
+</>} />
                   </div>
                 </td></tr>
                 {filteredReceipts.length === 0 ? (

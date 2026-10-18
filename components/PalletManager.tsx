@@ -1,5 +1,5 @@
 import SearchableSelect from '../src/shared/components/SearchableSelect';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildPartnerPalletHistory, buildAvailablePalletMonths, buildPalletSummary, buildAllPalletHistory } from '../src/features/pallets/domain/palletHistory';
 import { buildPartnerPalletStats, filterPartnerPalletStatus, buildOutstandingByPallet } from '../src/features/pallets/domain/palletBalances';
 
@@ -424,24 +424,24 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </>
       ) : activeTab === 'history' ? (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <QueryFilterPanel id="pallet-history-query-title" onReset={() => { setMonthFilter(currentMonth); setHistorySearch(''); }}>
-
-                <div className={QUERY_FILTER_LABEL_CLASS + ' w-44'}><label htmlFor="pallet-history-search">거래처</label><div className="relative">
+          <QueryFilterPanel id="pallet-history-query-title" onReset={() => { setMonthFilter(currentMonth); setHistorySearch(''); }} dateRow={<>
+<label className={QUERY_FILTER_FIELD_CLASS}>기간
+                <SearchableSelect ariaLabel="기간" className={QUERY_FILTER_CONTROL_CLASS} value={monthFilter} onChange={value => setMonthFilter(value)} options={[{value:'',label:'전체 기간'},...availableMonths.map(m => ({value:m,label:m.slice(0,4)+'년 '+m.slice(5)+'월'}))]}/></label>
+</>} searchRow={<>
+<div className={QUERY_FILTER_SEARCH_CLASS}><label htmlFor="pallet-history-search">거래처</label><div className="relative">
                   <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     id="pallet-history-search" value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
                     placeholder="거래처 검색"
-                    className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
+                    className={(QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
                   />
                   {historySearch && (
                     <button onClick={() => setHistorySearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={12} /></button>
                   )}
                 </div>
-                </div><label className={QUERY_FILTER_LABEL_CLASS + ' '}>기간
-                <SearchableSelect ariaLabel="기간" className={QUERY_FILTER_CONTROL_CLASS} value={monthFilter} onChange={value => setMonthFilter(value)} options={[{value:'',label:'전체 기간'},...availableMonths.map(m => ({value:m,label:m.slice(0,4)+'년 '+m.slice(5)+'월'}))]}/></label>
-
-</QueryFilterPanel>
+                </div>
+</>} />
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -495,33 +495,30 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </div>
       ) : (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <QueryFilterPanel id="pallet-query-title" onReset={() => { setMonthFilter(currentMonth); setSearchTerm(''); }}>
-
-          {/* 월 선택 — 요약 숫자(입고/지급/교체중)를 해당 월로 필터 */}
-          <div className="flex flex-col gap-1">
+          <QueryFilterPanel id="pallet-query-title" onReset={() => { setMonthFilter(currentMonth); setSearchTerm(''); }} dateRow={<>
+<div className={QUERY_FILTER_FIELD_CLASS}>
             <span className="text-[10px] font-bold text-slate-500">기간</span>
             <SearchableSelect ariaLabel="기간" className={QUERY_FILTER_CONTROL_CLASS} value={monthFilter} onChange={value => setMonthFilter(value)} options={[{value:'',label:'전체 기간'},...availableMonths.map(m => ({value:m,label:m.slice(0,4)+'년 '+m.slice(5)+'월'}))]}/>
             {monthFilter && (
               <span className="text-[10px] font-bold text-indigo-500">{monthFilter.slice(0, 4)}년 {monthFilter.slice(5)}월 기준</span>
             )}
           </div>
-          <div className="flex-1 min-w-40 space-y-1">
+</>} searchRow={<>
+<div className={QUERY_FILTER_SEARCH_CLASS}>
             <label className={QUERY_FILTER_LABEL_CLASS + ' '} htmlFor="pallet-partner-search">거래처</label>
-            <div className="relative max-w-md">
+            <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
               <input
                 id="pallet-partner-search" type="text"
                 placeholder="거래처 검색..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className={QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3'}
+                className={(QUERY_FILTER_CONTROL_CLASS + ' w-full' + ' pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
               />
             </div>
 
           </div>
-
-
-</QueryFilterPanel>
+</>} />
           {/* 전체 요약: 입고 / 지급 / 교체중 */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">

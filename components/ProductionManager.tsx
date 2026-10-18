@@ -1,6 +1,6 @@
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
 import {projectProductionRecords,hasProductionRecordIndex} from '../src/shared/productionRecordProjection';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
@@ -374,13 +374,12 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       )}
 
       {/* 필터 */}
-      <QueryFilterPanel id="production-query-title" onReset={() => { setFrom(thisMonth+'-01'); setTo(endOfMonth(thisMonth)); setQuick(''); setFilterProductId(''); setSearchText(''); }}>
-        <div className={QUERY_FILTER_LABEL_CLASS}><span>생산일</span><DateRangeFilter label="생산일" from={from} to={to} quick={quick} onChange={(f,t,q)=>{setFrom(f);setTo(t);setQuick(q);}}/></div>
-        <div className="flex items-center gap-1"><button type="button" aria-label="이전달" onClick={prevMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">이전달</button><button type="button" aria-label="다음달" onClick={nextMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">다음달</button></div>
-        <label className={QUERY_FILTER_LABEL_CLASS}>품목
+      <QueryFilterPanel id="production-query-title" onReset={() => { setFrom(thisMonth+'-01'); setTo(endOfMonth(thisMonth)); setQuick(''); setFilterProductId(''); setSearchText(''); }}
+ dateRow={<><div className={QUERY_FILTER_DATE_CLASS}><span>생산일</span><DateRangeFilter label="생산일" from={from} to={to} quick={quick} onChange={(f,t,q)=>{setFrom(f);setTo(t);setQuick(q);}} afterQuick={<div className="flex items-center gap-1"><button type="button" aria-label="이전달" onClick={prevMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">이전달</button><button type="button" aria-label="다음달" onClick={nextMonth} className="h-10 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-600">다음달</button></div>}/></div></>}
+ conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>품목
         <SearchableSelect ariaLabel="품목" value={filterProductId} onChange={setFilterProductId} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'',label:'전체 품목'},...finishedProducts.map(p=>({value:p.id,label:p.name}))]}/>
-        </label>
-        <label className={`${QUERY_FILTER_LABEL_CLASS} flex-1 min-w-[160px]`}>전체 검색
+        </label></>}
+ searchRow={<><label className={QUERY_FILTER_SEARCH_CLASS}>전체 검색
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -396,8 +395,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </button>
           )}
         </div>
-        </label>
-      </QueryFilterPanel>
+        </label></>} />
 
       {!showAll&&records.some(r=>!isCalendarDay(r.date))&&<p role="status" className="text-xs text-slate-500">생산일 미확인 {records.filter(r=>!isCalendarDay(r.date)).length}건 제외 · 전체 기간에서 확인</p>}
       {/* #5 로트 역추적 (리콜) — 소비 로트 → 투입된 주문(거래처·납품일) */}

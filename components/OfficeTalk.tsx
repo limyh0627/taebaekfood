@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -757,16 +757,18 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               )}
             </div>
           )}
-          <QueryFilterPanel onReset={() => setSearchTerm('')}><label className={QUERY_FILTER_LABEL_CLASS + ' w-full'}><span>전체 검색</span><div className="relative">
+          <QueryFilterPanel onReset={() => setSearchTerm('')} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span><div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input
               type="text"
               placeholder="대화방 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className={QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3'}
+              className={(QUERY_FILTER_CONTROL_CLASS + ' w-full pl-9 pr-3') + ' w-full min-w-0 max-w-full'}
             />
-          </div></label></QueryFilterPanel>
+          </div></label>
+</>} />
         </div>
 
         {sharedControls("desktop")}

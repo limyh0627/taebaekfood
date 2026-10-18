@@ -1,5 +1,5 @@
-import DateRangeInputs, { DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
-import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import DateRangeInputs, { DATE_RANGE_LAYOUT_CLASS, DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
+import QueryFilterPanel, { QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { useOrderEditorDraft } from '../src/features/orders/hooks/useOrderEditorDraft';
 import {OrderCard} from '../src/features/orders/ui/OrderCard';
 export {OrderCard} from '../src/features/orders/ui/OrderCard';
@@ -1131,34 +1131,26 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
 
         </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
-          <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); if (activeView !== 'history') { setOperationDateFrom(''); setOperationDateTo(''); } setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }}>
-              {activeView === 'history' ? <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
+          <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); if (activeView !== 'history') { setOperationDateFrom(''); setOperationDateTo(''); } setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} dateRow={<>{activeView === 'history' ? <label className={QUERY_FILTER_DATE_CLASS}>
                 완료일
-                {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
-                     날짜칸·단추의 여백과 글씨를 좁은 화면에서만 줄인다 — 넓은 화면은 그대로다. */}
-                <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1 sm:gap-2">
+                {/* 모바일은 날짜 다음 빠른 기간을 두어 메뉴별 줄바꿈을 맞춘다. */}
+                <span className={DATE_RANGE_LAYOUT_CLASS}>
                   <DateRangeInputs from={activeDateFrom} to={activeDateTo} onFromChange={setActiveDateFrom} onToChange={setActiveDateTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'완료일 시작',max:activeDateTo||undefined,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'완료일 종료',min:activeDateFrom||undefined,className:DATE_RANGE_INPUT_CLASS}}/>
                   <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
-                    {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
-                         써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
-                         날짜 칸을 86px 까지 좁히고 나니 제 이름이 다 들어간다. */}
+                    {/* 빠른 기간의 날짜 계산과 값 동치에 따른 선택 표시는 그대로 쓴다. */}
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickToday); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickToday && activeDateTo === sharedQuickToday)}`}>오늘</button>
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickWeekStart); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickWeekStart && activeDateTo === sharedQuickToday)}`} aria-label="이번 주">이번 주</button>
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달">이번 달</button>
                   </span>
                 </span>
-              </label> : <div className="order-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+              </label> : <div className={QUERY_FILTER_DATE_CLASS}>
                 <span>{operationDateFrom || operationDateTo ? '주문일 기간 조회' : '진행 중 주문 전체 · 날짜 제한 없음'}</span>
-                <DateRangeInputs from={operationDateFrom} to={operationDateTo} onFromChange={setOperationDateFrom} onToChange={setOperationDateTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'진행 주문일 시작',max:operationDateTo||undefined,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'진행 주문일 종료',min:operationDateFrom||undefined,className:DATE_RANGE_INPUT_CLASS}}/>
+                <div className={DATE_RANGE_LAYOUT_CLASS}><DateRangeInputs from={operationDateFrom} to={operationDateTo} onFromChange={setOperationDateFrom} onToChange={setOperationDateTo} className={DATE_RANGE_PAIR_CLASS} separatorClassName="shrink-0 text-xs text-slate-400" fromInputProps={{'aria-label':'진행 주문일 시작',max:operationDateTo||undefined,className:DATE_RANGE_INPUT_CLASS}} toInputProps={{'aria-label':'진행 주문일 종료',min:operationDateFrom||undefined,className:DATE_RANGE_INPUT_CLASS}}/>
                 <span className={DATE_RANGE_QUICK_GROUP_CLASS}>
                   {[[sharedQuickToday,'오늘'],[sharedQuickWeekStart,'이번 주'],[sharedQuickMonthStart,'이번 달']].map(([from,label])=><button key={label} type="button" onClick={()=>{setOperationDateFrom(from);setOperationDateTo(sharedQuickToday);}} className={dateRangeQuickButtonClass(operationDateFrom===from&&operationDateTo===sharedQuickToday,true)}>{label}</button>)}
                   <button type="button" aria-label="기간 전체" onClick={() => { setOperationDateFrom(''); setOperationDateTo(''); }} className={dateRangeQuickButtonClass(!operationDateFrom&&!operationDateTo)}>전체</button>
                 </span>
-              </div>}
-              {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
-                   섞어 보여 주던 길을 두면 같은 것을 두 군데서 보게 되고, 어느 쪽이 맞는지 헷갈린다. */}
-              <span className="order-2 h-0 basis-full" aria-hidden="true" />
-              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              </div></div>}</>} conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>
                 검색 필드
                 {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
                      거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
@@ -1168,19 +1160,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   onChange={value => { setListFilterField(value as typeof listFilterField); setListFilterValue(''); }}
                   options={검색필드목록}
                 />
-              </label>
-
-              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              </label><label className={QUERY_FILTER_FIELD_CLASS}>
                 조건 값
                 <SearchableSelect
                   ariaLabel="조건 값" className={`${QUERY_FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:opacity-40`}
                   value={listFilterValue} onChange={setListFilterValue} disabled={!listFilterField}
                   options={[{ value: '', label: '전체' }, ...activeViewFilterValues.map(value => ({ value, label: value }))]}
                 />
-              </label>
-              {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처필터를 검색필드 조건값 다음으로 옮기고"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
-                   두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
-              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              </label><label className={QUERY_FILTER_FIELD_CLASS}>
                 거래처
                 <SearchableSelect
                   ariaLabel="거래처" className={QUERY_FILTER_CONTROL_CLASS}
@@ -1189,27 +1176,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     .sort((a, b) => a.localeCompare(b, 'ko'))
                     .map(name => ({ value: name, label: name }))]}
                 />
-              </label>
-              {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
-                   조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
-              {/*  정렬은 **한 줄 아래**로 내린다(2026-09-11 사장님) — 위 줄이 날짜·필드로 이미 빽빽하다. */}
-              <span className="order-3 h-0 basis-full" aria-hidden="true" />
-              <label className="order-4 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              </label></>} searchRow={<><label className={QUERY_FILTER_FIELD_CLASS}>
                 정렬
                 <SearchableSelect
                   ariaLabel="정렬" className={QUERY_FILTER_CONTROL_CLASS}
                   value={listSort} onChange={value => setListSort(value as typeof listSort)}
                   options={정렬목록}
                 />
-              </label>
-              <label className="order-4 flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
+              </label><label className={QUERY_FILTER_SEARCH_CLASS}>
                 전체 검색
                 <span className="relative block">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
                   <input type="search" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처, 품목, 제조, 라벨, 포장, 팔레트 검색" className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
                 </span>
-              </label>
-            </QueryFilterPanel>
+              </label></>} />
           {/*  이력 탭에는 상태 고르개를 안 둔다(2026-09-11 사장님) — 거긴 예전 주문 하나뿐이라 고를 게 없다. */}
           {activeView !== 'history' && <div className="flex items-center gap-1 overflow-x-auto" aria-label="주문 상태 선택">
             {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
@@ -1949,7 +1929,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <span className="order-2 h-0 basis-full" aria-hidden="true" />
                   <div className="order-1 flex flex-col gap-1 text-[10px] font-bold text-slate-500">
                     <span>주문일</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className={DATE_RANGE_LAYOUT_CLASS}>
                       <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className={DATE_RANGE_INPUT_CLASS} />
                       <span className="text-xs text-slate-400">~</span>
                       <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className={DATE_RANGE_INPUT_CLASS} />

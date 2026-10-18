@@ -1,4 +1,4 @@
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../../src/shared/components/QueryFilterPanel';
 import React from 'react';
 import { Calendar, Edit2, Search, Trash2, RotateCcw } from 'lucide-react';
 import type { Employee } from '../../types';
@@ -12,15 +12,16 @@ interface EmployeeDirectoryProps {
 export function EmployeeDirectory({ filteredEmployees, searchTerm, onSearchChange, calculateWorkDays, getHealthCertStatus, onRetirement, onEdit, onDelete }: EmployeeDirectoryProps) {
  return (
           <>
-            <QueryFilterPanel id="employee-query-title" onReset={()=>onSearchChange('')}>
-<label className={`${QUERY_FILTER_LABEL_CLASS} w-full max-w-md`}>
+            <QueryFilterPanel id="employee-query-title" onReset={()=>onSearchChange('')} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}>
                 이름 또는 부서
                 <span className="relative block">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
                   <input type="text" placeholder="이름 또는 부서 검색..." value={searchTerm} onChange={(e) => onSearchChange(e.target.value)}
-                    className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
+                    className={(`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`) + ' w-full min-w-0 max-w-full'} />
                 </span>
-              </label></QueryFilterPanel>
+              </label>
+</>} />
             <div className="flex-1 overflow-auto custom-scrollbar">
               <table className="w-full text-left min-w-[640px]">
                 <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">

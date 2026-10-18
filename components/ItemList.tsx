@@ -1,6 +1,6 @@
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
-import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS } from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import { boxEquivalentLabel, inventoryNameSpec, withSpec, parseMakeLabel } from '../src/features/items/ui/itemListDisplay';
 import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
@@ -252,10 +252,10 @@ const FilterDrop: React.FC<{
 }> = ({ label, summary, active, queryStyle = false, width = 'w-[280px]', children }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div className={queryStyle ? `${QUERY_FILTER_LABEL_CLASS} relative` : 'relative'}>
+    <div className={queryStyle ? `${QUERY_FILTER_FIELD_CLASS} relative` : 'relative'}>
       {queryStyle && <span>{label}</span>}
       <button aria-label={queryStyle ? label : undefined} type="button" onClick={() => setOpen(o => !o)}
-        className={queryStyle ? `${QUERY_FILTER_CONTROL_CLASS} flex max-w-[220px] items-center justify-between gap-1.5` : `flex items-center gap-1.5 border rounded-xl px-2.5 py-2 text-[11px] font-black bg-white outline-none transition-all max-w-[220px] ${
+        className={queryStyle ? `${QUERY_FILTER_CONTROL_CLASS} flex w-full items-center justify-between gap-1.5` : `flex items-center gap-1.5 border rounded-xl px-2.5 py-2 text-[11px] font-black bg-white outline-none transition-all max-w-[220px] ${
           active ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
         {!queryStyle && <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">{label}</span>}
         <span className="truncate">{summary}</span>
@@ -1548,18 +1548,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
             서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}
         {mode === 'inventory' && activeTab !== 'inbound' && (
-          <QueryFilterPanel id="inventory-query-title" sectionClassName="!overflow-visible" onReset={() => { clearFilters(); if (!zeroStockOnly && activeTab === 'master') setSearchTerm(''); }}>
-{!zeroStockOnly && activeTab === 'master' && (<label className={`${QUERY_FILTER_LABEL_CLASS} w-full max-w-md`}>
-                  품목명 또는 거래처
-                  <span className="relative block">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
-                    <input type="text" placeholder="품목명 · 거래처 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                      className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
-                  </span>
-                </label>)}
-
-            {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
-            {subtypeTabs.length > 0 && (
+          <QueryFilterPanel id="inventory-query-title" sectionClassName="!overflow-visible" onReset={() => { clearFilters(); if (!zeroStockOnly && activeTab === 'master') setSearchTerm(''); }}
+ conditionRow={<>{/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
+{subtypeTabs.length > 0 && (
               <FilterDrop queryStyle label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype} width="w-[180px]">
                 {close => <div className="max-h-[280px] overflow-y-auto py-1">
                   {['전체', ...subtypeTabs].map(subtype => (
@@ -1569,7 +1560,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </div>}
               </FilterDrop>
             )}
-            {subCategories.length > 0 && (
+{subCategories.length > 0 && (
               <FilterDrop queryStyle label="카테고리" active={catSel.size > 0}
                 summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${catSel.size}개`} width="w-[200px]">
                 {close => <div className="max-h-[280px] overflow-y-auto py-1">
@@ -1581,7 +1572,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </div>}
               </FilterDrop>
             )}
-            {specOptions.length > 0 && (
+{specOptions.length > 0 && (
               <FilterDrop queryStyle label="용량" active={specSel.size > 0}
                 summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
                 {close => (
@@ -1600,8 +1591,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 )}
               </FilterDrop>
             )}
-
-            <FilterDrop queryStyle label="등급" width="w-[180px]" active={!!gradeSel} summary={gradeSel || '전체'}>
+<FilterDrop queryStyle label="등급" width="w-[180px]" active={!!gradeSel} summary={gradeSel || '전체'}>
               {close => (
                 <div className="py-1">
                   {GRADES.map(g => (
@@ -1611,9 +1601,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </div>
               )}
             </FilterDrop>
-
-            {/* 매입거래처 — 완제품은 우리가 만드는 것이라 매입처가 없다. 수가 많아 검색으로 고른다. */}
-            {topTab !== 'product' && inboundPartners.length > 0 && (
+{/* 매입거래처 — 완제품은 우리가 만드는 것이라 매입처가 없다. 수가 많아 검색으로 고른다. */}
+{topTab !== 'product' && inboundPartners.length > 0 && (
               <FilterDrop queryStyle label="거래처" active={supSel.size > 0}
                 summary={supSel.size === 0 ? '전체' : supSel.size === 1 ? (inboundPartnerMap.get([...supSel][0])?.name ?? '1곳') : `${supSel.size}곳`}>
                 {() => (
@@ -1644,8 +1633,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 )}
               </FilterDrop>
             )}
-
-            <FilterDrop queryStyle label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
+<FilterDrop queryStyle label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
               summary={stockOnly ? '재고 있음' : zeroStockOnly ? '최소수량 미만' : '전체'}>
               {close => (
                 <div className="py-1">
@@ -1660,9 +1648,15 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   ))}
                 </div>
               )}
-            </FilterDrop>
-
-</QueryFilterPanel>
+            </FilterDrop></>}
+ searchRow={!zeroStockOnly && activeTab === 'master' && (<label className={QUERY_FILTER_SEARCH_CLASS}>
+                  품목명 또는 거래처
+                  <span className="relative block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                    <input type="text" placeholder="품목명 · 거래처 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                      className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
+                  </span>
+                </label>)} />
         )}
       </div>
 
@@ -1952,20 +1946,17 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
-          <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); setLotFrom(''); setLotTo(''); setLotQuick('전체'); }}>
-
-            <div className={QUERY_FILTER_LABEL_CLASS}><span>로트 입고일</span><DateRangeFilter label="로트 입고일" from={lotFrom} to={lotTo} quick={lotQuick} onChange={(from,to,quick)=>{setLotFrom(from);setLotTo(to);setLotQuick(quick);}}/></div>
-            <label className="flex min-w-[220px] max-w-sm flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500">품목명 또는 규격
+          <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); setLotFrom(''); setLotTo(''); setLotQuick('전체'); }}
+ dateRow={<><div className={QUERY_FILTER_DATE_CLASS}><span>로트 입고일</span><DateRangeFilter label="로트 입고일" from={lotFrom} to={lotTo} quick={lotQuick} onChange={(from,to,quick)=>{setLotFrom(from);setLotTo(to);setLotQuick(quick);}}/></div></>}
+ conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>종류<SearchableSelect ariaLabel="로트 종류" className={QUERY_FILTER_CONTROL_CLASS} value={lotKind} onChange={value=>setLotKind(value as typeof lotKind)} options={[{value:'all',label:'전체'},{value:'raw',label:'벌크'},{value:'packed',label:'완제품'}]}/></label>
+<label className={QUERY_FILTER_FIELD_CLASS}>상태<SearchableSelect ariaLabel="로트 상태" className={QUERY_FILTER_CONTROL_CLASS} value={lotStatus} onChange={value=>{setLotStatus(value as typeof lotStatus);setActiveTab(value==='complete'?'lot-history':'lots');}} options={[{value:'all',label:'전체'},{value:'using',label:'사용중'},{value:'waiting',label:'대기중'},{value:'complete',label:'완료'}]}/></label></>}
+ searchRow={<><label className={QUERY_FILTER_SEARCH_CLASS}>품목명 또는 규격
               <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input type="text" placeholder="품목명·규격 검색" value={lotSearch} onChange={e => setLotSearch(e.target.value)}
                 className={`${QUERY_FILTER_CONTROL_CLASS} w-full pl-9 pr-3`} />
               </span>
-            </label>
-            <label className={QUERY_FILTER_LABEL_CLASS}>종류<SearchableSelect ariaLabel="로트 종류" className={QUERY_FILTER_CONTROL_CLASS} value={lotKind} onChange={value=>setLotKind(value as typeof lotKind)} options={[{value:'all',label:'전체'},{value:'raw',label:'벌크'},{value:'packed',label:'완제품'}]}/></label>
-            <label className={QUERY_FILTER_LABEL_CLASS}>상태<SearchableSelect ariaLabel="로트 상태" className={QUERY_FILTER_CONTROL_CLASS} value={lotStatus} onChange={value=>{setLotStatus(value as typeof lotStatus);setActiveTab(value==='complete'?'lot-history':'lots');}} options={[{value:'all',label:'전체'},{value:'using',label:'사용중'},{value:'waiting',label:'대기중'},{value:'complete',label:'완료'}]}/></label>
-
-            </QueryFilterPanel>
+            </label></>} />
             {(lotFrom||lotTo)&&<div className="text-xs text-slate-600" role="status"><p>조회 로트 잔량: {queriedLotBalances.length?queriedLotBalances.map(({unit,quantity})=>quantity.toLocaleString()+' '+unit).join(' · '):'없음'}</p>{lotUnknownDateCount>0&&<p>입고일이 없거나 올바르지 않은 로트 {lotUnknownDateCount}건은 기간 조회에서 제외했습니다. 전체 기간에서 확인할 수 있습니다.</p>}</div>}
 
             <div role="group" aria-label="로트 보기" className="flex min-w-0 flex-wrap items-center justify-end gap-2"><span className="text-[10px] font-bold text-slate-500">보기</span><div className="flex flex-wrap gap-1">

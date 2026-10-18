@@ -1,4 +1,4 @@
-import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS} from '../src/shared/components/QueryFilterPanel';
+import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { canAutoIssue } from '../src/shared/autoVoucher';
 import { today } from '../src/shared/day';
@@ -156,18 +156,19 @@ export default function VoucherTemplateManager({
           템플릿 <span className="text-slate-300">{templates.length}</span>
         </span>
       </div>
-      <QueryFilterPanel ariaLabel="템플릿 검색조건" onReset={() => { setSelectedGroup(''); onGroupChange?.(''); setSearch(''); onSearchChange?.(''); setFilter('all'); onFilterChange?.('all'); }}>
-        <label className={QUERY_FILTER_LABEL_CLASS}>그룹
-          <SearchableSelect ariaLabel="템플릿 그룹" value={selectedGroup} onChange={value => { setSelectedGroup(value); onGroupChange?.(value); }} className={QUERY_FILTER_CONTROL_CLASS}
+      <QueryFilterPanel ariaLabel="템플릿 검색조건" onReset={() => { setSelectedGroup(''); onGroupChange?.(''); setSearch(''); onSearchChange?.(''); setFilter('all'); onFilterChange?.('all'); }} conditionRow={<>
+<label className={QUERY_FILTER_FIELD_CLASS}>그룹
+          <SearchableSelect ariaLabel="템플릿 그룹" value={selectedGroup} onChange={value => { setSelectedGroup(value); onGroupChange?.(value); }} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'}
             options={[{value:'',label:'전체 그룹'},...groupNames.map(group=>({value:group,label:group})),{value:NO_GROUP,label:NO_GROUP}]} />
         </label>
-        <label className={QUERY_FILTER_LABEL_CLASS}>검색
-          <input type="text" placeholder="이름·거래처 검색" value={search} onChange={e => { setSearch(e.target.value); onSearchChange?.(e.target.value); }} className={QUERY_FILTER_CONTROL_CLASS}/>
+<label className={QUERY_FILTER_FIELD_CLASS}>표시
+          <SearchableSelect ariaLabel="템플릿 표시" value={filter} onChange={value => { const next=value as 'all'|'auto'|'hidden'; setFilter(next); onFilterChange?.(next); }} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'} options={[{value:'all',label:'전체'},{value:'auto',label:'자동'},{value:'hidden',label:'숨김'}]} />
         </label>
-        <label className={QUERY_FILTER_LABEL_CLASS}>표시
-          <SearchableSelect ariaLabel="템플릿 표시" value={filter} onChange={value => { const next=value as 'all'|'auto'|'hidden'; setFilter(next); onFilterChange?.(next); }} className={QUERY_FILTER_CONTROL_CLASS} options={[{value:'all',label:'전체'},{value:'auto',label:'자동'},{value:'hidden',label:'숨김'}]} />
+</>} searchRow={<>
+<label className={QUERY_FILTER_SEARCH_CLASS}>검색
+          <input type="text" placeholder="이름·거래처 검색" value={search} onChange={e => { setSearch(e.target.value); onSearchChange?.(e.target.value); }} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'}/>
         </label>
-      </QueryFilterPanel>
+</>} />
 
       {shown.length === 0 ? (
         <div className={`text-center text-slate-300 ${compact ? 'h-[42vh] flex flex-col items-center justify-center' : 'py-8'}`}>

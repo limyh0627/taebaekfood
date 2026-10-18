@@ -104,7 +104,7 @@ it('폐기한 월별 화면·엑셀·제목 writer는 없고 타서류 공용 �
 
 it('기록부·수불부 조회 초기화는 기존 월변경 경로로 현재월만 전달한다',()=>{
  const callbacks=new Map<string,string>();
- function walk(node:ts.Node){if(ts.isJsxOpeningElement(node)&&node.tagName.getText(ast)==='QueryFilterPanel'){
+ function walk(node:ts.Node){if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(ast)==='QueryFilterPanel'){
   const attributes=node.attributes.properties.filter(ts.isJsxAttribute),name=attributes.find(a=>a.name.getText(ast)==='ariaLabel')?.initializer;
   const reset=attributes.find(a=>a.name.getText(ast)==='onReset')?.initializer;
   if(name&&ts.isStringLiteral(name)&&reset&&ts.isJsxExpression(reset)&&reset.expression)callbacks.set(name.text,reset.expression.getText(ast));
