@@ -360,3 +360,4 @@ export { leaveRequestCommand } from './leaveRequestCommand';
 
 export {orderEditCommand} from './orderEditCommand';
 export {itemEditorCommand} from './itemEditorCommand';
+export {employeeEditCommand} from './employeeEditCommand';

@@ -1,3 +1,6 @@
+import {useEmployeeEditor} from '../src/features/hr/hooks/useEmployeeEditor';
+import type {EmployeeEditBindings} from '../src/features/hr/infrastructure/employeeEditWrites';
+import {usePayrollDraft} from '../src/features/hr/hooks/usePayrollDraft';
 import {useLeaveActions,type LeaveActionBindings} from '../src/features/hr/hooks/useLeaveActions';
 import {LeaveActionRecovery} from './hr/LeaveApprovalList';
 import {useLeaveApplication} from '../src/features/hr/hooks/useLeaveApplication';
@@ -11,7 +14,6 @@ import ActionButton from '../src/shared/components/ActionButton';
 import RetirementBenefitPanel from './hr/RetirementBenefitPanel';
 import { readRetirement, retirementActor } from '../src/shared/services/retirementBenefitCommands';
 import PayrollLineEditor from './hr/PayrollLineEditor';
-import { savePayrollDraft, issuePayrollVoucher } from '../src/shared/services/payrollCommands';
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 import type { CashAccount } from '../src/shared/types';
 
@@ -45,7 +47,7 @@ import {
 import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll, PayrollLine, CompanyId } from '../types';
 import { payrollGross, payrollDeduct, payrollNet, payrollTotals, payrollDocId, companyOf, TAEBAEK } from '../types';
 import PageHeader from './PageHeader';
-import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
+import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import { where } from 'firebase/firestore';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
@@ -53,15 +55,13 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
 
-interface HRManagerProps extends LeaveActionBindings {
+interface HRManagerProps extends LeaveActionBindings,EmployeeEditBindings {
   requestScopeKey?:string;
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
   companyId?: CompanyId;
   cashAccounts?: CashAccount[];
   employees: Employee[];
   leaveRequests: LeaveRequest[];
-  onUpdateEmployee: (_emp: Employee) => void;
-  onAddEmployee: (_emp: Employee) => void;
   onDeleteEmployee: (_id: string) => Promise<void> | void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<SaveOutcome> | SaveOutcome | void;
@@ -77,8 +77,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   companyId = TAEBAEK, cashAccounts = [],requestScopeKey,
   employees: allEmployees,
   leaveRequests,
-  onUpdateEmployee,
-  onAddEmployee,
+  onSaveEmployeeEdit,onReadPendingEmployeeEdits,onInspectEmployeeEdit,onCancelEmployeeEdit,onReadEmployeeEditReferences,
   onDeleteEmployee,
   onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,
   onAddLeaveRequests,onReadPendingLeaveGroups,onInspectLeaveRequest,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
@@ -86,6 +85,9 @@ const HRManager: React.FC<HRManagerProps> = ({
   const actionScopeKey=companyId+':'+(requestScopeKey??'');
   const actionScope=useRef(actionScopeKey);actionScope.current=actionScopeKey;
   const actions=useLeaveActions({scopeKey:actionScopeKey,onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
+  const employeeEditor=useEmployeeEditor({scopeKey:actionScopeKey,onSave:onSaveEmployeeEdit,readPending:onReadPendingEmployeeEdits,inspect:onInspectEmployeeEdit,cancel:onCancelEmployeeEdit,readReferences:onReadEmployeeEditReferences});
+  const {formData,changeProfile:setFormData}=employeeEditor;
+  React.useEffect(()=>setIsModalOpen(false),[actionScopeKey]);
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
    * 회사가 안 붙은 옛 기록은 태백으로 본다(companyOf). 관리자 계정(admin)은 어느 쪽에도 안 센다.
@@ -121,7 +123,6 @@ const HRManager: React.FC<HRManagerProps> = ({
   }
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역 (월별 그룹, 클릭 시 펼침)
   const [leaveDetailEmp, setLeaveDetailEmp] = useState<Employee | null>(null);
@@ -147,22 +148,22 @@ const HRManager: React.FC<HRManagerProps> = ({
   // 재직자 명부에서 줄을 깔고 금액만 채운다. 저장은 월 단위 문서 하나(payrolls/pay-YYYY-MM).
   const thisYm = new Date().toISOString().slice(0, 7);
   const [payYm, setPayYm] = useState(thisYm);
-  const [payDate, setPayDate] = useState(() => `${thisYm}-25`);
-  const [payLines, setPayLines] = useState<PayrollLine[]>([]);
-  const [paySource, setPaySource] = useState({ companyId, yearMonth: payYm, expectedRevision: 0 });
-  const [payBank, setPayBank] = useState('');
+  const [payrolls, setPayrolls] = useState<Array<Payroll & { revision?: number; issueOperationId?: string; issueExpectedRevision?: number }>>([]);
   React.useEffect(() => {
-    const banks = cashAccounts.filter(a => companyOf(a) === companyId && a.active && a.type === '통장');
-    setPayBank(current => banks.some(a => a.id === current) ? current : defaultCashAccountId(banks, companyId));
-  }, [cashAccounts, companyId]);
-  const payBusy = React.useRef<object | null>(null);
-  const payScope = React.useRef({ companyId, yearMonth: payYm, token: {} });
-  if (payScope.current.companyId !== companyId || payScope.current.yearMonth !== payYm) { payScope.current = { companyId, yearMonth: payYm, token: {} }; payBusy.current = null; }
-  React.useEffect(() => () => { payScope.current.token = {}; }, []);
-
-  const [paySaving, setPaySaving] = useState(false);
-  React.useEffect(() => setPaySaving(false), [companyId, payYm]);
-  const [payMsg, setPayMsg] = useState('');
+    // 권한 규칙은 목록을 걸러 주지 않는다. 서버 질의에 회사 조건이 없으면 관리자도 구독이 거부된다.
+    setPayrolls([]);
+    return subscribeToCollection<Payroll>('payrolls', setPayrolls, [where('companyId', '==', companyId)]);
+  }, [companyId]);
+  const payrollDraft=usePayrollDraft({companyId,actorUid:requestScopeKey??'',yearMonth:payYm,payrolls,employees});
+  const {lines:payLines,payDate,busy:paySaving,message:payMsg,setCell,setPayDate}=payrollDraft;
+  const [payBank,setPayBank]=useState('');
+  const payBankOwner=useRef(actionScopeKey);
+  React.useEffect(()=>{
+    if(paySaving)return;
+    const banks=cashAccounts.filter(a=>companyOf(a)===companyId&&a.active&&a.type==='통장');
+    const ownerChanged=payBankOwner.current!==actionScopeKey;payBankOwner.current=actionScopeKey;
+    setPayBank(current=>!ownerChanged&&banks.some(a=>a.id===current)?current:defaultCashAccountId(banks,companyId));
+  },[cashAccounts,companyId,requestScopeKey,paySaving]);
   const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
   const paySlipDocumentScope = React.useRef({companyId, yearMonth:payYm});
   const paySlipRef = React.useRef<HTMLDivElement>(null);
@@ -174,89 +175,17 @@ const HRManager: React.FC<HRManagerProps> = ({
     const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(node=>node.outerHTML).join('');
     void previewHtmlPrint({title:'급여명세서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>급여명세서</title>${styles}<style>body{background:white;padding:24px;font-family:'Malgun Gothic',sans-serif;}@page{size:A4;margin:10mm;}</style></head><body>${heading.outerHTML}${paySlipRef.current.innerHTML}</body></html>`});
   };
-  const [payrolls, setPayrolls] = useState<Array<Payroll & { revision?: number; issueOperationId?: string; issueExpectedRevision?: number }>>([]);
-  React.useEffect(() => {
-    // 권한 규칙은 목록을 걸러 주지 않는다. 서버 질의에 회사 조건이 없으면 관리자도 구독이 거부된다.
-    setPayrolls([]);
-    return subscribeToCollection<Payroll>('payrolls', setPayrolls, [where('companyId', '==', companyId)]);
-  }, [companyId]);
   const won = (n: number) => (n || 0).toLocaleString('ko-KR');
   // 회사별로 문서가 따로다 — 남의 회사 대장을 덮어쓰면 안 된다
   const payDocId = payrollDocId(companyId, payYm);
   const savedPayroll = payrolls.find(p => p.id === payDocId) ?? null;
 
-  // 월을 바꾸면 저장본을 싣고, 없으면 재직자로 빈 줄을 깐다
-  React.useEffect(() => {
-    if (activeTab !== 'payroll') return;
-    const doc = payrolls.find(p => p.id === payDocId);
-    setPaySource({ companyId, yearMonth: payYm, expectedRevision: doc?.revision ?? 0 });
-    setPayBank(defaultCashAccountId(cashAccounts.filter(a => a.type === '통장'), companyId));
-    if (doc) { setPayLines(doc.lines ?? []); setPayDate(doc.payDate || `${payYm}-25`); }
-    else {
-      setPayLines(employees.filter(e => e.status === 'working' && e.id !== 'admin').map(e => ({
-        employeeId: e.id, employeeName: e.name, department: e.department, position: e.position, base: 0,
-      })));
-      setPayDate(`${payYm}-25`);
-    }
-    setPayMsg('');
-  }, [payYm, payDocId, activeTab, payrolls, employees, companyId]);
+  const copyPrevMonth=payrollDraft.copyPreviousMonth;
+  const payTotals=payrollTotals(payLines);
+  const savePayroll=()=>payrollDraft.run();
+  const makePayrollEntry=()=>payrollDraft.run('cash',payBank);
+  const makePayrollAccrual=()=>payrollDraft.run('accrual');
 
-  const setCell = (i: number, field: keyof PayrollLine, v: string) => {
-    const n = Math.round(parseFloat(v.replace(/[^\d.-]/g, '')) || 0);
-    setPayLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: n } : l));
-  };
-  /** 지난달 금액 그대로 — 매달 바뀌는 건 몇 칸뿐이라 복사가 가장 빠르다 */
-  const copyPrevMonth = () => {
-    const [y, m] = payYm.split('-').map(Number);
-    const prevYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-    const prev = payrolls.find(p => p.id === payrollDocId(companyId, prevYm));
-    if (!prev) { setPayMsg(`${prevYm} 대장이 없습니다`); return; }
-    const byId = new Map(prev.lines.map(l => [l.employeeId, l]));
-    setPayLines(prev2 => prev2.map(l => {
-      const old = byId.get(l.employeeId);
-      return old ? { ...old, employeeId: l.employeeId, employeeName: l.employeeName, department: l.department, position: l.position } : l;
-    }));
-    setPayMsg(`${prevYm} 금액을 불러왔습니다`);
-  };
-  const payTotals = payrollTotals(payLines);
-
-  const runPayroll = async (mode?: 'cash' | 'accrual') => {
-    if (payBusy.current || paySaving) return;
-    if (paySource.companyId !== companyId || paySource.yearMonth !== payYm) { setPayMsg('현재 회사와 월의 급여대장을 다시 확인하세요'); return; }
-    if (mode && payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
-    const scope = payScope.current.token;
-    const input = { yearMonth: paySource.yearMonth, payDate, lines: payLines.filter(l => payrollGross(l) > 0), expectedRevision: paySource.expectedRevision };
-    payBusy.current = scope; setPaySaving(true);
-    try {
-      if (mode) {
-        const result = await issuePayrollVoucher(companyId, input, mode, mode === 'cash' ? payBank : undefined);
-        if (payScope.current.token === scope) setPayMsg(`${result.docNo} 전표를 확인했습니다`);
-      } else {
-        const result = await savePayrollDraft(companyId, input);
-        if (payScope.current.token === scope) { setPaySource(source => ({ ...source, expectedRevision: result.revision })); setPayMsg('저장했습니다'); }
-      }
-    } catch (error) {
-      if (payScope.current.token === scope) setPayMsg(error instanceof Error ? error.message : '급여 저장에 실패했습니다');
-    } finally {
-      if (payBusy.current === scope) payBusy.current = null;
-      if (payScope.current.token === scope) setPaySaving(false);
-    }
-  };
-  const savePayroll = () => runPayroll();
-  const makePayrollEntry = () => runPayroll('cash');
-  const makePayrollAccrual = () => runPayroll('accrual');
-
-  const [formData, setFormData] = useState({
-    name: '',
-    position: '사원',
-    department: '생산팀',
-    joinDate: todayStr(),
-    birthDate: '',
-    phone: '010-0000-0000',
-    status: 'working' as EmployeeStatus,
-    annualLeave: { carryOverLeave: 0, bonusLeave: 0 },
-    healthCertDate: '',
-  });
 
   const today = new Date();
 
@@ -294,28 +223,28 @@ const HRManager: React.FC<HRManagerProps> = ({
     r.status === 'pending' || r.status === 'cancel_pending' || r.status === 'approved' && r.modifyRequest?.status === 'pending'
   );
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const closeEmployeeEditor=()=>{if(employeeEditor.closeProfile())setIsModalOpen(false);};
+  const handleFormSubmit=async(e:React.FormEvent)=>{
     e.preventDefault();
-    const empData: Employee = {
-      id: editingEmployee ? editingEmployee.id : `emp-${Date.now()}`,
-      // 새로 넣는 사람은 **지금 보고 있는 회사** 소속. 고칠 때는 원래 소속을 지키고,
-      // 옛 기록(회사 없음)은 태백으로 굳힌다 — 안 붙이면 회사를 바꿔도 계속 따라다닌다.
-      companyId: editingEmployee ? companyOf(editingEmployee) : companyId,
-      ...formData
-    };
-    if (editingEmployee) onUpdateEmployee(empData);
-    else onAddEmployee(empData);
-    setIsModalOpen(false);
-  };
-
-  const handleBalanceUpdate = (emp: Employee, field: 'carryOverLeave' | 'bonusLeave', value: string) => {
-    const numValue = parseFloat(value) || 0;
-    onUpdateEmployee({ ...emp, annualLeave: { ...emp.annualLeave, carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0, [field]: numValue } });
+    if(await employeeEditor.submitProfile())setIsModalOpen(false);
   };
 
   return (
     <div className="min-w-0 max-w-full space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
       {activeTab!=='leave-approval'&&<LeaveActionRecovery actions={actions}/>}
+      {!isModalOpen&&employeeEditor.message&&<p role="status" className="whitespace-pre-line text-sm text-slate-600">{employeeEditor.message}</p>}
+      {(employeeEditor.pending.length>0||employeeEditor.references.some(row=>!row.readable))&&<section aria-label="처리 결과 확인이 필요한 직원 저장" className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <h3 className="text-sm font-bold text-slate-700">처리 결과 확인이 필요한 직원 저장</h3>
+        {employeeEditor.pending.map(row=><div key={row.planId} className="flex flex-wrap items-center gap-2 text-xs">
+          <span>{row.description} · 대상 번호 {row.id}</span>
+          <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
+          <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button>
+        </div>)}
+        {employeeEditor.references.filter(row=>!row.readable).map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs">
+          <span>원문 확인 필요 · {row.reference?'대상 번호 '+row.reference.targetId:'대상 번호를 읽지 못했습니다.'}</span>
+          {row.reference&&<><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button></>}
+        </div>)}
+      </section>}
       <PageHeader
         title="인사 관리"
         subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
@@ -354,16 +283,7 @@ const HRManager: React.FC<HRManagerProps> = ({
           {activeTab === 'employees' && (
             <ActionButton
               onClick={() => {
-                setEditingEmployee(null);
-                setFormData({
-                  name: '', position: '사원', department: '생산팀',
-                  joinDate: todayStr(),
-                  birthDate: '',
-                  phone: '010-0000-0000', status: 'working',
-                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 },
-                  healthCertDate: '',
-                });
-                setIsModalOpen(true);
+                if(employeeEditor.openCreate())setIsModalOpen(true);
               }}
               tone="primary"
             >
@@ -402,7 +322,7 @@ const HRManager: React.FC<HRManagerProps> = ({
         {activeTab === 'employees' && (
           <EmployeeDirectory filteredEmployees={filteredEmployees} searchTerm={searchTerm} onSearchChange={setSearchTerm}
             calculateWorkDays={calculateWorkDays} getHealthCertStatus={getHealthCertStatus} onRetirement={setRetirementEmployee}
-            onEdit={(emp) => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} onDelete={(emp) => setConfirmModal({
+            onEdit={(emp) => {if(employeeEditor.openProfile(emp))setIsModalOpen(true);}} onDelete={(emp) => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
                               subMessage: '퇴직금 관리 등록 여부를 먼저 확인합니다. 이력이 있으면 삭제 대신 퇴사 처리하세요.',
                               onConfirm: () => { void deleteEmployeeSafely(emp); },
@@ -495,8 +415,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <div className="flex justify-center items-center">
                             <input 
                               type="number" step="0.5"
-                              value={emp.annualLeave?.bonusLeave || 0}
-                              onChange={(e) => handleBalanceUpdate(emp, 'bonusLeave', e.target.value)}
+                              value={employeeEditor.balanceFor(emp).bonusLeave}
+                              disabled={employeeEditor.busy||employeeEditor.balanceLocked(emp.id)}
+                              onChange={(e) => employeeEditor.changeBalance(emp,'bonusLeave',e.target.value)}
                               className="w-16 text-center bg-white border border-indigo-200 rounded-lg py-1.5 text-sm font-black text-indigo-600 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"
                             />
                           </div>
@@ -511,13 +432,19 @@ const HRManager: React.FC<HRManagerProps> = ({
                         {isEditMode ? (
                           <input 
                             type="number" step="0.5"
-                            value={emp.annualLeave?.carryOverLeave || 0}
-                            onChange={(e) => handleBalanceUpdate(emp, 'carryOverLeave', e.target.value)}
+                            value={employeeEditor.balanceFor(emp).carryOverLeave}
+                            disabled={employeeEditor.busy||employeeEditor.balanceLocked(emp.id)}
+                            onChange={(e) => employeeEditor.changeBalance(emp,'carryOverLeave',e.target.value)}
                             className="w-16 text-center bg-white border border-slate-200 rounded-lg py-1.5 text-sm font-black text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
                           />
+
                         ) : (
                           <span className="text-sm font-black text-slate-400">{emp.annualLeave?.carryOverLeave || 0}</span>
                         )}
+                      {employeeEditor.hasBalanceDraft(emp.id)&&<div className="mt-2 flex justify-center gap-2">
+                            <button type="button" disabled={employeeEditor.balanceLocked(emp.id)} onClick={()=>void employeeEditor.submitBalance(emp.id)} className="rounded border border-slate-200 px-2 py-1 text-xs">연차 저장</button>
+                            <button type="button" disabled={!employeeEditor.canResetBalance(emp.id)} onClick={()=>employeeEditor.resetBalance(emp.id)} className="rounded border border-slate-200 px-2 py-1 text-xs">되돌리기</button>
+                          </div>}
                       </td>
                       {/* 사용 개수 — 총 / 당월 */}
                       <td className="px-5 py-6 text-center whitespace-nowrap">
@@ -562,21 +489,22 @@ const HRManager: React.FC<HRManagerProps> = ({
         {activeTab === 'payroll' && (
           <div className="flex-1 overflow-auto custom-scrollbar">
             <div className="p-4 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 sticky top-0 z-10">
-              <input type="month" value={payYm} onChange={e => setPayYm(e.target.value)}
+              <input type="month" aria-label="급여 월" disabled={paySaving} value={payYm} onChange={e => setPayYm(e.target.value)}
                 className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-violet-300" />
               <label className="flex items-center gap-1.5 text-[11px] font-black text-slate-400">
                 지급일
-                <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                <input type="date" disabled={paySaving} value={payDate} onChange={e => setPayDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-black text-slate-700 outline-none focus:ring-2 focus:ring-violet-300" />
               </label>
-              <label>지급 계좌<select aria-label="급여 지급 계좌" value={payBank} onChange={e => setPayBank(e.target.value)}>
+              <label>지급 계좌<select disabled={paySaving} aria-label="급여 지급 계좌" value={payBank} onChange={e => setPayBank(e.target.value)}>
                 {cashAccounts.filter(a => companyOf(a) === companyId && a.active && a.type === '통장').map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select></label>
-              <button onClick={copyPrevMonth}
+              <button disabled={paySaving} onClick={copyPrevMonth}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600 transition-all">
                 <Copy size={13} />지난달 복사
               </button>
               <div className="ml-auto flex items-center gap-2">
+                {payrollDraft.conflict&&<button type="button" disabled={paySaving} onClick={payrollDraft.reload} className="rounded border border-slate-200 px-3 py-2 text-xs">최신 급여 불러오기</button>}
                 {payMsg && <span className="text-[11px] font-black text-violet-600">{payMsg}</span>}
                 {savedPayroll?.cashEntryId && (
                   <span className="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">전표 생성됨</span>
@@ -604,7 +532,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             {payLines.length === 0 ? (
               <p className="py-16 text-center text-xs font-bold text-slate-300">재직 중인 임직원이 없습니다</p>
             ) : (
-              <PayrollLineEditor lines={payLines} onCell={setCell} onPrint={line => { paySlipDocumentScope.current={companyId,yearMonth:payYm}; setPaySlipEmp(line); }} />
+              <PayrollLineEditor disabled={paySaving} lines={payLines} onCell={setCell} onPrint={line => { paySlipDocumentScope.current={companyId,yearMonth:payYm}; setPaySlipEmp(line); }} />
             )}
 
             <div className="p-4 space-y-2">
@@ -689,9 +617,10 @@ const HRManager: React.FC<HRManagerProps> = ({
       )}
 
       {/* Employee Add/Edit Modal */}
-      {isModalOpen && (
-        <ModalShell title={editingEmployee ? '정보 수정' : '신규 직원 등록'} onClose={() => setIsModalOpen(false)} bodyClassName="!p-0">
+      {isModalOpen && employeeEditor.profileSession && (
+        <ModalShell title={employeeEditor.profileSession.isNew?'신규 직원 등록':'정보 수정'} onClose={closeEmployeeEditor} bodyClassName="!p-0">
             <form onSubmit={handleFormSubmit} className="p-5 space-y-5">
+              <fieldset disabled={employeeEditor.busy||employeeEditor.profileLocked} className="contents">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">이름</label>
                 <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -740,12 +669,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">이월 연차</label>
                       <p className="text-[10px] text-slate-300">전년도에서 이월된 잔여 연차</p>
-                      <input type="number" step="0.5" value={formData.annualLeave.carryOverLeave} onChange={(e) => setFormData({...formData, annualLeave: {...formData.annualLeave, carryOverLeave: parseFloat(e.target.value) || 0}})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-400" />
+                      <input type="number" step="0.5" value={formData.annualLeave.carryOverLeave} onChange={(e) => employeeEditor.changeProfileBalance('carryOverLeave',e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-400" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">보너스 연차</label>
                       <p className="text-[10px] text-slate-300">포상·특별 부여 연차</p>
-                      <input type="number" step="0.5" value={formData.annualLeave.bonusLeave} onChange={(e) => setFormData({...formData, annualLeave: {...formData.annualLeave, bonusLeave: parseFloat(e.target.value) || 0}})} className="w-full bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-emerald-700 focus:border-emerald-400" />
+                      <input type="number" step="0.5" value={formData.annualLeave.bonusLeave} onChange={(e) => employeeEditor.changeProfileBalance('bonusLeave',e.target.value)} className="w-full bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-emerald-700 focus:border-emerald-400" />
                     </div>
                   </div>
                 </div>
@@ -776,9 +705,15 @@ const HRManager: React.FC<HRManagerProps> = ({
                   })()}
                 </div>
               </div>
+              </fieldset>
+              {employeeEditor.message&&(employeeEditor.messageTargetId===null||employeeEditor.messageTargetId===employeeEditor.profileSession?.targetId)&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{employeeEditor.message}</p>}
+              {employeeEditor.references.filter(row=>row.reference?.targetId===employeeEditor.profileSession?.targetId).map(row=><div key={row.key} className="flex gap-2">
+                <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">결과 확인</button>
+                <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">요청 중단</button>
+              </div>)}
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex space-x-3 mt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>
-                <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 flex items-center justify-center space-x-2"><Check size={20} /><span>저장 완료</span></button>
+                <button type="button" disabled={employeeEditor.busy} onClick={closeEmployeeEditor} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>
+                <button type="submit" disabled={employeeEditor.busy||employeeEditor.profileLocked} className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 flex items-center justify-center space-x-2"><Check size={20} /><span>저장 완료</span></button>
               </div>
             </form>
         </ModalShell>

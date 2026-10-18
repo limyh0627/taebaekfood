@@ -1,3 +1,5 @@
+import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
+import type {EmployeeEditReference} from '../../shared/employeeEditCommand';
 import type {ItemEditorProgress,ItemEditorSaveResult} from '../items/application/itemEditorSave';
 import {captureItemEditorOpening,pendingItemEditorPlans,itemEditorReferences,submitItemEditorSave,inspectItemEditorSave,continueItemEditorSave,cancelItemEditorSave,type ItemEditorSaveInput} from '../items/infrastructure/itemEditorWrites';
 import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit} from '../orders/infrastructure/orderEditWrites';
@@ -2209,6 +2211,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
     runLeaveAction(async scope => (await submitLeaveAction(scope,row,action)).outcome);
   const readPendingLeaveActions = () => { const scope=currentLeaveScope();return scope ? pendingLeaveActions(scope) : []; };
 
+  const employeeEditRenderUid=auth.currentUser?.uid;
+  const employeeEditRenderToken=orderAskScope.current.token;
+  const currentEmployeeEditScope=():EmployeeEditScope|null=>{
+    if(!employeeEditRenderUid||auth.currentUser?.uid!==employeeEditRenderUid||orderAskScope.current.companyId!==companyId||orderAskScope.current.token!==employeeEditRenderToken)return null;
+    return {companyId,actorUid:employeeEditRenderUid};
+  };
+  const runEmployeeEdit=async(work:(scope:EmployeeEditScope)=>Promise<SaveOutcome>):Promise<SaveOutcome>=>{
+    const scope=currentEmployeeEditScope();
+    if(!scope)return {status:'rejected',message:'회사 또는 로그인 정보가 바뀌어 직원 저장을 전송하지 않았습니다.',nextAction:'현재 회사에서 직원을 다시 열어 주세요.'};
+    return work(scope);
+  };
+  const handleEmployeeEdit=(input:EmployeeEditInput)=>runEmployeeEdit(scope=>submitEmployeeEdit(scope,input));
+  const handleInspectEmployeeEdit=(reference:EmployeeEditReference)=>runEmployeeEdit(scope=>inspectEmployeeEdit(scope,reference));
+  const handleCancelEmployeeEdit=(reference:EmployeeEditReference)=>runEmployeeEdit(scope=>cancelEmployeeEdit(scope,reference));
+  const readPendingEmployeeEdits=()=>{const scope=currentEmployeeEditScope();return scope?pendingEmployeeEdits(scope):[];};
+  const readEmployeeEditReferences=()=>{const scope=currentEmployeeEditScope();return scope?employeeEditReferences(scope):[];};
+
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
   const seedItemFormulas = async () => {
     if (itemFormulas.length > 0) {
@@ -3171,8 +3190,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               cashAccounts={companyCashAccounts}
               employees={employees}
               leaveRequests={leaveRequests}
-              onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
-              onAddEmployee={(emp) => addItem('employees', emp)}
+              onSaveEmployeeEdit={handleEmployeeEdit}
+              onReadPendingEmployeeEdits={readPendingEmployeeEdits}
+              onInspectEmployeeEdit={handleInspectEmployeeEdit}
+              onCancelEmployeeEdit={handleCancelEmployeeEdit}
+              onReadEmployeeEditReferences={readEmployeeEditReferences}
               onDeleteEmployee={(id) => deleteItem('employees', id)}
               onLeaveAction={handleLeaveAction}
               onReadPendingLeaveActions={readPendingLeaveActions}

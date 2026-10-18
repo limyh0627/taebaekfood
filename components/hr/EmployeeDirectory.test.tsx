@@ -21,7 +21,7 @@ it('검색 입력은 controlled 값을 보존하고 각 행의 원직원 객체�
 it('실제 부모의 보건증 만료·30일 경계와 미등록, 회사·검색 필터를 유지한다', () => {
  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-18T00:00:00Z'));
  const employees = [employee('미등록'), employee('만료', '2025-10-18'), employee('경고', '2025-11-17'), employee('정상', '2025-11-18'), { ...employee('다른회사'), companyId: 'punghoe' as const }];
- render(<HRManager employees={employees} leaveRequests={[]} onUpdateEmployee={vi.fn()} onAddEmployee={vi.fn()} onDeleteEmployee={vi.fn()} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} />);
+ render(<HRManager employees={employees} leaveRequests={[]} onSaveEmployeeEdit={vi.fn().mockResolvedValue({status:'saved'})} onDeleteEmployee={vi.fn()} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} />);
  expect(screen.queryByText('다른회사')).not.toBeInTheDocument(); expect(screen.getByText('미등록', { selector: 'span' })).toBeInTheDocument(); expect(screen.getByText('만료됨')).toBeInTheDocument(); expect(screen.getByText('D-30')).toHaveClass('text-amber-600'); expect(screen.getByText('D-31')).toHaveClass('text-emerald-600');
  fireEvent.change(screen.getByPlaceholderText('이름 또는 부서 검색...'), { target: { value: '정상' } }); expect(screen.queryByText('경고')).not.toBeInTheDocument(); expect(screen.getByText('정상')).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button', { name: '정상 정보 수정' })); expect(within(screen.getByRole('dialog')).getByDisplayValue('정상')).toBeInTheDocument(); expect(within(screen.getByRole('dialog')).getByDisplayValue('2025-11-18')).toBeInTheDocument();

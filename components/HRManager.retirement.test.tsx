@@ -8,7 +8,7 @@ vi.mock('./hr/RetirementBenefitPanel', () => ({ default: ({ employee, onClose }:
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: vi.fn(() => () => {}), setDocument: vi.fn() }));
 import HRManager from './HRManager';
 const employee = { id: 'e1', companyId: 'taebaek' as const, name: '합성직원', position: '', department: '', joinDate: '2020-01-01', phone: '', status: 'working' as const };
-const props = () => ({ employees: [employee], leaveRequests: [], onUpdateEmployee: vi.fn(), onAddEmployee: vi.fn(), onDeleteEmployee: vi.fn(async () => {}), onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}) });
+const props = () => ({ requestScopeKey:'qa',employees: [employee], leaveRequests: [], onSaveEmployeeEdit:vi.fn().mockResolvedValue({status:'saved'}), onDeleteEmployee: vi.fn(async () => {}), onLeaveAction: vi.fn().mockResolvedValue({status:"saved"}) });
 beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue({ profile: null }); });
 function requestDelete(container: HTMLElement) { fireEvent.click(container.querySelector('button:has(svg.lucide-trash2)')!); fireEvent.click(screen.getByRole('button', { name: '삭제' })); }
 it('직원 행의 퇴직금 진입은 회사·직원을 유지한다', async () => { render(<HRManager {...props()} companyId="taebaek" />); fireEvent.click(screen.getByText('퇴직금')); expect(screen.getByText('퇴직금패널 합성직원')).toBeInTheDocument(); });

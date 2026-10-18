@@ -1,5 +1,7 @@
 import { encodeCatalogValue, type CatalogValue, type CatalogValueAdapter } from './catalogOrderReferenceProof';
 import { cleanupValidId } from './partnerItemCleanup';
+import {documentId as itemEditorDocumentId} from './documentId';
+export {documentId as itemEditorDocumentId} from './documentId';
 import { isSmartStoreItem } from './itemEditorDomain';
 export { buildPurchaseNotices, itemEditorPurchaseNoticeText, itemEditorPurchaseNoticeMessage } from './itemEditorDomain';
 export type { CatalogValue, CatalogValueAdapter } from './catalogOrderReferenceProof';
@@ -91,8 +93,6 @@ export function itemEditorGraphProjection(kind: ItemEditorGraphPart, rows: reado
 }
 export const serializeItemEditorGraphPart = (kind: ItemEditorGraphPart, rows: readonly ItemEditorDocument[], adapter?: Pick<CatalogValueAdapter, 'special'>): string => JSON.stringify(itemEditorGraphProjection(kind, rows, adapter));
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-/** 기존 문서에는 새 계획 번호의 180자 제한을 적용하지 않는다. */
-export const itemEditorDocumentId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && new TextEncoder().encode(value).byteLength <= 1500 && !value.includes('/') && value !== '.' && value !== '..' && !/^__.*__$/.test(value);
 function exact(value: unknown, keys: readonly string[]): asserts value is Record<string, unknown> {
     if (!isRecord(value) || Object.keys(value).some(key => !keys.includes(key)))
         throw Error('품목 저장 요청 형식을 확인해 주세요.');

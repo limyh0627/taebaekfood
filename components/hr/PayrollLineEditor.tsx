@@ -2,10 +2,11 @@ import React from 'react';
 import { Printer } from 'lucide-react';
 import { payrollGross, payrollDeduct, payrollNet, payrollTotals, type PayrollLine } from '../../src/shared/types';
 const won = (value: number) => value.toLocaleString('ko-KR');
-export default function PayrollLineEditor({ lines, onCell, onPrint }: {
+export default function PayrollLineEditor({ lines, onCell, onPrint, disabled=false }: {
   lines: PayrollLine[];
   onCell: (index: number, field: keyof PayrollLine, value: string) => void;
   onPrint?: (line: PayrollLine) => void;
+  disabled?: boolean;
 }) {
   const totals = payrollTotals(lines);
   return (
@@ -33,7 +34,7 @@ export default function PayrollLineEditor({ lines, onCell, onPrint }: {
                   {lines.map((l, i) => {
                     const cell = (field: keyof PayrollLine) => (
                       <td className="px-2 py-1.5 text-right">
-                        <input inputMode="numeric" value={(l[field] as number) ? won(l[field] as number) : ''}
+                        <input disabled={disabled} inputMode="numeric" value={(l[field] as number) ? won(l[field] as number) : ''}
                           onChange={e => onCell(i, field, e.target.value)} placeholder="0"
                           className="w-20 text-right tabular-nums font-bold border border-transparent hover:border-slate-200 focus:border-violet-300 rounded-lg px-1.5 py-1 outline-none" />
                       </td>

@@ -27,3 +27,6 @@ describe('shared original payroll employee editor', () => {
     expect(print).toHaveBeenCalledWith(line);
   });
 });
+it('급여 저장 대기 중에는 금액 입력이 잠기며 합계 표시와 명세서 버튼은 보존한다',()=>{
+ const line={employeeId:'e1',employeeName:'사원',base:100};const change=vi.fn();const view=render(<PayrollLineEditor lines={[line]} onCell={change} disabled onPrint={vi.fn()}/>);for(const input of view.container.querySelectorAll('input'))expect(input).toBeDisabled();expect(screen.getByTitle('급여명세서')).toBeEnabled();expect(change).not.toHaveBeenCalled();
+});
