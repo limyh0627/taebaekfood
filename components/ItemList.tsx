@@ -1420,7 +1420,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           <button onClick={() => { setLotStatus('complete'); setActiveTab('lot-history'); }} className={`rounded-lg border border-slate-200 bg-white min-h-9 px-3 py-2 text-xs font-bold transition-colors ${activeTab === 'lot-history' ? 'border-indigo-200 bg-white text-indigo-600' : 'text-slate-400'}`}><History size={13} className="mr-1.5 inline" />로트 이력</button>
         </div>
         )}
-        actions={((mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound') || activeTab === 'inbound') ? <>
+        actions={((mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound') || activeTab === 'inbound' || activeTab === 'lots' || activeTab === 'lot-history') ? <>
           {mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound' && (
             <div className="flex items-center gap-2 ml-auto">
               <button
@@ -1445,8 +1445,40 @@ const ItemListContent: React.FC<ItemListProps> = ({
             )}
           </div>
         )}
+          {(activeTab === 'lots' || activeTab === 'lot-history') && <>
+            <ActionButton type="button" onClick={() => setRawEntryModal({ mode: 'usage' })} tone="primary">사용 기록</ActionButton>
+            {oemEnabled && onOemIssue && <ActionButton type="button" onClick={() => setOemIssueOpen(true)}>외주 발주</ActionButton>}
+            <ActionButton onClick={() => setLedgerModalMaterial(rawMaterialLedger.some(e => e.material === '참깨')
+              ? '참깨' : rawMaterialLedger.find(e => e.material)?.material ?? '참깨')}
+              >
+              <History size={13} />입출고 기록
+            </ActionButton>
+          </>}
         </> : undefined}
-        recovery={<ActionButton tone="recovery" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 {pendingInventory.filter(entry=>!entry.deleted).length}</ActionButton>}
+        recovery={<><ActionButton tone="recovery" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 {pendingInventory.filter(entry=>!entry.deleted).length}</ActionButton>
+      {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
+        <div aria-label="OEM 복구" className="inline-flex min-w-0 flex-wrap items-center gap-2 [&>button]:h-9 [&>button]:w-auto [&>button]:text-xs [&>button]:font-semibold">
+        <OemManager
+          actorUid={auth.currentUser?.uid??''}
+          isCurrentActor={()=>auth.currentUser?.uid===inventoryScope.current.uid&&companyId===inventoryScope.current.companyId}
+          orderUnitInputs={orderUnitInputs}
+          companyId={companyId}
+          items={items}
+          partners={partners.filter(partner => companyOf(partner) === companyId) as any}
+          rawStockKg={rawStockKg}
+          issueDrafts={oemIssueDrafts}
+          purchaseOrders={[...orderRequests, ...confirmedOrders, ...receivedOrders, ...oemIssueDrafts].filter(po => companyOf(po) === companyId)}
+          issueOpen={oemIssueOpen}
+          receiveTarget={!oemReceiveTarget?.oemCancelledAt && oemReceiveTarget && companyOf(oemReceiveTarget) === companyId ? oemReceiveTarget : null}
+          feeTarget={!oemFeeTarget?.oemCancelledAt && oemFeeTarget && companyOf(oemFeeTarget) === companyId ? oemFeeTarget : null}
+          onClose={closeOem}
+          onIssue={onOemIssue}
+          onReceive={onOemReceive}
+          onIssueFee={onOemIssueFee}
+        />
+        </div>
+      )}
+        </>}
       />
 
 
@@ -1930,72 +1962,53 @@ const ItemListContent: React.FC<ItemListProps> = ({
       })()}
 
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
-      {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
-        <OemManager
-          actorUid={auth.currentUser?.uid??''}
-          isCurrentActor={()=>auth.currentUser?.uid===inventoryScope.current.uid&&companyId===inventoryScope.current.companyId}
-          orderUnitInputs={orderUnitInputs}
-          companyId={companyId}
-          items={items}
-          partners={partners.filter(partner => companyOf(partner) === companyId) as any}
-          rawStockKg={rawStockKg}
-          issueDrafts={oemIssueDrafts}
-          purchaseOrders={[...orderRequests, ...confirmedOrders, ...receivedOrders, ...oemIssueDrafts].filter(po => companyOf(po) === companyId)}
-          issueOpen={oemIssueOpen}
-          receiveTarget={!oemReceiveTarget?.oemCancelledAt && oemReceiveTarget && companyOf(oemReceiveTarget) === companyId ? oemReceiveTarget : null}
-          feeTarget={!oemFeeTarget?.oemCancelledAt && oemFeeTarget && companyOf(oemFeeTarget) === companyId ? oemFeeTarget : null}
-          onClose={closeOem}
-          onIssue={onOemIssue}
-          onReceive={onOemReceive}
-          onIssueFee={onOemIssueFee}
-        />
-      )}
+
 
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
-          <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
-            <button type="button" onClick={() => setRawEntryModal({ mode: 'usage' })} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white">사용 기록</button>
-            {oemEnabled && onOemIssue && <button type="button" onClick={() => setOemIssueOpen(true)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white">외주 발주</button>}
-            <div className="relative flex-1 min-w-[220px]">
+          <section aria-labelledby="lot-query-title" className="rounded-lg border border-slate-200 bg-white">
+            <div className="flex min-h-11 items-center border-b border-slate-200 px-3"><h3 id="lot-query-title" className="text-xs font-black text-slate-900">검색조건</h3></div>
+            <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
+
+            <label className="flex min-w-[220px] max-w-sm flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500">품목명 또는 규격
+              <span className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input type="text" placeholder="품목명·규격 검색" value={lotSearch} onChange={e => setLotSearch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
-            </div>
-            <div className="flex items-center rounded-xl bg-slate-100 p-1">
+                className="h-10 w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 text-xs font-bold outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-400" />
+              </span>
+            </label>
+            <div role="group" aria-label="로트 종류" className="flex min-w-0 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">종류</span><div className="flex flex-wrap gap-1">
               {([['all', '전체'], ['raw', '벌크'], ['packed', '완제품']] as const).map(([key, label]) => (
                 <button key={key} type="button" onClick={() => setLotKind(key)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotKind === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                  className={`h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotKind === key ? '!border-indigo-300 text-indigo-700' : 'text-slate-400'}`}>
                   {label}
                 </button>
               ))}
-            </div>
-            <div className="flex items-center rounded-xl bg-slate-100 p-1">
+            </div></div>
+            <div role="group" aria-label="로트 상태" className="flex min-w-0 flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">상태</span><div className="flex flex-wrap gap-1">
               {([['all', '전체'], ['using', '사용중'], ['waiting', '대기중'], ['complete', '완료']] as const).map(([key, label]) => (
                 <button key={key} type="button" onClick={() => {
                   setLotStatus(key);
                   setActiveTab(key === 'complete' ? 'lot-history' : 'lots');
-                }} className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotStatus === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
+                }} className={`h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotStatus === key ? '!border-indigo-300 text-indigo-700' : 'text-slate-400'}`}>
                   {label}
                 </button>
               ))}
+            </div></div>
+
             </div>
-            <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">
+          </section>
+            <div role="group" aria-label="로트 보기" className="flex min-w-0 flex-wrap items-center justify-end gap-2"><span className="text-[10px] font-bold text-slate-500">보기</span><div className="flex flex-wrap gap-1">
               <button type="button" onClick={() => setLotView('list')} title="리스트 보기"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotView === 'list' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>
+                className={`flex items-center gap-1.5 h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotView === 'list' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-700'}`}>
                 <List size={13} />리스트
               </button>
               <button type="button" onClick={() => setLotView('board')} title="보드 보기"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotView === 'board' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>
+                className={`flex items-center gap-1.5 h-9 border border-slate-200 bg-white px-3 rounded-lg text-xs font-semibold transition-colors ${lotView === 'board' ? '!border-indigo-300 text-indigo-700' : 'text-slate-400 hover:text-slate-700'}`}>
                 <LayoutGrid size={13} />보드
               </button>
-            </div>
-            <button onClick={() => setLedgerModalMaterial(rawMaterialLedger.some(e => e.material === '참깨')
-              ? '참깨' : rawMaterialLedger.find(e => e.material)?.material ?? '참깨')}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-50">
-              <History size={13} />입출고 기록
-            </button>
-          </div>
+            </div></div>
 
           <div className="flex-none lg:flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar">
             <div className="min-w-0">

@@ -38,7 +38,7 @@ it('OEM 가공입고 버튼은 기존 OEM 모달로 연결하며 일반 입고 c
  fireEvent.click(screen.getByRole('button',{name:'가공입고'}));
  expect(screen.getByRole('heading',{name:'가공입고'})).toBeInTheDocument();
  fireEvent.change(screen.getByPlaceholderText('수량'),{target:{value:'20'}});
- fireEvent.click(screen.getAllByRole('button',{name:'가공입고'}).at(-1)!);
+ fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'가공입고'}));
  await waitFor(()=>expect(receive).toHaveBeenCalledOnce());
  expect(receive.mock.calls[0][0]).toMatchObject({po:{id:'fumi-po',companyId:'taebaek'},returns:[{itemId:'oem-product',qty:20}],bulk:[]});
  expect(generic).not.toHaveBeenCalled();

@@ -55,3 +55,32 @@ it('발주 확정 후 history 상태에서도 기존 재고현황 행동을 유�
  fireEvent.click(within(slot(container,'actions')).getByRole('button',{name:'재고 현황'}));
  expect(screen.getByRole('button',{name:'품목추가'})).toBeInTheDocument();
 });
+it('생산 로트의 행동과 검색·결과보기를 분리하고 상태 전환을 보존한다',()=>{
+ const {container}=view({mode:'lots'});const actions=slot(container,'actions'),query=screen.getByRole('region',{name:'검색조건'}),viewOptions=screen.getByRole('group',{name:'로트 보기'});
+ expect(within(actions).getByRole('button',{name:'사용 기록'})).toHaveClass('h-9');expect(within(actions).getByRole('button',{name:'입출고 기록'})).toBeInTheDocument();expect(within(actions).queryByRole('button',{name:'외주 발주'})).toBeNull();
+ const search=within(query).getByLabelText('품목명 또는 규격');expect(search).toHaveClass('h-10','bg-white');fireEvent.change(search,{target:{value:'조회할 품목'}});expect(search).toHaveValue('조회할 품목');
+ expect(query).not.toContainElement(viewOptions);expect(query.compareDocumentPosition(viewOptions)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ fireEvent.click(within(query).getByRole('group',{name:'로트 상태'}).querySelector('button:last-child')!);expect(within(slot(container,'tabs')).getByRole('button',{name:'로트 이력'})).toHaveClass('text-indigo-600');expect(search).toHaveValue('조회할 품목');
+ fireEvent.click(within(viewOptions).getByRole('button',{name:'보드'}));expect(within(viewOptions).getByRole('button',{name:'보드'})).toHaveClass('text-indigo-700');
+ fireEvent.click(within(viewOptions).getByRole('button',{name:'리스트'}));expect(screen.getByRole('table')).toBeInTheDocument();
+});
+it('생산 사용 기록과 입출고 기록은 기존 모달을 열며 외주 콜백 없이 쓰지 않는다',()=>{
+ const {container}=view({mode:'lots'});fireEvent.click(within(slot(container,'actions')).getByRole('button',{name:'사용 기록'}));
+ let dialog=screen.getByRole('dialog');expect(dialog).toBeInTheDocument();fireEvent.click(within(dialog).getAllByRole('button').find(button=>button.getAttribute('aria-label')?.endsWith('닫기'))!);
+ fireEvent.click(within(slot(container,'actions')).getByRole('button',{name:'입출고 기록'}));expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+it('OEM 복구는 0건도 같은 조건으로 독립 영역에 남고 직계 버튼만 규격화한다',()=>{
+ const issue=vi.fn(),receive=vi.fn(),fee=vi.fn();const {container}=view({mode:'lots',oemEnabled:true,onOemIssue:issue,onOemReceive:receive,onOemIssueFee:fee,rawStockKg:()=>0});
+ expect(within(slot(container,'actions')).getByRole('button',{name:'외주 발주'})).toBeInTheDocument();
+ const recovery=screen.getByLabelText('OEM 복구');expect(recovery).toHaveClass('flex-wrap','[&>button]:h-9','[&>button]:w-auto');const button=within(recovery).getByRole('button',{name:'OEM 실패 작업 0'});fireEvent.click(button);
+ expect(screen.getByRole('dialog',{name:'OEM 실패 작업 목록'})).toBeInTheDocument();expect(issue).not.toHaveBeenCalled();expect(receive).not.toHaveBeenCalled();expect(fee).not.toHaveBeenCalled();
+});
+it('OEM 복구는 일반 실패와 같은 줄에 있고 로트 전환과 부모 갱신에도 열린 목록을 보존한다',()=>{
+ const issue=vi.fn(),receive=vi.fn(),fee=vi.fn();const extra={mode:'lots' as const,oemEnabled:true,onOemIssue:issue,onOemReceive:receive,onOemIssueFee:fee,rawStockKg:()=>0};
+ const rendered=view(extra);const recovery=slot(rendered.container,'recovery'),oem=screen.getByLabelText('OEM 복구');expect(recovery).toContainElement(oem);expect(oem).not.toHaveClass('border-t','pt-2');
+ fireEvent.click(within(oem).getByRole('button',{name:'OEM 실패 작업 0'}));const original=screen.getByRole('dialog',{name:'OEM 실패 작업 목록'});
+ fireEvent.click(within(slot(rendered.container,'tabs')).getByRole('button',{name:'로트 이력'}));expect(screen.getByRole('dialog',{name:'OEM 실패 작업 목록'})).toBe(original);
+ fireEvent.change(screen.getByPlaceholderText('품목명·규격 검색'),{target:{value:'부모 갱신'}});expect(screen.getByRole('dialog',{name:'OEM 실패 작업 목록'})).toBe(original);
+ fireEvent.click(within(slot(rendered.container,'tabs')).getByRole('button',{name:'로트'}));expect(screen.getByRole('dialog',{name:'OEM 실패 작업 목록'})).toBe(original);
+ expect(issue).not.toHaveBeenCalled();expect(receive).not.toHaveBeenCalled();expect(fee).not.toHaveBeenCalled();
+});
