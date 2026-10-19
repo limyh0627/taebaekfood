@@ -372,3 +372,5 @@ export {documentMetadataCommand,cleanupLateDocumentUpload} from './documentMetad
 export {documentCategoryCommand} from './documentCategoryCommand';
 
 export {companyInfoCommand} from './companyInfoCommand';
+
+export {noticeCommand,cleanupLateNoticeUpload} from './noticeCommand';

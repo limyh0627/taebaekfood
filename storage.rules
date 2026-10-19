@@ -40,12 +40,23 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
-    match /companies/{companyId}/notices/{postId}/{fileName} {
+    match /companies/{companyId}/notices/{postId}/{uploadId} {
+      function reservedPhoto() {
+        let r = firestore.get(/databases/(default)/documents/noticePhotoUploads/$(uploadId)).data;
+        return r.companyId == companyId && r.actorUid == request.auth.uid
+          && r.employeeId == request.auth.token.employeeId && r.closed == false
+          && r.reference.postId == postId && r.reference.uploadId == uploadId
+          && request.resource.size == r.request.size && request.resource.size <= 5 * 1024 * 1024
+          && request.resource.contentType == r.request.contentType
+          && request.resource.contentType.matches('image/(jpeg|png|webp)')
+          && request.resource.metadata.uploadId == uploadId
+          && request.resource.metadata.sha256 == r.request.sha256
+          && request.resource.metadata.actorUid == request.auth.uid
+          && request.resource.metadata.employeeId == request.auth.token.employeeId;
+      }
       allow read: if isOwnCompany(companyId);
-      allow create, update: if isOwnCompany(companyId) && request.auth.token.isAdmin == true
-        && request.resource.size <= 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
+      allow create: if resource == null && isOwnCompany(companyId) && request.auth.token.isAdmin == true && reservedPhoto();
+      allow update, delete: if false;
     }
 
     match /companies/{companyId}/officetalk/{allPaths=**} {

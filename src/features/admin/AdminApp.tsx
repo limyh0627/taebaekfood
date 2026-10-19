@@ -198,6 +198,7 @@ import { applyOemFeeStatement } from './oemFeeStatement';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
+import {noticeBindings as noticeWriter, type NoticeBindings, type NoticeContext} from '../notices/infrastructure/noticeWrites';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
 const TaxStatement = React.lazy(() => import('../../../components/TaxStatement'));
@@ -536,6 +537,45 @@ const AdminApp: React.FC<AdminAppProps> = ({
       assertCompanyInfoScope(context);
       const result = await listCompanyInfoHistory(context, cursor);
       assertCompanyInfoScope(context);
+      return result;
+    },
+  };
+
+  const assertNoticeScope = (context: NoticeContext) => {
+    if (!context.isCurrent() || context.companyId !== companyId || context.actorUid !== auth.currentUser?.uid || context.employeeId !== currentUser.id) {
+      throw Error('회사 또는 로그인 정보가 바뀌었습니다. 현재 회사에서 공지를 다시 열어 주세요.');
+    }
+  };
+  const noticeRecoveryBindings: NoticeBindings = {
+    open: async (post, context) => {
+      assertNoticeScope(context);
+      const result = await noticeWriter.open(post, context);
+      assertNoticeScope(context);
+      return result;
+    },
+    save: (input, context) => { assertNoticeScope(context); return noticeWriter.save(input, context); },
+    read: async context => {
+      assertNoticeScope(context);
+      const result = await noticeWriter.read(context);
+      assertNoticeScope(context);
+      return result;
+    },
+    inspect: (reference, context) => { assertNoticeScope(context); return noticeWriter.inspect(reference, context); },
+    retry: (reference, context) => { assertNoticeScope(context); return noticeWriter.retry(reference, context); },
+    cancel: (reference, context) => { assertNoticeScope(context); return noticeWriter.cancel(reference, context); },
+    cleanup: (reference, context) => { assertNoticeScope(context); return noticeWriter.cleanup(reference, context); },
+    discard: (reference, raw, referenceRaw, context) => { assertNoticeScope(context); return noticeWriter.discard(reference, raw, referenceRaw, context); },
+    observeLegacy: async (reference, context) => {
+      assertNoticeScope(context);
+      const result = await noticeWriter.observeLegacy(reference, context);
+      assertNoticeScope(context);
+      return result;
+    },
+    reservePhoto: (request, context) => { assertNoticeScope(context); return noticeWriter.reservePhoto(request, context); },
+    history: async (context, cursor) => {
+      assertNoticeScope(context);
+      const result = await noticeWriter.history(context, cursor);
+      assertNoticeScope(context);
       return result;
     },
   };
@@ -3291,7 +3331,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               hideDocs={inCabinetDoc}
             />
           )}
-          {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} onAddPost={isAdmin ? (post) => addItem('notices', post) : undefined} onUpdatePost={isAdmin ? (id, patch) => updateItem('notices', id, patch) : undefined} onDeletePost={isAdmin ? (id) => deleteItem('notices', id) : undefined} />}
+          {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} employeeId={currentUser.id} canWrite={isAdmin} noticeBindings={noticeRecoveryBindings} />}
           {currentView === 'pallets' && (
             <PalletManager
               key={companyId}

@@ -1,9 +1,11 @@
+import { useNoticeEditor } from '../src/features/notices/hooks/useNoticeEditor';
+import type { NoticeBindings } from '../src/features/notices/infrastructure/noticeWrites';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useNoticeActions } from '../src/features/notices/hooks/useNoticeActions';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { auth } from '../src/shared/firebase';
-import { today } from '../src/shared/day';
 import {
   BellRing,
   Search,
@@ -17,35 +19,19 @@ import { Post } from '../types';
 import PageHeader from './PageHeader';
 import ModalShell from '../src/shared/components/ModalShell';
 import type { CompanyId } from '../src/shared/types';
-import { uploadNoticeImage, deleteNoticeImages } from '../src/shared/noticeImage';
-import { appNotice } from '../src/shared/components/appDialog';
 
-interface NoticeBoardProps {
+export interface NoticeBoardProps {
   posts: Post[];
   companyId?: CompanyId;
-  onAddPost?: (_post: Post) => unknown | Promise<unknown>;
-  onUpdatePost?: (id: string, patch: Partial<Post>) => unknown | Promise<unknown>;
-  onDeletePost?: (id: string) => unknown | Promise<unknown>;
+  employeeId?: string;
+  canWrite?: boolean;
+  noticeBindings?: NoticeBindings;
 }
 
-type NoticeBlocks = NonNullable<Post['blocks']>;
 const safeLink = (value?: string) => {
   try { const url = new URL(value || ''); return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined; }
   catch { return undefined; }
 };
-function readPending(value: string, companyId?: CompanyId): {post:Post;editing:boolean} {
- const saved=JSON.parse(value);
- const p=saved?.post;
- if(!p || typeof saved.editing!=='boolean' || typeof p.id!=='string' || !p.id || p.id.includes('/') || !['title','content','author','date'].every(key=>typeof p[key]==='string') || !['공지','긴급','매뉴얼','업무'].includes(p.tag) || typeof p.pinned!=='boolean' || !Array.isArray(p.blocks)) throw new Error('저장 요청 형식이 다릅니다.');
- for(const b of p.blocks) {
-   if(b?.type==='text') {
-     if(typeof b.text!=='string' || (b.bold!==undefined&&typeof b.bold!=='boolean') || (b.format!==undefined&&!['paragraph','heading','subheading','list'].includes(b.format)) || (b.link!==undefined&&(typeof b.link!=='string'||(b.link.trim()&&!safeLink(b.link))))) throw new Error('글 형식이 다릅니다.');
-   } else if(b?.type==='image') {
-     if(typeof b.caption!=='string'||typeof b.path!=='string'||!b.path.startsWith(`companies/${companyId}/notices/${p.id}/`)||typeof b.url!=='string'||!safeLink(b.url)) throw new Error('사진 소유 정보가 다릅니다.');
-   } else throw new Error('단락 형식이 다릅니다.');
- }
- return saved;
-}
 function NoticeContent({blocks,content}: {blocks?: Post['blocks'];content:string}) {
  return <div className="space-y-5 whitespace-pre-wrap break-words leading-8 text-slate-700">{blocks?.length ? blocks.map((block,index)=>{
    if(block.type==='image') return <figure key={block.path}><img src={block.url} alt={block.caption || '공지 사진'} className="max-h-[640px] mx-auto rounded-xl"/><figcaption className="mt-2 text-center text-sm text-slate-500">{block.caption}</figcaption></figure>;
@@ -56,124 +42,44 @@ function NoticeContent({blocks,content}: {blocks?: Post['blocks'];content:string
  }) : content}</div>;
 }
 
-const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, onUpdatePost, onDeletePost }) => {
+const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, employeeId, canWrite, noticeBindings }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', author: '', tag: '공지' as '공지' | '긴급' | '매뉴얼' | '업무' });
-  const [blocks, setBlocks] = useState<NonNullable<Post['blocks']>>([]);
-  const [editing, setEditing] = useState<Post | null>(null);
-  const [newImages, setNewImages] = useState<NoticeBlocks>([]);
-  const [preview, setPreview] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-  const insertionRef = useRef<{ index: number; offset: number } | undefined>(undefined);
-  const userId=auth.currentUser?.uid;
-  const actions = useNoticeActions({ companyId, actorUid: userId, onUpdatePost, onDeletePost });
+  const [copyMessage, setCopyMessage] = useState('');
+  const [actorUid, setActorUid] = useState(auth.currentUser?.uid);
+  useEffect(() => onAuthStateChanged(auth, user => setActorUid(user?.uid)), []);
+  const copyScope = useRef({companyId, actorUid, employeeId});
+  if(copyScope.current.companyId !== companyId || copyScope.current.actorUid !== actorUid || copyScope.current.employeeId !== employeeId) copyScope.current = {companyId, actorUid, employeeId};
+  useEffect(() => setCopyMessage(''), [companyId, actorUid, employeeId]);
+  const copyLegacy = async (raw: string) => {
+    const scope = copyScope.current;
+    try {
+      if(!navigator.clipboard) throw Error('원문 상자에서 직접 선택해 복사해 주세요.');
+      await navigator.clipboard.writeText(raw);
+      if(copyScope.current === scope && auth.currentUser?.uid === scope.actorUid) setCopyMessage('보관 원문을 복사했습니다. 서버 요청은 보내지 않았습니다.');
+    } catch(error) {
+      if(copyScope.current === scope && auth.currentUser?.uid === scope.actorUid) setCopyMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const editor = useNoticeEditor({companyId, actorUid, employeeId, ports: noticeBindings, canWrite});
+  const actions = useNoticeActions({companyId, actorUid, employeeId, ports: noticeBindings, canWrite, onChanged: editor.refresh});
+  const { form, blocks, editing, showForm, preview, pinned, busy, locked, bodyBlocks } = editor;
   const { selectedPost, actionBusy, actionMessage, cleanupJobs } = actions;
-  const scope = useRef({companyId,userId});
-  if(scope.current.companyId!==companyId || scope.current.userId!==userId) scope.current={companyId,userId};
-  const pendingKey = `notice-save-pending:${companyId || ''}:${userId || ''}`;
-  const [pendingCorrupt,setPendingCorrupt]=useState(false);
-  const [pending, setPending] = useState<Post | null>(null);
-  const pendingRef = useRef<Post | null>(null);
-  const [draftId, setDraftId] = useState(() => `notice-${crypto.randomUUID()}`);
-  const resetDraft = () => {
-    pendingRef.current=null; setPending(null);
-    insertionRef.current = undefined;
-    setBlocks([]); setNewImages([]); setEditing(null); setPreview(false); setPinned(false);
-    setForm({title:'',content:'',author:'',tag:'공지'}); setDraftId(`notice-${crypto.randomUUID()}`); setShowForm(false);
-  };
-  useEffect(()=>{
-    resetDraft();busyRef.current=false;setBusy(false);setPendingCorrupt(false);
-    try {
-      const raw=sessionStorage.getItem(pendingKey);
-      if(raw){
-        const saved=readPending(raw,companyId);const post=saved.post;
-        pendingRef.current=post;setPending(post);setEditing(saved.editing?post:null);setDraftId(post.id);
-        setForm({title:post.title,content:'',author:post.author,tag:post.tag});setBlocks(post.blocks||[]);setPinned(!!post.pinned);setShowForm(true);
-      }
-    } catch {setPendingCorrupt(true);void appNotice('저장된 공지 요청을 확인할 수 없습니다. 기존 요청을 확인한 뒤 다시 작성해 주세요.');}
-  },[companyId,userId]);
-  useEffect(()=>()=>{scope.current={companyId:undefined,userId:undefined};},[]);
+  const insertionRef = useRef<{ index: number; offset: number } | undefined>(undefined);
   const openEdit = (post: Post) => {
-    setEditing(post); setDraftId(post.id); setForm({title:post.title,content:'',author:post.author,tag:post.tag});
-    setBlocks(post.blocks?.length ? post.blocks.map(block=>({...block})) : [{type:'text',text:post.content}]); setPinned(!!post.pinned); setNewImages([]); setPreview(false); actions.closeSelected(); setShowForm(true);
+    insertionRef.current = undefined;
+    actions.closeSelected();
+    void editor.openEdit(post);
   };
-  const bodyBlocks: NoticeBlocks = [...(form.content.trim() ? [{type:'text',text:form.content} as const] : []), ...blocks];
-  const closeDraft = async () => {
-    if (busyRef.current) return;
-    if (pendingRef.current) { await appNotice('저장 완료를 확인하지 못했습니다. 작성 내용을 유지한 채 같은 공지를 다시 저장해 주세요.'); return; }
-    const token=scope.current; busyRef.current=true;setBusy(true);
-    try { await deleteNoticeImages(newImages, companyId, draftId); if(scope.current===token && auth.currentUser?.uid===token.userId) resetDraft(); }
-    catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(String(error)); }
-    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
-  };
-  const uploadPhotos = async (files: File[], insertion = insertionRef.current) => {
-    if (!companyId || busyRef.current || pendingRef.current) return;
-    const token=scope.current;busyRef.current=true;setBusy(true);
-    let nextIndex: number | undefined;
-    try {
-      // Retain each successful upload even if a later image fails, so cancel can clean it up.
-      for (const file of files) {
-        if((scope.current!==token || auth.currentUser?.uid!==token.userId)) return;
-        const image = await uploadNoticeImage(companyId, draftId, file);
-        if((scope.current!==token || auth.currentUser?.uid!==token.userId)) { await deleteNoticeImages([image],companyId,draftId); return; }
-        const target = nextIndex === undefined ? insertion : undefined;
-        const at = nextIndex;
-        setBlocks(previous => {
-          if (target && previous[target.index]?.type === 'text') {
-            const text = previous[target.index] as Extract<NoticeBlocks[number], {type:'text'}>;
-            const offset = Math.min(target.offset, text.text.length);
-            return [...previous.slice(0, target.index), {...text, text:text.text.slice(0, offset)}, image,
-              {...text, text:text.text.slice(offset)}, ...previous.slice(target.index + 1)];
-          }
-          const index = at ?? previous.length;
-          return [...previous.slice(0,index), image, ...previous.slice(index)];
-        });
-        nextIndex = nextIndex === undefined ? (insertion ? insertion.index + 2 : blocks.length + 1) : nextIndex + 1;
-        setNewImages(previous => [...previous, image]);
-      }
-    } catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(error instanceof Error ? error.message : String(error)); }
-    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
-  };
-  const removeBlock = async (index:number) => {
-    if(busyRef.current||pendingRef.current) return;
-    const token=scope.current,block=blocks[index];busyRef.current=true;setBusy(true);
-    try {
-      if(block.type==='image' && newImages.some(image=>image.type==='image'&&image.path===block.path)) {
-        await deleteNoticeImages([block],companyId,draftId);
-        if(scope.current!==token || auth.currentUser?.uid!==token.userId) return;
-        setNewImages(previous=>previous.filter(image=>image.type!=='image'||image.path!==block.path));
-      }
-      if(scope.current===token && auth.currentUser?.uid===token.userId) setBlocks(previous=>previous.filter((_,i)=>i!==index));
-    } catch(error) {if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(String(error));}
-    finally {if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);}}
-  };
-  const savePost = async () => {
-    if (!(editing ? onUpdatePost : onAddPost) || pendingCorrupt || busyRef.current || !form.title.trim() || !bodyBlocks.some(b=>b.type==='image'||b.text.trim())) return;
-    if (blocks.some(b=>b.type==='text' && b.link?.trim() && !safeLink(b.link))) { await appNotice('링크는 http 또는 https 주소로 입력해 주세요.'); return; }
-    if(!userId) {await appNotice('로그인 상태를 확인한 뒤 다시 저장해 주세요.');return;}
-    const token=scope.current;busyRef.current=true;setBusy(true);
-    try {
-      const body=bodyBlocks.filter(b=>b.type==='image'||b.text.trim());
-      const post:Post=pendingRef.current || {id:draftId,...form,author:form.author||'관리자',date:editing?.date||today(),pinned,content:body.map(b=>b.type==='text'?b.text:b.caption).join('\n'),blocks:body};
-      const encoded=JSON.stringify({post,editing:!!editing});
-      const existing=sessionStorage.getItem(pendingKey);
-      if(existing && existing!==encoded) throw new Error('다른 저장 요청이 남아 있습니다. 기존 공지를 먼저 확인해 주세요.');
-      sessionStorage.setItem(pendingKey,encoded);
-      pendingRef.current=post;setPending(post);
-      if(editing) await onUpdatePost!(editing.id,post); else await onAddPost!(post);
-      if((scope.current!==token || auth.currentUser?.uid!==token.userId)) return;
-      const retained=new Set(body.filter(b=>b.type==='image').map(b=>b.path));
-      const removed=editing?.blocks?.filter(b=>b.type==='image'&&!retained.has(b.path));
-      try { if(sessionStorage.getItem(pendingKey)===encoded) sessionStorage.removeItem(pendingKey); }
-      catch { await appNotice('공지는 저장됐지만 저장 요청 정리는 완료되지 않았습니다.'); }
-      resetDraft();
-      try { await deleteNoticeImages(removed,companyId,draftId); } catch { await appNotice('공지는 저장됐지만 사용하지 않는 사진 정리는 완료되지 않았습니다.'); }
-    } catch(error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(error instanceof Error ? error.message : String(error)); }
-    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
-  };
+  const closeDraft = () => editor.closeDraft();
+  const uploadPhotos = (files: File[], insertion = insertionRef.current) => editor.uploadPhotos(files, insertion);
+  const removeBlock = (index: number) => editor.removeBlock(index);
+  const savePost = () => editor.save();
+
+  const recoveryEntries = editor.operations.filter(entry => !cleanupJobs.some(job =>
+    entry.kind === 'post' && entry.reference && 'planId' in entry.reference
+    && entry.reference.planId === job.reference.planId && entry.reference.postId === job.postId));
+  const messageInRecovery = recoveryEntries.some(entry => entry.reference && editor.resultFor(entry.reference)?.serverResult?.message === editor.message);
+  const showRecovery = recoveryEntries.length > 0 || editor.photos.length > 0 || !!editor.legacy;
 
   const filteredPosts = posts.filter(post =>
     post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -185,9 +91,9 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
       <PageHeader
         title="공지사항"
         subtitle="사내 주요 소식 및 긴급 공지를 확인하세요."
-        actions={onAddPost ? <div className="flex items-center gap-2">
+        actions={editor.canWrite ? <div className="flex items-center gap-2">
             <button
-              disabled={busy || pendingCorrupt} onClick={() => {setBlocks([{type:'text',text:''}]);setShowForm(true);}}
+              disabled={!editor.canCreateNew || editor.readLoading} onClick={() => { insertionRef.current = undefined; editor.openCreate(); }}
               className="flex h-9 items-center gap-1.5 px-4 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 whitespace-nowrap"
             >
               <Plus size={15} /> 공지 추가
@@ -209,6 +115,71 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
 </label>
 </>} />
 
+
+      {editor.readLoading && <p role="status" className="text-sm text-slate-600">보관된 공지 요청을 확인하고 있습니다.</p>}
+      {editor.readError && <div className="space-y-2"><p role="status" className="text-sm text-slate-600">{editor.readError}</p><button type="button" onClick={() => void editor.refresh()} disabled={busy} className="rounded border border-slate-200 px-3 py-2 text-xs">보관 요청 다시 읽기</button></div>}
+      {!showForm && !messageInRecovery && editor.message && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{editor.message}</p>}
+      {showRecovery && <section aria-label="공지 요청 복구" className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+        <h3 className="text-sm font-bold text-slate-700">보관된 공지 요청</h3>
+        {recoveryEntries.map(entry => {
+          const outcome = entry.reference ? editor.resultFor(entry.reference) : undefined;
+          const nextAction = outcome && 'nextAction' in outcome ? outcome.nextAction : undefined;
+          return <div key={entry.key} className="space-y-2 border-t border-slate-200 pt-3">
+          <p className="text-sm font-semibold">{entry.description}</p>
+          <p className="text-xs text-slate-500">{entry.reference ? '공지 번호: '+entry.reference.postId : '요청 번호를 읽을 수 없습니다. 원문을 보존했습니다.'} · {entry.kind === 'photo' ? '사진 요청' : '본문 요청'}</p>
+          {entry.reference && editor.resultFor(entry.reference)?.serverResult && <p className="whitespace-pre-line text-sm text-slate-600">{editor.resultFor(entry.reference)?.serverResult?.message}</p>}
+          {nextAction && <p className="text-sm text-slate-600">{nextAction}</p>}
+          {entry.status !== 'valid' && <p className="text-sm text-slate-600">보관 원문을 확인하지 못했습니다. 같은 원문 재전송은 하지 않습니다.</p>}
+          {entry.reference && <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void editor.inspect(entry.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">실제 처리 결과 확인</button>
+            {editor.canRetry(entry) && <button type="button" disabled={busy} onClick={() => void editor.retry(entry.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">같은 요청 재개</button>}
+            {editor.canCancel(entry) && <button type="button" disabled={busy} onClick={() => void editor.cancel(entry.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">미처리 요청 중단</button>}
+            {editor.canCleanup(entry) && <button type="button" disabled={busy} onClick={() => void editor.cleanup(entry.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">남은 사진 정리</button>}
+            {editor.requiresFile(entry) && 'uploadId' in entry.reference && <label className="inline-flex cursor-pointer rounded border border-slate-200 px-3 py-2 text-xs">같은 사진 다시 선택<input aria-label={entry.description+' 같은 사진 다시 선택'} className="hidden" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => {const file=event.target.files?.[0]; if(file && entry.reference && 'uploadId' in entry.reference) void editor.resumePhoto(entry.reference.uploadId,file); event.target.value='';}}/></label>}
+            {editor.canDiscard(entry) && <button type="button" disabled={busy} onClick={() => void editor.discardCopy(entry.reference!, entry.observedLocalText, entry.observedReferenceText)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 기기 사본만 정리</button>}
+          </div>}
+        </div>;})}
+        {editor.photos.filter(photo => !photo.block).map(photo => <div key={photo.id} className="space-y-2 border-t border-slate-200 pt-3">
+          <p className="text-sm font-semibold">사진 전송 · {photo.plan.request.reference.postId}</p>
+          {photo.message && <p className="text-sm text-slate-600">{photo.message}</p>}
+          <button type="button" disabled={busy || photo.busy} onClick={() => void editor.resumePhoto(photo.id)} className="rounded border border-slate-200 px-3 py-2 text-xs">같은 사진 전송 재개</button>
+          <label className="inline-flex cursor-pointer rounded border border-slate-200 px-3 py-2 text-xs">같은 사진 다시 선택
+            <input aria-label={photo.id+' 같은 사진 다시 선택'} className="hidden" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => {const file=event.target.files?.[0]; if(file) void editor.resumePhoto(photo.id,file); event.target.value='';}} />
+          </label>
+        </div>)}
+        {editor.legacy && <div className="space-y-2 border-t border-slate-200 pt-3" aria-label="이전 방식 보관 요청">
+          <p className="text-sm font-semibold">이전 방식 보관 요청 · {editor.legacy.post?.title || '원문 확인 필요'}</p>
+          <p className="whitespace-pre-line text-sm text-slate-600">{editor.legacy.message}</p>
+          {editor.legacy.post && <details className="text-sm"><summary>보관된 원문 보기</summary><p>{editor.legacy.post.title}</p><NoticeContent blocks={editor.legacy.post.blocks} content={editor.legacy.post.content}/></details>}
+          {!editor.legacy.postId && <div className="space-y-2 text-sm text-slate-600">
+            <p>공지 번호를 확인할 수 없어 서버 처리 여부나 요청 중단은 확인하지 못했습니다. 보관 원문과 현재 공지 목록을 비교한 뒤 이 기기 사본만 정리할 수 있습니다.</p>
+            <textarea aria-label="식별 불가 보관 원문" readOnly value={editor.legacy.observedLocalText} className="w-full rounded border border-slate-200 p-2"/>
+            <button type="button" onClick={() => void copyLegacy(editor.legacy!.observedLocalText)} className="rounded border border-slate-200 px-3 py-2 text-xs">보관 원문 복사</button>
+            {copyMessage && <p role="status">{copyMessage}</p>}
+          </div>}
+          {editor.legacy.observation && <div className="space-y-2 text-sm">
+            <p>{editor.legacy.observation.exists ? '현재 서버에 공지가 있습니다. 보관 요청의 저장 성공이 확인된 것은 아닙니다.' : '현재 서버에 이 공지가 없습니다. 이전 요청 실패를 뜻하지 않습니다.'}</p>
+            {editor.legacy.observedPost && <details><summary>현재 서버 내용 보기</summary><p>{String(editor.legacy.observedPost.title ?? '')}</p><p className="whitespace-pre-line">{String(editor.legacy.observedPost.content ?? '')}</p></details>}
+          </div>}
+          <div className="flex flex-wrap gap-2">
+            {editor.legacy.postId && <button type="button" disabled={busy} onClick={() => void editor.legacyInspect()} className="rounded border border-slate-200 px-3 py-2 text-xs">현재 공지와 대조</button>}
+            <button type="button" disabled={busy || !editor.canDiscardLegacy} onClick={() => void editor.legacyDiscard(editor.legacy!.observedLocalText, editor.legacy!.observedReferenceText)} className="rounded border border-slate-200 px-3 py-2 text-xs">{editor.legacy.postId ? '이전 기기 사본만 정리' : '이 기기의 식별 불가 사본 정리'}</button>
+          </div>
+        </div>}
+      </section>}
+      {editor.canWrite && <section aria-label="공지 처리 이력" className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+        <button type="button" disabled={editor.historyLoading} onClick={() => void editor.loadHistory()} className="rounded border border-slate-200 px-3 py-2 text-xs">서버 처리 이력 조회</button>
+        {editor.historyLoading && <p role="status" className="text-sm text-slate-600">서버 처리 이력을 조회하고 있습니다.</p>}
+        {editor.historyError && <p role="status" className="text-sm text-slate-600">{editor.historyError}</p>}
+        {editor.history.map((entry,index) => <div key={entry.kind+':'+index} className="space-y-1 border-t border-slate-200 pt-2 text-sm">
+          <p className="font-semibold">{entry.label || entry.result.reference.postId} · {entry.kind === 'photo' ? '사진 요청' : '본문 요청'}</p>
+          <p className="text-xs text-slate-500">{entry.createdAt}</p><p>{entry.result.message}</p>
+          <button type="button" disabled={busy} onClick={() => void editor.inspect(entry.result.reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 요청 결과 확인</button>
+          {['pending','manual-blocked'].includes(entry.result.cleanupStatus) && <button type="button" disabled={busy} onClick={() => void editor.cleanup(entry.result.reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 요청 남은 사진 정리</button>}
+          {['unknown','reserved'].includes(entry.result.status) && <button type="button" disabled={busy} onClick={() => void editor.cancel(entry.result.reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 요청 미처리 중단</button>}
+        </div>)}
+        {editor.historyMore && <><p className="text-sm text-slate-600">더 확인할 요청이 있습니다.</p><button type="button" disabled={editor.historyLoading} onClick={() => void editor.nextHistory()} className="rounded border border-slate-200 px-3 py-2 text-xs">다음 이력 확인</button></>}
+      </section>}
 
       {!selectedPost && actionMessage && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{actionMessage}</p>}
       {cleanupJobs.length > 0 && <section aria-label="공지 사진 정리" className="space-y-2 rounded-lg border border-slate-200 p-3">
@@ -256,48 +227,48 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
       </div>
 
       {/* 공지 작성 모달 */}
-      {showForm && (editing ? onUpdatePost : onAddPost) && (
+      {showForm && editor.canWrite && (
         <ModalShell title={editing ? "공지 수정" : "공지 작성"} size="large" className="!max-w-7xl md:!h-[90vh] md:!max-h-[90vh]" onClose={() => { void closeDraft(); }} subtitle="본문 커서 위치에 사진을 붙여넣거나 끌어 놓을 수 있습니다." footer={<div className="flex gap-3 pt-2">
-              <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
+              <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">{locked ? '보기 닫기' : '취소'}</button>
               <button
-                disabled={busy}
+                disabled={!editor.canSave}
                 onClick={() => { void savePost(); }}
                 className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
               >
-                {busy ? '처리 중…' : pending ? '같은 내용 다시 저장' : editing ? '수정 저장' : '등록'}
+                {busy ? '처리 중…' : editing ? '수정 저장' : '등록'}
               </button>
             </div>}>
           <div className="space-y-5">
-            <fieldset disabled={busy || !!pending || pendingCorrupt} className="space-y-4 min-w-0">
+            <fieldset disabled={busy || locked} className="space-y-4 min-w-0">
               <input
                 type="text"
                 placeholder="제목"
                 autoFocus
                 value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
+                onChange={e => editor.changeField('title', e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <div className="flex flex-wrap gap-3 items-center">
                 <label className="cursor-pointer border rounded-xl px-3 py-2 text-sm">사진 첨부
                   <input aria-label="사진 첨부" className="hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={e => { void uploadPhotos(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
                 </label>
-                <button type="button" disabled={busy} onClick={() => setBlocks([...blocks, { type: 'text', text: '' }])} className="border rounded-xl px-3 py-2 text-sm">글 단락 추가</button>
-                <label className="text-sm"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} /> 상단 고정</label>
+                <button type="button" disabled={busy} onClick={() => editor.addText()} className="border rounded-xl px-3 py-2 text-sm">글 단락 추가</button>
+                <label className="text-sm"><input type="checkbox" checked={pinned} onChange={e => editor.setPinned(e.target.checked)} /> 상단 고정</label>
               </div>
-              <button type="button" onClick={()=>setPreview(!preview)} className="rounded-lg border px-3 py-2 text-sm font-bold">{preview ? '편집으로 돌아가기' : '미리보기'}</button>
+              <button type="button" onClick={()=>editor.setPreview(!preview)} className="rounded-lg border px-3 py-2 text-sm font-bold">{preview ? '편집으로 돌아가기' : '미리보기'}</button>
               {preview ? <article aria-label="공지 미리보기" className="mx-auto max-w-3xl bg-white p-6 md:p-10 shadow-sm"><h1 className="mb-8 text-3xl font-bold">{form.title || '제목'}</h1><NoticeContent blocks={bodyBlocks} content=""/></article> : <div className="w-full space-y-4 bg-white p-4 md:p-8 shadow-sm">{blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
-                {block.type === 'text' ? <><div className="flex flex-wrap gap-2"><select aria-label={`단락 ${index+1} 형식`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={block.format||'paragraph'} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,format:e.target.value as typeof block.format}:b))}><option value="paragraph">본문</option><option value="heading">제목</option><option value="subheading">소제목</option><option value="list">목록</option></select><label><input type="checkbox" checked={!!block.bold} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,bold:e.target.checked}:b))}/> 굵게</label><input aria-label={`단락 ${index+1} 링크`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="링크 주소 (선택)" value={block.link||''} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,link:e.target.value}:b))}/></div><textarea aria-label={`글 단락 ${index + 1}`} rows={10} value={block.text}
+                {block.type === 'text' ? <><div className="flex flex-wrap gap-2"><select aria-label={`단락 ${index+1} 형식`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={block.format||'paragraph'} onChange={e=>editor.changeBlock(index, {format:e.target.value as typeof block.format})}><option value="paragraph">본문</option><option value="heading">제목</option><option value="subheading">소제목</option><option value="list">목록</option></select><label><input type="checkbox" checked={!!block.bold} onChange={e=>editor.changeBlock(index, {bold:e.target.checked})}/> 굵게</label><input aria-label={`단락 ${index+1} 링크`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="링크 주소 (선택)" value={block.link||''} onChange={e=>editor.changeBlock(index, {link:e.target.value})}/></div><textarea aria-label={`글 단락 ${index + 1}`} rows={10} value={block.text}
                   onFocus={e=>{insertionRef.current={index,offset:e.currentTarget.selectionStart};}}
                   onSelect={e=>{insertionRef.current={index,offset:e.currentTarget.selectionStart};}}
                   onPaste={e=>{const files=Array.from(e.clipboardData.files).filter(file=>file.type.startsWith('image/'));if(files.length){e.preventDefault();void uploadPhotos(files,{index,offset:e.currentTarget.selectionStart});}}}
                   onDragOver={e=>{if(Array.from(e.dataTransfer.items).some(item=>item.kind==='file'&&item.type.startsWith('image/')))e.preventDefault();}}
-                  onDrop={e=>{const files=Array.from(e.dataTransfer.files).filter(file=>file.type.startsWith('image/'));if(files.length){e.preventDefault();void uploadPhotos(files,{index,offset:e.currentTarget.selectionStart});}}} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full min-h-72 resize-y border-0 border-b border-slate-100 p-3 text-base leading-8 outline-none focus:border-indigo-300" /><label className="inline-flex cursor-pointer rounded-lg border px-3 py-2 text-sm">커서 위치에 사진 넣기<input aria-label={`단락 ${index+1} 사진 넣기`} type="file" className="hidden" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{void uploadPhotos(Array.from(e.target.files??[]), insertionRef.current?.index===index ? insertionRef.current : {index,offset:block.text.length});e.target.value='';}}/></label></> : <>
+                  onDrop={e=>{const files=Array.from(e.dataTransfer.files).filter(file=>file.type.startsWith('image/'));if(files.length){e.preventDefault();void uploadPhotos(files,{index,offset:e.currentTarget.selectionStart});}}} onChange={e => editor.changeBlock(index, {text:e.target.value})} className="w-full min-h-72 resize-y border-0 border-b border-slate-100 p-3 text-base leading-8 outline-none focus:border-indigo-300" /><label className="inline-flex cursor-pointer rounded-lg border px-3 py-2 text-sm">커서 위치에 사진 넣기<input aria-label={`단락 ${index+1} 사진 넣기`} type="file" className="hidden" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{void uploadPhotos(Array.from(e.target.files??[]), insertionRef.current?.index===index ? insertionRef.current : {index,offset:block.text.length});e.target.value='';}}/></label></> : <>
                   <img src={block.url} alt={block.caption || '첨부 사진'} className="max-h-80 mx-auto rounded-lg" />
-                  <input aria-label={`사진 설명 ${index + 1}`} placeholder="사진 설명" value={block.caption} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, caption: e.target.value } : b))} className="w-full border rounded-lg p-2" />
+                  <input aria-label={`사진 설명 ${index + 1}`} placeholder="사진 설명" value={block.caption} onChange={e => editor.changeBlock(index, {caption:e.target.value})} className="w-full border rounded-lg p-2" />
                 </>}
                 <div className="flex gap-3 text-sm">
-                  <button disabled={busy || index === 0} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>위로</button>
-                  <button disabled={busy || index === blocks.length - 1} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>아래로</button>
+                  <button disabled={busy || index === 0} onClick={() => editor.moveBlock(index, -1)}>위로</button>
+                  <button disabled={busy || index === blocks.length - 1} onClick={() => editor.moveBlock(index, 1)}>아래로</button>
                   <button disabled={busy} className="text-rose-600" onClick={()=>{void removeBlock(index);}}>삭제</button>
                 </div>
               </div>)}</div>}
@@ -306,12 +277,12 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                   type="text"
                   placeholder="작성자"
                   value={form.author}
-                  onChange={e => setForm({ ...form, author: e.target.value })}
+                  onChange={e => editor.changeField('author', e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <select
                   value={form.tag}
-                  onChange={e => setForm({ ...form, tag: e.target.value as typeof form.tag })}
+                  onChange={e => editor.changeField('tag', e.target.value as typeof form.tag)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {(['공지', '긴급', '매뉴얼', '업무'] as const).map(t => <option key={t} value={t}>{t}</option>)}
@@ -319,7 +290,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
               </div>
 
             </fieldset>
-            {pending && !busy && <p className="text-sm text-amber-700">저장 완료를 확인하지 못했습니다. 아래 버튼으로 같은 내용의 저장을 다시 확인하세요.</p>}
+            {editor.message && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{editor.message}</p>}
 
           </div>
         </ModalShell>
@@ -347,9 +318,9 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                 {actionMessage && <p role="status" className="mt-3 whitespace-pre-line text-sm text-slate-600">{actionMessage}</p>}
               </div>
               <div className="pt-6 border-t border-slate-50 flex justify-end">
-                {onUpdatePost && <button disabled={busy || actionBusy} className="mr-4 text-sm font-bold text-indigo-600" onClick={()=>openEdit(selectedPost)}>공지 수정</button>}
-                {onUpdatePost && <button disabled={actionBusy} className="mr-4 text-sm font-bold" onClick={() => void actions.togglePinned()}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
-                {onDeletePost && <button disabled={actionBusy} className="mr-4 text-sm font-bold text-rose-600" onClick={() => void actions.deleteSelected()}>공지 삭제</button>}
+                {editor.canWrite && <button disabled={busy || actionBusy} className="mr-4 text-sm font-bold text-indigo-600" onClick={()=>openEdit(selectedPost)}>공지 수정</button>}
+                {editor.canWrite && <button disabled={actionBusy} className="mr-4 text-sm font-bold" onClick={() => void actions.togglePinned()}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
+                {editor.canWrite && <button disabled={actionBusy} className="mr-4 text-sm font-bold text-rose-600" onClick={() => void actions.deleteSelected()}>공지 삭제</button>}
                 <button
                   onClick={() => actions.closeSelected()}
                   className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all"

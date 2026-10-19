@@ -269,13 +269,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
   it('공지는 직원이 읽되 관리자만 작성·고정·삭제한다', async () => {
     const target = (db: any) => doc(db, 'notices', 'notice-test');
-    await assertSucceeds(setDoc(target(관리자()), { companyId: 'taebaek', title: '공지' }));
+    await env.withSecurityRulesDisabled(ctx=>setDoc(target(ctx.firestore()), {companyId:'taebaek',title:'공지'}));
+    await assertFails(setDoc(target(관리자()), {companyId:'taebaek',title:'직접쓰기금지'}));
     await assertSucceeds(getDoc(target(태백직원())));
     await assertFails(updateDoc(target(태백직원()), { pinned: true }));
     await assertFails(deleteDoc(target(태백직원())));
     await assertFails(getDoc(target(풍회관리자())));
-    await assertSucceeds(updateDoc(target(관리자()), { pinned: true }));
-    await assertSucceeds(deleteDoc(target(관리자())));
+    await assertFails(updateDoc(target(관리자()), { pinned: true }));
+    await assertFails(deleteDoc(target(관리자())));
+    for(const name of ['noticeOperations','noticePhotoUploads','noticeStoragePaths']) { const own=doc(관리자(),name,'notice-protected'); await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),name,'notice-protected'),{companyId:'taebaek'}));await assertFails(getDoc(own));await assertFails(setDoc(own,{companyId:'taebaek'}));await assertFails(deleteDoc(own)); }
   });
   beforeAll(async () => {
     env = await initializeTestEnvironment({
