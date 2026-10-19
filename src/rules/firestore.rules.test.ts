@@ -260,12 +260,30 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(setDoc(gate(관리자()), { companyId: 'taebaek', status: 'active' }));
       await assertFails(setDoc(gate(태백직원()), { companyId: 'taebaek', status: 'active' }));
     });
-    it('다른 회사별 appMeta의 기존 읽기·쓰기 경계를 유지한다', async () => {
+    it('작업순서 초기화 marker는 회사별 읽기를 유지하되 직접 쓰기를 닫는다', async () => {
       const own = doc(태백직원(), 'appMeta', 'workOrderReset_taebaek');
       await assertSucceeds(getDoc(own));
-      await assertSucceeds(updateDoc(own, { date: '2026-10-08' }));
+      await assertFails(updateDoc(own, { date: '2026-10-08' }));
       await assertFails(getDoc(doc(풍회관리자(), 'appMeta', 'workOrderReset_taebaek')));
     });
+  });
+  it('작업순서 단일 명령은 직접 쓰기만 닫고 다른 설정 권한을 보존한다', async () => {
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'workOrderItems', 'wo-rules'), { companyId: 'taebaek', key: 'k' });
+      await setDoc(doc(ctx.firestore(), 'settings', 'taebaek__workGroups'), { companyId: 'taebaek', names: ['기름'] });
+    });
+    for (const target of [doc(태백직원(), 'workOrderItems', 'wo-rules'), doc(태백직원(), 'settings', 'taebaek__workGroups')]) {
+      await assertSucceeds(getDoc(target));
+      await assertFails(updateDoc(target, { unknown: 1 }));
+      await assertFails(deleteDoc(target));
+    }
+    await assertFails(setDoc(doc(태백직원(), 'workOrderItems', 'new-rules'), { companyId: 'taebaek', key: 'new' }));
+    await assertFails(setDoc(doc(관리자(), 'workOrderOperations', 'receipt'), { companyId: 'taebaek' }));
+    await assertFails(getDoc(doc(관리자(), 'workOrderOperations', 'receipt')));
+    await assertFails(setDoc(doc(관리자(), 'workOrderFences', 'taebaek'), { companyId: 'taebaek' }));
+    await assertSucceeds(setDoc(doc(태백직원(), 'settings', 'taebaek__unrelated'), { companyId: 'taebaek', value: 1 }));
+    await assertSucceeds(setDoc(doc(태백직원(), 'appMeta', 'unrelated-work-test'), { companyId: 'taebaek', value: 1 }));
+    await assertFails(getDoc(doc(풍회직원(), 'workOrderItems', 'wo-rules')));
   });
   it('공지는 직원이 읽되 관리자만 작성·고정·삭제한다', async () => {
     const target = (db: any) => doc(db, 'notices', 'notice-test');

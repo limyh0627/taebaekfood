@@ -5,14 +5,17 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import OrdersList from './OrdersList';
 import { OrderStatus, type Order } from '../types';
 import { today } from '../src/shared/day';
+import {encodeCatalogValue} from '../src/shared/workOrderCommand';
+import {workOrderWrites,type WorkOrderBindings} from '../src/shared/services/workOrderWrites';
 
 const fixture = vi.hoisted(() => ({
-  auth: { currentUser: { uid: 'uid-a' } as { uid: string } | null },
+  auth: { currentUser: { uid: 'uid-a' } as { uid: string;getIdTokenResult?:()=>Promise<{claims:{companyId:string;employeeId:string}}> } | null },
   authCallbacks: [] as Array<(user: { uid: string } | null) => void>,
   subscriptions: [] as Array<{ id: string; callback: (doc: { names: string[] } | null) => void; stop: ReturnType<typeof vi.fn> }>,
-  fetch: vi.fn(), write: vi.fn(),
+  fetch: vi.fn(), write: vi.fn(),claimCompany:'taebaek',
 }));
-vi.mock('../src/shared/firebase', () => ({ auth: fixture.auth }));
+vi.mock('../src/shared/firebase', () => ({ auth: fixture.auth,authReady:Promise.resolve(),functions:{} }));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>async()=>{throw Error('등록하지 않은 합성 RPC입니다.');}}));
 vi.mock('firebase/auth', () => ({ onAuthStateChanged: (_auth: unknown, callback: (user: { uid: string } | null) => void) => {
   fixture.authCallbacks.push(callback);
   return () => { fixture.authCallbacks = fixture.authCallbacks.filter(item => item !== callback); };
@@ -34,7 +37,8 @@ const props = () => ({ companyId: 'taebaek' as const, title: '주문', subtitle:
 const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 const scroll = vi.fn();
 beforeEach(() => {
-  fixture.auth.currentUser = { uid: 'uid-a' }; fixture.authCallbacks = []; fixture.subscriptions = [];
+  fixture.claimCompany='taebaek';
+  fixture.auth.currentUser = { uid: 'uid-a',getIdTokenResult:async()=>({claims:{companyId:fixture.claimCompany,employeeId:'employee'}}) }; fixture.authCallbacks = []; fixture.subscriptions = [];
   fixture.fetch.mockReset().mockResolvedValue([]); fixture.write.mockReset(); scroll.mockReset();
   HTMLElement.prototype.scrollIntoView = scroll;
 });
@@ -57,14 +61,17 @@ it('새 하이라이트가 오면 이전 해제가 새 표시를 지우지 않�
   tick(1); expect(latest).toHaveBeenCalledTimes(1); expect(scroll).toHaveBeenCalledTimes(2);
 });
 
-it.each([null, { names: [] }])('다른 회사의 그룹 문서가 없거나 비면 기본값을 쓰고 늦은 이전 회사 응답은 버린다', doc => {
+it.each([null, { names: [] }])('다른 회사의 그룹 문서가 없거나 비면 기본값을 쓰고 늦은 이전 회사 응답은 버린다', async doc => {
   const p = { ...props(), orders: [{ ...order(), items: [{ itemId: 'oil', name: '검수기름', quantity: 1, price: 0 }] }],
     workOrderItems: [{ key: 'order-a-oil', orderId: 'order-a', itemId: 'oil', itemName: '검수기름', partnerName: '검수거래처', qty: 1, category: '기름' }] };
-  const view = render(<OrdersList {...p} />);
+  const bindings:WorkOrderBindings={...workOrderWrites,open:async(scope,reference)=>({reference,actorUid:scope.actorUid,items:p.workOrderItems.map((item,index)=>({id:'group-row-'+index,data:encodeCatalogValue({...item,companyId:scope.companyId}),version:'1:000000001'})),groups:{exists:false,version:null,data:null},reset:{exists:false,version:null,data:null}})};
+  const view = render(<OrdersList {...p} workOrderBindings={bindings}/>);
+  await act(async()=>{});
   fireEvent.click(screen.getByRole('button', { name: /금일 작업순서/ }));
   const first = fixture.subscriptions[0]; act(() => first.callback({ names: ['회사A전용'] }));
   expect(screen.getByRole('region', { name: '회사A전용 작업순서' })).toBeTruthy();
-  view.rerender(<OrdersList {...p} companyId="punghoe" />);
+  fixture.claimCompany='punghoe';view.rerender(<OrdersList {...p} companyId="punghoe" workOrderBindings={bindings}/>);
+  await act(async()=>{});
   expect(first.stop).toHaveBeenCalledTimes(1);
   act(() => fixture.subscriptions[1].callback(doc)); act(() => first.callback({ names: ['늦은회사A'] }));
   expect(screen.queryByRole('region', { name: /회사A.*작업순서/ })).toBeNull();
@@ -128,4 +135,4 @@ it('같은 주문을 다시 연 새 초안은 이전 보관 요청의 결과 확
 it('보관 저장소 접근 오류는 모든 카드에 복제하지 않고 열려는 수정창에도 안내한다',()=>{render(<OrdersList {...props()} onReadPendingOrderEdits={()=>{throw Error('blocked');}}/>);expect(screen.getAllByText(/기기 저장소 접근/)).toHaveLength(1);fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);expect(within(screen.getByRole('dialog',{name:'거래처 주문 수정'})).getByRole('status')).toHaveTextContent('기기 저장소 접근');});
 
 it('필터로 숨겨진 주문도 한곳에서 확인하고 다시 표시해도 복구 버튼은 중복되지 않는다',async()=>{const p=props(),pending=[{id:'order-a',planId:'retained-plan',description:'보관 수정'}],inspect=vi.fn(async()=>({status:'unknown' as const,message:'응답 미확인',nextAction:'중단 또는 다시 확인'}));render(<OrdersList {...p} onReadPendingOrderEdits={()=>pending} onInspectOrderEdit={inspect}/>);expect(screen.getAllByRole('button',{name:'주문 수정 결과 확인'})).toHaveLength(1);const search=screen.getByPlaceholderText('거래처, 품목, 제조, 라벨, 포장, 팔레트 검색');fireEvent.change(search,{target:{value:'검색 결과 없음'}});expect(screen.queryByRole('button',{name:'검수거래처 주문 수정'})).toBeNull();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 결과 확인'})));expect(inspect).toHaveBeenCalledExactlyOnceWith('retained-plan','order-a');fireEvent.change(search,{target:{value:''}});expect(screen.getAllByRole('button',{name:'주문 수정 결과 확인'})).toHaveLength(1);});
-it('실제 주문 행이 없어도 정확한 보관 참조를 중단하고 빈 패널은 없어진다',async()=>{let pending=[{id:'removed-order',planId:'removed-plan',description:'행이 없는 수정'}];const cancel=vi.fn(async()=>{pending=[];return {status:'cancelled' as const,message:'요청 중단 확인'};});render(<OrdersList {...props()} orders={[]} onReadPendingOrderEdits={()=>pending} onCancelOrderEdit={cancel}/>);expect(screen.getByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveTextContent('removed-order');await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 요청 중단'})));expect(cancel).toHaveBeenCalledExactlyOnceWith('removed-plan','removed-order');expect(screen.queryByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toBeNull();});
+it('실제 주문 행이 없어도 정확한 보관 참조를 중단하고 복구 버튼 대신 중단 결과를 남긴다',async()=>{let pending=[{id:'removed-order',planId:'removed-plan',description:'행이 없는 수정'}];const cancel=vi.fn(async()=>{pending=[];return {status:'cancelled' as const,message:'요청 중단 확인'};});render(<OrdersList {...props()} orders={[]} onReadPendingOrderEdits={()=>pending} onCancelOrderEdit={cancel}/>);expect(screen.getByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveTextContent('removed-order');await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 수정 요청 중단'})));expect(cancel).toHaveBeenCalledExactlyOnceWith('removed-plan','removed-order');expect(screen.queryByRole('button',{name:'주문 수정 요청 중단'})).toBeNull();expect(screen.queryByRole('button',{name:'주문 수정 결과 확인'})).toBeNull();expect(screen.getByRole('region',{name:'처리 결과 확인이 필요한 주문 수정'})).toHaveTextContent('요청 중단 확인');});

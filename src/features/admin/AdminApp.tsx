@@ -1,3 +1,4 @@
+import {workOrderWrites} from '../../shared/services/workOrderWrites';
 import {openCompanyInfo,saveCompanyInfo,readCompanyInfoOperations,inspectCompanyInfoOperation,retryCompanyInfoOperation,cancelCompanyInfoOperation,discardCompanyInfoCopy,listCompanyInfoHistory,type CompanyInfoContext,type CompanyInfoSaveContext} from '../statements/infrastructure/companyInfoWrites';
 import type {CompanyInfoEditorOptions} from '../statements/hooks/useCompanyInfoEditor';
 import type { AccountManagementReference } from '../../shared/accountManagementCommand';
@@ -1119,7 +1120,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 되풀이했다. 날짜 도장을 트랜잭션에서 먼저 찍고, 찍은 기기만 지운다.
    * 지우다 실패하면 도장을 되돌려 다음 기기가 이어받는다.
    */
-  useEffect(() => { void resetDailyWorkOrder(companyId); }, [companyId]);
+  useEffect(() => {
+    const owner=rawCancelScopeRef.current;
+    const isCurrent=()=>rawCancelAlive.current&&rawCancelScopeRef.current===owner&&auth.currentUser?.uid===owner.uid;
+    void resetDailyWorkOrder(companyId,isCurrent);
+  }, [companyId,copyActor]);
 
   /**
    * **앱을 열 때 이 폰의 푸시 표를 받아 둔다.**
@@ -2816,41 +2821,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               newOrderId={newOrderId}
               onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
-              onSetWorkOrderItems={async (items) => {
-                // 남아 있는 항목은 순번(sortIndex)만 고친다.
-                // 전엔 전체 삭제 후 전체 재생성이라, 구독이 '빈 목록 → 다시 채워짐'을 그대로 받아
-                // 순서만 바꿔도 화면이 깜빡였고 문서 id가 매번 새로 생겨 목록 전체가 다시 그려졌다.
-                // (목록은 useAppData에서 sortIndex로 정렬해 구독하므로 순번만 바꿔도 순서가 반영된다.)
-                const prevByKey = new Map(workOrderItems.map(w => [w.key, w]));
-                const nextKeys = new Set(items.map(i => i.key));
-                const writes: Promise<unknown>[] = [];
-                workOrderItems.forEach(w => {
-                  if (!nextKeys.has(w.key)) writes.push(deleteItem('workOrderItems', w.id));
-                });
-                items.forEach((item, idx) => {
-                  const prev = prevByKey.get(item.key);
-                  if (!prev) { writes.push(addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx })); return; }
-                  /*
-                   * **순번만 쓰던 것을 고친다**(2026-09-11 사장님: "작업순서에서 묶으면 뭐가
-                   * 되는거냐 아무 변화도 없는 거 같아").
-                   *
-                   * 맞다 — 여기가 `sortIndex` 가 바뀐 줄만 저장했다. 묶기(`groupId`)는 자리를
-                   * 안 바꾸는 일이라(이미 붙어 있는 둘을 묶으면 순번이 그대로다) **아무것도 안 쓰이고**
-                   * 새로고침하면 묶음이 사라졌다. 작업 그룹(`workGroup`)도 같은 함정에 걸린다.
-                   * 달라진 칸을 모아서 쓴다.
-                   */
-                  const patch: Record<string, unknown> = {};
-                  if (prev.sortIndex !== idx) patch.sortIndex = idx;
-                  for (const 칸 of ['groupId', 'groupName', 'workGroup'] as const) {
-                    const 전 = (prev as unknown as Record<string, unknown>)[칸] ?? null;
-                    const 후 = (item as unknown as Record<string, unknown>)[칸] ?? null;
-                    //  Firestore 는 undefined 를 못 쓴다 — 지울 때는 null 로 적는다.
-                    if (전 !== 후) patch[칸] = 후;
-                  }
-                  if (Object.keys(patch).length > 0) writes.push(updateItem('workOrderItems', prev.id, patch));
-                });
-                await Promise.all(writes);
-              }}
+              workOrderBindings={workOrderWrites}
             />
           )}
           {(currentView === 'inventory' || currentView === 'lot-management') && (

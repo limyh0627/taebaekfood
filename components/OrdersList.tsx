@@ -1,3 +1,6 @@
+import ActionButton from '../src/shared/components/ActionButton';
+import {useWorkOrderEditor,type WorkItem} from '../src/features/orders/hooks/useWorkOrderEditor';
+import type {WorkOrderBindings} from '../src/shared/services/workOrderWrites';
 import {useOrderEditApplication,type OrderEditBindings} from '../src/features/orders/hooks/useOrderEditApplication';
 import {OrderEditRecovery} from '../src/features/orders/ui/OrderEditRecovery';
 import DateRangeInputs, { DATE_RANGE_LAYOUT_CLASS, DATE_RANGE_INPUT_CLASS, DATE_RANGE_PAIR_CLASS, DATE_RANGE_QUICK_GROUP_CLASS, dateRangeQuickButtonClass } from '../src/shared/components/DateRangeInputs';
@@ -70,16 +73,16 @@ import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { CHIP_NEUTRAL as SUB_CHIP_NEUTRAL, subChipClass } from '../src/shared/submaterialStyle';
-import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
+
 import { itemIndexOf } from '../src/shared/workItemLine';
-import { clusterByGroup } from '../src/shared/rowGroup';
+
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { matchesSearch } from '../src/shared/hangul';
 import { shipMethodOf } from '../src/shared/channelStyle';
 import { groupStripes } from '../src/shared/groupStripe';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
-import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
+import { fetchWhere } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
 import { clampNote, orderNotesForDisplay, noteEditLimit } from '../src/shared/orderNote';
 import { shipDeductions } from '../src/shared/shipDeduction';
@@ -105,7 +108,7 @@ import OrderEditModalShell from './OrderEditModalShell';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 import DateChipButton from '../src/shared/components/DateChipButton';
-import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
+
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -281,7 +284,7 @@ interface OrdersListProps extends OrderEditBindings {
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
   workOrderItems?: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void;
+  workOrderBindings?: WorkOrderBindings;
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
   ordersMonths?: number;
@@ -442,7 +445,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
   workOrderItems: workOrderItemsProp = [],
-  onSetWorkOrderItems,
+  workOrderBindings,
   currentUserName,
   employees = [],
   highlightOrderId,
@@ -593,83 +596,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
    * 화면의 큰 칸을 가르는 이름이고, 사장님이 만들고 고치고 지운다.
    * `groupId`/`groupName` 은 그것과 **다른 것** — 그 칸 안에서 '같이 만들 것끼리 묶기'다.
    */
-  type WorkItem = { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; workGroup?: string; groupId?: string; groupName?: string; };
-  const workItems: WorkItem[] = workOrderItemsProp;
-  const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
-    const resolved = typeof items === 'function' ? items(workItems) : items;
-    onSetWorkOrderItems?.(resolved);
-  };
-  const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
-  /** 같이 만들 것으로 고른 줄들 — 두 개 이상 골라야 묶을 수 있다 */
-  const [workGroupPick, setWorkGroupPick] = useState<string[]>([]);
-  /**
-   * **작업 그룹 이름과 차례** — 회사별 settings 문서에 둔다.
-   * 처음에는 여태 쓰던 세 갈래(기름·깨·미분류)로 시작한다. 사장님이 고치면 그때부터 그 이름이다.
-   */
-  const [workGroups, setWorkGroups] = useState<string[]>(['기름', '깨', '미분류']);
-  useEffect(() => {
-    setWorkGroups(['기름', '깨', '미분류']);
-    if (embeddedListOnly) return;
-    let current = true;
-    const unsubscribe = subscribeToDocument<{ names: string[] }>('settings', companySettingDocId(companyId, 'workGroups'), doc => {
-      if (current) setWorkGroups(doc?.names?.length ? doc.names : ['기름', '깨', '미분류']);
-    });
-    return () => { current = false; unsubscribe(); };
-  }, [companyId, embeddedListOnly]);
-  const saveWorkGroups = (names: string[]) => {
-    setWorkGroups(names);
-    void setDocument('settings', companySettingDocId(companyId, 'workGroups'), companySettingPatch(companyId, { names }));
-  };
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(() => new Set(['work-order']));
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
-  /**
-   * **끌어오기 창의 그룹 작업판.**
-   *
-   * 2026-09-11 사장님: "주문 끌어오기할 때 아예 그룹 추가하고 그 그룹 클릭 한다음에 주문
-   * 선택하면 그 그룹내에서만 순서 따로 들어가게 하고 그룹이름 변경하거나 삭제하는 것도 가능하게".
-   *
-   * 창에서 고친 것은 **확인을 눌러야** 저장된다 — 그 전에는 여기 셋만 바뀐다.
-   *   `pickerGroups` 그룹 이름과 차례 · `pickerAssign` 줄이 어느 그룹인지 · `pickerGroup` 지금 고른 그룹
-   * 줄의 차례는 `pickerOrdering` 하나로 두고, 그룹 안 번호는 그걸 걸러서 센다 —
-   * 그룹마다 배열을 따로 두면 줄 하나가 두 그룹에 남는 일이 생긴다.
-   */
-  const [pickerGroups, setPickerGroups] = useState<string[]>([]);
-  const [pickerAssign, setPickerAssign] = useState<Record<string, string>>({});
-  const [pickerGroup, setPickerGroup] = useState('');
-  /** 그룹 편집 창 — 추가·이름바꾸기·지우기를 여기 한곳에 모은다(2026-09-14 사장님). */
-  const [그룹편집, set그룹편집] = useState(false);
-  const [새그룹이름, set새그룹이름] = useState('');
-
-  /*  그룹을 손대는 일 셋 — 창에서만 부른다. 칩에서는 고르기만 한다(2026-09-14 사장님). */
-  const 그룹추가 = () => {
-    const 이름 = 새그룹이름.trim();
-    if (!이름) return;
-    if (pickerGroups.includes(이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
-    setPickerGroups(prev => [...prev, 이름]);
-    setPickerGroup(이름);
-    set새그룹이름('');
-  };
-
-  const 그룹이름바꾸기 = async (name: string) => {
-    const 새이름 = (await appPrompt('그룹 이름', name))?.trim();
-    if (!새이름 || 새이름 === name) return;
-    if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
-    setPickerGroups(prev => prev.map(x => x === name ? 새이름 : x));
-    //  담긴 줄도 같이 따라간다 — 이름만 바꾸고 줄을 두면 그 줄이 갈 곳을 잃는다.
-    setPickerAssign(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, v === name ? 새이름 : v])));
-    setPickerGroup(현재 => 현재 === name ? 새이름 : 현재);
-  };
-
-  const 그룹지우기 = async (name: string, 담긴수: number) => {
-    if (pickerGroups.length <= 1) { alert('그룹은 하나는 남아 있어야 합니다.'); return; }
-    if (담긴수 > 0 && !await appConfirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
-    const 남은 = pickerGroups.filter(x => x !== name);
-    setPickerGroups(남은);
-    //  지운 그룹에 담겼던 줄은 **목록에서도 뺀다** — 갈 곳 없는 줄을 남기지 않는다.
-    setPickerOrdering(prev => prev.filter(k => pickerAssign[k] !== name));
-    setPickerGroup(현재 => 현재 === name ? (남은[0] ?? '') : 현재);
-  };
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   /*  머리에는 **짧은 이름**(`출고완료`·`주문 삭제`), 설명은 내용으로
       (2026-09-15 사장님: "헤더에는 재고부족 작업완료 출고완료 이런식으로 제목을 넣어"). */
@@ -786,17 +714,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
    * 갈라 첫 자리를 잡아 준다(기름·깨·미분류) — 그래야 그룹을 쓰기 시작해도 화면이 안 빈다.
    * 지워진 그룹에 남아 있던 줄은 목록의 **맨 끝 그룹**으로 흘려 보낸다.
    */
-  const workCategoryOf = (workItem: WorkItem): string => {
-    const 정한것 = String(workItem.workGroup ?? '').trim();
-    if (정한것) return workGroups.includes(정한것) ? 정한것 : (workGroups[workGroups.length - 1] ?? 정한것);
-    const product = items.find(item => item.id === workItem.itemId);
-    const savedCategory = String(product?.category || workItem.category || '').trim();
-    const typeValues = new Set(['product', 'goods', 'wip', 'raw', 'submaterial', 'giftset', 'shipping']);
-    const 분류 = savedCategory && !typeValues.has(savedCategory) ? savedCategory : '';
-    //  이름으로 가르지 않고 **분류값**으로 가른다 — 품목 이름은 사람이 자주 고친다.
-    const 짐작 = /기름/.test(분류) ? '기름' : /깨/.test(분류) ? '깨' : '미분류';
-    return workGroups.includes(짐작) ? 짐작 : (workGroups[workGroups.length - 1] ?? 짐작);
-  };
 
   /**
    * 작업순서 보기 = 1depth(무엇으로 묶나) + 2depth(그 묶음을 어떤 순서로 두나).
@@ -821,46 +738,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
    * (2026-09-11 사장님: "금일배송순서랑 금일작업순서는 직접정렬이 디폴트로").
    * 추천(`dueDate`)이 기본이면 줄이 `draggable={false}` 라 끌어도 아무 일이 안 난다.
    */
-  const [workSort, setWorkSort] = useState<string | null>(null);
-  const [showCompletedWorkItems, setShowCompletedWorkItems] = useState(false);
+
+
   const [mobileWorkCategory, setMobileWorkCategory] = useState('');
   /** 지금 끌고 있는 항목 — 기름↔가루는 설비가 달라 순서를 못 섞으므로, 끌 수 없는 칸을 미리 흐리게 만든다. */
-  const [draggingWorkKey, setDraggingWorkKey] = useState<string | null>(null);
+
 
   /** 재고 여유 = 현재고 − 이 주문 수량. 음수면 지금 재고로 못 대니 먼저 만들어야 한다. */
-  const stockSlack = (wi: { itemId: string; qty: number }) => {
-    const p = items.find(x => x.id === wi.itemId);
-    return p ? (p.stock ?? 0) - wi.qty : Infinity; // 품목을 못 찾으면 판단 불가 → 뒤로
-  };
-
-  const applyWorkSort = (mode: string) => {
-    const orderById = new Map(orders.map(o => [o.id, o]));
-    const t = (v?: string) => { const n = v ? new Date(v).getTime() : NaN; return Number.isNaN(n) ? Infinity : n; };
-    // 항목 하나의 정렬값 — 거래처(표의 세로줄) 순서도 이 값으로 정해진다
-    const rank = (wi: WorkItem) => {
-      const o = orderById.get(wi.orderId);
-      if (mode === 'orderDate') return t(o?.createdAt);
-      if (mode === 'dueDate') return t(o?.deliveryDate);
-      return stockSlack(wi);
-    };
-    setWorkItems(prev => {
-      const groupKey = (wi: WorkItem) => wi.partnerName;
-      // 거래처별 대표값 = 그 거래처에서 가장 급한 항목의 값 → 급한 거래처가 위로 온다
-      const best = new Map<string, number>();
-      prev.forEach(wi => {
-        const k = groupKey(wi);
-        best.set(k, Math.min(best.get(k) ?? Infinity, rank(wi)));
-      });
-      return [...prev].sort((a, b) =>
-        (best.get(groupKey(a))! - best.get(groupKey(b))!)   // 거래처(세로줄) 순서
-        || groupKey(a).localeCompare(groupKey(b), 'ko')      // 값이 같으면 이름순
-        || (rank(a) - rank(b))                              // 한 칸 안 순서
-        || a.itemName.localeCompare(b.itemName, 'ko')       // 동점은 이름으로 갈라 매번 같은 결과
-        || a.partnerName.localeCompare(b.partnerName, 'ko')
-      );
-    });
-    setWorkSort(mode);
-  };
 
   /**
    * **정렬 셈은 이 하나뿐이다** — 보드·리스트·배송 캘린더·이력이 다 이걸 지난다
@@ -920,65 +804,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
     [activePeriodOrders, visibleActiveConfigs]
   );
 
-  const validWorkItems = useMemo(() => {
-    const liveItems: WorkItem[] = activeOperationOrders
-      .filter(order => order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING)
-      .flatMap(order => {
-        const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름없음';
-        /*  **열쇠는 `주문id-lineKey` 다** — 자리 번호를 쓰면 안 된다.
-         *
-         *  2026-09-11 사장님: "이미 목록에 들어가서 설정돼 있는 애들이 표시가 안되네".
-         *  맞다 — 여기는 `${order.id}-${index}` 로, 고르는 창(`allPickableItems`)은
-         *  `${o.id}-${lineKeyAt(...)}` 로 열쇠를 만들고 있었다. **두 글자가 달라 영영 안 맞으니**
-         *  창을 열면 이미 담긴 것들이 하나도 체크되지 않았다(확인 건수만 맞고 칸은 다 비어 있었다).
-         *
-         *  맞춰야 할 쪽은 이쪽이다 — 자리 번호는 앞 품목을 지우면 다른 품목을 가리킨다
-         *  (2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데"). 이름도 같은 규칙으로 갈라 적는다. */
-        /*  **상품은 작업순서에 안 세운다**(2026-09-11 사장님: "상품은 작업순서에서 빼 사오는거니까").
-            사 오는 물건이라 우리가 만들 일이 없다 — 줄만 늘어난다. */
-        return order.items.map((item, index) => {
-          /*  **저장된 칸을 통째로 이어받는다**(2026-09-12 사장님: "묶기해도 아무런 변화가 없는데").
-           *
-           *  여기가 매번 주문에서 줄을 **새로 만들기** 때문에, 저장된 문서에서 끌어오지 않은 칸은
-           *  화면에서 영영 비어 있다. `workGroup` 만 끌어오고 있어서 **묶음(`groupId`)은 DB 에
-           *  잘 찍히는데도 줄에는 안 붙었다** — 눌러도 띠가 안 생기니 아무 일도 안 한 것처럼 보였다.
-           *  묶음 이름(`groupName`)도 같이 가져온다. */
-          const 저장된 = workItems.find(saved => saved.key === `${order.id}-${lineKeyAt(order.items, index)}`);
-          return {
-            key: `${order.id}-${lineKeyAt(order.items, index)}`,
-            orderId: order.id,
-            itemId: item.itemId,
-            lineKey: lineKeyAt(order.items, index),
-            itemName: `${item.name}${lineSuffix(order.items, index)}`,
-            partnerName,
-            qty: item.quantity,
-            category: items.find(product => product.id === item.itemId)?.category || '미분류',
-            //  저장된 그룹을 이어받는다 — 없으면 workCategoryOf 가 품목 분류로 짐작한다.
-            workGroup: 저장된?.workGroup,
-            groupId: 저장된?.groupId,
-            groupName: 저장된?.groupName,
-          };
-        })
-        //  **거르기는 열쇠를 만든 뒤에** — 먼저 거르면 `index` 가 원래 자리와 어긋나
-        //  `lineKeyAt` 이 엉뚱한 줄을 가리킨다.
-        .filter(workItem => items.find(product => product.id === workItem.itemId)?.type !== 'goods');
-      });
-    /*  **담은 것만 선다**(2026-09-14 사장님: "고른 것만 해야지").
-     *
-     *  전에는 대기중·작업중 주문의 **모든 품목이 무조건** 줄로 섰다. 담긴 목록
-     *  (`workOrderItems`)은 순서·묶음을 이어받는 데만 쓰고 거르는 데는 안 썼다 —
-     *  그래서 `주문보기`에서 빼도 다음 그림에 도로 나타났고, 주문을 넣는 순간 저절로 끼어들었다.
-     *  담고 빼는 일 자체가 아무 효과가 없었던 것이다(`a08a811` 병합 때 이렇게 됐다).
-     *
-     *  **매일 아침 비우는 것**(AdminApp 의 작업순서 초기화)도 이 때문에 뜻이 없었다 —
-     *  비워도 곧바로 다시 채워졌다. 이제 비우면 비어 있고, 그날 세울 것을 담아서 짠다. */
-    const 담긴키 = new Set(workItems.map(item => item.key));
-    const savedPosition = new Map(workItems.map((item, index) => [item.key, index]));
-    return liveItems
-      .filter(workItem => 담긴키.has(workItem.key))
-      .sort((a, b) => (savedPosition.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (savedPosition.get(b.key) ?? Number.MAX_SAFE_INTEGER));
-  }, [workItems, activeOperationOrders, partners, items]);
-
   const activeKanbanOrders = useMemo(() => {
     if (!searchTerm.trim()) return activePeriodOrders;
     const query = searchTerm.toLocaleLowerCase('ko-KR');
@@ -1026,6 +851,49 @@ const OrdersList: React.FC<OrdersListProps> = ({
     const fieldMatched = !listFilterField || !listFilterValue ? statusMatched : statusMatched.filter(order => activeViewFilterValuesForOrder(order).includes(listFilterValue));
     return fieldMatched.filter(거래처걸림);
   }, [activeKanbanOrders, visibleActiveConfigs, listStatusTab, listFilterField, listFilterValue, listPartnerFilter, partners, palletStocks, legacyHistoryEnabled]);
+
+  const workEditor = useWorkOrderEditor({
+    companyId,actorUid:logActorUid??'',enabled:!embeddedListOnly,workOrderItems:workOrderItemsProp,
+    items,partners,orders:activeOperationOrders,pickableOrders:activeViewOrders,bindings:workOrderBindings,
+  });
+  const {showWorkOrderPicker,pickerOrdering,pickerGroups,pickerAssign,pickerGroup,setPickerGroup,
+    그룹편집,set그룹편집,새그룹이름,set새그룹이름,그룹추가,그룹이름바꾸기,그룹지우기,
+    workSort,setWorkSort,workGroupPick,draggingWorkKey,setDraggingWorkKey,workCategoryOf,validWorkItems,allPickableItems,
+    toggleWorkGroupPick,confirmWorkGroup,sectionItemsAll,orderedSectionItems,isWorkComplete,isWorkProcessing,workOrderOf,
+    showCompletedWorkItems,setShowCompletedWorkItems,workCategories,pickerRows} = workEditor;
+
+  const workRecoveryScope = useRef({companyId,actorUid:logActorUid});
+  if (workRecoveryScope.current.companyId!==companyId||workRecoveryScope.current.actorUid!==logActorUid) workRecoveryScope.current={companyId,actorUid:logActorUid};
+  const [workRecoveryOwner,setWorkRecoveryOwner] = useState<typeof workRecoveryScope.current|null>(null);
+  const [workRecoveryView,setWorkRecoveryView] = useState<'failure'|'history'>('failure');
+  const workRecoveryVisible=workRecoveryOwner===workRecoveryScope.current&&auth.currentUser?.uid===logActorUid;
+  const workOrderRecoveryTools = <section aria-label="작업순서 처리" className="space-y-2 text-xs">
+    <div className="flex flex-wrap gap-2">
+      {workEditor.failureCount>0&&<ActionButton tone="recovery" onClick={()=>{setWorkRecoveryView('failure');setWorkRecoveryOwner(workRecoveryScope.current);}}>실패 {workEditor.failureCount}</ActionButton>}
+      <ActionButton onClick={()=>{setWorkRecoveryView('history');setWorkRecoveryOwner(workRecoveryScope.current);}}>처리 기록</ActionButton>
+      {workEditor.canRetryReset&&<ActionButton onClick={()=>void workEditor.retryResetDaily()}>작업순서 초기화 다시 확인</ActionButton>}
+      {!showWorkOrderPicker&&workEditor.canReopenCurrent&&<ActionButton onClick={()=>void workEditor.reopenCurrent()}>현재 작업순서 다시 읽기</ActionButton>}
+    </div>
+    {workEditor.openingBusy&&<p role="status">현재 작업순서를 확인하고 있습니다.</p>}
+    {workEditor.error&&<p role="alert" className="whitespace-pre-line">{workEditor.error}</p>}
+    {workEditor.message&&<p role="status" className="whitespace-pre-line">{workEditor.message}</p>}
+  </section>;
+  const workOrderRecoveryModal = workRecoveryVisible&&<ModalShell title="작업순서 처리 확인" onClose={()=>setWorkRecoveryOwner(null)} bodyClassName="space-y-4 text-xs" footer={<ActionButton onClick={()=>setWorkRecoveryOwner(null)}>닫기</ActionButton>}>
+    <div className="flex flex-wrap gap-2"><ActionButton aria-pressed={workRecoveryView==='failure'} onClick={()=>setWorkRecoveryView('failure')}>실패 보기</ActionButton><ActionButton aria-pressed={workRecoveryView==='history'} onClick={()=>setWorkRecoveryView('history')}>처리 기록 보기</ActionButton></div>
+    {workEditor.error&&<p role="alert" className="whitespace-pre-line">{workEditor.error}</p>}
+    {workEditor.message&&<p role="status" className="whitespace-pre-line">{workEditor.message}</p>}
+    {workEditor.readLoading&&<p role="status">보관된 작업순서 요청을 읽고 있습니다.</p>}
+    {workEditor.readError&&<p role="alert">{workEditor.readError}</p>}
+    <div className="flex flex-wrap gap-2"><ActionButton disabled={workEditor.busy||workEditor.readLoading} onClick={()=>void workEditor.refresh()}>보관 요청 다시 읽기</ActionButton><ActionButton disabled={workEditor.historyLoading} onClick={()=>void workEditor.loadHistory()}>지난 처리 기록 조회</ActionButton></div>
+    {workEditor.historyError&&<p role="alert">{workEditor.historyError}</p>}
+    {workEditor.historyLoading&&<p role="status">작업순서 처리 기록을 조회하고 있습니다.</p>}
+    {workEditor.historyMore&&<div><p>더 확인할 작업순서 기록이 있습니다.</p><ActionButton disabled={workEditor.historyLoading} onClick={()=>void workEditor.nextHistory()}>다음 기록 확인</ActionButton></div>}
+    <div className="max-h-[60vh] space-y-3 overflow-y-auto">{(workRecoveryView==='failure'?workEditor.failureRows:[...workEditor.failureRows,...workEditor.historyRows]).map(({entry,currentState,cause,nextAction})=><article key={entry.key} className="space-y-2 border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
+      <p className="break-words font-semibold">{entry.description}</p><p>현재 상태: {currentState}</p><p className="whitespace-pre-line">내용: {cause}</p><p className="whitespace-pre-line">다음 행동: {nextAction}</p>
+      <details><summary>보관 원문 보기</summary><pre className="whitespace-pre-wrap break-words">{entry.observedLocalText??entry.observedReferenceText??'이 기기에 보관된 원문이 없습니다.'}</pre></details>
+      <div className="flex flex-wrap gap-2">{entry.reference&&<ActionButton disabled={workEditor.busy} onClick={()=>void workEditor.inspect(entry)}>결과 확인</ActionButton>}{workEditor.canRetry(entry)&&<ActionButton disabled={workEditor.busy} onClick={()=>void workEditor.retry(entry)}>같은 요청 재시도</ActionButton>}{workEditor.canCancel(entry)&&<ActionButton disabled={workEditor.busy} onClick={()=>void workEditor.cancel(entry)}>미처리 요청 중단</ActionButton>}{workEditor.canDiscard(entry)&&<ActionButton disabled={workEditor.busy} onClick={()=>void workEditor.discardCopy(entry)}>이 기기 사본만 정리</ActionButton>}</div>
+    </article>)}</div>
+  </ModalShell>;
 
   const deliveryOrders = useMemo(() =>
     filteredOrders
@@ -1217,6 +1085,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
+      {workOrderRecoveryModal}
       {!hideOrderEditPanel&&<OrderEditRecovery application={orderEdits} allTargets/>}
       {!listOrderEditor&&orderEdits.messageTargetId===null&&orderEdits.message&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{orderEdits.message}</p>}
       {savedOrderNotice&&<p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">{savedOrderNotice}</p>}
@@ -1330,38 +1199,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
       {/* ── 운영 주문: 금일 작업순서 + 캘린더/리스트/보드 ── */}
       {activeTab === 'active' && (() => {
-        const pickableOrders = activeViewOrders.filter(o => o.status === OrderStatus.PENDING || o.status === OrderStatus.PROCESSING);
-
-        // 픽커용 전체 품목 목록 — 품목 카테고리(subtype)를 그대로 보존한다.
-        const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
-          const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
-          return o.items
-            .map((item, idx) => ({
-              /*  **열쇠에 자리를 안 넣는다**(2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데").
-               *  이 줄은 Firestore 에 저장되는 **사본**이라, 주문에서 앞 품목을 지우면
-               *  자리 번호가 다른 품목을 가리킨다. 되찾는 이름은 **주문 쪽이 만든다** —
-               *  같은 품목이 두 줄이면 `참기름#1`·`참기름#2` 로 갈라진다(orderLine.lineKeyAt). */
-              key: `${o.id}-${lineKeyAt(o.items, idx)}`,
-              orderId: o.id,
-              itemId: item.itemId,
-              lineKey: lineKeyAt(o.items, idx),
-              //  같은 품목이 두 줄이면 이름 뒤에 -1 · -2 가 붙는다. 주문카드와 같은 글자다.
-              itemName: `${item.name}${lineSuffix(o.items, idx)}`,
-              partnerName,
-              qty: item.quantity,
-              category: items.find(p => p.id === item.itemId)?.category || '미분류',
-            }));
-        });
-
-        const workOrderOf = (workItem: WorkItem) => activeOperationOrders.find(order => order.id === workItem.orderId);
-        const orderItemOf = (workItem: WorkItem) => {
-          const order = workOrderOf(workItem);
-          if (!order) return undefined;
-          const itemIndex = itemIndexOf(workItem, order);
-          return itemIndex >= 0 ? order.items[itemIndex] : undefined;
-        };
-        const isWorkComplete = (workItem: WorkItem) => orderItemOf(workItem)?.checked === true;
-        const isWorkProcessing = (workItem: WorkItem) => !isWorkComplete(workItem) && workOrderOf(workItem)?.status === OrderStatus.PROCESSING;
         const isLegacyWorkItem = (workItem: WorkItem) => {
           const product = items.find(item => item.id === workItem.itemId);
           return !product || !String(product.category || '').trim();
@@ -1374,40 +1211,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
           return Number.isFinite(due) && due - today <= 24 * 60 * 60 * 1000;
         };
         /* 같은 품목 카테고리 안에서 함께 만들기로 지정한 줄을 붙여 세운다. */
-        const 묶음찾기 = (key: string) => {
-          const wi = validWorkItems.find(x => x.key === key);
-          return wi?.groupId ? { id: wi.groupId, name: wi.groupName } : undefined;
-        };
-
-        /** 고른 줄들을 한 묶음으로 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */
-        const toggleWorkGroupPick = (key: string) => {
-          const wi = validWorkItems.find(x => x.key === key);
-          if (wi?.groupId) {
-            const 남는수 = validWorkItems.filter(x => x.groupId === wi.groupId).length - 1;
-            setWorkItems(prev => prev.map(x =>
-              //  한 명만 남으면 그 묶음도 없앤다 — 혼자는 묶음이 아니다
-              (x.key === key || (남는수 < 2 && x.groupId === wi.groupId))
-                ? { ...x, groupId: undefined, groupName: undefined } : x));
-            return;
-          }
-          setWorkGroupPick(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
-        };
-        const confirmWorkGroup = () => {
-          if (workGroupPick.length < 2) return;
-          const gid = `wg-${Date.now()}`;
-          setWorkItems(prev => prev.map(x => workGroupPick.includes(x.key) ? { ...x, groupId: gid } : x));
-          setWorkGroupPick([]);
-        };
-
-        //  **빈 그룹도 보여 준다** — 만들어 놓고 아직 안 담은 그룹이 사라지면 담을 데가 없다.
-        const workCategories = [...new Set([...workGroups, ...validWorkItems.map(workCategoryOf)])]
-          .sort((a, b) => {
-            const ai = workGroups.indexOf(a); const bi = workGroups.indexOf(b);
-            return (ai === -1 ? workGroups.length : ai) - (bi === -1 ? workGroups.length : bi) || a.localeCompare(b, 'ko');
-          });
-
         //  묶음 띠 색 — 지금 있는 묶음들에 **겹치지 않게** 나눠 준다
-        const 묶음띠색 = groupStripes(validWorkItems.map(workItem => workItem.groupId));
+        const 묶음띠색 = groupStripes(validWorkItems.map(workItem => workItem.groupId??undefined));
 
         // 순서 이동은 같은 품목 카테고리 안에서만 허용한다.
         const getSection = (workItem: WorkItem) => workCategoryOf(workItem);
@@ -1427,31 +1232,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
          * 다 한 줄이 번호를 물고 있으면 1·2·5·7 처럼 구멍이 나서 몇 개 남았는지가 안 읽혔다.
          * 이제 남은 것이 1·2·3 으로 이어져 **번호 끝이 곧 남은 일감 수**다.
          */
-        const sectionItemsAll = (category: string) => {
-          const categoryItems = [...validWorkItems.filter(workItem => workCategoryOf(workItem) === category)];
-          const time = (value?: string) => value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
-          if (workSort === 'dueDate') {
-            categoryItems.sort((a, b) => {
-              const aOrder = workOrderOf(a);
-              const bOrder = workOrderOf(b);
-              return Number(isWorkProcessing(b)) - Number(isWorkProcessing(a))
-                || time(aOrder?.deliveryDate) - time(bOrder?.deliveryDate)
-                || time(aOrder?.createdAt) - time(bOrder?.createdAt);
-            });
-          }
-          /*  **다 한 줄은 차례에서 빠진다**(2026-09-12 사장님: "완료된애들은 순서에서 빠지는게
-           *  낫겠다"). 2026-09-11 에는 반대로 "숨겨도 제 번호를 들고 있어야 한다" 하셔서
-           *  숨기기 전 목록에서 번호를 셌는데, 그 판단을 뒤집으신 것이다.
-           *  남은 것이 1·2·3 으로 다시 매겨져 **지금 할 일이 몇 개인지가 번호로 읽힌다.** */
-          return clusterByGroup(categoryItems.filter(workItem => !isWorkComplete(workItem)), workItem => workItem.key, 묶음찾기);
-        };
-        //  다 한 줄은 '작업 완료 n건' 을 눌렀을 때만 뒤에 붙여 보여 준다(차례에는 안 낀다).
-        const 다한줄 = (category: string) => clusterByGroup(
-          validWorkItems.filter(workItem => workCategoryOf(workItem) === category && isWorkComplete(workItem)),
-          workItem => workItem.key, 묶음찾기);
-        const orderedSectionItems = (category: string) =>
-          showCompletedWorkItems ? [...sectionItemsAll(category), ...다한줄(category)] : sectionItemsAll(category);
-
         const renderItemRow = (wi: WorkItem, sectionItems: WorkItem[]) => {
           //  자리 번호는 **아직 안 한 줄들** 안에서 센다(`sectionItemsAll`).
           //  다 한 줄은 그 목록에 없어 -1 이 나오므로, 번호 대신 빈칸을 둔다(아래).
@@ -1478,25 +1258,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               key={wi.key}
               /* 못 놓는 칸은 preventDefault를 하지 않아 브라우저가 '놓을 수 없음' 커서를 띄우게 둔다 */
               onDragOver={e => { if (blocked) { e.dataTransfer.dropEffect = 'none'; return; } e.preventDefault(); }}
-              onDrop={e => {
-                setDraggingWorkKey(null);
-                // 손으로 옮긴 순간 어떤 정렬 기준과도 맞지 않으므로 '적용된 정렬' 표시를 푼다
-                setWorkSort(null);
-                e.preventDefault();
-                const dragKey = e.dataTransfer.getData('workItemKey');
-                if (!dragKey || dragKey === wi.key) return;
-                setWorkItems(() => {
-                  const a = [...validWorkItems];
-                  const fromIdx = a.findIndex(x => x.key === dragKey);
-                  const toIdx = a.findIndex(x => x.key === wi.key);
-                  if (fromIdx === -1 || toIdx === -1) return a;
-                  if (getSection(a[fromIdx]) !== getSection(a[toIdx])) return a;
-                  const [removed] = a.splice(fromIdx, 1);
-                  const newTo = a.findIndex(x => x.key === wi.key);
-                  a.splice(newTo, 0, removed);
-                  return a;
-                });
-              }}
+              onDrop={e => { e.preventDefault(); void workEditor.dropWorkItem(e.dataTransfer.getData('workItemKey'),wi.key); }}
               /* 가로로 흐르는 카드 — 순번이 좌→우로 읽히므로 순서 이동도 ←/→ 다.
                  폭을 고정하지 않고 max-w로만 묶어 짧은 이름은 자리를 덜 먹는다.
                  카드 표면 대부분이 버튼(품목명·순서이동·빼기)이라 실제로 끌 수 있는 곳은 손잡이뿐이다.
@@ -1520,17 +1282,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   value={sectionIdx + 1}
                   onPointerDown={event => event.stopPropagation()}
                   onChange={event => {
-                    const 목표 = Number(event.target.value) - 1;
-                    const 칸 = sectionItemsAll(workCategoryOf(wi));
-                    const 지금 = 칸.findIndex(x => x.key === wi.key);
-                    if (지금 < 0 || 목표 < 0 || 목표 === 지금) return;
-                    const 새칸 = [...칸];
-                    const [옮길것] = 새칸.splice(지금, 1);
-                    새칸.splice(목표, 0, 옮길것);
-                    //  전체 목록에서 **이 묶음 자리만** 새 차례로 갈아 끼운다.
-                    let n = 0;
-                    setWorkItems(validWorkItems.map(x =>
-                      workCategoryOf(x) === workCategoryOf(wi) ? 새칸[n++] : x));
+                    void workEditor.moveWorkItem(wi,Number(event.target.value)-1);
                   }}
                   className={`h-7 w-7 shrink-0 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-slate-50 text-center text-xs font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300 ${completed ? 'text-slate-400' : 'text-indigo-600'}`}
                 >
@@ -2552,15 +2304,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        이게 빠져 있어서 이미 담긴 것들이 체크가 안 된 채로 떴다. */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setPickerOrdering(validWorkItems.map(workItem => workItem.key));
-                      setPickerAssign(Object.fromEntries(validWorkItems.map(workItem => [workItem.key, workCategoryOf(workItem)])));
-                      setPickerGroups(workGroups);
-                      //  **`전체` 로 연다**(2026-09-16) — 열자마자 무엇이 있는지부터 본다.
-                      //  그룹을 미리 골라 두면 그 그룹 것만 떠서 "왜 주문이 없지" 하게 된다.
-                      setPickerGroup('');
-                      setShowWorkOrderPicker(true);
-                    }}
+                    disabled={workEditor.busy||workEditor.openingBusy||workEditor.readLoading}
+                    onClick={() => void workEditor.openPicker()}
                     className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 transition-colors hover:bg-violet-100"
                   ><Plus size={12} aria-hidden="true" />주문보기</button>
                   {/*  **건수와 '완료 포함' 은 늘 한 줄이다**(2026-09-12 사장님: "대기중 오른쪽에
@@ -2587,6 +2332,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </div>
               </div>
               <div className={`flex flex-col gap-3 p-2 ${mobileCollapsed.has('work-order') ? 'hidden' : ''}`}>
+                {workOrderRecoveryTools}
                 {validWorkItems.length === 0 ? (
                   <div className="flex items-center justify-center py-6">
                     <p className="text-xs font-bold text-slate-400">현재 조회 조건에 해당하는 작업이 없습니다.</p>
@@ -2675,7 +2421,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             {/*  **그룹 편집 창**(2026-09-14 사장님) — 추가·이름바꾸기·지우기를 여기 모은다.
                  작업순서 설정 창 **위에** 뜬다(z-[60]). 칩에서 손대던 일이 다 여기로 왔다. */}
             {그룹편집 && (
-              <ModalShell title="그룹 편집" onClose={() => set그룹편집(false)} className="max-w-sm" bodyClassName="p-0"
+              <ModalShell layer={1100} title="그룹 편집" onClose={() => set그룹편집(false)} className="max-w-sm" bodyClassName="p-0"
                 footer={<button type="button" onClick={() => set그룹편집(false)} className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-200">닫기</button>}>
 
                   {/*  새 그룹 — 창 맨 위다. 들어오자마자 하는 일이 보통 '추가'다. */}
@@ -2717,7 +2463,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
             {/* 작업순서 설정 모달 */}
             {showWorkOrderPicker && (
-              <LargeModalShell title="작업순서 설정" onClose={() => setShowWorkOrderPicker(false)} className="min-h-[70vh]" bodyClassName="p-0">
+              <LargeModalShell title="작업순서 설정" onClose={() => workEditor.closePicker()} className="min-h-[70vh]" bodyClassName="p-0">
                 {/*  **창을 키워 뒀다**(2026-09-16 사장님: "모달 기본 크기 좀 키워둬라").
                        한 줄이 두 줄(거래처·품목)로 늘어난 뒤로 보이는 줄 수가 반이 됐다 —
                        담은 차례를 보려고 여는 창인데 서너 줄만 보이면 훑을 수가 없다.
@@ -2728,6 +2474,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        그룹 칩·단추 자리가 매번 옮겨 다닌다.
                        폭은 `md`(448px) → `xl`(576px), 높이는 75vh → 90vh. */}
                 <div className="flex min-h-[60vh] flex-col">
+                  {workEditor.error&&<p role="alert" className="px-5 py-3 text-sm">{workEditor.error}</p>}
+                  {workEditor.message&&<p role="status" className="px-5 py-3 text-sm">{workEditor.message}</p>}
+                  {workEditor.canReopenCurrent&&<div className="px-5 py-2"><ActionButton onClick={()=>void workEditor.reopenCurrent()}>현재 작업순서 다시 읽기</ActionButton></div>}
+                  <fieldset disabled={workEditor.busy||workEditor.locked} className="flex min-h-0 flex-1 flex-col">
 
                   {/*  **그룹 줄** — 고른 그룹에 주문이 담긴다. 이름 고치기·지우기·새로 만들기가 여기 있다. */}
                   <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-5 py-3">
@@ -2795,30 +2545,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           이제 **담은 것이 담은 차례대로 위**에 서고, 안 담은 것은 아래에
                           원래 차례로 남는다. 거래처는 줄 안으로 들어가 품목 앞에 붙는다 —
                           작업순서 줄(`거래처 → 품목 → 수량`)과 같은 차례다. */
-                      const 원래자리 = new Map(allPickableItems.map((wi, i) => [wi.key, i]));
-                      const 담긴자리 = (key: string) => {
-                        if (!pickerOrdering.includes(key)) return Number.MAX_SAFE_INTEGER;
-                        const 그룹 = pickerAssign[key];
-                        const 그룹칸 = 그룹 ? pickerGroups.indexOf(그룹) : pickerGroups.length;
-                        //  그룹 차례로 먼저, 그 안에서 담은 차례로 — 번호도 그 그룹 안에서만 센다.
-                        return 그룹칸 * 100000 + pickerOrdering.filter(k => pickerAssign[k] === 그룹).indexOf(key);
-                      };
-                      /*  **고른 그룹에 담긴 것 + 아직 아무 데도 안 담긴 것**만 보여 준다
-                          (2026-09-16 사장님). 다른 그룹에 이미 담긴 줄은 지금 담을 것이
-                          아니라 자리만 먹는다. `전체`(빈 값)면 다 보여 준다. */
-                      const 보일것 = allPickableItems.filter(wi => {
-                        if (!pickerGroup) return true;
-                        const 담긴 = pickerAssign[wi.key];
-                        return !담긴 || 담긴 === pickerGroup;
-                      });
-                      //  **끝난 것은 맨 아래**로 — 담을 수 없는 줄이 위에서 자리를 먹으면 안 된다.
-                      const 줄들 = [...보일것].sort((a, b) =>
-                        (isWorkComplete(a) ? 1 : 0) - (isWorkComplete(b) ? 1 : 0)
-                        || 담긴자리(a.key) - 담긴자리(b.key)
-                        || (원래자리.get(a.key)! - 원래자리.get(b.key)!));
-                      return 줄들.map(wi => {
+                      return pickerRows.map(wi => {
                         const 거래처 = wi.partnerName
-                          || pickableOrders.find(x => x.id === wi.orderId)?.partnerName || '이름없음';
+                          || workOrderOf(wi)?.partnerName || '이름없음';
                         /*  **이미 끝난 품목은 못 담는다**(2026-09-16 사장님: "이미 상태
                             작업상태 완료인 애들은 이것처럼 줄로 그어지고 순서에 못 넣게 해놔").
 
@@ -2836,19 +2565,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         const sectionPos = pickerOrdering.filter(k => pickerAssign[k] === 담긴그룹).indexOf(wi.key) + 1;
                         return (
                           <div key={wi.key}
-                            onClick={() => {
-                              if (끝났나) return;                //  끝난 것은 아무 반응 없다
-                              if (!pickerGroup) { alert('먼저 담을 그룹을 고르세요.'); return; }
-                              if (isSelected && 담긴그룹 === pickerGroup) {
-                                //  같은 그룹에 담긴 것을 다시 누르면 뺀다.
-                                setPickerOrdering(prev => prev.filter(k => k !== wi.key));
-                                setPickerAssign(prev => { const { [wi.key]: _뺌, ...남은 } = prev; return 남은; });
-                                return;
-                              }
-                              //  안 담겼거나 **다른 그룹**에 담긴 것이면 지금 그룹으로 옮긴다(끝에 붙는다).
-                              setPickerOrdering(prev => [...prev.filter(k => k !== wi.key), wi.key]);
-                              setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
-                            }}
+                            onClick={() => workEditor.togglePickerItem(wi,끝났나)}
                             aria-disabled={끝났나}
                             className={`mx-2 flex items-center gap-3 border-b border-slate-200 px-3 py-3 transition-colors ${
                               끝났나 ? 'cursor-default opacity-60'
@@ -2897,21 +2614,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       });
                     })()}
                   </div>
+                  </fieldset>
                   <div className="p-4 border-t border-slate-100 flex gap-2">
-                    <button onClick={() => setShowWorkOrderPicker(false)} className="flex-1 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">취소</button>
+                    <button disabled={!workEditor.canClose} onClick={() => workEditor.closePicker()} className="flex-1 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">{workEditor.locked?'보기 닫기':'취소'}</button>
                     <button
-                      onClick={() => {
-                        //  **그룹 차례대로 줄을 늘어놓는다** — 저장되는 순번(sortIndex)이 곧 화면 차례라,
-                        //  섞어 저장하면 칸 안의 순서가 흔들린다.
-                        const newItems = pickerGroups.flatMap(group => pickerOrdering
-                          .filter(key => pickerAssign[key] === group)
-                          .map(key => allPickableItems.find(wi => wi.key === key))
-                          .filter((wi): wi is WorkItem => wi !== undefined)
-                          .map(wi => ({ ...wi, workGroup: group })));
-                        saveWorkGroups(pickerGroups);
-                        setWorkItems(newItems);
-                        setShowWorkOrderPicker(false);
-                      }}
+                      disabled={!workEditor.canSavePicker}
+                      onClick={() => void workEditor.savePicker()}
                       className="flex-1 py-2.5 text-sm font-black bg-violet-600 text-white rounded-2xl hover:bg-violet-700 transition-all shadow"
                     >
                       확인 ({pickerOrdering.length}건)

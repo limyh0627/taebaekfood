@@ -124,7 +124,7 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['workOrderItems', 'workOrderOperations', 'workOrderFences', 'noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
@@ -134,6 +134,18 @@ service cloud.firestore {
     match /noticeOperations/{document=**} { allow read, write: if false; }
     match /noticePhotoUploads/{document=**} { allow read, write: if false; }
     match /noticeStoragePaths/{document=**} { allow read, write: if false; }
+    match /workOrderItems/{id} {
+      allow get: if isEmployee() && getOk();
+      allow list: if isEmployee() && readOk();
+    }
+    match /workOrderOperations/{document=**} { allow read, write: if false; }
+    match /workOrderFences/{document=**} { allow read, write: if false; }
+    function workOrderProtectedPath() {
+      return request.path == /databases/$(database)/documents/settings/taebaek__workGroups
+        || request.path == /databases/$(database)/documents/settings/punghoe__workGroups
+        || request.path == /databases/$(database)/documents/appMeta/workOrderReset_taebaek
+        || request.path == /databases/$(database)/documents/appMeta/workOrderReset_punghoe;
+    }
     match /companyInfoOperations/{document=**} {
       allow read, write: if false;
     }
@@ -700,14 +712,14 @@ service cloud.firestore {
       allow list: if !hasOwnRule(collection) && collection != 'appMeta'
                   && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                   && readOk();
-      allow create, update: if !hasOwnRule(collection) && !isProtectedCutoverPath()
+      allow create, update: if !hasOwnRule(collection) && !isProtectedCutoverPath() && !workOrderProtectedPath()
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
                             && inventoryQuantityOk(collection)
                             && rawWriterOk(collection)
                             && oemCostFieldsOk(collection)
                             && payrollWriteAllowed(collection);
-      allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath()
+      allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath() && !workOrderProtectedPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk()
                     && !rawWriterCollection(collection)

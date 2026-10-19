@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../types';
 import OrdersList from './OrdersList';
 import { migrateOrderItemNotes } from '../src/shared/orderNote';
 import { today } from '../src/shared/day';
+import type {OrderEdit} from '../src/features/orders/application/orderEditService';
 
 const products = [
   { id: 'p1', name: '참기름', type: 'product', unit: '병', stock: 10 },
@@ -21,13 +22,13 @@ const order = migrateOrderItemNotes({
 }) as Order;
 
 const renderList = () => {
-  const onUpdateNote = vi.fn();
+  const onSaveOrderEdit = vi.fn(async(_opening:Order,_edit:OrderEdit)=>({status:'saved' as const}));
   render(<OrdersList companyId="taebaek" title="주문" subtitle="" groupBy="status"
     allowedStatuses={[OrderStatus.PENDING]} orders={[order]} partners={[]} items={products}
     onUpdateStatus={vi.fn()} onUpdateDeliveryDate={vi.fn()} onDeleteOrder={vi.fn()}
-    onAddClick={vi.fn()} onUpdateNote={onUpdateNote} />);
+    onAddClick={vi.fn()} onSaveOrderEdit={onSaveOrderEdit} />);
   fireEvent.click(screen.getByRole('button', { name: '리스트' }));
-  return { onUpdateNote };
+  return { onSaveOrderEdit };
 };
 
 describe('주문 리스트 비고와 모바일 목록', () => {
@@ -53,8 +54,8 @@ describe('주문 리스트 비고와 모바일 목록', () => {
     expect(within(card!).queryByRole('button', { name: '참기름 비고' })).toBeNull();
   });
 
-  it('두 품목이어도 데스크톱 비고 셀은 주문 하나이고 주문 비고만 편집한다', () => {
-    const { onUpdateNote } = renderList();
+  it('두 품목이어도 데스크톱 비고 셀은 주문 하나이고 주문 비고만 편집한다', async () => {
+    const { onSaveOrderEdit } = renderList();
     const table = screen.getByRole('table', { name: '주문 리스트' });
     const noteButtons = within(table).getAllByRole('button', { name: '가상거래처 주문 비고 수정' });
     expect(noteButtons).toHaveLength(1);
@@ -65,8 +66,9 @@ describe('주문 리스트 비고와 모바일 목록', () => {
     const note = screen.getByRole('textbox', { name: '주문 비고' }) as HTMLTextAreaElement;
     expect(note.value).toBe(order.note);
     fireEvent.change(note, { target: { value: '주문 수정사항' } });
-    fireEvent.click(screen.getByRole('button', { name: '변경 저장' }));
-    expect(onUpdateNote).toHaveBeenCalledWith('order-note-test', '주문 수정사항', true);
+    await act(async()=>fireEvent.click(screen.getByRole('button', { name: '변경 저장' })));
+    expect(onSaveOrderEdit).toHaveBeenCalledExactlyOnceWith(order,{kind:'draft',draft:expect.objectContaining({note:'주문 수정사항',noteImportant:true,items:order.items})});
+    expect(order.note).toContain('옛 들기름 메모');
   });
 
   it('모바일 요약에 두 품목·수량·주문/옛 비고가 보이고 품목별 메모 수정은 열리지 않는다', () => {
@@ -84,8 +86,8 @@ describe('주문 리스트 비고와 모바일 목록', () => {
     expect(within(mobile).queryByText('주문 전체 전달사항')).toBeNull();
     expect(screen.getByRole('table', { name: '주문 리스트' })).not.toBeNull();
   });
-  it('이관된 50자 초과 비고를 일부 수정해도 끝부분과 전체 길이가 유지된다', () => {
-    const { onUpdateNote } = renderList();
+  it('이관된 50자 초과 비고를 일부 수정해도 끝부분과 전체 길이가 유지된다', async () => {
+    const { onSaveOrderEdit } = renderList();
     const table = screen.getByRole('table', { name: '주문 리스트' });
     fireEvent.click(within(table).getByRole('button', { name: '가상거래처 주문 비고 수정' }));
     const note = screen.getByRole('textbox', { name: '주문 비고' }) as HTMLTextAreaElement;
@@ -93,8 +95,8 @@ describe('주문 리스트 비고와 모바일 목록', () => {
     expect(note.maxLength).toBe(order.note!.length);
     const changed = `수정${order.note!.slice(2)}`;
     fireEvent.change(note, { target: { value: changed } });
-    fireEvent.click(screen.getByRole('button', { name: '변경 저장' }));
-    expect(onUpdateNote).toHaveBeenCalledWith(order.id, changed, true);
+    await act(async()=>fireEvent.click(screen.getByRole('button', { name: '변경 저장' })));
+    expect(onSaveOrderEdit).toHaveBeenCalledExactlyOnceWith(order,{kind:'draft',draft:expect.objectContaining({note:changed,noteImportant:true,items:order.items})});
     expect(changed.endsWith('들기름: 옛 들기름 메모')).toBe(true);
   });
 });

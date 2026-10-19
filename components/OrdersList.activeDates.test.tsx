@@ -1,10 +1,21 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi, afterEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../types';
 import { today } from '../src/shared/day';
 import OrdersList from './OrdersList';
 import { mergeCompanyOrders } from '../src/features/admin/companyOrders';
+import {encodeCatalogValue} from '../src/shared/workOrderCommand';
+import type {WorkOrderBindings} from '../src/shared/services/workOrderWrites';
+const session=vi.hoisted(()=>({currentUser:{uid:'date-actor',getIdTokenResult:async()=>({claims:{companyId:'taebaek',employeeId:'date-employee'}})}}));
+vi.mock('../src/shared/firebase',()=>({auth:session,authReady:Promise.resolve(),functions:{}}));
+vi.mock('../src/shared/deliveryTimeSlot',()=>({subscribeDeliveryOrdering:()=>()=>{},saveDeliveryTimeSlot:vi.fn()}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,listener:(user:typeof session.currentUser)=>void)=>{listener(session.currentUser);return()=>{};}}));
+function readWorkOrder(item:Record<string,unknown>):WorkOrderBindings{return {
+ open:async(scope,reference)=>({reference,actorUid:scope.actorUid,items:[{id:'date-row',data:encodeCatalogValue({...item,companyId:scope.companyId}),version:'1:000000001'}],groups:{exists:false,version:null,data:null},reset:{exists:false,version:null,data:null}}),
+ subscribeGroups:()=>()=>{},read:async()=>[],prepare:async()=>{throw Error('날짜 표시 시험은 저장하지 않습니다.');},command:async()=>{throw Error('날짜 표시 시험은 송신하지 않습니다.');},discard:async()=>({status:'blocked',message:'표시 전용'}),history:async scope=>({version:1,companyId:scope.companyId,actorUid:scope.actorUid,entries:[],nextCursor:null}),
+};}
+
 
 afterEach(() => vi.useRealTimers());
 
@@ -14,16 +25,17 @@ it.each([
   ['오늘', '2026-10-15', '2026-10-14T15:00:00Z', false, true],
   ['과거', '2026-10-14', '2026-10-13T15:00:00Z', false, true],
   ['완료', '2026-10-15', '2026-10-14T15:00:00Z', true, false],
-] as const)('작업줄 %s의 출고 임박은 한국 날짜와 ISO 표현에서 같다', (_label, calendarDate, isoDate, checked, expected) => {
+] as const)('작업줄 %s의 출고 임박은 한국 날짜와 ISO 표현에서 같다', async (_label, calendarDate, isoDate, checked, expected) => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-15T03:00:00Z'));
   const workItem = { key: 'due-order-p1', orderId: 'due-order', itemId: item.id, itemName: item.name, partnerName: '임박 검수 거래처', qty: 1, category: '기름' };
   const order = { ...makeOrder('due-order', OrderStatus.PENDING), partnerName: '임박 검수 거래처', deliveryDate: calendarDate,
     items: [{ itemId: item.id, name: item.name, quantity: 1, price: 0, checked }] };
   const props = { companyId: 'taebaek' as const, title: '주문', subtitle: '', groupBy: 'status' as const,
-    allowedStatuses: statuses, orders: [order], workOrderItems: [workItem], partners: [], items: [{ ...item, category: '기름' }],
+    allowedStatuses: statuses, orders: [order], workOrderItems: [workItem], workOrderBindings:readWorkOrder(workItem), partners: [], items: [{ ...item, category: '기름' }],
     onUpdateStatus: vi.fn(), onUpdateDeliveryDate: vi.fn(), onDeleteOrder: vi.fn(), onAddClick: vi.fn() };
   const view = render(<OrdersList {...props} />);
+  await act(async()=>{});
   fireEvent.click(screen.getByRole('button', { name: /금일 작업순서/ }));
   if (checked) fireEvent.click(screen.getByRole('button', { name: /작업 완료 1건/ }));
   expect(screen.getAllByText('임박 검수 거래처').length).toBeGreaterThan(0);
