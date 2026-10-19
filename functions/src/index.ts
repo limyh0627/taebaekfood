@@ -370,3 +370,5 @@ export {accountManagementCommand} from './accountManagementCommand';
 export {documentMetadataCommand,cleanupLateDocumentUpload} from './documentMetadataCommand';
 
 export {documentCategoryCommand} from './documentCategoryCommand';
+
+export {companyInfoCommand} from './companyInfoCommand';

@@ -1,0 +1,5 @@
+import { it, expect, vi } from 'vitest';
+import { executeCompanyInfoCommand, companyInfoReceiptId } from './companyInfoCommand';
+const reference = { companyId: 'taebaek' as const, planId: 'p' };
+it('미인증·다른회사·malformed는 업무 TX 전에 거절한다', async () => { const runTransaction = vi.fn(), db = { runTransaction } as never; await expect(executeCompanyInfoCommand(db, undefined, { mode: 'inspect', reference })).rejects.toMatchObject({ code: 'unauthenticated' }); await expect(executeCompanyInfoCommand(db, { uid: 'u', token: { companyId: 'punghoe', employeeId: 'e' } }, { mode: 'inspect', reference })).rejects.toMatchObject({ code: 'permission-denied' }); await expect(executeCompanyInfoCommand(db, { uid: 'u', token: { companyId: 'taebaek', employeeId: 'e' } }, { mode: 'apply', request: {} } as never)).rejects.toMatchObject({ code: 'invalid-argument' }); expect(runTransaction).not.toHaveBeenCalled(); });
+it('영수증 주소는 회사 UID 계획을 결합한다', () => { expect(companyInfoReceiptId('taebaek', 'u', 'p')).not.toBe(companyInfoReceiptId('taebaek', 'v', 'p')); expect(companyInfoReceiptId('taebaek', 'u', 'p')).not.toBe(companyInfoReceiptId('punghoe', 'u', 'p')); });

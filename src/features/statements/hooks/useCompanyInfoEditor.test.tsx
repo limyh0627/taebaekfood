@@ -2,49 +2,238 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { CompanyInfo } from '../../../shared/types';
-import { useCompanyInfoEditor } from './useCompanyInfoEditor';
+import { useCompanyInfoEditor as actual } from './useCompanyInfoEditor';
+import { companyInfoOpening } from '../../../shared/companyInfoCommand';
+import type { CompanyInfoOperationEntry } from '../infrastructure/companyInfoWrites';
+function useCompanyInfoEditor(options: Omit<Parameters<typeof actual>[0], 'onSave'> & {
+    onSave?: (patch: Partial<CompanyInfo>, context: import('../infrastructure/companyInfoWrites').CompanyInfoSaveContext) => unknown | Promise<unknown>;
+}) { return actual({ ...options, onOpenCompanyInfo: options.onOpenCompanyInfo ?? (async (initial, ctx) => ({ reference: { companyId: ctx.companyId, planId: ctx.planId }, actorUid: ctx.actorUid, opening: companyInfoOpening(initial), expectedVersion: '1:000000001' })), onSave: options.onSave ? async (patch, context) => { const result = await options.onSave!(patch, context); return result && typeof result === 'object' && 'status' in result ? result as import('../infrastructure/companyInfoWrites').CompanyInfoOutcome : { status: 'saved', requestFinalized: true }; } : undefined }); }
 import { TAEBAEK_BANK_ACCOUNT } from '../../../shared/companyInfo';
-const auth=vi.hoisted(()=>({currentUser:{uid:'A'}}));
-vi.mock('../../../shared/firebase',()=>({auth}));
-const initial:CompanyInfo={name:'회사',ceoName:'대표',bizNo:'139-04-37157',bizType:'제조',bizItem:'식품',address:'원주소',adminPassword:'비밀'};
-function deferred<T>(){let resolve!:(value:T)=>void;let reject!:(reason:unknown)=>void;const promise=new Promise<T>((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};}
-beforeEach(()=>{auth.currentUser.uid='A';});
-it('초기 은행 fallback은 dirty가 아니고 숨김·미수정 필드는 보내지 않는다',async()=>{
- const save=vi.fn(async()=>{}),close=vi.fn();const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:save,onClose:close}));
- expect(result.current.form.bankAccount).toBe(TAEBAEK_BANK_ACCOUNT);expect(result.current.dirty).toBe(false);expect(result.current.canSave).toBe(false);
- act(()=>result.current.changeField('address','새주소'));await act(()=>result.current.save());expect(save).toHaveBeenCalledExactlyOnceWith({address:'새주소'});expect(close).toHaveBeenCalledOnce();
+const auth = vi.hoisted(() => ({ currentUser: { uid: 'A' } }));
+await act(async () => { });
+vi.mock('../../../shared/firebase', () => ({ auth }));
+await act(async () => { });
+const initial: CompanyInfo = { name: '회사', ceoName: '대표', bizNo: '139-04-37157', bizType: '제조', bizItem: '식품', address: '원주소', adminPassword: '비밀' };
+function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
+beforeEach(() => { auth.currentUser.uid = 'A'; });
+it('초기 은행 fallback은 dirty가 아니고 숨김·미수정 필드는 보내지 않는다', async () => {
+    const save = vi.fn(async () => { }), close = vi.fn();
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: save, onClose: close }));
+    await act(async () => { });
+    expect(result.current.form.bankAccount).toBe(TAEBAEK_BANK_ACCOUNT);
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.canSave).toBe(false);
+    act(() => result.current.changeField('address', '새주소'));
+    await act(() => result.current.save());
+    expect(save).toHaveBeenCalledExactlyOnceWith({ address: '새주소' }, expect.any(Object));
+    expect(close).toHaveBeenCalledOnce();
 });
-it('은행 지우기는 명시 빈값이고 외부 구독은 수정 초안을 덮지 않는다',async()=>{
- const save=vi.fn(async()=>{});const {result,rerender}=renderHook(({value})=>useCompanyInfoEditor({initial:value,companyId:'taebaek',actorUid:'A',onSave:save}),{initialProps:{value:initial}});
- act(()=>result.current.changeField('bankAccount',''));rerender({value:{...initial,address:'외부주소',bankAccount:'외부은행'}});expect(result.current.form.address).toBe('원주소');expect(result.current.form.bankAccount).toBe('');await act(()=>result.current.save());expect(save).toHaveBeenCalledExactlyOnceWith({bankAccount:''});
+it('은행 지우기는 명시 빈값이고 외부 구독은 수정 초안을 덮지 않는다', async () => {
+    const save = vi.fn(async () => { });
+    const { result, rerender } = renderHook(({ value }) => useCompanyInfoEditor({ initial: value, companyId: 'taebaek', actorUid: 'A', onSave: save }), { initialProps: { value: initial } });
+    await act(async () => { });
+    act(() => result.current.changeField('bankAccount', ''));
+    rerender({ value: { ...initial, address: '외부주소', bankAccount: '외부은행' } });
+    expect(result.current.form.address).toBe('원주소');
+    expect(result.current.form.bankAccount).toBe('');
+    await act(() => result.current.save());
+    expect(save).toHaveBeenCalledExactlyOnceWith({ bankAccount: '' }, expect.any(Object));
 });
-it('ACK 전 중복 송신과 입력 변경을 막고 ACK 뒤에만 닫는다',async()=>{
- const gate=deferred<void>(),save=vi.fn(()=>gate.promise),close=vi.fn();const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:save,onClose:close}));
- act(()=>result.current.changeField('phone','123'));let run!:Promise<boolean>;act(()=>{run=result.current.save();});await act(()=>result.current.save());act(()=>result.current.changeField('phone','456'));expect(save).toHaveBeenCalledOnce();expect(close).not.toHaveBeenCalled();expect(result.current.form.phone).toBe('123');await act(async()=>{gate.resolve();await run;});expect(close).toHaveBeenCalledOnce();
+it('ACK 전 중복 송신과 입력 변경을 막고 ACK 뒤에만 닫는다', async () => {
+    const gate = deferred<void>(), save = vi.fn(() => gate.promise), close = vi.fn();
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: save, onClose: close }));
+    await act(async () => { });
+    act(() => result.current.changeField('phone', '123'));
+    let run!: Promise<boolean>;
+    act(() => { run = result.current.save(); });
+    await act(() => result.current.save());
+    act(() => result.current.changeField('phone', '456'));
+    expect(save).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    expect(result.current.form.phone).toBe('123');
+    await act(async () => { gate.resolve(); await run; });
+    expect(close).toHaveBeenCalledOnce();
 });
-it('실패는 입력과 원인을 보존하고 명시 동일 patch 재저장만 한다',async()=>{
- const save=vi.fn().mockRejectedValueOnce(Error('응답 유실')).mockResolvedValue(undefined),close=vi.fn();const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:save,onClose:close}));
- act(()=>result.current.changeField('name','새회사'));await act(()=>result.current.save());expect(close).not.toHaveBeenCalled();expect(result.current.error).toContain('응답 유실');expect(result.current.error).toContain('다시 저장하면');expect(result.current.form.name).toBe('새회사');expect(save).toHaveBeenCalledOnce();await act(()=>result.current.save());expect(save.mock.calls.map(call=>call[0])).toEqual([{name:'새회사'},{name:'새회사'}]);
+it('실패는 입력과 원인을 보존하고 직접 재저장 대신 동일 요청 복구만 허용한다', async () => {
+    const save = vi.fn().mockRejectedValueOnce(Error('응답 유실')).mockResolvedValue(undefined), close = vi.fn();
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: save, onClose: close }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '새회사'));
+    await act(() => result.current.save());
+    expect(close).not.toHaveBeenCalled();
+    expect(result.current.error).toContain('응답 유실');
+    expect(result.current.error).toContain('같은 요청');
+    expect(result.current.form.name).toBe('새회사');
+    expect(save).toHaveBeenCalledOnce();
+    await act(() => result.current.save());
+    expect(save).toHaveBeenCalledOnce();
+    expect(result.current.locked).toBe(true);
 });
-it('미확정 뒤 원래 표시값으로 되돌린 필드도 명시 patch로 보낸다',async()=>{
- const save=vi.fn().mockRejectedValueOnce(Error('lost')).mockResolvedValue(undefined);const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:save}));
- act(()=>result.current.changeField('name','첫값'));await act(()=>result.current.save());act(()=>{result.current.changeField('name','회사');result.current.changeField('address','다음값');});expect(result.current.error).toBe('');expect(result.current.dirtyFields).toEqual(['name','address']);await act(()=>result.current.save());expect(save).toHaveBeenLastCalledWith({name:'회사',address:'다음값'});
+it('미확정 뒤 원값 복귀 편집도 막고 제출한 입력을 보존한다', async () => {
+    const save = vi.fn().mockRejectedValueOnce(Error('lost')).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: save }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '첫값'));
+    await act(() => result.current.save());
+    act(() => { result.current.changeField('name', '회사'); result.current.changeField('address', '다음값'); });
+    expect(result.current.form.name).toBe('첫값');
+    expect(result.current.locked).toBe(true);
+    await act(() => result.current.save());
+    expect(save).toHaveBeenCalledOnce();
 });
-it('onSave 없는 창은 저장으로 닫히지 않는다',async()=>{
- const close=vi.fn();const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onClose:close}));act(()=>result.current.changeField('name','새값'));expect(result.current.canSave).toBe(false);expect(result.current.blockedReason).toContain('저장 기능');await act(()=>result.current.save());expect(close).not.toHaveBeenCalled();
+it('onSave 없는 창은 저장으로 닫히지 않는다', async () => {
+    const close = vi.fn();
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onClose: close }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '새값'));
+    expect(result.current.canSave).toBe(false);
+    expect(result.current.blockedReason).toContain('저장 기능');
+    await act(() => result.current.save());
+    expect(close).not.toHaveBeenCalled();
 });
-it('scope 변경 뒤 이전 ACK와 finally는 새 busy와 창에 영향을 주지 않는다',async()=>{
- const old=deferred<void>(),fresh=deferred<void>(),save=vi.fn().mockImplementationOnce(()=>old.promise).mockImplementationOnce(()=>fresh.promise),close=vi.fn();
- const {result,rerender}=renderHook(({uid})=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:uid,onSave:save,onClose:close}),{initialProps:{uid:'A'}});act(()=>result.current.changeField('name','A초안'));let a!:Promise<boolean>,b!:Promise<boolean>;act(()=>{a=result.current.save();});auth.currentUser.uid='B';rerender({uid:'B'});expect(result.current.form.name).toBe('회사');act(()=>result.current.changeField('name','B초안'));act(()=>{b=result.current.save();});await act(async()=>{old.resolve();await a;});expect(close).not.toHaveBeenCalled();expect(result.current.busy).toBe(true);await act(async()=>{fresh.resolve();await b;});expect(close).toHaveBeenCalledOnce();
+it('scope 변경 뒤 이전 ACK와 finally는 새 busy와 창에 영향을 주지 않는다', async () => {
+    const old = deferred<void>(), fresh = deferred<void>(), save = vi.fn().mockImplementationOnce(() => old.promise).mockImplementationOnce(() => fresh.promise), close = vi.fn();
+    const { result, rerender } = renderHook(({ uid }) => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: uid, onSave: save, onClose: close }), { initialProps: { uid: 'A' } });
+    await act(async () => { });
+    act(() => result.current.changeField('name', 'A초안'));
+    let a!: Promise<boolean>, b!: Promise<boolean>;
+    act(() => { a = result.current.save(); });
+    auth.currentUser.uid = 'B';
+    rerender({ uid: 'B' });
+    await act(async () => { });
+    expect(result.current.form.name).toBe('회사');
+    act(() => result.current.changeField('name', 'B초안'));
+    act(() => { b = result.current.save(); });
+    await act(async () => { old.resolve(); await a; });
+    expect(close).not.toHaveBeenCalled();
+    expect(result.current.busy).toBe(true);
+    await act(async () => { fresh.resolve(); await b; });
+    expect(close).toHaveBeenCalledOnce();
 });
-it('저장 중 명시 닫기는 허용하되 늦은 오류가 새 창에 나타나지 않는다',async()=>{
- const gate=deferred<void>(),close=vi.fn();const {result,rerender}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:()=>gate.promise,onClose:close}));act(()=>result.current.changeField('name','옛초안'));let run!:Promise<boolean>;act(()=>{run=result.current.save();});act(()=>{expect(result.current.close()).toBe(true);});rerender();act(()=>result.current.changeField('name','새초안'));await act(async()=>{gate.reject(Error('old'));await run;});expect(result.current.error).toBe('');expect(result.current.form.name).toBe('새초안');expect(close).toHaveBeenCalledOnce();
+it('저장 중 명시 닫기는 허용하되 늦은 오류가 새 창에 나타나지 않는다', async () => {
+    const gate = deferred<void>(), close = vi.fn();
+    const { result, rerender } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: () => gate.promise, onClose: close }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '옛초안'));
+    let run!: Promise<boolean>;
+    act(() => { run = result.current.save(); });
+    act(() => { expect(result.current.close()).toBe(true); });
+    rerender();
+    await act(async () => { });
+    act(() => result.current.changeField('name', '새초안'));
+    await act(async () => { gate.reject(Error('old')); await run; });
+    expect(result.current.error).toBe('');
+    expect(result.current.form.name).toBe('새초안');
+    expect(close).toHaveBeenCalledOnce();
 });
-
-it('실제 UID 불일치 저장 차단은 이유를 제공한다',async()=>{
- const save=vi.fn(),{result,rerender}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:save}));act(()=>result.current.changeField('name','초안'));auth.currentUser.uid='B';rerender();expect(result.current.canSave).toBe(false);expect(result.current.blockedReason).toContain('로그인 계정');await act(()=>result.current.save());expect(save).not.toHaveBeenCalled();
+it('실제 UID 불일치 저장 차단은 이유를 제공한다', async () => {
+    const save = vi.fn(), { result, rerender } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: save }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '초안'));
+    auth.currentUser.uid = 'B';
+    rerender();
+    expect(result.current.canSave).toBe(false);
+    expect(result.current.blockedReason).toContain('로그인 계정');
+    await act(() => result.current.save());
+    expect(save).not.toHaveBeenCalled();
 });
-
-it('송신 전 원래 표시값으로 돌아온 필드는 patch에서 제외한다',()=>{
- const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onSave:vi.fn()}));act(()=>{result.current.changeField('name','다른값');result.current.changeField('name','회사');});expect(result.current.dirty).toBe(false);
+it('송신 전 원래 표시값으로 돌아온 필드는 patch에서 제외한다', async () => {
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: vi.fn() }));
+    await act(async () => { });
+    act(() => { result.current.changeField('name', '다른값'); result.current.changeField('name', '회사'); });
+    expect(result.current.dirty).toBe(false);
+});
+it('기기 사본 정리 partial은 닫지 않고 같은 요청 확인으로 정리가 끝나야 닫는다', async () => {
+    let entries: CompanyInfoOperationEntry[] = [];
+    const close = vi.fn();
+    const { result } = renderHook(() => actual({ initial, companyId: 'taebaek', actorUid: 'A', onOpenCompanyInfo: async (raw, ctx) => ({ reference: { companyId: ctx.companyId, planId: ctx.planId }, actorUid: ctx.actorUid, opening: companyInfoOpening(raw), expectedVersion: null }), onReadCompanyInfoOperations: async () => entries, onSave: async (_patch, ctx) => { entries = [{ key: 'same', reference: ctx.opening.reference, status: 'valid', description: '회사명 수정', observedLocalText: '고정 원문', observedReferenceText: '참조' }]; return { status: 'partial', reason: 'followup-unconfirmed', committedIds: ['taebaek'], unconfirmedIds: [], message: '기기 정리 실패', nextAction: '같은 요청 결과 확인' }; }, onInspectCompanyInfoOperation: async () => { entries = []; return { status: 'saved', requestFinalized: true }; }, onClose: close }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '새회사'));
+    await act(() => result.current.save());
+    expect(result.current.locked).toBe(true);
+    expect(result.current.error).toContain('기기 정리 실패');
+    expect(result.current.error).toContain('같은 요청');
+    expect(close).not.toHaveBeenCalled();
+    await act(() => result.current.inspect(entries[0].reference!));
+    expect(close).toHaveBeenCalledOnce();
+});
+it('다른 요청 완료와 기기 사본 정리는 현재 입력을 닫거나 지우지 않는다', async () => {
+    const close = vi.fn(), ref = { companyId: 'taebaek' as const, planId: 'past' };
+    const { result } = renderHook(() => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: 'A', onSave: vi.fn(), onClose: close, onInspectCompanyInfoOperation: async () => ({ status: 'saved', requestFinalized: true }), onDiscardCompanyInfoCopy: async () => ({ status: 'saved' }) }));
+    await act(async () => { });
+    act(() => result.current.changeField('name', '현재 초안'));
+    await act(() => result.current.inspect(ref));
+    expect(close).not.toHaveBeenCalled();
+    expect(result.current.form.name).toBe('현재 초안');
+    await act(() => result.current.discardCopy(ref, '관측 원문', '관측 참조'));
+    expect(close).not.toHaveBeenCalled();
+    expect(result.current.form.name).toBe('현재 초안');
+    expect(result.current.message).toContain('기기의 사본만');
+});
+it('초기 로컬 조회 대기와 원문 열기 대기에는 송신0이며 은행표시를 원문에 승격하지 않는다', async () => {
+    const read = deferred<CompanyInfoOperationEntry[]>(), open = deferred<import('../../../shared/companyInfoCommand').CompanyInfoOpenResult>(), save = vi.fn(), onOpen = vi.fn<NonNullable<Parameters<typeof actual>[0]['onOpenCompanyInfo']>>(() => open.promise);
+    const { result } = renderHook(() => actual({ initial, companyId: 'taebaek', actorUid: 'A', onReadCompanyInfoOperations: () => read.promise, onOpenCompanyInfo: onOpen, onSave: save }));
+    act(() => result.current.changeField('name', '입력'));
+    await act(() => result.current.save());
+    expect(save).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+    await act(async () => read.resolve([]));
+    const ctx = onOpen.mock.calls[0][1];
+    expect(onOpen.mock.calls[0][0]).toEqual(Object.fromEntries(Object.entries(initial).filter(([key]) => key !== 'adminPassword')));
+    expect(onOpen.mock.calls[0][0]).not.toHaveProperty('adminPassword');
+    await act(() => result.current.save());
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => open.resolve({ reference: { companyId: ctx.companyId, planId: ctx.planId }, actorUid: 'A', opening: companyInfoOpening(initial), expectedVersion: '1:000000001' }));
+    expect(result.current.form.bankAccount).toBe(TAEBAEK_BANK_ACCOUNT);
+});
+it('이력은 명시 조회만 호출하고 빈 페이지 다음 cursor와 UID 폐기를 유지한다', async () => {
+    const page = deferred<import('../../../shared/companyInfoCommand').CompanyInfoHistoryResult>(), list = vi.fn().mockReturnValueOnce(page.promise).mockResolvedValue({ version: 1, companyId: 'taebaek', actorUid: 'B', entries: [], nextCursor: null });
+    const { result, rerender } = renderHook(({ uid }) => useCompanyInfoEditor({ initial, companyId: 'taebaek', actorUid: uid, onListCompanyInfoHistory: list }), { initialProps: { uid: 'A' } });
+    await act(async () => { });
+    expect(list).not.toHaveBeenCalled();
+    let loading!: Promise<void>;
+    act(() => { loading = result.current.loadHistory(); });
+    auth.currentUser.uid = 'B';
+    rerender({ uid: 'B' });
+    await act(async () => { page.resolve({ version: 1, companyId: 'taebaek', actorUid: 'A', entries: [], nextCursor: 'a'.repeat(64) }); await loading; });
+    expect(result.current.historyMore).toBeNull();
+    expect(result.current.history).toEqual([]);
+});
+it('다른 사본 종결 뒤 명시 정리와 현재 자료 재열기는 새 plan으로만 이어진다', async () => {
+    let entries: CompanyInfoOperationEntry[] = [];
+    const onSave = vi.fn(async (_patch: Partial<CompanyInfo>, ctx: import('../infrastructure/companyInfoWrites').CompanyInfoSaveContext) => { entries = [{ key: 'copy', reference: ctx.opening.reference, status: 'valid', description: '다른 사본', observedLocalText: '관측 사본', observedReferenceText: '참조' }]; return { status: 'unknown' as const, message: 'ACK 유실', nextAction: '결과 확인' }; });
+    const { result, rerender } = renderHook(({ value }) => useCompanyInfoEditor({ initial: value, companyId: 'taebaek', actorUid: 'A', onSave, onReadCompanyInfoOperations: async () => entries, onInspectCompanyInfoOperation: async () => ({ status: 'rejected', requiresReopen: true, message: '다른 내용이 먼저 확정됐습니다.', nextAction: '이 기기 사본 정리' }), onDiscardCompanyInfoCopy: async () => { entries = []; return { status: 'saved' }; } }), { initialProps: { value: initial } });
+    await act(async () => { });
+    act(() => result.current.changeField('name', '옛 입력'));
+    await act(() => result.current.save());
+    const ref = entries[0].reference!, oldPlan = ref.planId;
+    await act(() => result.current.inspect(ref));
+    expect(result.current.canReopenCurrent).toBe(false);
+    await act(() => result.current.discardCopy(ref, '관측 사본', '참조'));
+    expect(result.current.form.name).toBe('옛 입력');
+    expect(result.current.canReopenCurrent).toBe(true);
+    rerender({ value: { ...initial, name: '확인한 최신값' } });
+    await act(() => result.current.reopenCurrent());
+    await act(async () => { });
+    expect(result.current.form.name).toBe('확인한 최신값');
+    act(() => result.current.changeField('address', '새 수정'));
+    await act(() => result.current.save());
+    expect(onSave.mock.calls[1][1].planId).not.toBe(oldPlan);
+    expect(onSave.mock.calls[1][0]).toEqual({ address: '새 수정' });
+});
+it('예전 render의 save 함수는 같은 UID 회사 전환 뒤 새 scope로 송신하지 않는다', async () => {
+    const save = vi.fn();
+    const { result, rerender } = renderHook(({ company }) => useCompanyInfoEditor({ initial, companyId: company, actorUid: 'A', onSave: save }), { initialProps: { company: 'taebaek' as import('../../../shared/types').CompanyId } });
+    await act(async () => { });
+    act(() => result.current.changeField('name', '옛 입력'));
+    const oldSave = result.current.save;
+    rerender({ company: 'punghoe' });
+    await act(async () => { });
+    await act(() => oldSave());
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.form.name).toBe('회사');
+});
+it('원문 없는 정리도 표시한 독립참조 관측값을 그대로 포트에 전달한다',async()=>{
+ const ref={companyId:'taebaek' as const,planId:'sidecar-only'},discard=vi.fn().mockResolvedValue({status:'saved'});const {result}=renderHook(()=>useCompanyInfoEditor({initial,companyId:'taebaek',actorUid:'A',onDiscardCompanyInfoCopy:discard}));await act(async()=>{});
+ await act(()=>result.current.discardCopy(ref,null,'표시한 참조 A'));expect(discard).toHaveBeenCalledWith(ref,null,'표시한 참조 A',expect.objectContaining({companyId:'taebaek',actorUid:'A'}));
 });

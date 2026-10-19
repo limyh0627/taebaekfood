@@ -1,5 +1,7 @@
+import {openCompanyInfo,saveCompanyInfo,readCompanyInfoOperations,inspectCompanyInfoOperation,retryCompanyInfoOperation,cancelCompanyInfoOperation,discardCompanyInfoCopy,listCompanyInfoHistory,type CompanyInfoContext,type CompanyInfoSaveContext} from '../statements/infrastructure/companyInfoWrites';
+import type {CompanyInfoEditorOptions} from '../statements/hooks/useCompanyInfoEditor';
 import type { AccountManagementReference } from '../../shared/accountManagementCommand';
-import type { AccountCode, AccountGroup } from '../../shared/types';
+import type { CompanyInfo, AccountCode, AccountGroup } from '../../shared/types';
 import {prepareDirectoryDelete,confirmDirectoryDelete,inspectDirectoryDelete,cancelDirectoryDelete,pendingDirectoryDeletes,directoryDeleteReferences,type DirectoryDeleteInput,type DirectoryDeleteOutcome,type DirectoryDeletePrepared} from '../../shared/services/directoryDeleteWrites';
 import type {DirectoryDeleteReference} from '../../shared/directoryDeleteCommand';
 import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,discardPartnerItemTermsCopy,type PartnerItemTermsCopyDiscardResult,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
@@ -274,7 +276,6 @@ import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
 import { issueNumberedCashEntry, issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
 import { recordLoanCashEntry } from '../../shared/services/recordLoanCashEntry';
-import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
 import DataIntegrityMonitor from './DataIntegrityMonitor';
@@ -502,6 +503,41 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return {status:'rejected',message:'회사 또는 로그인 계정이 바뀌어 이 기기의 사본을 정리하지 않았습니다. 현재 화면에서 다시 확인해 주세요.'};
     // 기기 사본 정리는 등록·삭제 성공이 아니므로 업무 목록 갱신과 분리한다.
     return discardAccountOperationCopy(reference, observedLocalText, context);
+  };
+
+  const assertCompanyInfoScope = (context: CompanyInfoContext) => {
+    if (context.companyId !== companyId || !context.isCurrent() || auth.currentUser?.uid !== context.actorUid) {
+      throw Error('회사 또는 로그인 정보가 바뀌었습니다. 현재 회사에서 다시 열어 주세요.');
+    }
+  };
+  const saveStatementCompanyInfo = async (patch: Partial<CompanyInfo>, context: CompanyInfoSaveContext) => {
+    try { assertCompanyInfoScope(context); }
+    catch (error) { return {status:'rejected' as const,message:error instanceof Error?error.message:String(error)}; }
+    return saveCompanyInfo(patch, context);
+  };
+  const companyInfoRecoveryBindings: Omit<CompanyInfoEditorOptions,'initial'|'companyId'|'actorUid'|'onSave'|'onClose'> = {
+    onOpenCompanyInfo: async (initial, context) => {
+      assertCompanyInfoScope(context);
+      const result = await openCompanyInfo(initial, context);
+      assertCompanyInfoScope(context);
+      return result;
+    },
+    onReadCompanyInfoOperations: async context => {
+      assertCompanyInfoScope(context);
+      const entries = await readCompanyInfoOperations({companyId,actorUid:context.actorUid});
+      assertCompanyInfoScope(context);
+      return entries;
+    },
+    onInspectCompanyInfoOperation: (reference, context) => { assertCompanyInfoScope(context);return inspectCompanyInfoOperation(reference, context); },
+    onRetryCompanyInfoOperation: (reference, context) => { assertCompanyInfoScope(context);return retryCompanyInfoOperation(reference, context); },
+    onCancelCompanyInfoOperation: (reference, context) => { assertCompanyInfoScope(context);return cancelCompanyInfoOperation(reference, context); },
+    onDiscardCompanyInfoCopy: (reference, raw, referenceRaw, context) => { assertCompanyInfoScope(context);return discardCompanyInfoCopy(reference, raw, referenceRaw, context); },
+    onListCompanyInfoHistory: async (context, cursor) => {
+      assertCompanyInfoScope(context);
+      const result = await listCompanyInfoHistory(context, cursor);
+      assertCompanyInfoScope(context);
+      return result;
+    },
   };
 
   // partners 컬렉션
@@ -4466,11 +4502,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
-              onSaveCompanyInfo={info => setDocument(
-                'settings',
-                companySettingDocId(companyId, 'company'),
-                companySettingPatch(companyId, { ...info }),
-              )}
+              onSaveCompanyInfo={saveStatementCompanyInfo}
+              companyInfoRecovery={companyInfoRecoveryBindings}
               onUpdateItemCost={(itemId, cost) => cascadeItemCost(itemId, cost)}
             />
           )}

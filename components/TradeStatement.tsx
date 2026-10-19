@@ -61,7 +61,7 @@ import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import RecurringModal from './voucher/RecurringModal';
 import VoucherComposer from './voucher/VoucherComposer';
-import StatementCompanyDialog from '../src/features/statements/ui/StatementCompanyDialog';
+import StatementCompanyDialog, {type CompanyInfoRecoveryPorts, type StatementCompanyDialogProps} from '../src/features/statements/ui/StatementCompanyDialog';
 import StatementHistoryFilters from '../src/features/statements/ui/StatementHistoryFilters';
 import StatementHistoryActions from '../src/features/statements/ui/StatementHistoryActions';
 import StatementHistoryPagination from '../src/features/statements/ui/StatementHistoryPagination';
@@ -182,7 +182,8 @@ interface TradeStatementProps extends PartnerItemTermsBindings {
   onRemoveOrderRequest?: (id: string) => void;
   // 매입전표 발행 시: 발주카드 없으면 새로 생성(입고대기, 같은 거래처 품목 묶음), 있으면 발주카드에 전표 id 연결 + 입고대기 전환
   companyInfo?: CompanyInfo | null;
-  onSaveCompanyInfo?: (info: Partial<CompanyInfo>) => unknown | Promise<unknown>;
+  onSaveCompanyInfo?: StatementCompanyDialogProps['onSave'];
+  companyInfoRecovery?: CompanyInfoRecoveryPorts;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
   onUpdateOrder?: (id: string, data: Partial<Order>) => void | Promise<void>;
   currentUserId?: string;
@@ -276,6 +277,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onRemoveOrderRequest,
   companyInfo,
   onSaveCompanyInfo,
+  companyInfoRecovery,
   onUpdateItemCost,
   onUpdateOrder,
   currentUserId,
@@ -2423,7 +2425,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
            꺼진 코드를 남겨 두면 **살아 있는 줄 알고 고치게 된다** (실제로 그랬다). */}
 
       {/* ── 회사 정보 설정 모달 ── */}
-      {showCompanyModal && <StatementCompanyDialog key={companyId+':'+(issueActor??'')} companyId={companyId} actorUid={issueActor} initial={companyInfo}
+      {showCompanyModal && <StatementCompanyDialog {...companyInfoRecovery} key={companyId+':'+(issueActor??'')} companyId={companyId} actorUid={issueActor} initial={companyInfo}
         onClose={() => setShowCompanyModal(false)} onSave={onSaveCompanyInfo}/>}
 
       {mainTab === 'history' && <>

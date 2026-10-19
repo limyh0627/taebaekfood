@@ -1080,3 +1080,24 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
   } finally { await isolated.withSecurityRulesDisabled(async context=>{const database=context.firestore();for(const [collection,id]of [['employees','notice-e1'],['employees','notice-e9'],['notifications','leave-fixed'],['notifications','leave-foreign'],['notifications','wrong-company'],['notifications','wrong-target']])await deleteDoc(doc(database,collection,id));}); }
  },30000);
 });
+
+describe.skipIf(!켜짐)('회사정보 요청 전용 Rules',()=>{
+ it('같은회사 직원 settings 직접 권한은 유지하고 회사정보 receipt는 직접 접근할 수 없다',async()=>{
+  const projectId='demo-company-rules-'+randomUUID().slice(0,8);
+  const isolated=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8'),host:'127.0.0.1',port:documentRulesPort}});
+  const paths=['settings/taebaek','companyInfoOperations/own'];
+  try{
+   const employee=isolated.authenticatedContext('u',{employeeId:'e',companyId:'taebaek',isAdmin:false}).firestore();
+   const foreign=isolated.authenticatedContext('p',{employeeId:'p',companyId:'punghoe',isAdmin:true}).firestore();
+   await assertSucceeds(setDoc(doc(employee,'settings','taebaek'),{companyId:'taebaek',name:'회사'}));
+   await assertSucceeds(getDoc(doc(employee,'settings','taebaek')));
+   await assertSucceeds(updateDoc(doc(employee,'settings','taebaek'),{bankAccount:''}));
+   await assertFails(getDoc(doc(foreign,'settings','taebaek')));
+   await assertFails(updateDoc(doc(foreign,'settings','taebaek'),{name:'침범'}));
+   await isolated.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'companyInfoOperations','own'),{companyId:'taebaek',actorUid:'u'}));
+   await assertFails(getDoc(doc(employee,'companyInfoOperations','own')));
+   await assertFails(setDoc(doc(employee,'companyInfoOperations','own'),{companyId:'taebaek'}));
+   await assertFails(deleteDoc(doc(employee,'companyInfoOperations','own')));
+  }finally{await isolated.withSecurityRulesDisabled(async ctx=>{for(const path of paths)await deleteDoc(doc(ctx.firestore(),path));});await isolated.cleanup();}
+ },30000);
+});

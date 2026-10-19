@@ -1,3 +1,5 @@
+import {companyInfoOpening} from '../src/shared/companyInfoCommand';
+import type {CompanyInfoOutcome,CompanyInfoOperationContext} from '../src/features/statements/infrastructure/companyInfoWrites';
 import type {PartnerItemTermsInput} from '../src/features/items/infrastructure/partnerItemTermsWrites';
 const ownerExcel = vi.hoisted(() => ({ download: vi.fn(), document: vi.fn(), actor: null as null | ((user: {uid:string} | null) => void) }));
 vi.mock('../src/shared/listExcel', () => ({ downloadListExcel: ownerExcel.download }));
@@ -11,7 +13,7 @@ import { lineAmount } from '../src/shared/lineAmount';
 import {archiveTradePending,listTradePendings,verifyTradeServerRejection} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement, { VoucherDateChip } from './TradeStatement';
-import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
+import type { CompanyInfo, IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { OrderStatus, type Order } from '../src/shared/types';
 import {auth} from '../src/shared/firebase';
@@ -1103,16 +1105,17 @@ it('전표 ACK 뒤 원가 후속 실패는 단가 저장완료를 보존하고 �
  expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('거래조건은 저장됐지만 품목 loose 원가 반영을 확인하지 못했습니다'));
 });
 
+const companyPorts={onOpenCompanyInfo:async(initial:CompanyInfo|null|undefined,context:CompanyInfoOperationContext)=>({reference:{companyId:context.companyId,planId:context.planId},actorUid:context.actorUid,opening:companyInfoOpening(initial),expectedVersion:'1:000000001'})};
 it('회사 정보 설정은 async ACK 전 유지하고 표시 변경 항목만 저장한다',async()=>{
- let finish!:(value:void)=>void;const gate=new Promise<void>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate);
- setup(undefined,undefined,{pendingInvoice:null,onSaveCompanyInfo:save,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소',adminPassword:'비표시'}});
- fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 주소'}});const modal=screen.getByRole('dialog',{name:'회사 정보 설정'});fireEvent.click(within(modal).getByRole('button',{name:'저장'}));
- expect(save).toHaveBeenCalledWith({address:'새 주소'});expect(modal).toBeInTheDocument();expect(within(modal).getByRole('button',{name:'저장 중…'})).toBeDisabled();await act(async()=>finish());expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();
+ let finish!:(value:CompanyInfoOutcome)=>void;const gate=new Promise<CompanyInfoOutcome>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate);
+ setup(undefined,undefined,{pendingInvoice:null,companyInfoRecovery:companyPorts,onSaveCompanyInfo:save,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소',adminPassword:'비표시'}});
+ fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 주소'}});const modal=screen.getByRole('dialog',{name:'회사 정보 설정'});fireEvent.click(within(modal).getByRole('button',{name:'저장'}));
+ expect(save).toHaveBeenCalledWith({address:'새 주소'},expect.objectContaining({opening:expect.any(Object),planId:expect.any(String)}));expect(modal).toBeInTheDocument();expect(within(modal).getByRole('button',{name:'저장 중…'})).toBeDisabled();await act(async()=>finish({status:'saved',requestFinalized:true}));expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();
 });
 it('회사 정보 설정은 같은 회사 UID 교체 때 닫히고 옛 ACK로 새 창 초안을 닫지 않는다',async()=>{
- let finish!:(value:void)=>void;const gate=new Promise<void>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate),base={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],companyId:'taebaek' as const,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소'},onSaveCompanyInfo:save};
- const view=render(<TradeStatement {...base}/>);fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'옛 계정 수정'}});fireEvent.click(within(screen.getByRole('dialog',{name:'회사 정보 설정'})).getByRole('button',{name:'저장'}));
- (auth.currentUser as {uid:string}).uid='new-company-actor';view.rerender(<TradeStatement {...base}/>);expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 계정 초안'}});await act(async()=>finish());expect(screen.getByRole('dialog',{name:'회사 정보 설정'})).toBeInTheDocument();expect(screen.getByLabelText('사업장 주소')).toHaveValue('새 계정 초안');
+ let finish!:(value:CompanyInfoOutcome)=>void;const gate=new Promise<CompanyInfoOutcome>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate),base={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],companyId:'taebaek' as const,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소'},onSaveCompanyInfo:save,companyInfoRecovery:companyPorts};
+ const view=render(<TradeStatement {...base}/>);fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'옛 계정 수정'}});fireEvent.click(within(screen.getByRole('dialog',{name:'회사 정보 설정'})).getByRole('button',{name:'저장'}));
+ (auth.currentUser as {uid:string}).uid='new-company-actor';view.rerender(<TradeStatement {...base}/>);expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 계정 초안'}});await act(async()=>finish({status:'saved',requestFinalized:true}));expect(screen.getByRole('dialog',{name:'회사 정보 설정'})).toBeInTheDocument();expect(screen.getByLabelText('사업장 주소')).toHaveValue('새 계정 초안');
 });
 
 it('전표의 거래조건 사본 정리는 picker와 무관하게 정확 관측원문만 전달한다',async()=>{
