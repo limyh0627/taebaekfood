@@ -1,3 +1,4 @@
+import { readDocumentCategoryPath } from './shared/documentCategoryFence';
 import * as admin from 'firebase-admin';
 import { createHash, randomUUID } from 'node:crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
@@ -157,6 +158,7 @@ export async function executeDocumentMetadataCommand(db: admin.firestore.Firesto
         const employee = await tx.get(db.collection('employees').doc(employeeId));
         if (!employee.exists || employee.get('companyId') !== ref.companyId)
             throw new HttpsError('permission-denied', '현재 회사의 관리자 직원 정보를 확인해 주세요.');
+        const categoryPath = original?.action === 'create' && input.mode === 'apply' ? await readDocumentCategoryPath(tx, db, ref.companyId, original.metadata.category, original.metadata.subCategory) : null;
         const target = await tx.get(targetRef), raw = target.data();
         const path = original?.action === 'create' ? original.upload.path : typeof raw?.storagePath === 'string' && raw.storagePath.startsWith(`companies/${ref.companyId}/file-cabinet/`) ? raw.storagePath : undefined;
         const pathRef = path ? db.collection(DOCUMENT_PATHS).doc(documentStoragePathId(path)) : null;
@@ -225,12 +227,15 @@ export async function executeDocumentMetadataCommand(db: admin.firestore.Firesto
             };
             if (!ownReservation || reservation!.get('closed') !== false || fence?.get('closed') === true)
                 return rejectUpload('업로드 예약이 중단되었거나 최초 원문과 다릅니다. 결과를 확인한 뒤 현재 목록에서 다시 작성해 주세요.', 'unverified');
+            if (!categoryPath?.exists)
+                return rejectUpload('분류가 없어 문서를 등록하지 않았습니다. 현재 분류를 확인한 뒤 다시 작성해 주세요.', 'verified');
             if (target.exists)
                 return rejectUpload('같은 문서 번호가 이미 있습니다. 현재 목록에서 확인해 주세요.', 'verified');
             const token = verified!.downloadUrl, bucket = storage.bucketName;
             if (!bucket)
                 throw Error('문서 Storage 버킷 설정을 확인해 주세요.');
             const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(request.upload.path)}?alt=media&token=${encodeURIComponent(token)}`;
+            categoryPath.touch();
             tx.create(targetRef, {
                 companyId: ref.companyId, ...request.metadata, storagePath: request.upload.path, size: request.upload.size, contentType: request.upload.contentType, downloadUrl, storageGeneration: verified!.object.generation
             });

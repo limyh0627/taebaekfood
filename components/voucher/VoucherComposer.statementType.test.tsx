@@ -6,7 +6,10 @@ import VoucherComposer from './VoucherComposer';
 import type { AccountCode, FixedCostTemplate, Partner } from '../../src/shared/types';
 import { appConfirm } from '../../src/shared/components/appDialog';
 
-vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}}}));
+vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}},authReady:Promise.resolve(),functions:{}}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(auth:{currentUser:{uid:string}|null},listener:(user:{uid:string}|null)=>void)=>{listener(auth.currentUser);return()=>{};}}));
+vi.mock('../../src/features/statements/infrastructure/issueTradeStatementCommand',()=>({recordPartnerPayment:vi.fn()}));
+vi.mock('../../src/features/statements/infrastructure/partnerPaymentRecovery',async importOriginal=>({...await importOriginal<typeof import('../../src/features/statements/infrastructure/partnerPaymentRecovery')>(),readPartnerPaymentRecoveries:vi.fn().mockResolvedValue([])}));
 vi.mock('../../src/shared/useLoanContracts', () => ({ useLoanContracts: () => [] }));
 vi.mock('../../src/shared/components/appDialog', () => ({
   appConfirm: vi.fn(), appNotice: vi.fn(), appPrompt: vi.fn().mockResolvedValueOnce('수협 일반전표').mockResolvedValueOnce('은행'),

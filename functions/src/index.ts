@@ -368,3 +368,5 @@ export {quotationCommand} from './quotationCommand';
 export {accountManagementCommand} from './accountManagementCommand';
 
 export {documentMetadataCommand,cleanupLateDocumentUpload} from './documentMetadataCommand';
+
+export {documentCategoryCommand} from './documentCategoryCommand';

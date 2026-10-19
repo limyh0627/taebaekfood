@@ -15,6 +15,8 @@ export type { PartnerPaymentRecoveryEntry } from '../infrastructure/partnerPayme
 export interface PartnerPaymentRecoveryOptions {
     companyId: CompanyId;
     actorUid?: string;
+    enabled?: boolean;
+    recoveryOnly?: boolean;
     partnerId: string;
     partnerName: string;
     type: '매입' | '매출';
@@ -32,15 +34,18 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
     const latest = useRef(options);
     latest.current = options;
     const [uid, setUid] = useState(auth.currentUser?.uid ?? ''), [authReadyState, setAuthReady] = useState(false);
-    const owner = options.companyId + ':' + uid + ':' + options.partnerId;
+    const enabled = options.enabled !== false && !!options.partnerId;
+    const owner = options.companyId + ':' + uid + ':' + options.partnerId + ':' + enabled + ':' + !!options.recoveryOnly;
+    const readState = useRef({ owner: '', failed: false, entries: [] as PartnerPaymentRecoveryEntry[] });
     const confirmedRequests=useRef(new Set<string>());
     const generation = useRef(0), ownerRef = useRef(owner), lockedRef = useRef(false), alive = useRef(true);
     if (ownerRef.current !== owner) {
         ownerRef.current = owner;
         generation.current++;
         lockedRef.current = false;
+        readState.current = { owner: '', failed: false, entries: [] };
     }
-    const initial = () => ({
+    const initial = () => options.recoveryOnly ? { amount: '', date: '', note: '', accountId: '' } : ({
         amount: formatMoneyInput(Math.round(Number.isFinite(options.initialAmount) ? options.initialAmount! : options.balance)), date: options.initialDate || today(), note: '', accountId: defaultCashAccountId(options.cashAccounts.filter(a => a.active && companyOf(a) === options.companyId), options.companyId)
     });
     const [form, setForm] = useState(initial), [stateOwner, setStateOwner] = useState(owner), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
@@ -54,7 +59,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         const key = owner, turn = generation.current, s = {
             companyId: options.companyId, actorUid: uid, partnerId: options.partnerId
         };
-        return { scope: s, current: () => alive.current && ownerRef.current === key && generation.current === turn && auth.currentUser?.uid === s.actorUid && (!latest.current.actorUid || latest.current.actorUid === s.actorUid) };
+        return { scope: s, current: () => latest.current.enabled !== false && !!latest.current.partnerId && alive.current && ownerRef.current === key && generation.current === turn && auth.currentUser?.uid === s.actorUid && (!latest.current.actorUid || latest.current.actorUid === s.actorUid) };
     };
     useEffect(() => {
         alive.current = true;
@@ -91,12 +96,14 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         }
         catch (error) {
             if (c.current()) {
+                readState.current = { owner: '', failed: true, entries: readState.current.entries };
                 setReadFailed(true);
                 setReadOwner('');
             }
             throw error;
         }
         if (c.current()) {
+            readState.current = { owner: ownerRef.current, failed: false, entries: rows };
             setPending(rows);
             setReadFailed(false);
             setReadOwner(ownerRef.current);
@@ -113,6 +120,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         return rows;
     };
     useEffect(() => {
+        readState.current = { owner: '', failed: false, entries: [] };
         setStateOwner(owner);
         setForm(initial());
         setBusy(false);
@@ -125,7 +133,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         setHistory([]);
         setCursor(null);
         setReadFailed(false);
-        if (!authReadyState || !uid)
+        if (!enabled || !authReadyState || !uid)
             return;
         const c = capture();
         void refresh(c).catch(e => {
@@ -136,12 +144,12 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         });
     }, [owner, authReadyState]);
     const visible = stateOwner === owner && (!options.actorUid || options.actorUid === uid), entries = visible ? pending : [], selectedEntry = visible ? selected : null;
-    const authScopeReady = authReadyState && !!uid && (!options.actorUid || options.actorUid === uid) && visible;
+    const authScopeReady = enabled && authReadyState && !!uid && (!options.actorUid || options.actorUid === uid) && visible;
     const ready = authScopeReady && readOwner === owner;
-    const blockedReason = !uid ? '관리자 로그인을 확인해 주세요.' : options.actorUid && options.actorUid !== uid ? '로그인 계정이 변경됐습니다. 창을 닫고 다시 여세요.' : !ready ? '보관된 수금·지불 요청을 먼저 읽고 있습니다.' : '';
-    const locked = !ready || busy || entries.length > 0 || readFailed;
+    const blockedReason = !enabled ? '거래처를 선택한 일반 입출금 화면에서 확인할 수 있습니다.' : !uid ? '관리자 로그인을 확인해 주세요.' : options.actorUid && options.actorUid !== uid ? '로그인 계정이 변경됐습니다. 창을 닫고 다시 여세요.' : !ready ? '보관된 수금·지불 요청을 먼저 읽고 있습니다.' : '';
+    const locked = !!options.recoveryOnly || !ready || busy || entries.length > 0 || readFailed;
     const change = (field: keyof typeof form, value: string) => {
-        if (ownerRef.current === owner && !locked && !lockedRef.current)
+        if (!latest.current.recoveryOnly && ownerRef.current === owner && !locked && !lockedRef.current)
             setForm(previous => ({ ...previous, [field]: value }));
     };
     const perform = async (work: (c: ReturnType<typeof capture>) => Promise<void>) => {
@@ -174,7 +182,9 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
             }
         }
     };
-    const save = () => perform(async (c) => {
+    const save = () => {
+        if (options.recoveryOnly || latest.current.recoveryOnly || ownerRef.current !== owner) return Promise.resolve();
+        return perform(async (c) => {
         if (!ready || entries.length || readFailed)
             return;
         const o = latest.current, value = parseMoneyInput(form.amount), accounts = o.cashAccounts.filter(a => a.active && companyOf(a) === o.companyId);
@@ -187,7 +197,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         };
         try {
             await services.save(o.companyId, input, { isCurrent: c.current });
-            if (c.current())
+            if (c.current() && !latest.current.recoveryOnly)
                 o.onClose?.();
         }
         catch (e) {
@@ -202,6 +212,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
             }
         }
     });
+    };
     const resolve = (mode: 'inspect' | 'cancel', entry = selectedEntry) => perform(async (c) => {
         if (!entry)
             return;
@@ -214,7 +225,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
         if (!c.current())
             return;
         // 과거 서버 이력 조회는 현재 새 작성창의 완료가 아니다. 원문이 있는 정확 요청만 종료한다.
-        if (entry.request && result.terminal && result.outcome.status==='saved' && primaryCommitted(result.outcome, entry.reference!.operationId))
+        if (!latest.current.recoveryOnly && entry.request && result.terminal && result.outcome.status==='saved' && primaryCommitted(result.outcome, entry.reference!.operationId))
             latest.current.onClose?.();
     });
     const retry = (entry = selectedEntry) => perform(async (c) => {
@@ -226,7 +237,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
             return;
         setMessage(result.outcome.status === 'saved' ? '최초 수금·지불 요청의 처리가 확인됐습니다.' : saveOutcomeMessage(result.outcome));
         await refresh(c);
-        if (c.current() && entry.request && result.terminal && result.outcome.status === 'saved' && primaryCommitted(result.outcome, entry.reference!.operationId))
+        if (!latest.current.recoveryOnly && c.current() && entry.request && result.terminal && result.outcome.status === 'saved' && primaryCommitted(result.outcome, entry.reference!.operationId))
             latest.current.onClose?.();
     });
     const discardCopy = (entry = selectedEntry) => perform(async (c) => {
@@ -252,7 +263,17 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
     const historyEntry = (result: PartnerPaymentRecoveryResult): PartnerPaymentRecoveryEntry => ({
         key: 'partner-payment-pending:' + result.reference.companyId + ':' + result.reference.partnerId + ':' + uid, bodyText: null, sidecarKey: null, sidecarText: null, reference: result.reference, request: null, requestHash: null, sidecarHash: null, status: 'missing', description: result.message
     });
+    const getBlocker = () => {
+        if (ownerRef.current !== owner || !capture().current()) return '로그인 계정이나 거래처가 변경됐습니다. 다시 확인해 주세요.';
+        if (!authScopeReady) return blockedReason;
+        if (readState.current.failed) return '이전 수금·지불 요청을 읽지 못했습니다. 목록을 다시 읽어 주세요.';
+        if (readState.current.owner !== owner) return '이전 수금·지불 요청을 먼저 읽고 있습니다.';
+        if (lockedRef.current) return '이전 요청을 확인하고 있습니다. 완료 응답을 기다려 주세요.';
+        if (readState.current.entries.length) return '이전 수금·지불 요청의 결과를 확인하거나 미처리 요청을 중단한 뒤 새로 저장해 주세요.';
+        return '';
+    };
     return {
+        readLoading: enabled && !ready && !readFailed, isBusy: () => ownerRef.current === owner && lockedRef.current, canStartNew: () => getBlocker() === '', getBlocker,
         ...(visible ? form : initial()), ready, blockedReason, readFailed: visible && readFailed, busy: visible && busy, error: visible ? error : '', message: visible ? message : '', locked, pending: entries, selectedEntry, history: visible ? history : [], historyMore: visible && cursor !== null,
         setAmount: (v: string) => change('amount', v), setDate: (v: string) => change('date', v), setNote: (v: string) => change('note', v), setAccountId: (v: string) => change('accountId', v),
         selectEntry: (entry: PartnerPaymentRecoveryEntry) => {
@@ -266,7 +287,7 @@ export function usePartnerPaymentRecovery(options: PartnerPaymentRecoveryOptions
             if (ownerRef.current !== owner || lockedRef.current)
                 return false;
             generation.current++;
-            latest.current.onClose?.();
+            if (!latest.current.recoveryOnly) latest.current.onClose?.();
             return true;
         }
     };

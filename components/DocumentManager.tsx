@@ -1,18 +1,15 @@
 import { useDocumentTransfers } from '../src/features/documents/hooks/useDocumentTransfers';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
-import { appConfirm } from '../src/shared/components/appDialog';
+import { useDocumentCategories } from '../src/features/documents/hooks/useDocumentCategories';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { where } from 'firebase/firestore';
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash2, Plus, Upload, Search, X, FolderPlus } from 'lucide-react';
 import { auth, authReady } from '../src/shared/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { subscribeToCollection, addItem, deleteItem, fetchCollection } from '../src/shared/services/firebaseService';
+import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import { CabinetCategory, CabinetSubCategory, CabinetDoc, companyOf, type CompanyId } from '../src/shared/types';
 import { dateOfLocal } from '../src/shared/day';
 
-const DEFAULT_CATEGORIES = ['직원용', '업무용', '거래처용'];
-/** 이번 탭에서 이미 세운 자리 — 화면을 드나들어도 두 번 안 만든다 */
-const seededPaths = new Set<string>();
 const MAX_SIZE_MB = 30;
 
 interface DocumentManagerProps {
@@ -57,28 +54,17 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const companyId = companyOf(currentUser);
   const [actorUid,setActorUid]=useState(()=>auth.currentUser?.uid??'');
   useEffect(()=>{let live=true,stop=()=>{};void Promise.resolve(authReady).then(()=>{if(live)stop=onAuthStateChanged(auth,user=>{if(live)setActorUid(user?.uid??'');});});return()=>{live=false;stop();};},[]);
-  const confirmationScope = useRef({ companyId, token: {} });
-  if (confirmationScope.current.companyId !== companyId) confirmationScope.current = { companyId, token: {} };
-  useEffect(() => () => { confirmationScope.current = { companyId: confirmationScope.current.companyId, token: {} }; }, []);
   const [categories, setCategories] = useState<CabinetCategory[]>([]);
   const [subCategories, setSubCategories] = useState<CabinetSubCategory[]>([]);
   const [docs, setDocs] = useState<CabinetDoc[]>([]);
-  const [activeCat, setActiveCat] = useState<string>('');
-  const [activeSub, setActiveSub] = useState<string>(''); // '' = 전체
   const [search, setSearch] = useState('');
   const transfers = useDocumentTransfers({companyId, actorUid, employeeId: currentUser.id, uploadedBy: currentUser.name});
-  const [addingCat, setAddingCat] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
-  const [addingSub, setAddingSub] = useState(false);
-  const [newSubName, setNewSubName] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [loadError, setLoadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const seededRef = useRef(false);
 
-  // 구독 + 최초 진입 시 기본 대분류 시드
+  // 분류 생성은 전용 후크가 서버 결과까지 확인하고, 이곳은 목록 구독만 유지한다.
   useEffect(() => {
-    seededRef.current = false;
     setLoadError('');
     const companyConstraint = [where('companyId', '==', companyId)];
     const onLoadError = (error: Error) => {
@@ -88,86 +74,8 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     const unsubCat = subscribeToCollection<CabinetCategory>('fileCabinetCategories', setCategories, companyConstraint, onLoadError);
     const unsubSub = subscribeToCollection<CabinetSubCategory>('fileCabinetSubCategories', setSubCategories, companyConstraint, onLoadError);
     const unsubDoc = subscribeToCollection<CabinetDoc>('fileCabinetDocs', setDocs, companyConstraint, onLoadError);
-    // 빈 컬렉션은 구독 콜백이 호출되지 않으므로 1회 조회로 시드 여부 판단
-    fetchCollection<CabinetCategory>('fileCabinetCategories', companyConstraint).then((rows) => {
-      if (rows.length === 0 && !seededRef.current) {
-        seededRef.current = true;
-        DEFAULT_CATEGORIES.forEach((name, i) =>
-          addItem('fileCabinetCategories', { name, order: i, createdAt: new Date().toISOString(), companyId })
-        );
-      }
-    }).catch(onLoadError);
     return () => { unsubCat(); unsubSub(); unsubDoc(); };
   }, [companyId]);
-
-  /*
-   * **자리를 세우는 건 딱 한 번, 그것도 목록을 실제로 읽어 본 뒤에.**
-   *
-   * 앞서 두 번 틀렸다:
-   *   ① 구독이 아직 안 왔는데 `categories`가 빈 배열이라 "없네" 하고 만들었다.
-   *   ② 막는 표식을 useRef에 뒀더니 화면을 나갔다 오면 초기화돼 또 만들었다.
-   * 그래서 '서류관리'가 넷이 됐다.
-   *
-   * 이번엔 **fetch로 직접 확인**하고(구독을 안 기다린다), 표식을 **모듈 수준**에 둔다.
-   * 화면을 몇 번 드나들어도 이 탭이 살아 있는 동안엔 한 번만 만든다.
-   */
-  const seedKey = seed.map(x => `${x.category}|${x.subCategory}`).join(',');
-  useEffect(() => {
-    if (!seedKey) return;
-    let alive = true;
-    (async () => {
-      for (const { category, subCategory } of seed) {
-        const key = `${companyId}|${category}|${subCategory}`;
-        if (seededPaths.has(key)) continue;
-        seededPaths.add(key);                       // 먼저 막는다 — await 사이에 또 들어온다
-        const [cs, ss] = await Promise.all([
-          fetchCollection<CabinetCategory>('fileCabinetCategories', [where('companyId', '==', companyId)]),
-          fetchCollection<CabinetSubCategory>('fileCabinetSubCategories', [where('companyId', '==', companyId)]),
-        ]);
-        if (!alive) return;
-        if (!cs.some(c => c.name === category))
-          await addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString(), companyId });
-        if (!ss.some(x => x.category === category && x.name === subCategory))
-          await addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString(), companyId });
-      }
-    })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedKey, companyId]);
-
-  /*
-   * 고른 자리를 바깥에 알린다.
-   * **onSelect를 의존성에 넣으면 안 된다** — 부르는 쪽이 인라인 화살표를 넘기면 매 렌더마다
-   * 새 함수가 돼서 효과가 다시 돌고, 그쪽이 상태를 세우면 렌더가 끝없이 돈다.
-   * 함수는 ref에 담아 두고 **고른 자리가 바뀔 때만** 알린다.
-   */
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
-  useEffect(() => { onSelectRef.current?.(activeCat, activeSub); }, [activeCat, activeSub]);
-
-  const sortedCats = useMemo(
-    () => [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
-    [categories]
-  );
-
-  const subsOfActive = useMemo(
-    () => subCategories.filter(s => s.category === activeCat)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
-    [subCategories, activeCat]
-  );
-
-  // 활성 대분류 기본값/유효성
-  useEffect(() => {
-    if (sortedCats.length === 0) { if (activeCat) setActiveCat(''); return; }
-    if (!sortedCats.some(c => c.name === activeCat)) setActiveCat(sortedCats[0].name);
-  }, [sortedCats, activeCat]);
-
-  // 활성 중분류가 현재 대분류에 속하지 않으면 전체로
-  useEffect(() => {
-    if (activeSub && !subCategories.some(s => s.category === activeCat && s.name === activeSub)) {
-      setActiveSub('');
-    }
-  }, [activeCat, activeSub, subCategories]);
 
   const docCountByCat = useMemo(() => {
     const m = new Map<string, number>();
@@ -184,6 +92,15 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     return m;
   }, [docs]);
 
+  const categoryActions = useDocumentCategories({companyId,actorUid,employeeId:currentUser.id,categories,subCategories,docCountByCat,docCountBySub,seed});
+  const {activeCat,activeSub,addingCat,newCatName,addingSub,newSubName,selectCat}=categoryActions;
+  const categoryBusy=categoryActions.busy||categoryActions.confirmationBusy||categoryActions.readLoading||!!categoryActions.readError;
+  const sortedCats = useMemo(()=>[...categories].sort((a,b)=>(a.order??0)-(b.order??0)||a.name.localeCompare(b.name)),[categories]);
+  const subsOfActive = useMemo(()=>subCategories.filter(s=>s.category===activeCat).sort((a,b)=>(a.order??0)-(b.order??0)||a.name.localeCompare(b.name)),[subCategories,activeCat]);
+  const onSelectRef=useRef(onSelect);
+  onSelectRef.current=onSelect;
+  useEffect(()=>{onSelectRef.current?.(activeCat,activeSub);},[activeCat,activeSub]);
+
   const visibleDocs = useMemo(() => {
     const q = search.trim().toLowerCase();
     return docs
@@ -193,7 +110,6 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
       .sort((a, b) => (b.uploadedAt ?? '').localeCompare(a.uploadedAt ?? ''));
   }, [docs, activeCat, activeSub, search]);
 
-  const selectCat = (name: string) => { setActiveCat(name); setActiveSub(''); setAddingSub(false); };
 
   const handleFiles = async (files: FileList | File[]) => {
     if(transfers.readLoading){alert('보관된 문서 요청을 먼저 읽고 있습니다. 잠시 후 다시 선택해 주세요.');return;}
@@ -213,43 +129,10 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
 
   const handleEditNote = (document: CabinetDoc) => transfers.editNote(document);
 
-  const handleAddCategory = async () => {
-    const scope = confirmationScope.current.token;
-    const name = newCatName.trim();
-    if (!name) return;
-    if (categories.some(c => c.name === name)) { alert('이미 있는 대분류입니다.'); return; }
-    await addItem('fileCabinetCategories', { name, order: categories.length, createdAt: new Date().toISOString(), companyId });
-    if (confirmationScope.current.token !== scope) return;
-    setNewCatName(''); setAddingCat(false); selectCat(name);
-  };
-
-  const handleDeleteCategory = async (cat: CabinetCategory) => {
-    const scope = confirmationScope.current.token;
-    if ((docCountByCat.get(cat.name) ?? 0) > 0) { alert(`"${cat.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
-    if (subCategories.some(s => s.category === cat.name)) { alert(`"${cat.name}"에 중분류가 있어 삭제할 수 없습니다. 먼저 중분류를 삭제하세요.`); return; }
-    if (!await appConfirm(`대분류 "${cat.name}"을(를) 삭제할까요?`)) return;
-    if (confirmationScope.current.token !== scope) return;
-    await deleteItem('fileCabinetCategories', cat.id);
-  };
-
-  const handleAddSub = async () => {
-    const scope = confirmationScope.current.token;
-    const name = newSubName.trim();
-    if (!name) return;
-    if (!activeCat) { alert('먼저 대분류를 선택하세요.'); return; }
-    if (subsOfActive.some(s => s.name === name)) { alert('이미 있는 중분류입니다.'); return; }
-    await addItem('fileCabinetSubCategories', { category: activeCat, name, order: subsOfActive.length, createdAt: new Date().toISOString(), companyId });
-    if (confirmationScope.current.token !== scope) return;
-    setNewSubName(''); setAddingSub(false); setActiveSub(name);
-  };
-
-  const handleDeleteSub = async (sub: CabinetSubCategory) => {
-    const scope = confirmationScope.current.token;
-    if ((docCountBySub.get(`${sub.category}|${sub.name}`) ?? 0) > 0) { alert(`"${sub.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
-    if (!await appConfirm(`중분류 "${sub.name}"을(를) 삭제할까요?`)) return;
-    if (confirmationScope.current.token !== scope) return;
-    await deleteItem('fileCabinetSubCategories', sub.id);
-  };
+  const handleAddCategory=()=>categoryActions.addCategory();
+  const handleDeleteCategory=(row:CabinetCategory)=>categoryActions.deleteCategory(row);
+  const handleAddSub=()=>categoryActions.addSubCategory();
+  const handleDeleteSub=(row:CabinetSubCategory)=>categoryActions.deleteSubCategory(row);
 
   const tabCls = (active: boolean) =>
     `px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${active ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`;
@@ -270,6 +153,29 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         </div>
       </div>
 
+      {categoryActions.readLoading && <p role="status" className="text-xs text-slate-600">보관된 분류 요청을 읽고 있습니다.</p>}
+      {categoryActions.message && <p role="status" className="whitespace-pre-line text-xs text-slate-600">{categoryActions.message}</p>}
+      {categoryActions.readError && <p role="alert" className="text-xs">{categoryActions.readError}</p>}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" disabled={categoryActions.readLoading||categoryActions.historyLoading} onClick={()=>void categoryActions.refresh()} className="rounded border border-slate-200 px-3 py-2">분류 요청 새로 조회</button>
+        {categoryActions.historyLoading && <p role="status">서버에 남은 분류 요청을 확인하고 있습니다.</p>}
+        {categoryActions.historyMore && <><p>더 확인할 분류 요청이 있습니다.</p><button type="button" disabled={categoryActions.historyLoading} onClick={()=>void categoryActions.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 분류 요청 확인</button></>}
+        {categoryActions.historyError && <p role="alert">{categoryActions.historyError}</p>}
+      </div>
+      {categoryActions.operations.length>0 && <section aria-label="처리 상태를 확인할 분류 요청" className="max-h-60 space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs">
+        {categoryActions.operations.map(operation=><div key={operation.id} className="space-y-2">
+          <p className="break-words font-bold">{operation.description}</p>
+          <p role="status" className="whitespace-pre-line">{operation.message}</p>
+          <div className="flex flex-wrap gap-2">
+            {operation.canInspect&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.inspect(operation.id)} className="rounded border border-slate-200 px-3 py-2">분류 결과 확인</button>}
+            {operation.canRetry&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.retry(operation.id)} className="rounded border border-slate-200 px-3 py-2">같은 분류 요청 이어하기</button>}
+            {operation.canCancel&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.cancel(operation.id)} className="rounded border border-slate-200 px-3 py-2">미처리 분류 요청 중단</button>}
+            {operation.canDiscard&&typeof operation.observedLocalText==='string'&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.discard(operation.id,operation.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">분류 기기 사본 정리</button>}
+          </div>
+        </div>)}
+        <p className="text-slate-500">기기 사본 정리는 이미 반영된 분류를 되돌리지 않습니다.</p>
+      </section>}
+
       {/* 대분류 탭 + 검색 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
@@ -285,7 +191,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
             {/*  지우는 길은 **작은 X 하나** — 고르고 있는 것에만 뜬다.
                  더블클릭은 고르려다 두 번 눌려 지워져서 없앴다(2026-09-03 사장님). */}
             {activeCat === cat.name && (docCountByCat.get(cat.name) ?? 0) === 0 && (
-              <button onClick={() => handleDeleteCategory(cat)} title="빈 대분류 지우기"
+              <button disabled={categoryBusy} onClick={() => handleDeleteCategory(cat)} title="빈 대분류 지우기"
                 className="ml-0.5 p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50">
                 <X className="w-3 h-3" />
               </button>
@@ -294,14 +200,14 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
           ))}
           {addingCat ? (
             <div className="flex items-center gap-1 px-1">
-              <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') { setAddingCat(false); setNewCatName(''); } }}
+              <input disabled={categoryBusy||categoryActions.categoryLocked} autoFocus value={newCatName} onChange={e => categoryActions.changeCategoryName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') categoryActions.cancelAddCategory() }}
                 placeholder="대분류명" className="w-28 px-2 py-1.5 text-xs font-bold border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-              <button onClick={handleAddCategory} className="p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="w-3.5 h-3.5" /></button>
-              <button onClick={() => { setAddingCat(false); setNewCatName(''); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>
+              <button disabled={categoryBusy||categoryActions.categoryLocked} onClick={handleAddCategory} className="p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="w-3.5 h-3.5" /></button>
+              <button onClick={() => categoryActions.cancelAddCategory()} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>
             </div>
           ) : (
-            <button onClick={() => setAddingCat(true)} className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1">
+            <button disabled={categoryBusy} onClick={() => categoryActions.openAddCategory()} className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1">
               <FolderPlus className="w-3.5 h-3.5" /> 대분류 추가
             </button>
           )}
@@ -323,17 +229,17 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
       {/* 중분류 칩 */}
       {activeCat && (
         <div className="flex flex-wrap items-center gap-1.5 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-          <button onClick={() => setActiveSub('')} className={chipCls(activeSub === '')}>전체</button>
+          <button onClick={() => categoryActions.selectSub('')} className={chipCls(activeSub === '')}>전체</button>
           {subsOfActive.map(sub => (
             <span key={sub.id} className="relative inline-flex items-center">
-            <button onClick={() => setActiveSub(sub.name)}
+            <button onClick={() => categoryActions.selectSub(sub.name)}
               className={chipCls(activeSub === sub.name)}>
               {sub.name}
               <span className={`ml-1 text-[10px] ${activeSub === sub.name ? 'text-indigo-500' : 'text-slate-400'}`}>{docCountBySub.get(`${sub.category}|${sub.name}`) ?? 0}</span>
             </button>
             {/*  지우는 길은 작은 X 하나 — 고르고 있는 것에만 */}
             {activeSub === sub.name && (
-              <button onClick={() => handleDeleteSub(sub)} title="빈 중분류 지우기"
+              <button disabled={categoryBusy} onClick={() => handleDeleteSub(sub)} title="빈 중분류 지우기"
                 className="ml-0.5 p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50">
                 <X className="w-3 h-3" />
               </button>
@@ -342,14 +248,14 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
           ))}
           {addingSub ? (
             <div className="flex items-center gap-1">
-              <input autoFocus value={newSubName} onChange={e => setNewSubName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddSub(); if (e.key === 'Escape') { setAddingSub(false); setNewSubName(''); } }}
+              <input disabled={categoryBusy||categoryActions.subCategoryLocked} autoFocus value={newSubName} onChange={e => categoryActions.changeSubName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddSub(); if (e.key === 'Escape') categoryActions.cancelAddSubCategory() }}
                 placeholder="중분류명" className="w-24 px-2 py-1 text-xs font-bold border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-              <button onClick={handleAddSub} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="w-3.5 h-3.5" /></button>
-              <button onClick={() => { setAddingSub(false); setNewSubName(''); }} className="p-1 rounded-md text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>
+              <button disabled={categoryBusy||categoryActions.subCategoryLocked} onClick={handleAddSub} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="w-3.5 h-3.5" /></button>
+              <button onClick={() => categoryActions.cancelAddSubCategory()} className="p-1 rounded-md text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>
             </div>
           ) : (
-            <button onClick={() => setAddingSub(true)} className="px-2.5 py-1.5 rounded-full text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1">
+            <button disabled={categoryBusy} onClick={() => categoryActions.openAddSubCategory()} className="px-2.5 py-1.5 rounded-full text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1">
               <Plus className="w-3.5 h-3.5" /> 중분류 추가
             </button>
           )}

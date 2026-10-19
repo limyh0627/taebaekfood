@@ -234,3 +234,58 @@ it('최초 retry의 결제ACK·정리실패 partial은 창을 유지하고 다�
  await act(async()=>{await hook.result.current.retry(entry);});
  expect(onClose).not.toHaveBeenCalled();expect(p.retry).toHaveBeenCalledOnce();expect(p.resolve).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({actorUid:'actor',partnerId:'partner'}),entry,'inspect',expect.any(Function));
 });
+
+it('복구 전용은 현재 금액을 사용하지 않고 신규저장·입력변경·자동닫기를 하지 않는다', async () => {
+    const p = services(), onClose = vi.fn();
+    const hook = renderHook(() => usePartnerPaymentRecovery({ ...options, balance: 2891460, recoveryOnly: true, onClose }, p));
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    expect(hook.result.current.amount).toBe('');
+    expect(hook.result.current.date).toBe('');
+    act(() => hook.result.current.setAmount('2891460'));
+    await act(async () => { await hook.result.current.save(); });
+    expect(p.save).not.toHaveBeenCalled();
+    expect(hook.result.current.amount).toBe('');
+    expect(hook.result.current.canStartNew()).toBe(true);
+    act(() => { hook.result.current.close(); });
+    expect(onClose).not.toHaveBeenCalled();
+});
+
+it('복구 전용은 과거 원문만 조회하고 applied 뒤에도 현재 전표창을 닫지 않는다', async () => {
+    const p = services(), onClose = vi.fn();
+    p.read.mockResolvedValueOnce([entry]).mockResolvedValue([]);
+    p.resolve.mockResolvedValue({ terminal: true, outcome: { status: 'saved' } });
+    const hook = renderHook(() => usePartnerPaymentRecovery({ ...options, balance: 2891460, recoveryOnly: true, onClose }, p));
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    expect(hook.result.current.amount).toBe('100');
+    expect(hook.result.current.canStartNew()).toBe(false);
+    await act(async () => { await hook.result.current.inspect(); });
+    expect(p.resolve.mock.calls[0][1]).toBe(entry);
+    expect(p.save).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(hook.result.current.canStartNew()).toBe(true);
+});
+
+it('비활성·거래처 미선택에서는 조회와 복구 송신을 하지 않는다', async () => {
+    const p = services();
+    const hook = renderHook(() => usePartnerPaymentRecovery({ ...options, enabled: false, recoveryOnly: true }, p));
+    await act(async () => { await Promise.resolve(); await hook.result.current.refresh(); await hook.result.current.loadHistory(); await hook.result.current.save(); });
+    expect(p.read).not.toHaveBeenCalled(); expect(p.list).not.toHaveBeenCalled(); expect(p.save).not.toHaveBeenCalled();
+    expect(hook.result.current.canStartNew()).toBe(false);
+});
+
+it('신규저장 진입 검사는 첫 조회와 같은 tick 복구 busy를 동기로 차단한다', async () => {
+    const p = services();
+    let finish!: (rows: PartnerPaymentRecoveryEntry[]) => void;
+    p.read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const hook = renderHook(() => usePartnerPaymentRecovery({ ...options, recoveryOnly: true }, p));
+    await waitFor(() => expect(p.read).toHaveBeenCalledOnce());
+    expect(hook.result.current.canStartNew()).toBe(false);
+    await act(async () => finish([]));
+    expect(hook.result.current.canStartNew()).toBe(true);
+    let done!: (rows: PartnerPaymentRecoveryEntry[]) => void;
+    p.read.mockImplementationOnce(() => new Promise(resolve => { done = resolve; }));
+    let operation!: Promise<void>;
+    act(() => { operation = hook.result.current.refresh(); expect(hook.result.current.isBusy()).toBe(true); expect(hook.result.current.canStartNew()).toBe(false); });
+    await act(async () => { done([]); await operation; });
+    expect(hook.result.current.canStartNew()).toBe(true);
+});

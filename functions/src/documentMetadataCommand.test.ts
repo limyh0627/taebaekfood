@@ -36,9 +36,15 @@ function runtime(initial: Record<string, Record<string, unknown>> = {}) {
     const tx = {
         get: async (r: {
             path?: string;
-            query?: string;
+            query?: {
+                name: string;
+                filters: [
+                    string,
+                    unknown
+                ][];
+            };
         }) => r.query ? {
-            empty: ![...rows].some(([p, v]) => p.startsWith('fileCabinetDocs/') && v.storagePath === r.query)
+            empty: ![...rows].some(([p, v]) => p.startsWith(r.query!.name + '/') && r.query!.filters.every(([k, value]) => v[k] === value))
         } : snapshot(r.path!), set: (r: {
             path: string;
         }, data: Record<string, unknown>, opts?: {
@@ -75,15 +81,37 @@ function runtime(initial: Record<string, Record<string, unknown>> = {}) {
             rows.delete(r.path);
         }
     };
+    interface QueryMock {
+        query: {
+            name: string;
+            filters: [
+                string,
+                unknown
+            ][];
+        };
+        where(field: string, op: string, value: unknown): QueryMock;
+    }
+    const query = (name: string, filters: [
+        string,
+        unknown
+    ][] = []): QueryMock => ({
+        query: {
+            name, filters
+        }, where: (field, _op, value) => query(name, [...filters, [field, value]])
+    });
     const db = {
         collection: (name: string) => ({
-            doc: (id: string) => doc(name + '/' + id), where: (_field: string, _op: string, path: string) => ({
-                query: path
-            })
+            doc: (id: string) => doc(name + '/' + id), where: (field: string, op: string, value: unknown) => query(name).where(field, op, value)
         }), runTransaction: async <T>(fn: (t: typeof tx) => Promise<T>) => fn(tx)
     } as never;
     rows.set('employees/e', {
         companyId: 'taebaek'
+    });
+    rows.set('fileCabinetCategories/category', {
+        companyId: 'taebaek', name: '업무'
+    });
+    rows.set('fileCabinetSubCategories/sub', {
+        companyId: 'taebaek', category: '업무', name: '일반'
     });
     return {
         db, rows, writes

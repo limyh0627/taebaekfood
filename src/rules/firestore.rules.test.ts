@@ -716,7 +716,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(setDoc(doc(관리자(), 'fileCabinetDocs', 'fc-2'), { companyId: 'taebaek', fileName: 'x.xlsx' }));
       await assertFails(updateDoc(doc(관리자(), 'fileCabinetDocs', 'fc-1'), {note:'직접 변경'}));
       await assertFails(deleteDoc(doc(관리자(), 'fileCabinetDocs', 'fc-1')));
-      for(const name of ['documentMetadataOperations','documentUploadReservations','documentStoragePaths']) {
+      for(const collection of ['fileCabinetCategories','fileCabinetSubCategories']){
+        await assertFails(setDoc(doc(관리자(),collection,'direct'),{companyId:'taebaek',name:'직접등록'}));
+        const id=collection==='fileCabinetCategories'?'fcc-1':'fcs-1';
+        await assertSucceeds(getDoc(doc(관리자(),collection,id)));
+        await assertFails(getDoc(doc(풍회관리자(),collection,id)));
+        await assertFails(updateDoc(doc(관리자(),collection,id),{name:'직접수정'}));
+        await assertFails(deleteDoc(doc(관리자(),collection,id)));
+      }
+      for(const name of ['documentMetadataOperations','documentUploadReservations','documentStoragePaths','documentCategoryOperations','documentCategoryFences']) {
         await assertFails(setDoc(doc(관리자(),name,'client'),{companyId:'taebaek'}));
         await assertFails(getDoc(doc(관리자(),name,'client')));
       }

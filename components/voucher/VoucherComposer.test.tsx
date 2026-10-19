@@ -8,12 +8,34 @@ import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import { auth } from '../../src/shared/firebase';
 import type { AccountCode, AccountGroup, CashAccount, Partner, IssuedStatement } from '../../src/shared/types';
+import {paymentHash,type StoredPartnerPaymentRequest} from '../../src/features/statements/infrastructure/partnerPaymentRecovery';
+import {webcrypto} from 'node:crypto';
 
-vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}}}));
+const paymentIo=vi.hoisted(()=>({command:vi.fn(),apply:vi.fn(),readGate:vi.fn(),scope:{companyId:'taebaek',actorUid:'test-auth-uid',partnerId:'p1'},server:new Map<string,any>(),listeners:new Set<(user:{uid:string}|null)=>void>()}));
+vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}},authReady:Promise.resolve(),functions:{}}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:{currentUser:{uid:string}|null},listener:(user:{uid:string}|null)=>void)=>{paymentIo.listeners.add(listener);listener(_auth.currentUser);return()=>{paymentIo.listeners.delete(listener);};}}));
+vi.mock('../../src/features/statements/infrastructure/issueTradeStatementCommand',()=>({recordPartnerPayment:vi.fn()}));
+vi.mock('../../src/features/statements/infrastructure/partnerPaymentRecovery',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../src/features/statements/infrastructure/partnerPaymentRecovery')>();
+ const writes=actual.createPartnerPaymentRecovery({get storage(){return localStorage;},assertScope:async(scope,current)=>{if(!current())throw Error('화면 변경');paymentIo.scope={...scope};},command:paymentIo.command,apply:paymentIo.apply});
+ return {...actual,readPartnerPaymentRecoveries:async(...args:Parameters<typeof writes.read>)=>{await paymentIo.readGate(args[0]);return writes.read(...args);},resolvePartnerPaymentRecovery:writes.resolve,retryPartnerPaymentRecovery:writes.retry,discardPartnerPaymentCopy:writes.discard,listPartnerPaymentHistory:writes.list};
+});
+Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});
 vi.mock('../../src/shared/useLoanContracts',()=>({useLoanContracts:()=>[]}));
 const transfer = vi.hoisted(()=>({prepare:vi.fn(),save:vi.fn(),resume:vi.fn()}));
 vi.mock('../../src/shared/services/interCompanyTransferService',()=>({prepareTransferOptions:transfer.prepare,saveInterCompanyTransfer:transfer.save,resumeInterCompanyTransfer:transfer.resume,hasPendingTransfer:()=>false}));
 beforeEach(()=>{localStorage.clear();transfer.prepare.mockReset().mockResolvedValue({from:{companyId:'taebaek',accounts:[{id:'bank1',name:'농협 주계좌',companyId:'taebaek',active:true,type:'통장'}],partners:[{id:'from-partner',name:'풍회유통',companyId:'taebaek',revision:0,available:0}]},to:{companyId:'punghoe',accounts:[{id:'actual-foreign-bank',name:'풍회 은행',companyId:'punghoe',active:true,type:'통장'}],partners:[{id:'actual-foreign-partner',name:'태백푸드',companyId:'punghoe',revision:0,available:0}]},releaseId:'test-release'});transfer.save.mockReset().mockResolvedValue({outDocNo:'out',inDocNo:'in'});});
+beforeEach(()=>{
+ paymentIo.server.clear();paymentIo.command.mockReset();paymentIo.apply.mockReset();paymentIo.readGate.mockReset().mockResolvedValue(undefined);
+ paymentIo.command.mockImplementation(async input=>{
+  const scope={...paymentIo.scope};
+  if(input.mode==='list')return {version:1,companyId:scope.companyId,partnerId:scope.partnerId,actorUid:scope.actorUid,entries:[...paymentIo.server.values()],nextCursor:null};
+  const prior=paymentIo.server.get(input.reference.operationId);if(prior)return prior;
+  const result={version:1,reference:input.reference,actorUid:scope.actorUid,status:input.mode==='cancel'?'cancelled':'unknown',requestHash:null,message:input.mode==='cancel'?'미처리 요청 중단 확인':'서버에 아직 요청 기록이 없습니다.'};
+  if(input.mode==='cancel')paymentIo.server.set(input.reference.operationId,result);return result;
+ });
+ paymentIo.apply.mockImplementation(async request=>{const result={version:1,reference:{companyId:paymentIo.scope.companyId,partnerId:request.partnerId,operationId:request.operationId},actorUid:paymentIo.scope.actorUid,status:'applied',requestHash:await paymentHash(request),message:'원래 수금 처리 확인',cashEntryId:request.operationId,docNo:'261001-001'};paymentIo.server.set(request.operationId,result);return {duplicate:false};});
+});
 /**
  * **한 번 나간 돈의 성격이 둘 이상일 때 갈라 적는가.**
  *
@@ -365,4 +387,53 @@ it('주문 수정과 같은 하단 푸터에 취소와 저장만 두고 취소 �
  expect(within(footer).getByRole('button',{name:/^저장$/})).toHaveClass('bg-indigo-600');
  expect(screen.getByRole('button',{name:'템플릿 저장'}).closest('footer')).toBeNull();
  await userEvent.click(within(footer).getByRole('button',{name:'취소'}));expect(onClose).toHaveBeenCalledOnce();
+});
+
+const sjmStatement:IssuedStatement={id:'current-statement',issuedAt:'2026-10-07T00:00:00Z',orderId:'current-order',docNo:'261007-010',partnerId:'p1',partnerName:'(유)에스제이엠',type:'매출',tradeDate:'2026-10-07',totalAmount:2891460,totalSupply:2891460,totalTax:0,items:[{name:'현재 미수',accountCode:'108',side:'차변',spec:'',qty:1,price:2891460,supply:2891460,tax:0,total:2891460,isTaxExempt:false}]};
+function sjm(over:Partial<Parameters<typeof VoucherComposer>[0]>={}){
+ return 띄우기({initialDir:'입금',initialDate:'2026-10-19',initialPartnerId:'p1',partners:[{id:'p1',name:'(유)에스제이엠',companyId:'taebaek'} as Partner],statements:[sjmStatement],partnerBalances:new Map([['p1',{receivable:2891460,payable:0}]]),...over});
+}
+async function oldPayment(status:'applied'|'unknown'='applied'){
+ const business={tradeDate:'2026-10-01',partnerId:'p1',direction:'입금' as const,amount:5718790,cashAccountId:'old-bank',pin:false,allocations:[],note:'지난 수금 원문'};
+ const request:StoredPartnerPaymentRequest={...business,operationId:'partner-payment-old',expectedRevision:0,releaseId:'legacy-release'};
+ localStorage.setItem('partner-payment-pending:taebaek:p1:test-auth-uid',JSON.stringify({version:2,fingerprint:JSON.stringify(business),request}));
+ if(status==='applied')paymentIo.server.set(request.operationId,{version:1,reference:{companyId:'taebaek',partnerId:'p1',operationId:request.operationId},actorUid:'test-auth-uid',status:'applied',requestHash:await paymentHash(request),message:'지난 5,718,790원 수금 반영 확인',cashEntryId:request.operationId,docNo:'261001-001'});
+ return request;
+}
+it('사진의 현재 입금2891460 초안은 과거5718790 서버완료 확인 뒤에도 보존되고 명시 새저장만 원배분을 보낸다',async()=>{
+ await oldPayment();const u=userEvent.setup(),view=sjm();await 채우기(u,'금액','2891460');const note=screen.getByPlaceholderText('예: 7월 전기요금') as HTMLInputElement;await u.type(note,'이번 수금 비고');
+ expect(await screen.findByText(/원래 요청: 5,718,790원/)).toBeInTheDocument();expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();expect(view.recordPayment).not.toHaveBeenCalled();
+ await u.click(screen.getByRole('button',{name:'결과 확인'}));await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());
+ expect(screen.getByLabelText('금액')).toHaveValue('2,891,460');expect(screen.getByRole('combobox',{name:'계좌'})).toHaveValue('bank1');expect(note).toHaveValue('이번 수금 비고');expect(document.querySelector('input[type="date"]')).toHaveValue('2026-10-19');expect(view.onClose).not.toHaveBeenCalled();expect(view.recordPayment).not.toHaveBeenCalled();expect(paymentIo.apply).not.toHaveBeenCalled();
+ await 저장(u);await waitFor(()=>expect(view.recordPayment).toHaveBeenCalledOnce());expect(view.recordPayment).toHaveBeenCalledWith([{stmt:sjmStatement,amount:2891460}],{date:'2026-10-19',method:'계좌이체',note:'이번 수금 비고',cashAccountId:'bank1'});expect(view.recordPayment.mock.calls[0][1].pin).not.toBe(false);
+});
+it('이전 요청 unknown은 현재 신규저장을 막고 원자 중단 확인 뒤에도 초안을 바꾸거나 자동송신하지 않는다',async()=>{
+ await oldPayment('unknown');const u=userEvent.setup(),view=sjm();await 채우기(u,'금액','2891460');await screen.findByText(/원래 요청: 5,718,790원/);await u.click(screen.getByRole('button',{name:'결과 확인'}));expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ await u.click(screen.getByRole('button',{name:'미처리 요청 중단'}));await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());expect(screen.getByLabelText('금액')).toHaveValue('2,891,460');expect(view.recordPayment).not.toHaveBeenCalled();expect(view.onClose).not.toHaveBeenCalled();expect(paymentIo.apply).not.toHaveBeenCalled();
+});
+it('최초 보관 읽기 대기에는 현재 저장을 시작하지 않고 읽기가 끝난 뒤에만 명시 저장한다',async()=>{
+ let release!:()=>void;paymentIo.readGate.mockReturnValueOnce(new Promise<void>(resolve=>{release=resolve;}));const u=userEvent.setup(),view=sjm();await 채우기(u,'금액','2891460');expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();expect(view.recordPayment).not.toHaveBeenCalled();
+ await act(async()=>release());await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());await 저장(u);await waitFor(()=>expect(view.recordPayment).toHaveBeenCalledOnce());
+});
+it('복구 결과 확인의 동기 busy는 같은 tick 신규저장 호출을 차단한다',async()=>{
+ await oldPayment();const original=paymentIo.command.getMockImplementation()!;let finish!:(value:unknown)=>void;paymentIo.command.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const u=userEvent.setup(),view=sjm();await 채우기(u,'금액','2891460');await screen.findByText(/원래 요청: 5,718,790원/);
+ const inspect=screen.getByRole('button',{name:'결과 확인'}),save=screen.getByRole('button',{name:'저장'});await act(async()=>{inspect.click();save.click();});expect(view.recordPayment).not.toHaveBeenCalled();
+ await act(async()=>finish(await original({mode:'inspect',reference:{companyId:'taebaek',partnerId:'p1',operationId:'partner-payment-old'}})));expect(view.onClose).not.toHaveBeenCalled();
+});
+it('입금 대체 출금 전환은 같은 hook 순서를 유지하고 보관 요청을 현재 전표로 저장하지 않는다',async()=>{
+ const u=userEvent.setup(),view=sjm();await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeDisabled());await 갈래(u,'대체');expect(screen.getByRole('dialog',{name:'일반전표 발행'})).toBeInTheDocument();await 갈래(u,'출금');expect(screen.getByLabelText('금액')).toBeInTheDocument();expect(view.recordPayment).not.toHaveBeenCalled();expect(paymentIo.apply).not.toHaveBeenCalled();
+});
+it('새 저장 직전에 다른 탭의 과거 사본 가드가 생기면 같은 창의 복구 패널로 이어지고 초안은 보존된다',async()=>{
+ const record=vi.fn().mockImplementationOnce(async()=>{await oldPayment();throw Error('이전 수금·지불 저장 결과가 불확실합니다. 같은 내용으로만 재시도할 수 있습니다.');}).mockResolvedValue(undefined);
+ const u=userEvent.setup(),view=sjm({recordPayment:record});await 채우기(u,'금액','2891460');await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());await 저장(u);
+ expect(await screen.findByRole('alert')).toHaveTextContent('이전 요청 패널');expect(await screen.findByText(/원래 요청: 5,718,790원/)).toBeInTheDocument();expect(record).toHaveBeenCalledOnce();expect(view.onClose).not.toHaveBeenCalled();expect(screen.getByLabelText('금액')).toHaveValue('2,891,460');expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ await u.click(screen.getByRole('button',{name:'결과 확인'}));await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());expect(record).toHaveBeenCalledOnce();expect(view.onClose).not.toHaveBeenCalled();
+});
+it('옛 UID의 늦은 수금 조회는 현재 일반전표를 닫거나 현재 금액을 바꾸지 않는다',async()=>{
+ await oldPayment();let finish!:(value:unknown)=>void;paymentIo.command.mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));const u=userEvent.setup(),view=sjm();await 채우기(u,'금액','2891460');await screen.findByText(/원래 요청: 5,718,790원/);await u.click(screen.getByRole('button',{name:'결과 확인'}));
+ try{
+  await act(async()=>{(auth.currentUser as {uid:string}).uid='new-auth-uid';paymentIo.listeners.forEach(listener=>listener(auth.currentUser));});
+  await act(async()=>finish(paymentIo.server.get('partner-payment-old')));
+  expect(screen.queryByRole('region',{name:'이전 수금·지불 원문과 복구'})).toBeNull();expect(screen.getByLabelText('금액')).toHaveValue('2,891,460');expect(view.onClose).not.toHaveBeenCalled();expect(view.recordPayment).not.toHaveBeenCalled();expect(localStorage.getItem('partner-payment-pending:taebaek:p1:test-auth-uid')).not.toBeNull();
+ }finally{(auth.currentUser as {uid:string}).uid='test-auth-uid';}
 });

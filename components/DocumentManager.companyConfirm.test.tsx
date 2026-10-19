@@ -6,6 +6,12 @@ import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react
 import {beforeEach,expect,it,vi} from 'vitest';
 import DocumentManager from './DocumentManager';
 import {assertDocumentFileIdentity,documentFileSha256} from '../src/features/documents/infrastructure/documentTransfers';
+import {serializeDocumentCategoryRequest,type DocumentCategoryRequest} from '../src/shared/documentCategoryCommand';
+const categoryTest=vi.hoisted(()=>({command:vi.fn(),createWrite:vi.fn(),deleteWrite:vi.fn(),data:new Map<string,string>(),receipts:new Map<string,any>(),scope:{companyId:'taebaek',actorUid:'document-auth-uid',employeeId:'A'}}));
+vi.mock('../src/features/documents/infrastructure/documentCategoryWrites',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../src/features/documents/infrastructure/documentCategoryWrites')>();
+ return {...actual,documentCategoryWrites:actual.createDocumentCategoryWrites({storage:{get length(){return categoryTest.data.size;},key:index=>[...categoryTest.data.keys()][index]??null,getItem:key=>categoryTest.data.get(key)??null,setItem:(key,value)=>{categoryTest.data.set(key,value);},removeItem:key=>{categoryTest.data.delete(key);}},assertScope:async scope=>{categoryTest.scope={...scope};},command:categoryTest.command,exclusive:async(_scope,work)=>work()})};
+});
 const service=vi.hoisted(()=>({subscribeToCollection:vi.fn(),fetchCollection:vi.fn(),addItem:vi.fn(),updateItem:vi.fn(),deleteItem:vi.fn()}));
 const dialog=vi.hoisted(()=>({appConfirm:vi.fn(),appPrompt:vi.fn()}));
 vi.mock('../src/shared/services/firebaseService',()=>service);
@@ -25,6 +31,23 @@ Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});
 Object.defineProperty(File.prototype,'arrayBuffer',{configurable:true,value:function(){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsArrayBuffer(this);});}});
 const pending=()=>{let resolve!:(value:any)=>void;const promise=new Promise<any>(done=>{resolve=done;});return {resolve,promise};};
 beforeEach(()=>{vi.clearAllMocks();testAuth.currentUser.uid='document-auth-uid';dialog.appConfirm.mockReset();dialog.appPrompt.mockReset();transfer.assertCurrent.mockReset().mockResolvedValue(undefined);transfer.uploadFile.mockReset().mockResolvedValue(undefined);transfer.getFileUrl.mockReset().mockResolvedValue('https://example.com/fixed');transfer.createMetadata.mockReset().mockResolvedValue(undefined);transfer.deleteMetadata.mockReset().mockResolvedValue(undefined);transfer.cleanupStorage.mockReset().mockResolvedValue(undefined);});
+
+beforeEach(()=>{
+ categoryTest.data.clear();categoryTest.receipts.clear();categoryTest.createWrite.mockReset().mockResolvedValue(undefined);categoryTest.deleteWrite.mockReset().mockResolvedValue(undefined);categoryTest.command.mockReset();
+ categoryTest.command.mockImplementation(async input=>{
+  const scope={...categoryTest.scope};
+  if(input.mode==='listPending')return {version:1,...scope,entries:[],nextCursor:null};
+  const request:DocumentCategoryRequest|undefined=input.request,reference=request?.reference??input.reference,key=JSON.stringify([scope.companyId,scope.actorUid,scope.employeeId,reference.planId]);
+  const prior=categoryTest.receipts.get(key);if(prior)return prior;
+  if(input.mode==='inspect')return {version:1,reference,actorUid:scope.actorUid,employeeId:scope.employeeId,requestHash:null,status:'unknown',message:'아직 서버 기록이 없습니다.'};
+  if(input.mode==='apply'){
+   if(request?.action==='createCategory'||request?.action==='createSubCategory')await categoryTest.createWrite(request);
+   if(request?.action==='deleteCategory'||request?.action==='deleteSubCategory')await categoryTest.deleteWrite(request);
+  }
+  const requestHash=request?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(serializeDocumentCategoryRequest(request))))).map(n=>n.toString(16).padStart(2,'0')).join(''):null;
+  const result={version:1,reference,actorUid:scope.actorUid,employeeId:scope.employeeId,requestHash,status:input.mode==='cancel'?'cancelled':'applied',message:input.mode==='cancel'?'분류 요청 중단 확인':'분류 처리 확인'};categoryTest.receipts.set(key,result);return result;
+ });
+});
 
 beforeEach(()=>{
  metadata.command.mockReset();metadata.prepare.mockReset();metadata.open.mockReset();metadata.list.mockReset();metadata.listPending.mockReset();metadata.discard.mockReset();metadata.read.mockReset();metadata.entries.clear();metadata.documents.clear();metadata.uploads.clear();metadata.noteWrite.mockResolvedValue(undefined);
@@ -59,51 +82,51 @@ async function open(action:'메모'|'대분류'|'중분류') {
  service.fetchCollection.mockResolvedValue([cat]);
  service.subscribeToCollection.mockImplementation((collection:string,callback:(rows:unknown[])=>void)=>{callback(collection==='fileCabinetCategories'?[cat]:collection==='fileCabinetSubCategories'?(action==='중분류'?[sub]:[]):action==='메모'?[doc]:[]);return ()=>{};});
  const view=render(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);
- if(action==='메모')fireEvent.click(await screen.findByRole('button',{name:'메모'}));
- else if(action==='대분류')fireEvent.click(await screen.findByTitle('빈 대분류 지우기'));
- else{fireEvent.click(await screen.findByRole('button',{name:/계약/}));fireEvent.click(screen.getByTitle('빈 중분류 지우기'));}
+ if(action==='메모'){const button=await screen.findByRole('button',{name:'메모'});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);}
+ else if(action==='대분류'){const button=await screen.findByTitle('빈 대분류 지우기');await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);}
+ else{fireEvent.click(await screen.findByRole('button',{name:/계약/}));await waitFor(()=>expect(screen.getByTitle('빈 중분류 지우기')).toBeEnabled());fireEvent.click(screen.getByTitle('빈 중분류 지우기'));}
  return view;
 }
 it.each(['메모','대분류','중분류'] as const)('문서함 %s 확인 중 회사가 바뀌면 이전 저장을 시작하지 않는다',async action=>{
  const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);const view=await open(action);
  view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);await act(async()=>request.resolve(action==='메모'?'새 메모':true));
- expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+ expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();
 });
 it.each(['메모','대분류','중분류'] as const)('문서함 %s 확인은 A→B→A 복귀와 화면 종료 뒤에도 이전 요청을 무효화한다',async action=>{
  const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);const view=await open(action);
- view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);view.rerender(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);await act(async()=>request.resolve(action==='메모'?'늦은 메모':true));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+ view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);view.rerender(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);await act(async()=>request.resolve(action==='메모'?'늦은 메모':true));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();
 });
 it.each(['메모','대분류','중분류'] as const)('문서함 %s 확인 중 화면 종료는 저장을 시작하지 않는다',async action=>{
- const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);const view=await open(action);view.unmount();await act(async()=>request.resolve(action==='메모'?'메모':true));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+ const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);const view=await open(action);view.unmount();await act(async()=>request.resolve(action==='메모'?'메모':true));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();
 });
 it.each(['메모','대분류','중분류'] as const)('현재 회사 문서함 %s 승인은 기존 저장 인수를 유지한다',async action=>{
  const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);await open(action);await act(async()=>request.resolve(action==='메모'?' 메모 원문 ':true));
- if(action==='메모'){expect(metadata.prepare).toHaveBeenCalledWith(expect.any(Object),expect.objectContaining({action:'note',note:' 메모 원문 '}),expect.any(String),expect.any(Function));expect(service.updateItem).not.toHaveBeenCalled();}else expect(service.deleteItem).toHaveBeenCalledWith(action==='대분류'?'fileCabinetCategories':'fileCabinetSubCategories',action==='대분류'?'cat-A':'sub-A');
+ if(action==='메모'){expect(metadata.prepare).toHaveBeenCalledWith(expect.any(Object),expect.objectContaining({action:'note',note:' 메모 원문 '}),expect.any(String),expect.any(Function));expect(service.updateItem).not.toHaveBeenCalled();}else await waitFor(()=>expect(categoryTest.deleteWrite).toHaveBeenCalledWith(expect.objectContaining({action:action==='대분류'?'deleteCategory':'deleteSubCategory',targetId:action==='대분류'?'cat-A':'sub-A'})));
 });
 it.each(['메모','대분류','중분류'] as const)('현재 회사 문서함 %s 확인 취소는 저장하지 않는다',async action=>{
- const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);await open(action);await act(async()=>request.resolve(action==='메모'?null:false));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+ const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);await open(action);await act(async()=>request.resolve(action==='메모'?null:false));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();
 });
 async function openAdd(action:'대분류'|'중분류') {
  const cat={id:'cat-A',companyId:'taebaek',name:'자료',order:0,createdAt:'2026-10-01'};
  service.fetchCollection.mockResolvedValue([cat]);service.subscribeToCollection.mockImplementation((collection:string,callback:(rows:unknown[])=>void)=>{callback(collection==='fileCabinetCategories'?[cat]:[]);return ()=>{};});
  const view=render(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);
- fireEvent.click(await screen.findByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'}));return view;
+ const button=await screen.findByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);return view;
 }
 it.each(['대분류','중분류'] as const)('문서함 %s 추가의 늦은 완료가 새 회사 초안을 비우거나 폼을 닫지 않는다',async action=>{
- const save=pending();service.addItem.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
- fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'A 추가'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});expect(service.addItem).toHaveBeenCalledOnce();
- view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'B 초안'}});await act(async()=>save.resolve('saved-A'));
+ const save=pending();categoryTest.createWrite.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
+ fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'A 추가'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});await waitFor(()=>expect(categoryTest.createWrite).toHaveBeenCalledOnce());
+ view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);await waitFor(()=>expect(screen.getByPlaceholderText(placeholder)).toBeEnabled());fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'B 초안'}});await act(async()=>save.resolve('saved-A'));
  expect(screen.getByPlaceholderText(placeholder)).toHaveValue('B 초안');
 });
 it.each(['대분류','중분류'] as const)('현재 회사 문서함 %s 추가는 정상 완료 후 입력창을 닫는다',async action=>{
- const save=pending();service.addItem.mockReturnValue(save.promise);await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
+ const save=pending();categoryTest.createWrite.mockReturnValue(save.promise);await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
  fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:' 새 분류 '}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});
- expect(service.addItem).toHaveBeenCalledWith(action==='대분류'?'fileCabinetCategories':'fileCabinetSubCategories',expect.objectContaining({name:'새 분류',companyId:'taebaek',...(action==='중분류'?{category:'자료'}:{})}));
- await act(async()=>save.resolve('saved'));expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();expect(screen.getByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'})).toBeInTheDocument();
+ await waitFor(()=>expect(categoryTest.createWrite).toHaveBeenCalledWith(expect.objectContaining({action:action==='대분류'?'createCategory':'createSubCategory',name:'새 분류',reference:expect.objectContaining({companyId:'taebaek'}),...(action==='중분류'?{category:'자료'}:{})})));
+ await act(async()=>save.resolve('saved'));await waitFor(()=>expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument());expect(screen.getByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'})).toBeInTheDocument();
 });
 it.each(['대분류','중분류'] as const)('문서함 %s 추가는 A→B→A 복귀 후에도 이전 완료로 초안을 지우지 않는다',async action=>{
- const save=pending();service.addItem.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'옛 요청'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});
- view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);view.rerender(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'새 세션 초안'}});await act(async()=>save.resolve('saved'));expect(screen.getByPlaceholderText(placeholder)).toHaveValue('새 세션 초안');
+ const save=pending();categoryTest.createWrite.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'옛 요청'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});await waitFor(()=>expect(categoryTest.createWrite).toHaveBeenCalledOnce());
+ view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);view.rerender(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);await waitFor(()=>expect(screen.getByPlaceholderText(placeholder)).toBeEnabled());fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'새 세션 초안'}});await act(async()=>save.resolve('saved'));expect(screen.getByPlaceholderText(placeholder)).toHaveValue('새 세션 초안');
 });
 
 async function openFiles(){
@@ -171,7 +194,7 @@ it('다른 사본의 실제 서버 완료는 관측한 사본 정리만 제공�
  metadata.command.mockResolvedValueOnce({result:{...entry.result,status:'applied',uploadStatus:'verified',cleanupStatus:'not-required'},copyMismatch:true,cleanupFailed:false,message:'서버 원요청은 완료됐지만 다른 사본입니다.'});await openFiles();
  const panel=await screen.findByRole('region',{name:'처리 중이거나 확인이 필요한 문서'});await waitFor(()=>expect(panel).toHaveTextContent('다른 사본입니다.'));expect(panel).toHaveTextContent('문서 정보: 반영 확인');expect(within(panel).queryByRole('button',{name:/같은 요청 이어하기/})).toBeNull();
  fireEvent.click(within(panel).getByRole('button',{name:/이 기기 사본 정리/}));await waitFor(()=>expect(metadata.discard).toHaveBeenCalledWith(expect.any(Object),entry.reference,entry.observedLocalText,expect.any(Function),entry.key));
- expect(screen.getByText('태백.pdf')).toBeInTheDocument();expect(screen.getByRole('button',{name:/계약/})).toBeInTheDocument();expect(service.deleteItem).not.toHaveBeenCalled();expect(transfer.createMetadata).not.toHaveBeenCalled();
+ expect(screen.getByText('태백.pdf')).toBeInTheDocument();expect(screen.getByRole('button',{name:/계약/})).toBeInTheDocument();expect(service.deleteItem).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();expect(transfer.createMetadata).not.toHaveBeenCalled();
 });
 it('실제 UID 구독 전환만으로 옛 문서 job을 숨기고 새 계정에 완료 안내를 섞지 않는다',async()=>{
  await retainedUpload(new File(['old'],'이전 계정.pdf'));await openFiles();await screen.findByText('이전 계정.pdf');
@@ -226,4 +249,47 @@ it('같은 reference의 로컬·서버 요청은 한 행으로 합치고 서버 
  const panel=await screen.findByRole('region',{name:'처리 중이거나 확인이 필요한 문서'});expect(within(panel).getAllByText(/문서 번호:/)).toHaveLength(1);expect(panel).toHaveTextContent('같은 요청.pdf');
  metadata.listPending.mockRejectedValueOnce(new Error('서버 요청 조회 실패'));fireEvent.click(screen.getByRole('button',{name:'서버 미완료 요청 새로 조회'}));expect(await screen.findByRole('alert')).toHaveTextContent('서버 요청 조회 실패');
  fireEvent.click(screen.getByRole('button',{name:'서버 미완료 요청 새로 조회'}));await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
+});
+
+it('분류 생성 ACK 유실은 최초 이름·번호를 보관하고 같은 결과 확인으로만 폼을 종결한다',async()=>{
+ const send=categoryTest.command.getMockImplementation()!;let lose=true;
+ categoryTest.command.mockImplementation(async input=>{const result=await send(input);if(lose&&input.mode==='apply'&&input.request.action==='createCategory'){lose=false;throw Error('등록 ACK 유실');}return result;});
+ await openAdd('대분류');fireEvent.change(screen.getByPlaceholderText('대분류명'),{target:{value:' 첫 분류 '}});fireEvent.keyDown(screen.getByPlaceholderText('대분류명'),{key:'Enter'});
+ const panel=await screen.findByRole('region',{name:'처리 상태를 확인할 분류 요청'});await waitFor(()=>expect(categoryTest.createWrite).toHaveBeenCalledOnce());expect(screen.getByPlaceholderText('대분류명')).toHaveValue(' 첫 분류 ');
+ const first=categoryTest.createWrite.mock.calls[0][0];expect(first).toMatchObject({action:'createCategory',name:'첫 분류',reference:{companyId:'taebaek'}});expect(first.categoryId).toBeTruthy();
+ fireEvent.click(within(panel).getByRole('button',{name:'분류 결과 확인'}));await waitFor(()=>expect(screen.queryByPlaceholderText('대분류명')).toBeNull());expect(categoryTest.createWrite).toHaveBeenCalledOnce();expect(service.addItem).not.toHaveBeenCalled();
+});
+it('분류 확인 대기에는 추가·삭제를 함께 잠그고 실제 UID 변경 뒤 옛 승인을 보내지 않는다',async()=>{
+ const confirm=pending();dialog.appConfirm.mockReturnValue(confirm.promise);await open('대분류');
+ await waitFor(()=>expect(screen.getByTitle('빈 대분류 지우기')).toBeDisabled());expect(screen.getByRole('button',{name:'대분류 추가'})).toBeDisabled();
+ await act(async()=>{testAuth.currentUser.uid='other-uid';authState.listeners.forEach(listener=>listener(testAuth.currentUser));confirm.resolve(true);});
+ expect(categoryTest.deleteWrite).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+});
+it('파일 목록을 숨긴 화면도 서버 분류 미완료 목록의 빈 페이지 다음 요청을 확인하고 중단한다',async()=>{
+ const base=categoryTest.command.getMockImplementation()!,cursor='d'.repeat(64),reference={companyId:'taebaek',planId:'server-category-plan'};
+ categoryTest.command.mockImplementation(async input=>input.mode==='listPending'?{version:1,...categoryTest.scope,entries:input.cursor?[{result:{version:1,reference,actorUid:'document-auth-uid',employeeId:'A',requestHash:'b'.repeat(64),status:'unknown',message:'서버 분류 처리 미확인'},label:'서버 분류 요청'}]:[],nextCursor:input.cursor?null:cursor}:base(input));
+ const cat={id:'cat-A',companyId:'taebaek',name:'자료',order:0,createdAt:'2026-10-01'};service.subscribeToCollection.mockImplementation((collection,cb)=>{cb(collection==='fileCabinetCategories'?[cat]:[]);return()=>{};});
+ render(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} hideDocs/>);const refresh=screen.getByRole('button',{name:'분류 요청 새로 조회'});await waitFor(()=>expect(refresh).toBeEnabled());expect(screen.queryByText('더 확인할 분류 요청이 있습니다.')).toBeNull();fireEvent.click(refresh);expect(await screen.findByText('더 확인할 분류 요청이 있습니다.')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'다음 분류 요청 확인'}));
+ const panel=await screen.findByRole('region',{name:'처리 상태를 확인할 분류 요청'});expect(panel).toHaveTextContent('서버 분류 요청');expect(within(panel).queryByRole('button',{name:'같은 분류 요청 이어하기'})).toBeNull();expect(screen.queryByLabelText('문서 파일 첨부')).toBeNull();
+ fireEvent.click(within(panel).getByRole('button',{name:'미처리 분류 요청 중단'}));await waitFor(()=>expect(categoryTest.command).toHaveBeenCalledWith({mode:'cancel',reference}));expect(categoryTest.createWrite).not.toHaveBeenCalled();expect(categoryTest.deleteWrite).not.toHaveBeenCalled();
+});
+it.each(['seedDefaults','ensurePath'] as const)('%s의 전송 전 기기 보관 실패는 명시 재조회 뒤 실제 고정 요청으로 재개한다',async action=>{
+ const cat={id:'cat-A',companyId:'taebaek',name:'자료',order:0,createdAt:'2026-10-01'};
+ service.subscribeToCollection.mockImplementation((collection,callback)=>{callback(collection==='fileCabinetCategories'&&action==='ensurePath'?[cat]:[]);return()=>{};});
+ const setItem=vi.spyOn(categoryTest.data,'set').mockImplementationOnce(()=>{throw Error('기기 분류 보관 실패');});
+ render(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} hideDocs seed={action==='ensurePath'?[{category:'자료',subCategory:'계약'}]:[]}/>);
+ expect(await screen.findByText(/기기 분류 보관 실패/)).toBeInTheDocument();setItem.mockRestore();
+ expect(categoryTest.command.mock.calls.filter(([input])=>input.mode==='apply')).toHaveLength(0);
+ fireEvent.click(screen.getByRole('button',{name:'분류 요청 새로 조회'}));
+ await waitFor(()=>expect(categoryTest.command.mock.calls.filter(([input])=>input.mode==='apply'&&input.request.action===action)).toHaveLength(1));
+ expect(service.addItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
+});
+it('분류의 손상 사본은 실제 서버 완료를 확인한 뒤 관측 사본만 정리하고 현재 입력을 완료로 닫지 않는다',async()=>{
+ const send=categoryTest.command.getMockImplementation()!;let lose=true;
+ categoryTest.command.mockImplementation(async input=>{const result=await send(input);if(lose&&input.mode==='apply'&&input.request.action==='createCategory'){lose=false;throw Error('등록 ACK 유실');}return result;});
+ await openAdd('대분류');fireEvent.change(screen.getByPlaceholderText('대분류명'),{target:{value:'보존할 초안'}});fireEvent.keyDown(screen.getByPlaceholderText('대분류명'),{key:'Enter'});
+ await waitFor(()=>expect(categoryTest.createWrite).toHaveBeenCalledOnce());await screen.findByRole('button',{name:'분류 결과 확인'});
+ const bodyKey=[...categoryTest.data.keys()].find(key=>key.endsWith(':body'))!;categoryTest.data.set(bodyKey,'{손상된 원문');
+ fireEvent.click(screen.getByRole('button',{name:'분류 요청 새로 조회'}));const clear=await screen.findByRole('button',{name:'분류 기기 사본 정리'});fireEvent.click(clear);
+ await waitFor(()=>expect(categoryTest.data.size).toBe(0));expect(categoryTest.createWrite).toHaveBeenCalledOnce();expect(screen.getByPlaceholderText('대분류명')).toHaveValue('보존할 초안');expect(service.addItem).not.toHaveBeenCalled();
 });

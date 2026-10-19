@@ -1,3 +1,4 @@
+import { documentCategoryFenceId } from './shared/documentCategoryFence';
 import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
 vi.hoisted(() => {
     process.env.FIREBASE_CONFIG = JSON.stringify({
@@ -69,6 +70,14 @@ describe.skipIf(!active)('문서 메타데이터 실제 Firestore SDK', () => {
         await doc('employees/' + actor.token.employeeId).set({
             companyId: 'taebaek'
         });
+        await doc('fileCabinetCategories/category').set({
+            companyId: 'taebaek', name: '업무'
+        });
+        await doc('fileCabinetSubCategories/sub').set({
+            companyId: 'taebaek', category: '업무', name: '일반'
+        });
+        doc('documentCategoryFences/' + documentCategoryFenceId('taebaek', '업무'));
+        doc('documentCategoryFences/' + documentCategoryFenceId('taebaek', '업무', '일반'));
     });
     afterAll(async () => {
         for (const p of owned)

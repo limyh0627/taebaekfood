@@ -32,6 +32,8 @@ import { useLoanContracts } from '../../src/shared/useLoanContracts';
 import { STANDARD_ACCOUNT } from '../../src/shared/accountChart';
 import ModalShell from '../../src/shared/components/ModalShell';
 import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
+import { usePartnerPaymentRecovery } from '../../src/features/statements/hooks/usePartnerPaymentRecovery';
+import PartnerPaymentRecoveryPanel from '../PartnerPaymentRecoveryPanel';
 
 /**
  * **일반전표 발행 — 돈이 움직였거나 움직일 일을 한 장으로 적는 창.**
@@ -206,6 +208,12 @@ export default function VoucherComposer({
   const [issueError, setIssueError] = useState('');
   const [issueCorrupt,setIssueCorrupt] = useState(false);
   const [issueSaving, setIssueSaving] = useState(false);
+  const generalSaveLock=useRef<object|null>(null);
+  const [generalSaving,setGeneralSaving]=useState(false);
+  const [generalPaymentError,setGeneralPaymentError]=useState('');
+  const generalPartner=useRef(quickPayClientId);
+  generalPartner.current=quickPayClientId;
+  useEffect(()=>{generalSaveLock.current=null;setGeneralSaving(false);setGeneralPaymentError('');},[companyId,actorId,quickPayClientId]);
   useEffect(() => {
     issueLock.current=null;setIssuePending(null); setIssueError(''); setIssueSaving(false);setIssueCorrupt(false);
     try { setIssuePending(readVoucherPending(pendingKey, companyId, actorId)); }
@@ -384,6 +392,9 @@ export default function VoucherComposer({
          */
         const pb = quickPayClientId ? partnerBalances.get(quickPayClientId) : undefined;
         const partnerTotal = stmtTypeForPay === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
+        const partnerPaymentEnabled=qpMode==='일반'&&isCashDir(qpDir)&&!!quickPayClientId;
+        const paymentRecovery=usePartnerPaymentRecovery({companyId,actorUid:actorId,partnerId:quickPayClientId,partnerName:selectedClientObj?.name??'',type:stmtTypeForPay,balance:partnerTotal,cashAccounts,recoveryOnly:true,enabled:partnerPaymentEnabled});
+        const paymentRecoveryBlocked=partnerPaymentEnabled&&!paymentRecovery.canStartNew();
         const dropClients = quickPayClientSearch.trim()
           ? partners.filter(c => companyOf(c) === companyId && c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
           : [];
@@ -438,12 +449,22 @@ export default function VoucherComposer({
         // 일반 저장 — 거래처 미수/미지급 상계 우선, 남는 금액은 계정과목 자금전표로.
         const doGeneralSave = async () => {
           if (amt <= 0) return;
+          if(generalSaveLock.current)return;
+          if(partnerPaymentEnabled&&!paymentRecovery.canStartNew()){
+            setGeneralPaymentError(paymentRecovery.getBlocker()||'이전 수금·지불 요청의 결과를 먼저 확인해 주세요.');
+            return;
+          }
           const allocations = offsetAllocations();
           if (allocations.length && plainAmt > 0) {
             alert('상계와 일반 입출금은 각각 나누어 발행해 주세요.');
             return;
           }
+          const lock={},scope=transferScope.current.token,userId=auth.currentUser?.uid,partnerId=quickPayClientId;
+          const current=()=>transferScope.current.alive&&transferScope.current.token===scope&&auth.currentUser?.uid===userId&&generalPartner.current===partnerId;
+          generalSaveLock.current=lock;setGeneralSaving(true);setGeneralPaymentError('');
+          try{
           if (allocations.length) await recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
+          if(!current())return;
           if (plainAmt > 0) {
             // 쪼갠 줄이 있으면 lines로 끊는다 — amount는 줄 합이고 accountCode는 안 쓴다(types.ts CashEntry 주석).
             await saveCashEntry({
@@ -457,6 +478,14 @@ export default function VoucherComposer({
             return;
           }
           onClose();
+          }catch(error){
+            if(current()){
+              setGeneralPaymentError(`수금·지불 저장 결과를 확인하지 못했습니다. 현재 입력은 그대로 있습니다. ${error instanceof Error?error.message:String(error)} 이전 요청 패널에서 결과 확인 또는 미처리 요청 중단을 선택해 주세요.`);
+              if(partnerPaymentEnabled)await paymentRecovery.refresh();
+            }
+          }finally{
+            if(generalSaveLock.current===lock){generalSaveLock.current=null;if(current())setGeneralSaving(false);}
+          }
         };
         // 통장에서는 한 번 나가도 전표는 두 줄로 끊는다 — 원금은 차입금(부채 감소, 재무상태표),
         // 이자는 이자비용(손익계산서). 줄마다 계정·금액이 따로 보여야 손익이 깔끔하게 갈린다.
@@ -772,7 +801,7 @@ export default function VoucherComposer({
           if (qpMode === '급여') { if (grs > 0 && ded >= 0 && net >= 0) doSalarySave(); return; }
           if (!canSave) return;
           // 상계 초과분(줄돈/받을돈 전환) 경고 — 거래처 있고 상계보다 많은데 계정도 없으면 canSave가 막음
-          void doGeneralSave().catch(error => alert(`수금·지불 저장에 실패했습니다. 입력 내용은 그대로 있습니다.\n${error instanceof Error ? error.message : String(error)}`));
+          void doGeneralSave();
         };
 
         const cashAccountField = (
@@ -789,7 +818,7 @@ export default function VoucherComposer({
           <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0"
             footer={<fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="grid grid-cols-2 gap-3">
               <button type="button" onClick={() => { onClose(); }} className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-50">취소</button>
-              <button type="button" onClick={handleQuickPaySave} disabled={!canSave || loanSaving} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"><Save size={12}/>{loanSaving ? '저장 중…' : '저장'}</button>
+              <button type="button" onClick={handleQuickPaySave} disabled={!canSave || loanSaving || generalSaving || paymentRecoveryBlocked} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"><Save size={12}/>{loanSaving||generalSaving ? '저장 중…' : '저장'}</button>
             </fieldset>}>
             {issueSaving && <p role="status" className="border-b border-slate-200 p-4 text-sm">전표를 저장 중입니다.</p>}
             {!issueSaving && issuePending?.companyId === companyId && issuePending.userId === actorId && <section className="border-b bg-amber-50 p-4 space-y-2" aria-label="저장 중이던 전표">
@@ -800,7 +829,9 @@ export default function VoucherComposer({
               <button type="button" disabled={issueSaving} onClick={() => void submitIssue(issuePending,true)} className="rounded-lg bg-emerald-600 px-4 py-2 font-bold text-white">이전 전표 재시도</button>
             </section>}
             {issueError && <p role="alert" className="px-6 py-3 text-sm text-rose-600">{issueError}</p>}
-            <fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="contents">
+            {partnerPaymentEnabled&&<section aria-label="일반전표의 이전 수금·지불 확인" className="space-y-3 border-b border-slate-200 p-4"><PartnerPaymentRecoveryPanel payment={paymentRecovery}/></section>}
+            {generalPaymentError&&<p role="alert" className="whitespace-pre-line px-6 py-3 text-sm text-rose-600">{generalPaymentError}</p>}
+            <fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt || generalSaving} className="contents">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex flex-wrap items-center gap-3 px-4 py-4 md:px-5 border-b border-slate-200 shrink-0">
