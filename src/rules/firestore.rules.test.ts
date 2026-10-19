@@ -64,6 +64,18 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  it('수동 생산 영수증은 서버 전용이고 같은 회사 자동 생산 revision 쓰기는 유지한다', async () => {
+    const worker = 태백직원();
+    const target = doc(worker, 'productionRecords', '한글-생산');
+    await assertSucceeds(setDoc(target, { companyId: 'taebaek', date: '2026-10-20', inventoryWriterProtocolVersion: 1, inventoryWriteRevision: 1 }));
+    await assertSucceeds(updateDoc(target, { date: '2026-10-21', inventoryWriteRevision: 2 }));
+    await assertFails(setDoc(doc(worker, 'productionRecords', 'foreign'), { companyId: 'punghoe', inventoryWriterProtocolVersion: 1, inventoryWriteRevision: 1 }));
+    for (const database of [worker, 관리자()]) {
+      await assertFails(setDoc(doc(database, 'productionRecordOperations', 'fake'), { companyId: 'taebaek', status: 'applied' }));
+      await assertFails(getDoc(doc(database, 'productionRecordOperations', 'fake')));
+    }
+    await assertSucceeds(deleteDoc(target));
+  });
   it.skipIf(process.env.CASH_WRITE_RULES_AUTH_TEST !== 'true')('현금·전표·기초 감사 서버 저장: 실제 로그인·양사 조회·직접 쓰기 거절·원문 보존', async () => {
     if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8082' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099') throw new Error('격리 에뮬레이터 주소를 확인하세요.');
     const prefix = `cash-rules-${randomUUID()}`;

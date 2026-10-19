@@ -1,10 +1,13 @@
+import ActionButton from '../src/shared/components/ActionButton';
+import ModalShell from '../src/shared/components/ModalShell';
+import type {ProductionRecordBindings} from '../src/shared/services/productionRecordWrites';
 import {useProductionRecordEditor} from '../src/features/production/hooks/useProductionRecordEditor';
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
 import {projectProductionRecords} from '../src/shared/productionRecordProjection';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, RawMaterialEntry, CompanyId } from '../types';
@@ -33,9 +36,7 @@ interface ProductionManagerProps {
   orders: Order[];
   ledger?: RawMaterialEntry[];
   itemFormulas?: ItemFormulaRow[];
-  onAdd: (record: ProductionRecord) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-  onUpdate: (id: string, updates: Partial<ProductionRecord>) => Promise<void>;
+  productionRecordBindings?: ProductionRecordBindings;
   currentUserName?: string;
   companyId?: CompanyId;
   actorUid?: string;
@@ -50,9 +51,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   orders,
   ledger = [],
   itemFormulas = [],
-  onAdd,
-  onDelete,
-  onUpdate,
+  productionRecordBindings,
   currentUserName,
   companyId,
   actorUid,
@@ -67,8 +66,13 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const showAll=!from&&!to;
   const [filterProductId, setFilterProductId] = useState('');
   const [searchText, setSearchText] = useState('');
-  const editor=useProductionRecordEditor({companyId,actorUid,items,orders,records,currentUserName,onAdd,onUpdate,onDelete});
+  const editor=useProductionRecordEditor({companyId,actorUid,items,orders,records,currentUserName,productionRecordBindings});
   const {form,showForm,editingDateId,editingDateVal,syncing}=editor;
+  const recoveryOwner=useRef({key:editor.recoveryScopeKey});
+  if(recoveryOwner.current.key!==editor.recoveryScopeKey)recoveryOwner.current={key:editor.recoveryScopeKey};
+  const [recovery,setRecovery]=useState<{owner:typeof recoveryOwner.current;view:'failure'|'history'}|null>(null);
+  const recoveryVisible=!!recovery&&recovery.owner===recoveryOwner.current&&editor.isCurrentActor();
+  const openRecovery=(view:'failure'|'history')=>setRecovery({owner:recoveryOwner.current,view});
   const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
   const [recLimit, setRecLimit] = useState(30);
   // #5 로트 역추적(리콜)
@@ -160,7 +164,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => void editor.syncFromOrders()}
-              disabled={editor.busy}
+              disabled={!editor.ready}
               className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm"
             >
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
@@ -168,7 +172,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </button>
             <button
               onClick={() => showForm?editor.closeForm():editor.openCreate()}
-              disabled={editor.busy}
+              disabled={!editor.ready}
               className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm"
             >
               <Plus size={14} />직접 입력
@@ -177,8 +181,30 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         }
       />
 
-      {editor.error&&<p role="alert" className="text-sm text-slate-700">{editor.error}</p>}
-      {editor.message&&<p role="status" className="text-sm text-slate-600">{editor.message}</p>}
+      {editor.inlineError&&<p role="alert" className="text-sm text-slate-700">{editor.inlineError}</p>}
+      {editor.inlineMessage&&<p role="status" className="text-sm text-slate-600">{editor.inlineMessage}</p>}
+      <section aria-label="생산 실적 처리" className="space-y-2 text-sm text-slate-600">
+        {editor.readLoading&&<p role="status">보관된 생산 실적 요청을 읽고 있습니다.</p>}
+        {editor.readError&&<p role="alert">보관 요청을 읽지 못했습니다. 처리 기록에서 다시 확인해 주세요.</p>}
+        <div className="flex flex-wrap gap-2">{editor.failureCount>0&&<ActionButton onClick={()=>openRecovery('failure')}>실패 {editor.failureCount}</ActionButton>}<ActionButton onClick={()=>openRecovery('history')}>처리 기록</ActionButton></div>
+      </section>
+      {recoveryVisible&&<ModalShell title="생산 실적 처리 확인" onClose={()=>setRecovery(null)} footer={<ActionButton onClick={()=>setRecovery(null)}>닫기</ActionButton>}>
+        <div className="space-y-3 text-sm text-slate-700">
+          <div className="flex flex-wrap gap-2"><ActionButton onClick={()=>openRecovery('failure')}>미해결만 보기</ActionButton><ActionButton onClick={()=>openRecovery('history')}>처리 기록 보기</ActionButton></div>
+          {editor.recoveryError&&<p role="alert" className="whitespace-pre-line">{editor.recoveryError}</p>}
+          {editor.recoveryMessage&&<p role="status" className="whitespace-pre-line">{editor.recoveryMessage}</p>}
+          {editor.readLoading&&<p role="status">보관한 생산 실적 요청을 읽고 있습니다.</p>}
+          {editor.readError&&<p role="alert">{editor.readError}</p>}
+          <div className="flex flex-wrap gap-2"><ActionButton disabled={editor.busy||editor.readLoading} onClick={()=>void editor.refresh()}>보관 요청 다시 읽기</ActionButton><ActionButton disabled={editor.busy||editor.historyLoading} onClick={()=>void editor.loadHistory()}>지난 처리 기록 조회</ActionButton></div>
+          {editor.historyLoading&&<p role="status">생산 실적 처리 기록을 조회하고 있습니다.</p>}{editor.historyError&&<p role="alert">{editor.historyError}</p>}
+          {editor.historyMore&&<div><p>더 확인할 생산 실적 기록이 있습니다.</p><ActionButton disabled={editor.busy||editor.historyLoading} onClick={()=>void editor.nextHistory()}>다음 기록 확인</ActionButton></div>}
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto">{(recovery.view==='failure'?editor.failureRows:editor.historyRows).map(({entry,currentState,cause,nextAction})=><article key={entry.key} className="space-y-2 border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
+            <p className="break-words font-semibold">{entry.description}</p><p>현재 상태: {currentState}</p><p className="whitespace-pre-line">내용: {cause}</p><p className="whitespace-pre-line">다음 행동: {nextAction}</p>
+            <details><summary>보관 원문 보기</summary><pre className="whitespace-pre-wrap break-words">{entry.observedLocalText??'이 기기에 보관된 본문이 없습니다.'}</pre>{entry.observedReferenceText!==null&&<pre className="whitespace-pre-wrap break-words">{entry.observedReferenceText}</pre>}</details>
+            <div className="flex flex-wrap gap-2">{entry.reference&&<ActionButton disabled={editor.busy} onClick={()=>void editor.inspect(entry)}>결과 확인</ActionButton>}{editor.canRetry(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.retry(entry)}>같은 요청 재시도</ActionButton>}{editor.canCancel(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.cancel(entry)}>미처리 요청 중단</ActionButton>}{editor.canDiscard(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.discardCopy(entry)}>이 기기 사본만 정리</ActionButton>}</div>
+          </article>)}</div>
+        </div>
+      </ModalShell>}
       {/* 입력 폼 */}
       {showForm && (
         <div className="bg-white rounded-2xl border border-emerald-200 p-5 space-y-4">
@@ -491,7 +517,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                         </div>
                       ) : (
                         <button
-                          onClick={() => editor.openDate(r)} disabled={editor.busy} aria-label={`${r.itemName} 생산일 수정`}
+                          onClick={() => editor.openDate(r)} disabled={!editor.ready} aria-label={`${r.itemName} 생산일 수정`}
                           className="flex items-center gap-1 group font-bold text-slate-600"
                         >
                           {formatDate(r.date)}

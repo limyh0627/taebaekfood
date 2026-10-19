@@ -1,3 +1,4 @@
+import {productionRecordWrites} from '../../shared/services/productionRecordWrites';
 import {workOrderWrites} from '../../shared/services/workOrderWrites';
 import {openCompanyInfo,saveCompanyInfo,readCompanyInfoOperations,inspectCompanyInfoOperation,retryCompanyInfoOperation,cancelCompanyInfoOperation,discardCompanyInfoCopy,listCompanyInfoHistory,type CompanyInfoContext,type CompanyInfoSaveContext} from '../statements/infrastructure/companyInfoWrites';
 import type {CompanyInfoEditorOptions} from '../statements/hooks/useCompanyInfoEditor';
@@ -4736,9 +4737,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 orders={allOrders}
                 ledger={mergedRawMaterialLedger}
                 itemFormulas={itemFormulas}
-                onAdd={(record) => addItem('productionRecords', record)}
-                onDelete={(id) => deleteItem('productionRecords', id)}
-                onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
+                productionRecordBindings={productionRecordWrites}
                 currentUserName={currentUser?.name}
               />
             </React.Suspense>

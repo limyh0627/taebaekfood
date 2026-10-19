@@ -1,21 +1,23 @@
 /** @vitest-environment jsdom */
 import type React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Item } from '../types';
 import ProductionManager from './ProductionManager';
+import type {ProductionRecordBindings} from '../src/shared/services/productionRecordWrites';
+const classificationBindings:ProductionRecordBindings={read:async()=>[],open:async()=>{throw Error('표시 시험에서 열기 송신은 없어야 합니다.');},prepare:async()=>{throw Error('표시 시험에서 원문 작성은 없어야 합니다.');},command:vi.fn(async()=>{throw Error('표시 시험에서 업무 송신은 없어야 합니다.');}),discard:async()=>({status:'blocked',message:'표시 시험'}),history:async(scope)=>({version:1,companyId:scope.companyId,actorUid:scope.actorUid,entries:[],nextCursor:null})};
 const authFixture=vi.hoisted(()=>({currentUser:{uid:'production-actor'}}));
 vi.mock('../src/shared/firebase',()=>({auth:authFixture}));
 vi.mock('firebase/auth',()=>({onAuthStateChanged:()=>()=>{}}));
-it('생산 제목 뒤 행동과 조회를 두고 직접 입력 폼을 열어도 검색값과 writer는 유지한다',()=>{
- const add=vi.fn();render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={[]} orders={[]} items={[]} onAdd={add} onDelete={vi.fn()} onUpdate={vi.fn()}/>);
+it('생산 제목 뒤 행동과 조회를 두고 직접 입력 폼을 열어도 검색값과 writer는 유지한다',async()=>{
+ const add=vi.fn();render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={[]} orders={[]} items={[]} productionRecordBindings={{...classificationBindings,command:add}}/>);
  const heading=screen.getByRole('heading',{name:'생산 실적'}),direct=screen.getByRole('button',{name:'직접 입력'}),search=screen.getByPlaceholderText('품목명/메모 검색');
  expect(heading.compareDocumentPosition(direct)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(direct.compareDocumentPosition(search)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(direct).toHaveClass('h-9');expect(search).toHaveClass('h-10');
  const query=screen.getByRole('region',{name:'검색조건'});expect([...query.querySelectorAll('[data-query-row]')].map(row=>row.getAttribute('data-query-row'))).toEqual(['date','condition','search']);expect(query.querySelector('[data-query-row="date"]')).toContainElement(screen.getByRole('button',{name:'이전달'}));for(const [label,icon] of [['이전달','chevron-left'],['다음달','chevron-right']]){const button=within(query).getByRole('button',{name:label});expect(button).toHaveAttribute('title',label);expect(button).toHaveClass('h-10','w-10');expect(button).toHaveTextContent('');expect(button.textContent).toBe('');expect(button.querySelector('.lucide-'+icon)).toHaveAttribute('aria-hidden','true');}expect(query).toContainElement(search);expect(screen.getByLabelText('전체 검색')).toBe(search);expect(screen.getByLabelText('품목')).toHaveClass('h-10');
- fireEvent.change(search,{target:{value:'검수 검색'}});fireEvent.click(direct);expect(screen.getByRole('heading',{name:'신규 생산 실적'})).toBeInTheDocument();expect(search).toHaveValue('검수 검색');expect(add).not.toHaveBeenCalled();
+ fireEvent.change(search,{target:{value:'검수 검색'}});await act(async()=>{});fireEvent.click(direct);expect(screen.getByRole('heading',{name:'신규 생산 실적'})).toBeInTheDocument();expect(search).toHaveValue('검수 검색');expect(add).not.toHaveBeenCalled();
 });
 
-it('현재 품목 분류로 생산·반제품 선택을 제공하고 보관 품목은 제외한다', () => {
+it('현재 품목 분류로 생산·반제품 선택을 제공하고 보관 품목은 제외한다', async () => {
   const items = [
     { id: 'p', name: '현재 완제품', type: 'product' },
     { id: 'w', name: '현재 반제품', type: 'wip' },
@@ -23,8 +25,8 @@ it('현재 품목 분류로 생산·반제품 선택을 제공하고 보관 품�
     { id: 'r', name: '원료', type: 'raw' },
   ].map(item => ({ stock: 10, unit: '개', ...item })) as Item[];
   render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={[]} orders={[]} items={items}
-    onAdd={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }));
+    productionRecordBindings={classificationBindings} />);
+  await act(async()=>{});fireEvent.click(screen.getByRole('button', { name: '직접 입력' }));
   const products = within(screen.getByRole('combobox', { name: '생산 품목' }));
   const wip = within(screen.getByRole('combobox', { name: '투입 반제품' }));
   expect(products.getByRole('option', { name: '현재 완제품' })).toBeTruthy();
@@ -34,14 +36,14 @@ it('현재 품목 분류로 생산·반제품 선택을 제공하고 보관 품�
   expect(wip.queryByRole('option', { name: '현재 완제품' })).toBeNull();
 });
 
-it('생산 조회 초기화는 검색과 기간·품목 선택만 복원하고 직접 입력 writer를 호출하지 않는다',()=>{const add=vi.fn();render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={[]} orders={[]} items={[]} onAdd={add} onDelete={vi.fn()} onUpdate={vi.fn()}/>);const query=screen.getByRole('region',{name:'검색조건'}),search=screen.getByPlaceholderText('품목명/메모 검색');fireEvent.change(search,{target:{value:'조건'}});fireEvent.click(within(query).getByRole('button',{name:'전체'}));fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(within(query).getByRole('button',{name:'품목'})).toHaveTextContent('전체 품목');expect(add).not.toHaveBeenCalled();});
+it('생산 조회 초기화는 검색과 기간·품목 선택만 복원하고 직접 입력 writer를 호출하지 않는다',()=>{const add=vi.fn();render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={[]} orders={[]} items={[]} productionRecordBindings={{...classificationBindings,command:add}}/>);const query=screen.getByRole('region',{name:'검색조건'}),search=screen.getByPlaceholderText('품목명/메모 검색');fireEvent.change(search,{target:{value:'조건'}});fireEvent.click(within(query).getByRole('button',{name:'전체'}));fireEvent.click(within(query).getByRole('button',{name:'초기화'}));expect(search).toHaveValue('');expect(within(query).getByRole('button',{name:'품목'})).toHaveTextContent('전체 품목');expect(add).not.toHaveBeenCalled();});
 
 afterEach(()=>vi.useRealTimers());
 
 it('생산일 기본은 월말까지이며 하루·전체·월이동·공용당월과 초기화가 요약과 목록에 함께 적용된다',()=>{
  vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-12T03:00:00Z'));
  const rows=['2026-09-30','2026-10-01','2026-10-12','2026-10-31','2026-11-01','2026-02-30','',undefined].map((date,i)=>({id:'date-'+i,date,itemId:'p',itemName:'날짜완제품',finishedQty:i+1,rawInputs:[],createdAt:'2026-10-12',note:'실적-'+i}));
- const add=vi.fn(),sync=vi.fn();render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={rows as React.ComponentProps<typeof ProductionManager>['records']} orders={[]} items={[{id:'p',name:'날짜완제품',type:'product',unit:'개',stock:0} as Item]} onAdd={add} onDelete={vi.fn()} onUpdate={sync}/>);
+ const add=vi.fn(),sync=add;render(<ProductionManager companyId="taebaek" actorUid="production-actor" records={rows as React.ComponentProps<typeof ProductionManager>['records']} orders={[]} items={[{id:'p',name:'날짜완제품',type:'product',unit:'개',stock:0} as Item]} productionRecordBindings={{...classificationBindings,command:add}}/>);
  const panel=screen.getByRole('region',{name:'검색조건'}),start=screen.getByLabelText('생산일 시작일'),end=screen.getByLabelText('생산일 종료일');
  expect(start).toHaveValue('2026-10-01');expect(end).toHaveValue('2026-10-31');expect(screen.getByText('실적-3')).toBeInTheDocument();expect(screen.queryByText('실적-4')).toBeNull();
  fireEvent.change(start,{target:{value:'2026-10-12'}});fireEvent.change(end,{target:{value:'2026-10-12'}});expect(screen.getByText('실적-2')).toBeInTheDocument();expect(screen.queryByText('실적-1')).toBeNull();expect(screen.queryByText('실적-3')).toBeNull();expect(screen.getByText('1종 · 합계 3개')).toBeInTheDocument();
