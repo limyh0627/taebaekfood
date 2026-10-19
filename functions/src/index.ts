@@ -377,3 +377,5 @@ export {noticeCommand,cleanupLateNoticeUpload} from './noticeCommand';
 export { partnerAdvanceRecoveryCommand } from './partnerAdvanceCommand';
 export { workOrderCommand } from './workOrderCommand';
 export { productionRecordCommand } from './productionRecordCommand';
+
+export { partnerEditCommand } from './partnerEditCommand';

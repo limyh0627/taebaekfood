@@ -64,6 +64,17 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  it('거래처 편집 영수증은 서버 전용이며 기존 같은 회사 직원 generic 거래처 수정은 유지한다', async () => {
+    const worker = 태백직원(), row = doc(worker, 'partners', 'partner-edit-legacy');
+    await assertSucceeds(setDoc(row, { companyId: 'taebaek', name: '기존' }));
+    await assertSucceeds(updateDoc(row, { name: '' }));
+    await assertFails(updateDoc(doc(풍회직원(), 'partners', 'partner-edit-legacy'), { name: '타회사' }));
+    for (const database of [worker, 관리자()]) {
+      await assertFails(setDoc(doc(database, 'partnerEditOperations', 'fake'), { companyId: 'taebaek' }));
+      await assertFails(getDoc(doc(database, 'partnerEditOperations', 'fake')));
+    }
+    await assertSucceeds(deleteDoc(row));
+  });
   it('수동 생산 영수증은 서버 전용이고 같은 회사 자동 생산 revision 쓰기는 유지한다', async () => {
     const worker = 태백직원();
     const target = doc(worker, 'productionRecords', '한글-생산');

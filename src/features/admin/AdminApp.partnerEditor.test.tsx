@@ -1,0 +1,15 @@
+/** @vitest-environment jsdom */
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import { expect, it, vi } from 'vitest';
+const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8'), tree = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+function ports(deps: Record<string, unknown>) { const expressions = new Map<string, string>(); function visit(node: ts.Node) { if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText(tree) === 'PartnerManager')
+    for (const attr of node.attributes.properties)
+        if (ts.isJsxAttribute(attr) && attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression)
+            expressions.set(attr.name.getText(tree), attr.initializer.expression.getText(tree)); ts.forEachChild(node, visit); } visit(tree); return (name: string) => { const expression = expressions.get(name); if (!expression)
+    throw Error('실제 부모 포트 없음 ' + name); const js = ts.transpileModule('const value=(' + expression + ');', { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText; return Function(...Object.keys(deps), js + 'return value;')(...Object.values(deps)); }; }
+it('거래처 편집 부모는 선택 목록과 실회사·UID를 typed bundle에 직접 연결한다', () => { const partners = [{ id: 'p', name: '원문', hidden: '보존' }], partnerEditWrites = { command: vi.fn() }, get = ports({ companyId: 'punghoe', employeeEditRenderUid: 'actor-B', companyPartners: partners, partnerEditWrites }); expect(get('companyId')).toBe('punghoe'); expect(get('actorUid')).toBe('actor-B'); expect(get('partners')).toBe(partners); expect(get('partnerEditBindings')).toBe(partnerEditWrites); expect(() => get('onUpdateClient')).toThrow('실제 부모 포트 없음'); });
+it('기존 고정 ID 신규등록은 회사와 등록 옵션을 유지하고 실제 Promise를 반환한다', async () => { let finish!: () => void; const pending = new Promise<void>(resolve => finish = resolve), addItem = vi.fn(() => pending), get = ports({ companyId: 'taebaek', addItem }), row = { id: 'fixed-id', name: '새 거래처', shipTos: [] }; expect(get('onAddClient')(row)).toBe(pending); expect(addItem).toHaveBeenCalledExactlyOnceWith('partners', { ...row, companyId: 'taebaek' }, { partnerRegistration: true }); finish(); await pending; });
+it('기존 삭제는 directoryDelete bundle이고 작업순서·복사주문 포트를 변경하지 않는다', () => { const found: string[] = []; function visit(node: ts.Node) { if (ts.isJsxSpreadAttribute(node) && node.expression.getText(tree) === 'directoryDeleteBindings')
+    found.push(node.getText(tree)); if (ts.isJsxAttribute(node) && ['workOrderBindings', 'onDraftChange', 'productionRecordBindings'].includes(node.name.getText(tree)))
+    found.push(node.getText(tree)); ts.forEachChild(node, visit); } visit(tree); expect(found).toContain('{...directoryDeleteBindings}'); expect(found).toContain('workOrderBindings={workOrderWrites}'); expect(found).toContain('onDraftChange={copyRecovery.updateDraftSignature}'); expect(found).toContain('productionRecordBindings={productionRecordWrites}'); });

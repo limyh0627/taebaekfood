@@ -7,14 +7,16 @@ import ModalShell from '../../../shared/components/ModalShell';
 interface PartnerEditModalProps {
  editForm: Partner;
  setEditForm: React.Dispatch<React.SetStateAction<Partner | null>>;
- isSaving: boolean; saveError: string;
+ isSaving: boolean; locked?: boolean; recoveryActions?:React.ReactNode; canReopen?: boolean; onReopen?:()=>void; saveError: string;
  onClose: () => void; onSave: () => void; onDelete: () => void; onSearchAddress: () => void;
 }
-export function PartnerEditModal({ editForm, setEditForm, isSaving, saveError, onClose, onSave, onDelete, onSearchAddress }: PartnerEditModalProps) {
+export function PartnerEditModal({ editForm, setEditForm, isSaving, locked=false, recoveryActions, canReopen=false, onReopen, saveError, onClose, onSave, onDelete, onSearchAddress }: PartnerEditModalProps) {
  return (
         <ModalShell title="거래처 수정" onClose={onClose} bodyClassName="!p-0">
+            {recoveryActions&&<div className="px-5 pt-4">{recoveryActions}</div>}
+            {canReopen&&<div className="px-5 pt-4"><button type="button" disabled={isSaving} onClick={onReopen} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600">현재 거래처 다시 열기</button></div>}
             {/* 폼 */}
-            <fieldset disabled={isSaving} className="min-w-0 px-5 py-5 space-y-4">
+            <fieldset disabled={isSaving||locked} className="min-w-0 px-5 py-5 space-y-4">
               {/* 거래처명 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">거래처명</label>
@@ -202,7 +204,7 @@ export function PartnerEditModal({ editForm, setEditForm, isSaving, saveError, o
                 <button disabled={isSaving} onClick={onClose} className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">
                   취소
                 </button>
-                <button disabled={isSaving} onClick={onSave} className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
+                <button disabled={isSaving||locked} onClick={onSave} className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
                   <Check size={14} />{isSaving ? '저장 중…' : '저장'}
                 </button>
               </div>

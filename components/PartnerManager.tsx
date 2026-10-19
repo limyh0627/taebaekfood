@@ -1,3 +1,6 @@
+import ModalShell from '../src/shared/components/ModalShell';
+import {usePartnerEditor} from '../src/features/partners/hooks/usePartnerEditor';
+import type {PartnerEditBindings} from '../src/shared/services/partnerEditWrites';
 import {useDirectoryDelete,type DirectoryDeleteBindings} from '../src/shared/hooks/useDirectoryDelete';
 import DirectoryDeleteDialogs from '../src/shared/components/DirectoryDeleteDialogs';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
@@ -5,7 +8,7 @@ import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS 
 import { PartnerEditModal } from '../src/features/partners/ui/PartnerEditModal';
 import ActionButton from '../src/shared/components/ActionButton';
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   Users,
   Plus,
@@ -26,44 +29,35 @@ import RegionSelect from './RegionSelect';
 import { Partner, PartnerChannel, PartnerType } from '../types';
 
 //  window.daum 타입은 [AddPartnerModal](AddPartnerModal.tsx) 이 한 번만 선언한다
-import AddPartnerModal, { partnerSaveErrorMessage } from './AddPartnerModal';
+import AddPartnerModal from './AddPartnerModal';
 import PageHeader from './PageHeader';
 import { isShipMethod, isShippingPartner } from '../src/shared/partnerShipping';
 import type { ShipMethod } from '../src/shared/types';
 
 interface PartnerManagerProps extends DirectoryDeleteBindings {
   partners: Partner[];
-  onUpdateClient: (_client: Partner) => void | Promise<unknown>;
+  companyId?: Partner['companyId'];
+  actorUid?: string;
+  partnerEditBindings?: PartnerEditBindings;
   onAddClient: (_client: Partner) => void | Promise<unknown>;
 }
 
-const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClient, onAddClient,requestScopeKey,onPrepareDirectoryDelete,onConfirmDirectoryDelete,onInspectDirectoryDelete,onCancelDirectoryDelete,onReadPendingDirectoryDeletes,onReadDirectoryDeleteReferences }) => {
+const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, companyId, actorUid, partnerEditBindings, onAddClient,requestScopeKey,onPrepareDirectoryDelete,onConfirmDirectoryDelete,onInspectDirectoryDelete,onCancelDirectoryDelete,onReadPendingDirectoryDeletes,onReadDirectoryDeleteReferences }) => {
   const deletion=useDirectoryDelete({scopeKey:'partners:'+(requestScopeKey??''),prepare:onPrepareDirectoryDelete,confirm:onConfirmDirectoryDelete,inspect:onInspectDirectoryDelete,cancel:onCancelDirectoryDelete,readPending:onReadPendingDirectoryDeletes,readReferences:onReadDirectoryDeleteReferences});
-  const [editForm, setEditForm] = useState<Partner | null>(null);
+
   const [activeTab, setActiveTab] = useState<PartnerType | '전체'>('전체');
   const [activeTypeTab, setActiveTypeTab] = useState<PartnerChannel | '전체'>('전체');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const savingRef = useRef(false);
-  const formGeneration = useRef(0);
-  const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; formGeneration.current += 1; }; }, []);
-  const openEditing = (partner: Partner) => {
-    if (savingRef.current||deletion.busy) return;
-    formGeneration.current += 1;
-    setSaveError('');
-    if(deletion.select({kind:'partner',targetId:partner.id,opening:{...partner}}))setEditForm({ ...partner });
-  };
-  const closeEditing = () => {
-    if (savingRef.current||deletion.busy) return;
-    formGeneration.current += 1;
-    setSaveError('');
-    setEditForm(null);
-  };
-  useEffect(()=>{formGeneration.current+=1;setEditForm(null);setSaveError('');},[requestScopeKey]);
+  const editor=usePartnerEditor({companyId,actorUid,partners,partnerEditBindings,externalBusy:deletion.busy,selectOpening:original=>deletion.select({kind:'partner',targetId:original.id,opening:{...original}})});
+  const {editForm,setEditForm,isSaving,openEditing,closeEditing,saveEditing}=editor;
+  const deleteAck=useRef<((id:string)=>void)|null>(null);
+  const recoveryOwner=useRef({key:editor.recoveryScopeKey});
+  if(recoveryOwner.current.key!==editor.recoveryScopeKey)recoveryOwner.current={key:editor.recoveryScopeKey};
+  const [recovery,setRecovery]=useState<{owner:typeof recoveryOwner.current;view:'failure'|'history'}|null>(null);
+  const recoveryVisible=!!recovery&&recovery.owner===recoveryOwner.current&&editor.isCurrentActor();
+  const openRecovery=(view:'failure'|'history')=>setRecovery({owner:recoveryOwner.current,view});
   const PAGE_SIZE = 15;
 
   const partnerTabs: { id: PartnerType | '전체', label: string }[] = [
@@ -101,23 +95,6 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
   const safePage = Math.min(page, totalPages);
   const pagedClients = filteredClients.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const saveEditing = async () => {
-    if (!editForm || savingRef.current || deletion.busy || !mounted.current) return;
-    const generation = formGeneration.current;
-    savingRef.current = true;
-    setIsSaving(true);
-    setSaveError('');
-    try {
-      await onUpdateClient(editForm);
-      if (mounted.current && generation === formGeneration.current) setEditForm(null);
-    } catch (error) {
-      if (mounted.current && generation === formGeneration.current) setSaveError(partnerSaveErrorMessage(error));
-    } finally {
-      savingRef.current = false;
-      if (mounted.current && generation === formGeneration.current) setIsSaving(false);
-    }
-  };
-
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
       <PageHeader
@@ -145,7 +122,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         </div>
         }
         actions={
-          <ActionButton tone="primary" disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}>
+          <ActionButton tone="primary" disabled={isSaving} onClick={() => { if (!editor.isBusy()&&!deletion.busy) setIsAddModalOpen(true); }}>
             <Plus size={15} /><span>거래처 등록</span>
           </ActionButton>
         }
@@ -262,18 +239,28 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         )}
       </div>
 
+      {editor.inlineMessage&&<p role="status">{editor.inlineMessage}</p>}
+      {editor.readError&&<p role="alert">보관 요청을 읽지 못했습니다. 처리 기록에서 다시 확인해 주세요.</p>}
+      {!editForm&&<div className="flex flex-wrap gap-2">{editor.failureCount>0&&<ActionButton onClick={()=>openRecovery('failure')}>실패 {editor.failureCount}</ActionButton>}<ActionButton onClick={()=>openRecovery('history')}>처리 기록</ActionButton></div>}
+      {recoveryVisible&&<ModalShell title="거래처 수정 처리 확인" layer={1100} onClose={()=>setRecovery(null)} footer={<ActionButton onClick={()=>setRecovery(null)}>닫기</ActionButton>}>
+        <div className="space-y-3 text-sm text-slate-700">
+          <div className="flex flex-wrap gap-2"><ActionButton onClick={()=>openRecovery('failure')}>미해결만 보기</ActionButton><ActionButton onClick={()=>openRecovery('history')}>처리 기록 보기</ActionButton></div>
+          {editor.recoveryError&&<p role="alert">{editor.recoveryError}</p>}{editor.recoveryMessage&&<p role="status">{editor.recoveryMessage}</p>}
+          {editor.readLoading&&<p role="status">보관된 수정 요청을 읽고 있습니다.</p>}{editor.readError&&<p role="alert">{editor.readError}</p>}
+          <div className="flex flex-wrap gap-2"><ActionButton disabled={editor.busy||editor.readLoading} onClick={()=>void editor.refresh()}>보관 요청 다시 읽기</ActionButton><ActionButton disabled={editor.busy||editor.historyLoading} onClick={()=>void editor.loadHistory()}>지난 처리 기록 조회</ActionButton></div>
+          {editor.historyLoading&&<p role="status">거래처 수정 처리 기록을 조회하고 있습니다.</p>}{editor.historyError&&<p role="alert">{editor.historyError}</p>}
+          {(recovery.view==='failure'?editor.failureRows:editor.historyRows).map(({entry,currentState,cause,nextAction})=><div key={entry.key} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+            <p className="break-words font-semibold">{entry.description}</p><p>현재 상태: {currentState}</p><p className="whitespace-pre-line">내용: {cause}</p><p className="whitespace-pre-line">다음 행동: {nextAction}</p>
+            {entry.observedLocalText!==null&&<details className="text-xs"><summary>보관한 수정 원문</summary><pre className="mt-2 whitespace-pre-wrap break-all">{entry.observedLocalText}</pre></details>}
+            <div className="flex flex-wrap gap-2">{entry.reference&&<ActionButton disabled={editor.busy} onClick={()=>void editor.inspect(entry)}>결과 확인</ActionButton>}{editor.canRetry(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.retry(entry)}>같은 요청 재시도</ActionButton>}{editor.canCancel(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.cancel(entry)}>미처리 요청 중단</ActionButton>}{editor.canDiscard(entry)&&<ActionButton disabled={editor.busy} onClick={()=>void editor.discardCopy(entry)}>이 기기의 사본 정리</ActionButton>}</div>
+          </div>)}
+          {editor.historyMore&&<ActionButton disabled={editor.busy||editor.historyLoading} onClick={()=>void editor.nextHistory()}>다음 처리 기록</ActionButton>}
+        </div>
+      </ModalShell>}
       {/* 수정 오버레이 모달 */}
       {editForm && (
-        <PartnerEditModal editForm={editForm} setEditForm={setEditForm} isSaving={isSaving||deletion.busy} saveError={saveError}
-          onClose={closeEditing} onSave={saveEditing} onDelete={()=>{if(!savingRef.current)void deletion.openSelected();}} onSearchAddress={() => {
-                      const generation = formGeneration.current;
-                      const partnerId = editForm.id;
-                      new window.daum.Postcode({
-                        oncomplete: (data) => {
-                          if (mounted.current && !savingRef.current && generation === formGeneration.current) setEditForm(prev => prev?.id === partnerId ? { ...prev, address: data.address } : prev);
-                        },
-                      }).open();
-                    }} />
+        <PartnerEditModal editForm={editForm} setEditForm={setEditForm} isSaving={editor.busy||deletion.busy} locked={editor.locked} recoveryActions={<div className="flex flex-wrap gap-2">{editor.failureCount>0&&<ActionButton disabled={editor.busy} onClick={()=>openRecovery('failure')}>실패 {editor.failureCount}</ActionButton>}<ActionButton disabled={editor.busy} onClick={()=>openRecovery('history')}>처리 기록</ActionButton></div>} canReopen={editor.canReopenCurrent} onReopen={()=>void editor.reopenCurrent()} saveError={editor.inlineError}
+          onClose={closeEditing} onSave={()=>void saveEditing()} onDelete={()=>{if(!editor.isBusy()){deleteAck.current=editor.captureDeleteGuard();void deletion.openSelected();}}} onSearchAddress={editor.searchAddress} />
       )}
 
       {isAddModalOpen && (
@@ -283,7 +270,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
           onOpenExisting={openEditing}
         />
       )}
-      <DirectoryDeleteDialogs controller={deletion} onConfirmed={id=>{if(editForm?.id===id){formGeneration.current+=1;setEditForm(null);}}}/>
+      <DirectoryDeleteDialogs controller={deletion} onConfirmed={id=>deleteAck.current?.(id)}/>
     </div>
   );
 };
