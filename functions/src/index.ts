@@ -364,3 +364,5 @@ export {employeeEditCommand} from './employeeEditCommand';
 export {partnerItemTermsCommand} from './partnerItemTermsCommand';
 export {directoryDeleteCommand} from './directoryDeleteCommand';
 export {quotationCommand} from './quotationCommand';
+
+export {accountManagementCommand} from './accountManagementCommand';

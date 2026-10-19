@@ -1,3 +1,5 @@
+import type { AccountManagementReference } from '../../shared/accountManagementCommand';
+import type { AccountCode, AccountGroup } from '../../shared/types';
 import {prepareDirectoryDelete,confirmDirectoryDelete,inspectDirectoryDelete,cancelDirectoryDelete,pendingDirectoryDeletes,directoryDeleteReferences,type DirectoryDeleteInput,type DirectoryDeleteOutcome,type DirectoryDeletePrepared} from '../../shared/services/directoryDeleteWrites';
 import type {DirectoryDeleteReference} from '../../shared/directoryDeleteCommand';
 import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
@@ -10,7 +12,7 @@ import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,c
 import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
 import { primaryCommitted, type SaveOutcome } from '../../shared/saveOutcome';
-import { saveAccountCodeEdit, saveAccountGroupEdit, type AccountEditContext, type AccountCodeEditPatch, type AccountGroupEditPatch } from './infrastructure/accountManagementWrites';
+import { saveAccountCodeEdit, saveAccountGroupEdit, saveAccountCodeCreate, saveAccountGroupCreate, deleteAccountCode, deleteAccountGroup, readAccountOperationReferences, inspectAccountOperation, retryAccountOperation, cancelAccountOperation, discardAccountOperationCopy, type AccountOperationContext, type AccountEditContext, type AccountCodeEditPatch, type AccountGroupEditPatch } from './infrastructure/accountManagementWrites';
 import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
 import { submitLeaveRequests, submitLeaveAction, inspectLeaveAction, cancelLeaveAction, pendingLeaveActions, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
 import type { LeaveMutationAction } from '../../shared/leaveRequestCommand';
@@ -440,23 +442,51 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const partnerTermsBindings={requestScopeKey:termsActor??'',onSavePartnerItemTerms:savePartnerItemTerms,onReadPendingPartnerItemTerms:readPendingPartnerTerms,onReadPartnerItemTermsReferences:readPartnerTermsReferences,onInspectPartnerItemTerms:inspectPartnerTerms,onCancelPartnerItemTerms:cancelPartnerTerms};
 
   // 저장 ACK와 목록 재조회 요청은 다른 단계다. 뒤의 오류를 주업무 미저장으로 바꾸지 않는다.
-  const saveProfitAccountEdit = async (id: string, context: AccountEditContext, save: () => Promise<SaveOutcome>): Promise<SaveOutcome> => {
+  const saveProfitAccountChange = async (id: string, context: AccountEditContext, save: () => Promise<SaveOutcome>): Promise<SaveOutcome> => {
     if (context.companyId !== companyId || !context.isCurrent()) return {
-      status: 'rejected', message: '회사 또는 계정 편집 화면이 바뀌어 저장하지 않았습니다. 현재 화면에서 다시 열어 주세요.',
+      status: 'rejected', message: '회사 또는 계정 관리 화면이 바뀌어 저장하지 않았습니다. 현재 화면에서 다시 열어 주세요.',
     };
     const result = await save();
     if (!primaryCommitted(result, id) || context.companyId !== companyId || !context.isCurrent()) return result;
     try { refreshStaticData(); }
     catch { return {
       status: 'partial', reason: 'followup-unconfirmed', committedIds: [id], unconfirmedIds: [],
-      message: '계정은 저장됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
+      message: '계정 처리는 완료됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
     }; }
     return result;
   };
   const updateProfitAccountCode = (id: string, patch: AccountCodeEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
-    saveProfitAccountEdit(id, context, () => saveAccountCodeEdit(id, patch, context));
+    saveProfitAccountChange(id, context, () => saveAccountCodeEdit(id, patch, context));
   const updateProfitAccountGroup = (id: string, patch: AccountGroupEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
-    saveProfitAccountEdit(id, context, () => saveAccountGroupEdit(id, patch, context));
+    saveProfitAccountChange(id, context, () => saveAccountGroupEdit(id, patch, context));
+
+  const createProfitAccountCode = (data: AccountCode, context: AccountOperationContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(data.id, context, () => saveAccountCodeCreate(data, context));
+  const createProfitAccountGroup = (data: AccountGroup, context: AccountOperationContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(data.id, context, () => saveAccountGroupCreate(data, context));
+  const removeProfitAccountCode = (opening: AccountCode, context: AccountOperationContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(opening.id, context, () => deleteAccountCode(opening, context));
+  const removeProfitAccountGroup = (opening: AccountGroup, context: AccountOperationContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(opening.id, context, () => deleteAccountGroup(opening, context));
+
+  const readProfitAccountOperations = async (context: AccountEditContext) => {
+    if (context.companyId !== companyId || !context.isCurrent() || auth.currentUser?.uid !== context.actorUid)
+      throw new Error('회사 또는 로그인 계정이 바뀌었습니다. 현재 화면에서 다시 확인해 주세요.');
+    return readAccountOperationReferences({companyId, actorUid:context.actorUid});
+  };
+  const inspectProfitAccountOperation = (reference: AccountManagementReference, context: AccountEditContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(reference.targetId, context, () => inspectAccountOperation(reference, context));
+  const retryProfitAccountOperation = (reference: AccountManagementReference, context: AccountEditContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(reference.targetId, context, () => retryAccountOperation(reference, context));
+  const cancelProfitAccountOperation = (reference: AccountManagementReference, context: AccountEditContext): Promise<SaveOutcome> =>
+    saveProfitAccountChange(reference.targetId, context, () => cancelAccountOperation(reference, context));
+
+  const discardProfitAccountOperationCopy = async (reference: AccountManagementReference, observedLocalText: string, context: AccountEditContext): Promise<SaveOutcome> => {
+    if (reference.companyId !== companyId || context.companyId !== companyId || !context.isCurrent() || auth.currentUser?.uid !== context.actorUid)
+      return {status:'rejected',message:'회사 또는 로그인 계정이 바뀌어 이 기기의 사본을 정리하지 않았습니다. 현재 화면에서 다시 확인해 주세요.'};
+    // 기기 사본 정리는 등록·삭제 성공이 아니므로 업무 목록 갱신과 분리한다.
+    return discardAccountOperationCopy(reference, observedLocalText, context);
+  };
 
   // partners 컬렉션
 
@@ -4429,11 +4459,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
                 onUpdateAccountCode={updateProfitAccountCode}
-                onAddAccountCode={async (data) => { const id = await addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }); refreshStaticData(); return id; } }
-                onDeleteAccountCode={(id) => { deleteItem('accountCodes', id); refreshStaticData(); }}
-                onAddAccountGroup={async (data) => { const id = await addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }); refreshStaticData(); return id; }}
+                onAddAccountCode={createProfitAccountCode}
+                onDeleteAccountCode={removeProfitAccountCode}
+                onAddAccountGroup={createProfitAccountGroup}
                 onUpdateAccountGroup={updateProfitAccountGroup}
-                onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
+                onDeleteAccountGroup={removeProfitAccountGroup}
+                onReadAccountOperations={readProfitAccountOperations}
+                onInspectAccountOperation={inspectProfitAccountOperation}
+                onRetryAccountOperation={retryProfitAccountOperation}
+                onCancelAccountOperation={cancelProfitAccountOperation}
+                onDiscardAccountOperationCopy={discardProfitAccountOperationCopy}
                 inventorySnapshots={companySnapshots}
                 /* 회사를 안 박으면 풍회 기말재고가 **태백 것을 덮어쓴다** — id에도 회사가 들어가야 한다 */
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, companyId, id: invSnapDocId(companyId, data.yearMonth) }); }}

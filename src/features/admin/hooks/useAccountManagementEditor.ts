@@ -11,6 +11,7 @@ type Session = { kind: 'group'; id: string; original: GroupDraft; draft: GroupDr
 export interface AccountManagementEditorOptions {
   companyId: CompanyId;
   actorUid?: string;
+  isOtherBusy?: () => boolean;
   onUpdateGroup?: (id: string, patch: AccountGroupEditPatch, context: AccountEditContext) => Promise<SaveOutcome>;
   onUpdateCode?: (id: string, patch: AccountCodeEditPatch, context: AccountEditContext) => Promise<SaveOutcome>;
 }
@@ -56,7 +57,7 @@ export function useAccountManagementEditor(options: AccountManagementEditorOptio
   const cancel = () => { owner.current.session = null; owner.current.task = null; owner.current.error = ''; refresh(); };
   const save = async () => {
     const captured = owner.current, session = captured.session;
-    if (!session || captured.task || !session.dirty.size || !captured.actorUid || auth.currentUser?.uid !== captured.actorUid) return false;
+    if (!session || captured.task || options.isOtherBusy?.() || !session.dirty.size || !captured.actorUid || auth.currentUser?.uid !== captured.actorUid) return false;
     if (session.kind === 'group' ? !options.onUpdateGroup : !options.onUpdateCode) return false;
     if ((session.kind === 'group' || session.intent === 'edit') && !session.draft.name.trim()) { captured.error = '이름을 입력해 주세요.'; refresh(); return false; }
     const task = {};
@@ -98,7 +99,7 @@ export function useAccountManagementEditor(options: AccountManagementEditorOptio
     }
   };
   const moveCodeGroup = async (row: AccountCode, groupId: string) => {
-    if (owner.current.task) return false;
+    if (owner.current.task || options.isOtherBusy?.()) return false;
     const existing = owner.current.session;
     if (existing?.kind !== 'code' || existing.id !== row.id || existing.intent !== 'groupMove') {
       openCode(row);
@@ -113,7 +114,7 @@ export function useAccountManagementEditor(options: AccountManagementEditorOptio
     : !current.actorUid || auth.currentUser?.uid !== current.actorUid ? '로그인 계정이 바뀌었습니다. 현재 계정에서 다시 열어 주세요.' : '';
   return { groupSession: session?.kind === 'group' ? { id: session.id, draft: session.draft, busy: !!current.task } : null,
     codeSession: session?.kind === 'code' ? { id: session.id, intent: session.intent, draft: session.draft, busy: !!current.task } : null,
-    busy: !!current.task, error: current.error, message: current.message, blockedReason,
-    canSave: !!session && !!session.dirty.size && !current.task && !blockedReason,
+    busy: !!current.task, isBusy: () => !!owner.current.task, error: current.error, message: current.message, blockedReason,
+    canSave: !!session && !!session.dirty.size && !current.task && !options.isOtherBusy?.() && !blockedReason,
     openGroup, openCode, changeGroup, changeCode, save, cancel, moveCodeGroup };
 }

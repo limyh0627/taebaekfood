@@ -925,6 +925,22 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  let isolated:RulesTestEnvironment;
  beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
  afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ it('계정 등록 삭제 영수증은 generic 경로까지 서버 전용이며 기존 관리자 직접 권한은 유지한다',async()=>{
+  const manager=isolated.authenticatedContext('account-manager',{employeeId:'account-manager',companyId:'taebaek',isAdmin:true}).firestore();
+  const staff=isolated.authenticatedContext('account-staff',{employeeId:'account-staff',companyId:'taebaek',isAdmin:false}).firestore();
+  await isolated.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'accountManagementOperations','proof'),{companyId:'taebaek'}));
+  try {
+   for(const store of [manager,staff,isolated.unauthenticatedContext().firestore()]) {
+    const proof=doc(store,'accountManagementOperations','proof');
+    await assertFails(getDoc(proof));await assertFails(getDocs(collection(store,'accountManagementOperations')));
+    await assertFails(setDoc(proof,{companyId:'taebaek'}));await assertFails(updateDoc(proof,{status:'applied'}));await assertFails(deleteDoc(proof));
+    await assertFails(setDoc(doc(store,'accountManagementOperations','proof','nested','bypass'),{companyId:'taebaek'}));
+   }
+   const target=doc(manager,'accountCodes','account-rule');
+   await assertSucceeds(setDoc(target,{companyId:'taebaek',name:'기존 계정',code:'0'}));
+   await assertFails(deleteDoc(doc(staff,'accountCodes','account-rule')));await assertSucceeds(deleteDoc(target));
+  } finally {await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'accountManagementOperations','proof'));await deleteDoc(doc(context.firestore(),'accountCodes','account-rule'));});}
+ });
  it('견적 영수증만 서버 전용으로 보호하고 기존 견적 관리자 권한은 유지한다',async()=>{
   const manager=isolated.authenticatedContext('quote-manager',{employeeId:'quote-manager',companyId:'taebaek',isAdmin:true}).firestore();
   const staff=isolated.authenticatedContext('quote-staff',{employeeId:'quote-staff',companyId:'taebaek',isAdmin:false}).firestore();

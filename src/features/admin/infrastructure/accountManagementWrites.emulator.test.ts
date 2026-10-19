@@ -3,17 +3,24 @@ import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-const state = vi.hoisted(() => ({ db: null as unknown, uid: 'account-editor' }));
+import * as admin from 'firebase-admin';
+import { executeAccountManagementCommand, accountManagementReceiptId } from '../../../../functions/src/accountManagementCommand';
+import type { AccountManagementCommand } from '../../../shared/accountManagementCommand';
+import type { AccountCode, AccountGroup } from '../../../shared/types';
+const state = vi.hoisted(() => ({ db: null as unknown, uid: 'account-editor', command: vi.fn() }));
+vi.mock('firebase/functions', () => ({ httpsCallable: () => async (command: AccountManagementCommand) => ({ data: await state.command(command) }) }));
 vi.mock('../../../shared/firebase', () => ({ get db() { return state.db; }, functions: {},
   authReady: Promise.resolve(), auth: { get currentUser() { return { uid: state.uid,
     getIdTokenResult: async () => ({ claims: { companyId: 'taebaek', employeeId: 'account-employee', isAdmin: true } }),
   }; } } }));
-import { saveAccountCodeEdit, saveAccountGroupEdit } from './accountManagementWrites';
+import { saveAccountCodeEdit, saveAccountGroupEdit, saveAccountCodeCreate, saveAccountGroupCreate,
+  deleteAccountCode, deleteAccountGroup } from './accountManagementWrites';
 const enabled = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
 describe.skipIf(!enabled)('계정 수정 실제 공통 writer와 Rules', () => {
   const projectId = `demo-account-${randomUUID().slice(0, 8)}`;
   const prefix = randomUUID();
   let env: RulesTestEnvironment;
+  let serverApp: admin.app.App;
   const touched: { collection: string; id: string }[] = [];
   const context = { companyId: 'taebaek' as const, actorUid: state.uid, isCurrent: () => true };
   const seed = async (collection: string, id: string, data: Record<string, unknown>) => {
@@ -29,6 +36,19 @@ describe.skipIf(!enabled)('계정 수정 실제 공통 writer와 Rules', () => {
     env = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8182,
       rules: readFileSync('firestore.rules', 'utf8') } });
     state.db = env.authenticatedContext(state.uid, { companyId: 'taebaek', employeeId: 'account-employee', isAdmin: true }).firestore();
+    serverApp = admin.initializeApp({ projectId }, `${projectId}-server`);
+    const serverDb = admin.firestore(serverApp);
+    await seed('employees', 'account-employee', { companyId: 'taebaek', name: '합성 관리자' });
+    const map = new Map<string, string>();
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+      get length() { return map.size; }, key: (index: number) => Array.from(map.keys())[index] ?? null,
+      getItem: (key: string) => map.get(key) ?? null, setItem: (key: string, value: string) => { map.set(key, value); }, removeItem: (key: string) => { map.delete(key); },
+    } });
+    state.command.mockImplementation(async (command: AccountManagementCommand) => {
+      const reference = command.mode === 'apply' ? command.request.reference : command.reference;
+      if (command.mode !== 'open') touched.push({ collection: 'accountManagementOperations', id: accountManagementReceiptId(reference.companyId, state.uid, reference.planId) });
+      return executeAccountManagementCommand(serverDb, { uid: state.uid, token: { companyId: 'taebaek', employeeId: 'account-employee', isAdmin: true } }, command);
+    });
   });
   afterAll(async () => {
     if (!env) return;
@@ -36,6 +56,7 @@ describe.skipIf(!enabled)('계정 수정 실제 공통 writer와 Rules', () => {
       for (const row of touched) await deleteDoc(doc(c.firestore(), row.collection, row.id));
     });
     await env.cleanup();
+    await serverApp?.delete();
   });
   it('기존 sgna는 명시 null로 실제 제거하고 현금흐름·메모·미지 필드는 유지한다', async () => {
     const id = `${prefix}-clear`;
@@ -59,5 +80,26 @@ describe.skipIf(!enabled)('계정 수정 실제 공통 writer와 Rules', () => {
     await seed('accountGroups', id, before);
     expect((await saveAccountGroupEdit(id, { plLine: null }, context)).status).toBe('unknown');
     expect(await read('accountGroups', id)).toEqual(before);
+  });
+  it('등록의 고정 ID를 그대로 쓰고 그룹·코드 삭제 ACK 뒤 실제 문서가 없다', async () => {
+    const group = `${prefix}-new-group`, code = `${prefix}-new-code`;
+    touched.push({ collection: 'accountGroups', id: group }, { collection: 'accountCodes', id: code });
+    expect(await saveAccountGroupCreate({ id: group, name: '등록 그룹', type: '비용', plLine: 'sgna' }, { ...context, planId: randomUUID() })).toEqual({ status: 'saved' });
+    expect(await saveAccountCodeCreate({ id: code, code: '0', name: '등록 코드', groupId: group }, { ...context, planId: randomUUID() })).toEqual({ status: 'saved' });
+    expect(await read('accountGroups', group)).toEqual({ companyId: 'taebaek', name: '등록 그룹', type: '비용', plLine: 'sgna' });
+    expect(await read('accountCodes', code)).toEqual({ companyId: 'taebaek', code: '0', name: '등록 코드', groupId: group });
+    expect(await deleteAccountCode({ id: code, ...(await read('accountCodes', code)) } as AccountCode, { ...context, planId: randomUUID() })).toEqual({ status: 'saved' });
+    expect(await deleteAccountGroup({ id: group, ...(await read('accountGroups', group)) } as AccountGroup, { ...context, planId: randomUUID() })).toEqual({ status: 'saved' });
+    expect(await read('accountCodes', code)).toBeUndefined(); expect(await read('accountGroups', group)).toBeUndefined();
+  });
+  it('타회사 고정 ID 등록과 삭제 모두 Rules가 막으며 원래 문서를 보존한다', async () => {
+    const group = `${prefix}-foreign-create`, code = `${prefix}-foreign-delete`;
+    const original = { companyId: 'punghoe', name: '원래 그룹', type: '비용', note: '보존' };
+    await seed('accountGroups', group, original);
+    await seed('accountCodes', code, { companyId: 'punghoe', code: '7', name: '원래 코드' });
+    expect((await saveAccountGroupCreate({ id: group, name: '잘못된 덮기', type: '자산' }, { ...context, planId: randomUUID() })).status).toBe('rejected');
+    expect((await deleteAccountCode({ id: code, ...(await read('accountCodes', code)) } as AccountCode, { ...context, planId: randomUUID() })).status).toBe('rejected');
+    expect(await read('accountGroups', group)).toEqual(original);
+    expect(await read('accountCodes', code)).toMatchObject({ name: '원래 코드' });
   });
 });
