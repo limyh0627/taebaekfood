@@ -29,3 +29,13 @@ describe('자금 전표 행', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 });
+
+it('자금 행도 흰색·12px 본문과 금액, 10px 보조를 사용한다', () => {
+  const result=render(<StatementCashMobileRow view={view} direction="출금" journalToggle={null}/>);
+  expect(result.container.firstElementChild).toHaveClass('bg-white','text-[12px]');
+  expect(screen.getByText('태백은행')).toHaveClass('text-[12px]');
+  expect(screen.getByText('1,000,000')).toHaveClass('text-[12px]');
+  expect(screen.getByText('출금')).toHaveClass('text-[12px]');
+  expect(screen.getByText('출금').className).not.toMatch(/bg-/);
+  expect(screen.getByText('차입금 1,000,000 · 원금 상환')).toHaveClass('text-[10px]');
+});

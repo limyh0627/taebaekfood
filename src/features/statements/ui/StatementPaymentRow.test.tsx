@@ -32,3 +32,19 @@ describe('수금·지불 행', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 });
+
+it('모바일과 PC 금액·잔액은 모든 부호에서 명시 12px이며 구분 배경은 흰색이다', () => {
+  for (const cumulative of [0, 20_000, -20_000]) {
+    const mobile = render(<StatementPaymentMobileRow view={{...view,cumulative}} statementType="매출" journalToggle={null} onOpen={vi.fn()} onDelete={vi.fn()}/>);
+    expect(mobile.container.firstElementChild).toHaveClass('bg-white','text-[12px]');
+    expect(screen.getByText('수금')).toHaveClass('text-[12px]');
+    expect(screen.getByText('500,000')).toHaveClass('text-[12px]');
+    const balance = cumulative===0?screen.getByText('0'):cumulative>0?screen.getByText('잔액 20,000'):screen.getByText('−20,000');
+    expect(balance).toHaveClass('text-[12px]');
+    expect(screen.getByText('수금').className).not.toMatch(/bg-/);
+    mobile.unmount();
+    const desktop=render(<table><tbody><StatementPaymentTableRow view={{...view,cumulative}} statementType="매출" dateCell={null} journalToggle={null} onOpen={vi.fn()}/></tbody></table>);
+    expect(screen.getByText(cumulative===0?'0':cumulative>0?'20,000':'−20,000')).toHaveClass('text-[12px]');
+    desktop.unmount();
+  }
+});

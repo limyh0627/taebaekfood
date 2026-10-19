@@ -2597,7 +2597,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </table>
 
           {/* ── 모바일 카드 목록 ── */}
-          <div className="md:hidden divide-y divide-slate-100">
+          <div className="md:hidden divide-y divide-slate-200">
             {pagedHistory.map(row => {
               const view = statementHistoryRowView(row, codeName, 줄배송지, ownerName);
               if (row.kind === 'cash') {

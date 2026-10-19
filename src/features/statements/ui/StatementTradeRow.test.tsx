@@ -42,3 +42,15 @@ describe('매출·매입 전표 행', () => {
     expect(screen.getByRole('button', { name: '지불처리' })).toBeInTheDocument();
   });
 });
+
+it('반품도 흰 행과 본문 크기를 쓰고 모든 잔액 부호가 12px이다', () => {
+  for(const cumulative of [0,60_000,-60_000]){
+    const result=render(<StatementTradeMobileRow statement={statement} view={{...view,cumulative,isReturn:true}} dateLabel="날짜" canSettle journalToggle={null} onOpen={vi.fn()} onSettle={vi.fn()}/>);
+    expect(result.container.firstElementChild).toHaveClass('bg-white','text-[12px]');
+    expect(screen.getByText('반품')).toHaveClass('text-[12px]');
+    expect(screen.getByText('반품').className).not.toMatch(/bg-/);
+    expect(screen.getByText(cumulative===0?'0':cumulative>0?'잔액 60,000':'−60,000')).toHaveClass('text-[12px]');
+    expect(screen.getByRole('button',{name:'수금처리'})).toHaveClass('text-[11px]');
+    result.unmount();
+  }
+});
