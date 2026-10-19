@@ -7,6 +7,10 @@ const allowed = new Set([
   'src/shared/services/firebaseService.ts',
 ]);
 const reviewedTransactionWriters = new Set([
+  // 고정 회사·타입 ID를 읽어 검증하며 순서 전체를 한 TX로 저장한다. 실제 Rules SDK에서 부분 반영 거절을 확인한다.
+  'src/features/items/infrastructure/taxonomyOrderWrites.ts',
+  // 휴가 ACK 뒤 같은 회사 관리자에게 고정 알림을 보낸다. UID·회사와 기존 알림 원문을 TX에서 다시 확인한다.
+  'src/features/hr/infrastructure/leaveRequestWrites.ts',
   // 주문·품목·원료 원본의 회사 일치를 확인하고 완료표에도 companyId를 남긴다.
   'src/features/admin/orderInventoryCancellation.ts',
   // appMeta 전 기기 잠금(회사 메타 예외)만 쓴다.
