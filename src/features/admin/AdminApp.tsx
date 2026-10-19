@@ -9,7 +9,8 @@ import {captureItemEditorOpening,pendingItemEditorPlans,itemEditorReferences,sub
 import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit} from '../orders/infrastructure/orderEditWrites';
 import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
-import type { SaveOutcome } from '../../shared/saveOutcome';
+import { primaryCommitted, type SaveOutcome } from '../../shared/saveOutcome';
+import { saveAccountCodeEdit, saveAccountGroupEdit, type AccountEditContext, type AccountCodeEditPatch, type AccountGroupEditPatch } from './infrastructure/accountManagementWrites';
 import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
 import { submitLeaveRequests, submitLeaveAction, inspectLeaveAction, cancelLeaveAction, pendingLeaveActions, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
 import type { LeaveMutationAction } from '../../shared/leaveRequestCommand';
@@ -437,6 +438,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const readPendingPartnerTerms=()=>isCurrentPartnerTerms()&&termsActor?pendingPartnerItemTerms({companyId,actorUid:termsActor}):[];
   const readPartnerTermsReferences=()=>isCurrentPartnerTerms()&&termsActor?partnerItemTermsReferences({companyId,actorUid:termsActor}):[];
   const partnerTermsBindings={requestScopeKey:termsActor??'',onSavePartnerItemTerms:savePartnerItemTerms,onReadPendingPartnerItemTerms:readPendingPartnerTerms,onReadPartnerItemTermsReferences:readPartnerTermsReferences,onInspectPartnerItemTerms:inspectPartnerTerms,onCancelPartnerItemTerms:cancelPartnerTerms};
+
+  // 저장 ACK와 목록 재조회 요청은 다른 단계다. 뒤의 오류를 주업무 미저장으로 바꾸지 않는다.
+  const saveProfitAccountEdit = async (id: string, context: AccountEditContext, save: () => Promise<SaveOutcome>): Promise<SaveOutcome> => {
+    if (context.companyId !== companyId || !context.isCurrent()) return {
+      status: 'rejected', message: '회사 또는 계정 편집 화면이 바뀌어 저장하지 않았습니다. 현재 화면에서 다시 열어 주세요.',
+    };
+    const result = await save();
+    if (!primaryCommitted(result, id) || context.companyId !== companyId || !context.isCurrent()) return result;
+    try { refreshStaticData(); }
+    catch { return {
+      status: 'partial', reason: 'followup-unconfirmed', committedIds: [id], unconfirmedIds: [],
+      message: '계정은 저장됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
+    }; }
+    return result;
+  };
+  const updateProfitAccountCode = (id: string, patch: AccountCodeEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
+    saveProfitAccountEdit(id, context, () => saveAccountCodeEdit(id, patch, context));
+  const updateProfitAccountGroup = (id: string, patch: AccountGroupEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
+    saveProfitAccountEdit(id, context, () => saveAccountGroupEdit(id, patch, context));
 
   // partners 컬렉션
 
@@ -4408,11 +4428,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onUpdateIssuedStatement={updateStatement}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
-                onUpdateAccountCode={(id, data) => { updateItem('accountCodes', id, data); refreshStaticData(); }}
+                onUpdateAccountCode={updateProfitAccountCode}
                 onAddAccountCode={async (data) => { const id = await addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }); refreshStaticData(); return id; } }
                 onDeleteAccountCode={(id) => { deleteItem('accountCodes', id); refreshStaticData(); }}
                 onAddAccountGroup={async (data) => { const id = await addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }); refreshStaticData(); return id; }}
-                onUpdateAccountGroup={(id, data) => { updateItem('accountGroups', id, data); refreshStaticData(); }}
+                onUpdateAccountGroup={updateProfitAccountGroup}
                 onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
                 inventorySnapshots={companySnapshots}
                 /* 회사를 안 박으면 풍회 기말재고가 **태백 것을 덮어쓴다** — id에도 회사가 들어가야 한다 */
