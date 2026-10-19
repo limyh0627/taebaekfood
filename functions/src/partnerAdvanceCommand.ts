@@ -90,7 +90,7 @@ async function mutate(db:admin.firestore.Firestore,companyId:CompanyId,actorId:s
  const command=JSON.parse(JSON.stringify(input)),requestHash=semanticHash({companyId,actorId,action,command});
  const result=await db.runTransaction(async tx=>{
   const prior=await tx.get(db.collection('partnerAdvanceOperations').doc(input.operationId));
-  if(prior.exists){const op=prior.data()!;if(op.requestHash!==requestHash||op.commandHash!==semanticHash(command)||op.companyId!==companyId||op.createdBy!==actorId||op.action!==action)fail('이전 요청과 원문이 다릅니다.');
+  if(prior.exists){const op=prior.data()!;if(op.status==='cancelled'&&op.recoveryFence===true){if(op.companyId!==companyId||op.partnerId!==input.partnerId||op.createdBy!==actorId||op.operationId!==input.operationId)throw new HttpsError('permission-denied','다른 작성자의 요청입니다.');throw new HttpsError('failed-precondition','미처리 요청이 중단되어 적용하지 않았습니다.',{partnerAdvanceStopped:{version:1,companyId,partnerId:input.partnerId,operationId:input.operationId,actorId,financialWrites:false}});}if(op.requestHash!==requestHash||op.commandHash!==semanticHash(command)||op.companyId!==companyId||op.createdBy!==actorId||op.action!==action)fail('이전 요청과 원문이 다릅니다.');
    if(op.status==='rejected'){if(!['invalid-argument','failed-precondition','aborted'].includes(op.failureCode)||typeof op.failureMessage!=='string')fail('이전 거절 근거가 다릅니다.');return {status:'rejected' as const,failureCode:op.failureCode,failureMessage:op.failureMessage};}
    const statement=await tx.get(db.collection('issuedStatements').doc(op.statementId));if(!statement.exists)fail('이전 요청 원문이 없습니다.');assertAdvanceOperation({...statement.data(),id:statement.id},{...op,id:prior.id});return {status:'duplicate' as const,id:statement.id,docNo:op.docNo};}
   let writesStarted=false;
@@ -163,3 +163,106 @@ export async function preparePartnerAdvance(db:admin.firestore.Firestore,company
  });
 }
 export const preparePartnerAdvanceCommand=onCall({region:'asia-northeast3'},async request=>{const actor=companyAuth(request);return preparePartnerAdvance(admin.firestore(),actor.companyId,request.data?.partnerId);});
+import { normalizePartnerAdvanceRecoveryReference, type PartnerAdvanceRecoveryReference, type PartnerAdvanceRecoveryResult, type PartnerAdvanceRecoveryHistoryResult } from './shared/partnerAdvanceRecovery';
+/** 원문이 없어도 동일 operation 영수증만으로 결과를 확인하며 금융 자료는 쓰지 않는다. */
+async function readAdvanceRecovery(tx: admin.firestore.Transaction, db: admin.firestore.Firestore, reference: PartnerAdvanceRecoveryReference, actorId: string, snapshot?: admin.firestore.DocumentSnapshot): Promise<PartnerAdvanceRecoveryResult> {
+    const base = { version: 1 as const, reference, actorId };
+    const prior = snapshot ?? await tx.get(db.collection('partnerAdvanceOperations').doc(reference.operationId));
+    if (!prior.exists)
+        return { ...base, status: 'unknown', requestHash: null, message: '서버에 이 요청의 처리 기록이 아직 없습니다. 요청이 늦게 도착할 수 있으니 결과를 다시 확인하거나 미처리 요청을 중단해 주세요.' };
+    const op = prior.data()!;
+    if (op.companyId !== reference.companyId || op.partnerId !== reference.partnerId || op.createdBy !== actorId)
+        throw new HttpsError('permission-denied', '다른 회사·거래처·작성자의 요청은 확인할 수 없습니다.');
+    if (op.status === 'cancelled' && op.recoveryFence === true && op.operationId === reference.operationId && op.requestHash === null)
+        return { ...base, status: 'cancelled', requestHash: null, message: '미처리 요청을 중단했습니다. 이미 완료된 상계의 역분개는 하지 않았습니다.' };
+    const unknown = (): PartnerAdvanceRecoveryResult => ({ ...base, status: 'unknown', requestHash: null, message: '저장된 요청의 원문 증거를 확인하지 못했습니다. 현재 장부와 처리 이력을 확인해 주세요.' });
+    if (!['apply', 'cancel'].includes(op.action) || !op.command || op.command.operationId !== reference.operationId || op.command.partnerId !== reference.partnerId
+        || op.commandHash !== semanticHash(op.command) || op.requestHash !== semanticHash({ companyId: reference.companyId, actorId, action: op.action, command: op.command }))
+        return unknown();
+    const proof = { ...base, action: op.action as 'apply' | 'cancel', requestHash: op.requestHash as string };
+    if (op.status === 'rejected') {
+        if (!['invalid-argument', 'failed-precondition', 'aborted'].includes(op.failureCode) || typeof op.failureMessage !== 'string')
+            return unknown();
+        return { ...proof, status: 'rejected', message: `이 요청은 적용되지 않았습니다. ${op.failureMessage}` };
+    }
+    if (op.status !== 'applied' || !documentId(op.statementId))
+        return unknown();
+    const statement = await tx.get(db.collection('issuedStatements').doc(op.statementId));
+    if (!statement.exists)
+        return unknown();
+    try {
+        assertAdvanceOperation({ ...statement.data(), id: statement.id }, { ...op, id: prior.id });
+    }
+    catch {
+        return unknown();
+    }
+    return { ...proof, status: 'applied', statementId: statement.id, docNo: op.docNo,
+        ...(Number.isSafeInteger(op.amount) && op.amount > 0 ? { amount: op.amount } : {}),
+        ...(validDate(op.command.date) ? { date: op.command.date } : {}),
+        message: op.action === 'cancel' ? '이 요청의 상계 역분개가 완료됐습니다. 다시 역분개하지 않습니다.' : '이 요청의 상계가 완료됐습니다. 같은 금액을 다시 적용하지 않습니다.' };
+}
+export async function inspectPartnerAdvanceRecovery(db: admin.firestore.Firestore, referenceValue: unknown, actorId: string): Promise<PartnerAdvanceRecoveryResult> {
+    const reference = normalizePartnerAdvanceRecoveryReference(referenceValue);
+    if (!actorId)
+        throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    return db.runTransaction(tx => readAdvanceRecovery(tx, db, reference, actorId));
+}
+export async function stopPartnerAdvanceRecovery(db: admin.firestore.Firestore, referenceValue: unknown, actorId: string): Promise<PartnerAdvanceRecoveryResult> {
+    const reference = normalizePartnerAdvanceRecoveryReference(referenceValue);
+    if (!actorId)
+        throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    return db.runTransaction(async (tx) => {
+        const prior = await tx.get(db.collection('partnerAdvanceOperations').doc(reference.operationId));
+        if (prior.exists)
+            return readAdvanceRecovery(tx, db, reference, actorId, prior);
+        tx.create(prior.ref, { companyId: reference.companyId, partnerId: reference.partnerId, createdBy: actorId, operationId: reference.operationId, status: 'cancelled', recoveryFence: true, requestHash: null, createdAt: new Date().toISOString() });
+        return { version: 1, reference, actorId, status: 'cancelled', requestHash: null, message: '미처리 요청을 중단했습니다. 늦게 도착하는 같은 요청도 적용하지 않습니다.' };
+    });
+}
+export async function listPartnerAdvanceRecoveryHistory(db: admin.firestore.Firestore, companyId: CompanyId, partnerId: string, actorId: string, cursor?: string): Promise<PartnerAdvanceRecoveryHistoryResult> {
+    normalizePartnerAdvanceRecoveryReference({ companyId, partnerId, operationId: 'history' });
+    const cursorScope = semanticHash({ companyId, partnerId, actorId });
+    let after: string | undefined;
+    if (cursor !== undefined) {
+        try {
+            if (typeof cursor !== 'string' || !/^[A-Za-z0-9_-]{1,2048}$/.test(cursor))
+                throw new Error();
+            const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+            if (decoded.version !== 1 || decoded.scope !== cursorScope || !operationId(decoded.after))
+                throw new Error();
+            after = decoded.after;
+        }
+        catch {
+            throw new HttpsError('invalid-argument', '이력 페이지의 회사·작성자·거래처가 다릅니다. 처음부터 다시 조회해 주세요.');
+        }
+    }
+    if (!actorId)
+        throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    let query = db.collection('partnerAdvanceOperations').where('createdBy', '==', actorId).orderBy(admin.firestore.FieldPath.documentId()).limit(50);
+    if (after)
+        query = query.startAfter(after);
+    return db.runTransaction(async (tx) => {
+        const page = await tx.get(query), entries: PartnerAdvanceRecoveryResult[] = [];
+        for (const row of page.docs) {
+            const data = row.data();
+            if (data.companyId !== companyId || data.partnerId !== partnerId || !operationId(row.id))
+                continue;
+            entries.push(await readAdvanceRecovery(tx, db, { companyId, partnerId, operationId: row.id }, actorId, row));
+        }
+        return { version: 1, companyId, partnerId, actorId, entries, nextCursor: page.size === 50 ? Buffer.from(JSON.stringify({ version: 1, scope: cursorScope, after: page.docs[49].id })).toString('base64url') : null };
+    });
+}
+export const partnerAdvanceRecoveryCommand = onCall({ region: 'asia-northeast3' }, async (request) => {
+    const actor = companyAuth(request), input = request.data;
+    if (input?.mode === 'listHistory') {
+        if (input.companyId !== actor.companyId)
+            throw new HttpsError('permission-denied', '요청 회사가 다릅니다.');
+        return listPartnerAdvanceRecoveryHistory(admin.firestore(), actor.companyId, input.partnerId, actor.actorId, input.cursor);
+    }
+    if (!['inspect', 'stop'].includes(input?.mode))
+        throw new HttpsError('invalid-argument', '복구 작업을 확인해 주세요.');
+    const reference = normalizePartnerAdvanceRecoveryReference(input.reference);
+    if (reference.companyId !== actor.companyId)
+        throw new HttpsError('permission-denied', '요청 회사가 다릅니다.');
+    return input.mode === 'inspect' ? inspectPartnerAdvanceRecovery(admin.firestore(), reference, actor.actorId) : stopPartnerAdvanceRecovery(admin.firestore(), reference, actor.actorId);
+});

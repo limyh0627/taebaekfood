@@ -18,7 +18,8 @@ export default function PartnerPaymentModal({ companyId, partnerId, partnerName,
   const lastReset = useRef(0);
   const onAdvanceState = useCallback((state: { blocked: boolean; applied: boolean; busy: boolean; sourceBalance: number; selectedAmount: number; lookupBlocked: boolean; pendingUnknown: boolean; selectionValid: boolean; resetVersion: number }) => { if (state.resetVersion !== lastReset.current) { lastReset.current = state.resetVersion; setUseAdvance(false); setConfirmed(false); } setAdvance(previous => ({...state, selectedAmount: state.applied ? previous.selectedAmount : state.selectedAmount})); if (state.applied) setConfirmed(false); }, []);
   const [claimAmount] = useState(() => Number.isFinite(initialAmount) ? initialAmount! : balance);
-  useEffect(() => { if (!advance.applied && Number.isFinite(claimAmount)) payment.setAmount(formatMoneyInput((Math.round(claimAmount) - (useAdvance && advance.selectionValid ? advance.selectedAmount : 0)))); }, [useAdvance, advance.selectedAmount, advance.applied, advance.selectionValid, claimAmount]);
+  const previousUseAdvance = useRef(false);
+  useEffect(() => { const toggled = previousUseAdvance.current !== useAdvance; previousUseAdvance.current = useAdvance; if ((useAdvance || toggled) && !advance.applied && Number.isFinite(claimAmount)) payment.setAmount(formatMoneyInput((Math.round(claimAmount) - (useAdvance && advance.selectionValid ? advance.selectedAmount : 0)))); }, [useAdvance, advance.selectedAmount, advance.applied, advance.selectionValid, claimAmount]);
   const blocked = !ready || busy || advance.blocked || (advance.applied && !confirmed) || (useAdvance && advance.lookupBlocked) || (useAdvance && !advance.applied);
   const close=()=>{if(!advance.busy)payment.close();};
   const entry=payment.selectedEntry;
@@ -28,10 +29,10 @@ export default function PartnerPaymentModal({ companyId, partnerId, partnerName,
       <PartnerPaymentRecoveryPanel payment={payment}/>
       <p>사용 가능한 {type === '매입' ? '선급금' : '선수금'}: {advance.lookupBlocked ? '조회 확인 필요' : advance.sourceBalance.toLocaleString('ko-KR') + '원'}</p>
       <label className="block"><input type="checkbox" checked={useAdvance} disabled={busy || payment.locked || advance.busy || advance.applied} onChange={event => setUseAdvance(event.target.checked)} /> 선급·선수금 사용</label>
-      {advance.pendingUnknown && <p role="alert">보관된 상계 요청을 읽지 못해 처리 여부를 확인할 수 없습니다. 요청 원문을 확인한 뒤 다시 여세요. 현금 결제는 보류합니다.</p>}
+      {advance.pendingUnknown && <p role="alert">보관된 상계 원문이나 처리 상태를 확인해야 합니다. 아래 상계 요청의 결과 확인·미처리 중단·사본 정리로 마무리해 주세요. 현금 결제는 보류합니다.</p>}
       {useAdvance && !advance.selectionValid && !advance.applied && <p role="alert">상계 금액을 원천·대상 잔액과 이번 정산액 이내로 확인하세요.</p>}
       {useAdvance && (advance.selectionValid || advance.applied) && <p>예정 상계 {advance.selectedAmount.toLocaleString('ko-KR')}원 · 실제 {label} 예정 {amount || '0'}원</p>}
-      <div hidden={!useAdvance}><PartnerAdvanceModal companyId={companyId} partnerId={partnerId} partnerName={partnerName} embedded sourceCode={type === '매입' ? '133' : '254'} maxApplicationAmount={claimAmount} externalBusy={busy || payment.locked || !useAdvance} onStateChange={onAdvanceState} onClose={close} /></div>
+      <PartnerAdvanceModal companyId={companyId} partnerId={partnerId} partnerName={partnerName} embedded showApplication={useAdvance} sourceCode={type === '매입' ? '133' : '254'} maxApplicationAmount={claimAmount} externalBusy={busy || payment.locked} onStateChange={onAdvanceState} onClose={close} />
       <section className="space-y-3 border-t border-gray-200 pt-4" aria-label="실제 현금 결제">
         <h4 className="font-bold">실제 현금 {label}</h4>
         <p className="text-sm text-gray-600">상계액과 별개로 실제 입출금할 금액만 입력하세요. 상계만 하면 현금 기록 없이 닫으세요.</p>
