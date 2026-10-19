@@ -8,6 +8,8 @@ import { auth, authReady } from '../src/shared/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import { CabinetCategory, CabinetSubCategory, CabinetDoc, companyOf, type CompanyId } from '../src/shared/types';
+import ModalShell from '../src/shared/components/ModalShell';
+import ActionButton from '../src/shared/components/ActionButton';
 import { dateOfLocal } from '../src/shared/day';
 
 const MAX_SIZE_MB = 30;
@@ -43,13 +45,6 @@ const fileIconFor = (name: string, contentType: string) => {
   return <FileIcon className="w-5 h-5 text-slate-400" />;
 };
 
-const metadataStates:Record<string,string>={active:'진행 중',applied:'반영 확인',rejected:'거절 확인',cancelled:'미처리 중단 확인',unknown:'결과 미확인'};
-const metadataStateLabel=(status?:string)=>metadataStates[status??'']??'확인 전';
-const uploadStates:Record<string,string>={'not-required':'필요 없음',reserved:'파일 전송 준비 확인',absent:'현재 파일 없음',unverified:'파일 확인 필요',verified:'파일 확인 완료'};
-const uploadStateLabel=(status?:string)=>uploadStates[status??'']??'확인 전';
-const cleanupStates:Record<string,string>={'not-required':'필요 없음',pending:'정리 대기',deleted:'정리 완료',absent:'현재 파일 없음','retained-shared':'다른 문서 참조로 보존','retained-replaced':'다른 파일로 바뀌어 보존'};
-const cleanupStateLabel=(status?:string)=>cleanupStates[status??'']??'확인 전';
-
 const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [], onSelect, hideDocs }) => {
   const companyId = companyOf(currentUser);
   const [actorUid,setActorUid]=useState(()=>auth.currentUser?.uid??'');
@@ -60,6 +55,12 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const [search, setSearch] = useState('');
   const transfers = useDocumentTransfers({companyId, actorUid, employeeId: currentUser.id, uploadedBy: currentUser.name});
   const [dragOver, setDragOver] = useState(false);
+  const modalOwner = useRef({ scope: '' });
+  const modalScope = JSON.stringify([companyId, actorUid, currentUser.id]);
+  if (modalOwner.current.scope !== modalScope) modalOwner.current = { scope: modalScope };
+  const [recoveryOwner, setRecoveryOwner] = useState<typeof modalOwner.current | null>(null);
+  const recoveryOpen = recoveryOwner === modalOwner.current;
+  const [recoveryView, setRecoveryView] = useState<'failure' | 'history'>('history');
   const [loadError, setLoadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -153,28 +154,11 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         </div>
       </div>
 
-      {categoryActions.readLoading && <p role="status" className="text-xs text-slate-600">보관된 분류 요청을 읽고 있습니다.</p>}
-      {categoryActions.message && <p role="status" className="whitespace-pre-line text-xs text-slate-600">{categoryActions.message}</p>}
-      {categoryActions.readError && <p role="alert" className="text-xs">{categoryActions.readError}</p>}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <button type="button" disabled={categoryActions.readLoading||categoryActions.historyLoading} onClick={()=>void categoryActions.refresh()} className="rounded border border-slate-200 px-3 py-2">분류 요청 새로 조회</button>
-        {categoryActions.historyLoading && <p role="status">서버에 남은 분류 요청을 확인하고 있습니다.</p>}
-        {categoryActions.historyMore && <><p>더 확인할 분류 요청이 있습니다.</p><button type="button" disabled={categoryActions.historyLoading} onClick={()=>void categoryActions.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 분류 요청 확인</button></>}
-        {categoryActions.historyError && <p role="alert">{categoryActions.historyError}</p>}
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs" aria-label="문서함 처리 도구">
+        {categoryActions.failureCount + (hideDocs ? 0 : transfers.failureCount) > 0 && <ActionButton tone="recovery" onClick={() => { setRecoveryView('failure'); setRecoveryOwner(modalOwner.current); }}>실패 {categoryActions.failureCount + (hideDocs ? 0 : transfers.failureCount)}</ActionButton>}
+        <ActionButton onClick={() => { setRecoveryView('history'); setRecoveryOwner(modalOwner.current); }}>처리 기록</ActionButton>
       </div>
-      {categoryActions.operations.length>0 && <section aria-label="처리 상태를 확인할 분류 요청" className="max-h-60 space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs">
-        {categoryActions.operations.map(operation=><div key={operation.id} className="space-y-2">
-          <p className="break-words font-bold">{operation.description}</p>
-          <p role="status" className="whitespace-pre-line">{operation.message}</p>
-          <div className="flex flex-wrap gap-2">
-            {operation.canInspect&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.inspect(operation.id)} className="rounded border border-slate-200 px-3 py-2">분류 결과 확인</button>}
-            {operation.canRetry&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.retry(operation.id)} className="rounded border border-slate-200 px-3 py-2">같은 분류 요청 이어하기</button>}
-            {operation.canCancel&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.cancel(operation.id)} className="rounded border border-slate-200 px-3 py-2">미처리 분류 요청 중단</button>}
-            {operation.canDiscard&&typeof operation.observedLocalText==='string'&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.discard(operation.id,operation.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">분류 기기 사본 정리</button>}
-          </div>
-        </div>)}
-        <p className="text-slate-500">기기 사본 정리는 이미 반영된 분류를 되돌리지 않습니다.</p>
-      </section>}
+      {categoryActions.formMessage && <p role="status" className="text-xs text-slate-600">{categoryActions.formMessage}</p>}
 
       {/* 대분류 탭 + 검색 */}
       <div className="flex flex-wrap items-center gap-2">
@@ -282,38 +266,6 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         </p>
       </div>
 
-      {transfers.readLoading && <p role="status" className="text-xs text-slate-600">보관된 문서 요청의 처리 상태를 읽고 있습니다.</p>}
-      {transfers.message && <p role="status" className="whitespace-pre-line text-xs text-slate-600">{transfers.message}</p>}
-      {transfers.readError && <div className="space-y-2 text-xs"><p role="alert">{transfers.readError}</p><button type="button" disabled={transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">보관 요청 다시 읽기</button></div>}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <button type="button" disabled={transfers.historyLoading || transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">서버 미완료 요청 새로 조회</button>
-        {transfers.historyLoading && <p role="status">서버에 남은 문서 요청을 확인하고 있습니다.</p>}
-        {transfers.historyMore && <><p>더 확인할 요청이 있습니다.</p><button type="button" disabled={transfers.historyLoading} onClick={()=>void transfers.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 요청 확인</button></>}
-        {transfers.historyError && <p role="alert" className="whitespace-pre-line">{transfers.historyError}</p>}
-      </div>
-      {transfers.jobs.length > 0 && <section aria-label="처리 중이거나 확인이 필요한 문서" className="max-h-[60vh] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
-        <h3 className="text-sm font-bold text-slate-700">처리 중이거나 확인이 필요한 문서</h3>
-        {transfers.jobs.map(job => <div key={job.jobId} className="space-y-2 border-t border-slate-200 pt-3 text-xs first:border-t-0 first:pt-0">
-          <div className="min-w-0 break-words">
-            <p className="font-bold text-slate-700">{job.fileName || '문서 원문 확인 필요'}</p>
-            <p className="text-slate-500">문서 번호: {job.documentId}</p>
-            <p>문서 정보: {metadataStateLabel(job.metadataStatus)}</p>
-            <p>파일 업로드: {uploadStateLabel(job.uploadStatus)} · 파일 정리: {cleanupStateLabel(job.cleanupStatus)}</p>
-            <p role="status" className="whitespace-pre-line text-slate-600">{job.message}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {job.canInspect&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 결과 확인'} onClick={()=>void transfers.inspect(job.jobId)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>}
-            {job.canRetry&&!job.requiresFile&&job.stage!=='cleanup'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 요청 이어하기'} onClick={()=>void transfers.resume(job.jobId)} className="rounded border border-slate-200 px-3 py-2">같은 요청 이어하기</button>}
-            {job.canCancel&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 미처리 요청 중단'} onClick={()=>void transfers.cancel(job.jobId)} className="rounded border border-slate-200 px-3 py-2">미처리 요청 중단</button>}
-            {job.stage==='cleanup'&&job.canRetry&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 남은 파일 정리'} onClick={()=>void transfers.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2">남은 파일 정리</button>}
-            {job.requiresFile&&<label className="rounded border border-slate-200 px-3 py-2">같은 파일 다시 선택<input type="file" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 SHA 파일 다시 선택'} className="mt-1 block max-w-full" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file){if(file.size>MAX_SIZE_MB*1024*1024){alert('파일이 '+MAX_SIZE_MB+'MB를 초과합니다.');return;}void transfers.resume(job.jobId,file);}}}/></label>}
-            {job.canDiscard&&typeof job.observedLocalText==='string'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 이 기기 사본 정리'} onClick={()=>void transfers.discardCopy(job.jobId,job.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
-          </div>
-          {job.requiresFile&&<p className="text-slate-500">처음 요청한 파일과 SHA가 같은 파일만 이어갈 수 있습니다. 현재 분류나 새 파일로 원래 요청을 바꾸지 않습니다.</p>}
-        </div>)}
-        <p className="text-xs text-slate-500">요청 중단은 아직 처리되지 않은 실행을 막습니다. 파일 정리와 기기 사본 정리는 이미 반영된 문서 정보를 되돌리지 않습니다.</p>
-      </section>}
-
       {/* 파일 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {visibleDocs.length === 0 ? (
@@ -340,6 +292,74 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         )}
       </div>
       </>)}
+
+      {recoveryOpen && <ModalShell title="문서함 처리 확인" onClose={() => setRecoveryOwner(null)} bodyClassName="space-y-5 text-xs" footer={<button type="button" onClick={() => setRecoveryOwner(null)} className="rounded border border-slate-200 px-4 py-2 text-xs">닫기</button>}>
+        <div className="flex flex-wrap gap-2"><ActionButton aria-pressed={recoveryView === 'failure'} onClick={() => setRecoveryView('failure')}>실패 보기</ActionButton><ActionButton aria-pressed={recoveryView === 'history'} onClick={() => setRecoveryView('history')}>처리 기록 보기</ActionButton></div>
+        <section aria-label="분류 처리 기록" className="space-y-3 min-w-0 break-words">
+          <h4 className="font-bold text-slate-700">분류</h4>
+      {categoryActions.notice && <p role="status" className="whitespace-pre-line">{categoryActions.notice}</p>}
+      {categoryActions.readLoading && <p role="status" className="text-xs text-slate-600">보관된 분류 요청을 읽고 있습니다.</p>}
+      {categoryActions.readError && <p role="alert" className="text-xs">{categoryActions.readError}</p>}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" disabled={categoryActions.readLoading||categoryActions.historyLoading} onClick={()=>void categoryActions.refresh()} className="rounded border border-slate-200 px-3 py-2">분류 요청 새로 조회</button>
+        {categoryActions.historyLoading && <p role="status">서버에 남은 분류 요청을 확인하고 있습니다.</p>}
+        {categoryActions.historyMore && <><p>더 확인할 분류 요청이 있습니다.</p><button type="button" disabled={categoryActions.historyLoading} onClick={()=>void categoryActions.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 분류 요청 확인</button></>}
+        {categoryActions.historyError && <p role="alert">{categoryActions.historyError}</p>}
+      </div>
+      {categoryActions.failureRows.length + (recoveryView === 'history' ? categoryActions.historyRows.length : 0) > 0 && <section aria-label="처리 상태를 확인할 분류 요청" className="max-h-60 space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs">
+        {(recoveryView === 'failure' ? categoryActions.failureRows : [...categoryActions.failureRows, ...categoryActions.historyRows]).map(({operation,currentState,cause,nextAction})=><div key={operation.id} className="space-y-2">
+          <p className="break-words font-bold">{operation.description}</p>
+          <p>현재 상태: {currentState}</p><p>내용: {cause}</p><p>다음 행동: {nextAction}</p>
+          <div className="flex flex-wrap gap-2">
+            {operation.canInspect&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.inspect(operation.id)} className="rounded border border-slate-200 px-3 py-2">분류 결과 확인</button>}
+            {operation.canRetry&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.retry(operation.id)} className="rounded border border-slate-200 px-3 py-2">같은 분류 요청 이어하기</button>}
+            {operation.canCancel&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.cancel(operation.id)} className="rounded border border-slate-200 px-3 py-2">미처리 분류 요청 중단</button>}
+            {operation.canDiscard&&typeof operation.observedLocalText==='string'&&<button disabled={operation.busy||categoryActions.confirmationBusy} onClick={()=>void categoryActions.discard(operation.id,operation.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">분류 기기 사본 정리</button>}
+          </div>
+        </div>)}
+        {(recoveryView === 'failure' ? categoryActions.failureRows : [...categoryActions.failureRows, ...categoryActions.historyRows]).some(({operation}) => operation.canDiscard) && <p className="text-slate-500">이 기기에 남은 작업 기록을 정리해도 등록된 분류는 삭제되지 않습니다.</p>}
+      </section>}
+
+
+        </section>
+        {!hideDocs && <section aria-label="문서 처리 기록" className="space-y-3 min-w-0 break-words">
+          <h4 className="font-bold text-slate-700">파일</h4>
+          {transfers.displayMessage && <p role="status" className="whitespace-pre-line">{transfers.displayMessage}</p>}
+      {transfers.readLoading && <p role="status" className="text-xs text-slate-600">보관된 문서 요청의 처리 상태를 읽고 있습니다.</p>}
+      {transfers.readError && <div className="space-y-2 text-xs"><p role="alert">{transfers.displayReadError}</p><button type="button" disabled={transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">보관 요청 다시 읽기</button></div>}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" disabled={transfers.historyLoading || transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">문서 처리 기록 새로 조회</button>
+        {transfers.historyLoading && <p role="status">문서 처리 상태를 확인하고 있습니다.</p>}
+        {transfers.historyMore && <><p>더 확인할 요청이 있습니다.</p><button type="button" disabled={transfers.historyLoading} onClick={()=>void transfers.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 요청 확인</button></>}
+        {transfers.historyError && <p role="alert" className="whitespace-pre-line">{transfers.displayHistoryError}</p>}
+      </div>
+      {transfers.failureRows.length + (recoveryView === 'history' ? transfers.historyRows.length : 0) > 0 && <section aria-label="처리 중이거나 확인이 필요한 문서" className="max-h-[60vh] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
+        <h3 className="text-sm font-bold text-slate-700">처리 중이거나 확인이 필요한 문서</h3>
+        {(recoveryView === 'failure' ? transfers.failureRows : [...transfers.failureRows, ...transfers.historyRows]).map(({job,currentState,cause,nextAction}) => <div key={job.jobId} className="space-y-2 border-t border-slate-200 pt-3 text-xs first:border-t-0 first:pt-0">
+          <div className="min-w-0 break-words">
+            <p className="font-bold text-slate-700">{job.fileName || '문서 원문 확인 필요'}</p>
+            <p className="text-slate-500">문서 번호: {job.documentId}</p>
+            <p>분류: {job.category || '확인 필요'}{job.subCategory ? ' > ' + job.subCategory : ''}</p>
+            <p>현재 상태: {currentState}</p>
+            <p>내용: {cause}</p>
+            <p>다음 행동: {nextAction}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {job.canInspect&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 결과 확인'} onClick={()=>void transfers.inspect(job.jobId)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>}
+            {job.canRetry&&!job.requiresFile&&job.stage!=='cleanup'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 요청 이어하기'} onClick={()=>void transfers.resume(job.jobId)} className="rounded border border-slate-200 px-3 py-2">같은 요청 이어하기</button>}
+            {job.canCancel&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 미처리 요청 중단'} onClick={()=>void transfers.cancel(job.jobId)} className="rounded border border-slate-200 px-3 py-2">미처리 요청 중단</button>}
+            {job.stage==='cleanup'&&job.canRetry&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 남은 파일 정리'} onClick={()=>void transfers.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2">남은 파일 정리</button>}
+            {job.requiresFile&&<label className="rounded border border-slate-200 px-3 py-2">같은 파일 다시 선택<input type="file" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 파일 다시 선택'} className="mt-1 block max-w-full" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file){if(file.size>MAX_SIZE_MB*1024*1024){alert('파일이 '+MAX_SIZE_MB+'MB를 초과합니다.');return;}void transfers.resume(job.jobId,file);}}}/></label>}
+            {job.canDiscard&&typeof job.observedLocalText==='string'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 이 기기 사본 정리'} onClick={()=>void transfers.discardCopy(job.jobId,job.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
+          </div>
+          {job.requiresFile&&<p className="text-slate-500">처음 요청한 파일과 내용이 같은 파일만 이어갈 수 있습니다. 현재 분류나 새 파일로 원래 요청을 바꾸지 않습니다.</p>}
+        </div>)}
+        {(recoveryView === 'failure' ? transfers.failureRows : [...transfers.failureRows, ...transfers.historyRows]).some(({job}) => job.canDiscard) && <p className="text-xs text-slate-500">이 기기에 남은 작업 기록을 정리해도 등록된 문서는 삭제되지 않습니다.</p>}
+      </section>}
+
+
+        </section>}
+      </ModalShell>}
     </div>
   );
 };

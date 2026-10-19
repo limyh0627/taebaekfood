@@ -426,3 +426,82 @@ it('다른사본서버rejected라도남은파일정리는가능하고업무apply
     expect(f.metadata.discard).not.toHaveBeenCalled();
     expect(f.metadata.command.mock.calls.filter(c => c[2] === 'apply')).toHaveLength(0);
 });
+it('정상 완료·거절·중단 이력만 있으면 실패0이고 처리 기록으로만 보여준다', async () => {
+    const f = fixture();
+    const entries = (['applied', 'rejected', 'cancelled'] as const).map((status, index) => ({
+        label: `처리 기록 ${index}`,
+        result: { version: 1 as const, reference: { companyId: 'taebaek' as const, documentId: `done-${index}`, planId: `done-plan-${index}` }, actorUid: 'A', employeeId: 'employee', requestHash: 'a'.repeat(64), status, uploadStatus: 'verified' as const, cleanupStatus: 'not-required' as const, message: '서버 결과: 처리가 끝났습니다.' }
+    }));
+    f.metadata.listPending.mockResolvedValueOnce({ version: 1, companyId: 'taebaek', actorUid: 'A', employeeId: 'employee', entries, nextCursor: null });
+    const view = renderHook(() => useDocumentTransfers(f.options));
+    await waitFor(() => expect(view.result.current.readLoading).toBe(false));
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.failureRows).toHaveLength(0);
+    expect(view.result.current.historyRows).toHaveLength(3);
+    expect(view.result.current.historyRows.map(row => row.currentState)).toEqual(['문서 처리가 완료됐습니다.', '문서 요청이 거절됐습니다.', '문서 요청을 중단했습니다.']);
+    expect(view.result.current.historyRows.every(row => !row.cause.includes('서버 결과:'))).toBe(true);
+    expect(view.result.current.jobs[0].message).toBe('서버 결과: 처리가 끝났습니다.');
+    expect(f.metadata.prepare).not.toHaveBeenCalled();
+});
+it('정상 전송 중에는 실패0이고 멈춘 파일만 실패로 집계하며 원인과 다음 행동을 표시한다', async () => {
+    const f = fixture(), gate = deferred<void>();
+    vi.mocked(f.ports.uploadReservedFile).mockImplementationOnce(async () => { await gate.promise; throw Error('연결이 끊겼습니다.'); });
+    const view = renderHook(() => useDocumentTransfers(f.options));
+    await waitFor(() => expect(view.result.current.readLoading).toBe(false));
+    let run!: Promise<void>;
+    act(() => { run = view.result.current.startUploads([file()], '업무용', '원문'); });
+    await waitFor(() => expect(f.ports.uploadReservedFile).toHaveBeenCalledOnce());
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.historyRows[0].currentState).toBe('문서 요청을 처리하고 있습니다.');
+    await act(async () => { gate.resolve(); await run; });
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.failureRows[0].cause).toContain('연결이 끊겼습니다.');
+    expect(view.result.current.failureRows[0].nextAction).toContain('같은 요청의 결과');
+});
+it('서버에서 발견한 미완료와 실제 남은 파일 정리만 실패이고 정리 완료 후에는 기록이 된다', async () => {
+    const f = fixture();
+    const make = (planId: string, status: DocumentMetadataResult['status'], cleanupStatus: DocumentMetadataResult['cleanupStatus']): DocumentMetadataResult => ({ version: 1, reference: { companyId: 'taebaek', documentId: planId, planId }, actorUid: 'A', employeeId: 'employee', requestHash: 'a'.repeat(64), status, uploadStatus: 'verified', cleanupStatus, message: '문서 처리는 끝났고 다른 문서의 파일을 보존했습니다.' });
+    const active = make('active', 'active', 'not-required'), pending = make('cleanup', 'rejected', 'pending'), shared = make('shared', 'applied', 'retained-shared');
+    f.metadata.listPending.mockResolvedValueOnce({ version: 1, companyId: 'taebaek', actorUid: 'A', employeeId: 'employee', entries: [{ result: active, label: '미완료' }, { result: pending, label: '정리 필요' }, { result: shared, label: '보존 완료' }], nextCursor: null });
+    const view = renderHook(() => useDocumentTransfers(f.options));
+    await waitFor(() => expect(view.result.current.readLoading).toBe(false));
+    expect(view.result.current.failureCount).toBe(2);
+    expect(view.result.current.historyRows.map(row => row.job.fileName)).toEqual(['보존 완료']);
+    const row = view.result.current.failureRows.find(row => row.job.documentId === 'cleanup')!;
+    expect(row.currentState).toContain('거절');
+    expect(row.nextAction).toContain('파일 정리만');
+    for (const status of ['unknown', 'active'] as const) {
+        f.metadata.command.mockResolvedValueOnce({ result: { ...pending, status }, copyMismatch: true, cleanupFailed: false, message: '파일 정리 상태를 확인하고 있습니다.' });
+        await act(() => view.result.current.inspect(row.job.jobId));
+        const unresolved = view.result.current.failureRows.find(value => value.job.jobId === row.job.jobId)!;
+        expect(unresolved.currentState).toBe('문서 처리 결과 확인과 남은 파일 정리가 필요합니다.');
+        expect(unresolved.currentState).not.toContain('끝났');
+    }
+    f.metadata.command.mockResolvedValueOnce({ result: { ...pending, cleanupStatus: 'deleted' }, copyMismatch: true, cleanupFailed: false, message: '남은 파일을 정리했습니다.' });
+    await act(() => view.result.current.retryCleanup(row.job.jobId));
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.historyRows).toHaveLength(2);
+    expect(f.metadata.command.mock.calls.map(call => call[2])).toEqual(['inspect', 'inspect', 'cleanup']);
+});
+it('다른 원문 완료의 기기 사본은 실패로 남기고 표시 문구만 바꾸며 회사직원 전환 때 숨긴다', async () => {
+    const f = fixture();
+    vi.mocked(f.ports.uploadReservedFile).mockRejectedValueOnce(Error('연결 끊김'));
+    const view = renderHook(({ employeeId }) => useDocumentTransfers({ ...f.options, employeeId }), { initialProps: { employeeId: 'employee' } });
+    await waitFor(() => expect(view.result.current.readLoading).toBe(false));
+    await act(() => view.result.current.startUploads([file()], '업무', '원문'));
+    const job = view.result.current.jobs[0];
+    const result: DocumentMetadataResult = { version: 1, reference: job.reference!, actorUid: 'A', employeeId: 'employee', requestHash: 'b'.repeat(64), status: 'applied', uploadStatus: 'verified', cleanupStatus: 'not-required', message: '문서 등록 완료' };
+    const raw = '서버 결과: 문서 등록 완료\n기기 원문이 달라 이 사본을 정리하지 않았습니다.';
+    f.metadata.command.mockResolvedValueOnce({ result, copyMismatch: true, cleanupFailed: false, message: raw });
+    await act(() => view.result.current.inspect(job.jobId));
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.failureRows[0].currentState).toContain('기기에 남은 사본');
+    expect(view.result.current.failureRows[0].cause).not.toContain('서버 결과:');
+    expect(view.result.current.failureRows[0].cause).toContain('기기 원문이 달라');
+    expect(view.result.current.jobs[0].message).toBe(raw);
+    expect(f.metadata.discard).not.toHaveBeenCalled();
+    auth.currentUser.uid = 'B';
+    view.rerender({ employeeId: 'other' });
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.historyRows).toHaveLength(0);
+});

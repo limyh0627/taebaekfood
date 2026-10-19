@@ -310,3 +310,84 @@ it('두기기사본이사라져도동일현재plan의opaque중단확정은옛잠
     expect(view.result.current.newCatName).toBe('');
     expect(f.apply).toHaveBeenCalledOnce();
 });
+it('정상 서버 처리 이력만 있으면 실패는 0이고 원문 없는 조회에 사본 정리를 요구하지 않는다', async () => {
+    const f = fixture(), ref = {companyId:'taebaek' as const,planId:'history'};
+    const result:DocumentCategoryResult={version:1,reference:ref,actorUid:'A',employeeId:'employee',requestHash:'a'.repeat(64),status:'applied',message:'분류를 추가했습니다.'};
+    f.records.set(ref.planId,result);
+    const original=f.command.getMockImplementation()!;
+    f.command.mockImplementation(async input=>input.mode==='listPending'?{version:1,companyId:'taebaek',actorUid:'A',employeeId:'employee',entries:[{result,label:'지난 분류 추가'}],nextCursor:null}:original(input));
+    const view=renderHook(()=>useDocumentCategories(f.options));await ready(view.result);
+    expect(view.result.current.historyRows).toHaveLength(0);
+    expect(f.command.mock.calls.some(([input])=>input.mode==='listPending')).toBe(false);
+    await act(()=>view.result.current.refresh());
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.failureRows).toHaveLength(0);
+    expect(view.result.current.historyRows).toHaveLength(1);
+    const id=view.result.current.historyRows[0].operation.id;
+    await act(()=>view.result.current.inspect(id));
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.notice).toContain('보관 원문이 없는 과거 기록');
+    expect(view.result.current.notice).not.toContain('사본만 명시적으로 정리');
+    expect(view.result.current.notice).not.toContain('서버 결과:');
+    expect(view.result.current.historyRows[0].operation.canDiscard).toBe(false);
+});
+it('송신 중인 정상 분류는 실패로 세지 않고 결과 유실 뒤부터 미해결로 표시한다', async()=>{
+    const f=fixture(),gate=deferred<void>();
+    f.apply.mockImplementationOnce(async()=>{await gate.promise;throw Error('응답 유실');});
+    const view=renderHook(()=>useDocumentCategories(f.options));await ready(view.result);
+    act(()=>{view.result.current.openAddCategory();view.result.current.changeCategoryName('처리 중');});
+    let sending!:Promise<void>;act(()=>{sending=view.result.current.addCategory();});
+    await waitFor(()=>expect(f.apply).toHaveBeenCalledOnce());
+    expect(view.result.current.failureCount).toBe(0);
+    await act(async()=>{gate.resolve();await sending;});
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.failureRows[0].cause).toContain('응답 유실');
+});
+it('다른 사본의 완료는 업무말 원인과 조치를 표시하고 원오류 증거는 보존한다',async()=>{
+    const f=fixture();f.apply.mockImplementationOnce(async request=>{f.records.set(request.reference.planId,{...await f.reply(request),requestHash:'b'.repeat(64)});throw Error('응답 유실');});
+    const view=renderHook(()=>useDocumentCategories(f.options));await ready(view.result);
+    act(()=>{view.result.current.openAddCategory();view.result.current.changeCategoryName('내 사본');});
+    await act(()=>view.result.current.addCategory());const id=view.result.current.operations[0].id;
+    await act(()=>view.result.current.inspect(id));
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.message).toContain('서버 결과:');
+    expect(view.result.current.notice).not.toContain('서버 결과:');
+    expect(view.result.current.failureRows[0]).toMatchObject({currentState:'보관 내용 확인 필요',cause:expect.stringContaining('원문이 달라'),nextAction:expect.stringContaining('기기 사본만')});
+});
+it('업무가 완료돼도 기기사본 정리 실패는 미해결 한 건으로 원인과 조치를 유지한다',async()=>{
+    const f=fixture();f.storage.removeItem.mockImplementation(()=>{});
+    const view=renderHook(()=>useDocumentCategories(f.options));await ready(view.result);
+    act(()=>{view.result.current.openAddCategory();view.result.current.changeCategoryName('정리 필요');});
+    await act(()=>view.result.current.addCategory());
+    expect(view.result.current.failureCount).toBe(1);
+    expect(view.result.current.failureRows[0]).toMatchObject({currentState:'기기 사본 정리 필요',cause:expect.stringContaining('기기 사본 정리'),nextAction:expect.stringContaining('다시 저장하지 말고')});
+    expect(f.apply).toHaveBeenCalledOnce();
+});
+it('현재 작성의 확정 거절은 원문 정리 뒤에도 입력 근처에 남고 가짜 실패행을 만들지 않는다',async()=>{
+    const f=fixture();f.apply.mockImplementationOnce(async request=>({...await f.reply(request),status:'rejected' as const,message:'같은 이름의 분류가 있어 추가하지 않았습니다.'}));
+    const view=renderHook(()=>useDocumentCategories(f.options));await ready(view.result);
+    act(()=>{view.result.current.openAddCategory();view.result.current.changeCategoryName('거절 이름');});
+    await act(()=>view.result.current.addCategory());
+    expect(view.result.current.operations).toHaveLength(0);
+    expect(view.result.current.failureCount).toBe(0);
+    expect(view.result.current.formMessage).toContain('같은 이름');
+    expect(view.result.current.newCatName).toBe('거절 이름');
+});
+it('분류 미해결 표시와 이력은 회사 UID 직원 수명 밖에서 노출하지 않는다',async()=>{
+    const f=fixture();f.apply.mockRejectedValueOnce(Error('응답 유실'));
+    const view=renderHook(({employeeId})=>useDocumentCategories({...f.options,employeeId}),{initialProps:{employeeId:'employee'}});await ready(view.result);
+    act(()=>{view.result.current.openAddCategory();view.result.current.changeCategoryName('남은 요청');});await act(()=>view.result.current.addCategory());expect(view.result.current.failureCount).toBe(1);
+    view.rerender({employeeId:'other'});expect(view.result.current.failureCount).toBe(0);expect(view.result.current.historyRows).toHaveLength(0);expect(view.result.current.notice).toBe('');
+});
+it('이력 조회 중 직원 수명이 바뀌면 새 이력 버튼을 풀고 늦은 옛 결과를 버린다',async()=>{
+    const f=fixture(),gate=deferred<unknown>(),original=f.command.getMockImplementation()!;
+    f.command.mockImplementation(async input=>input.mode==='listPending'?gate.promise:original(input));
+    const view=renderHook(({employeeId})=>useDocumentCategories({...f.options,employeeId}),{initialProps:{employeeId:'employee'}});await ready(view.result);
+    let old!:Promise<void>;act(()=>{old=view.result.current.refresh();});
+    await waitFor(()=>expect(view.result.current.historyLoading).toBe(true));
+    view.rerender({employeeId:'new-employee'});await ready(view.result);
+    expect(view.result.current.historyLoading).toBe(false);
+    await act(async()=>{gate.resolve({version:1,companyId:'taebaek',actorUid:'A',employeeId:'employee',entries:[],nextCursor:null});await old;});
+    expect(view.result.current.historyRows).toHaveLength(0);
+    expect(view.result.current.notice).toBe('');
+});

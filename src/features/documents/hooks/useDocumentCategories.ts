@@ -45,10 +45,21 @@ export interface DocumentCategoryOperation {
     canDiscard: boolean;
     serverOnly: boolean;
 }
+export interface DocumentCategoryRecoveryRow {
+    operation: DocumentCategoryOperation;
+    currentState: string;
+    cause: string;
+    nextAction: string;
+}
 type StoredOperation = DocumentCategoryOperation & {
     scope: Scope;
     entry?: DocumentCategoryEntry;
     request?: DocumentCategoryRequest;
+    needsAttention: boolean;
+    copyMismatch?: boolean;
+    cleanupFailed?: boolean;
+    displayCause?: string;
+    displayNextAction?: string;
 };
 export interface DocumentCategoriesOptions {
     companyId: CompanyId;
@@ -70,6 +81,7 @@ const same = (a: DocumentCategoryReference | null, b: DocumentCategoryReference 
 export function useDocumentCategories(options: DocumentCategoriesOptions) {
     const [, repaint] = useReducer(n => n + 1, 0), [active, setActive] = useState({ category: '', subCategory: '' });
     const [message, setMessage] = useState(''), [readError, setReadError] = useState(''), [readLoading, setReadLoading] = useState(true);
+    const [notice, setNotice] = useState(''), [formMessage, setFormMessage] = useState('');
     const [historyError, setHistoryError] = useState(''), [historyLoading, setHistoryLoading] = useState(false), [historyMore, setHistoryMore] = useState(false);
     const [readRevision, setReadRevision] = useState(0);
     const mounted = useRef(true), readGeneration = useRef(0), operations = useRef(new Map<string, StoredOperation>());
@@ -87,10 +99,21 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
     const visible = (row: StoredOperation) => auth.currentUser?.uid === options.actorUid && row.scope.companyId === options.companyId && row.scope.actorUid === options.actorUid && row.scope.employeeId === options.employeeId;
     const force = () => { if (mounted.current)
         repaint(); };
+    const announce = (text: string) => { setMessage(text); setNotice(text); };
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; readGeneration.current++; }; }, []);
     const fromEntry = (entry: DocumentCategoryEntry, scope: Scope): StoredOperation => ({ id: entry.key, reference: entry.reference, observedLocalText: entry.observedLocalText,
         description: entry.description, message: '같은 요청의 서버 결과를 확인해 주세요.', busy: false, canInspect: !!entry.reference, canRetry: entry.readable,
-        canCancel: !!entry.reference, canDiscard: entry.hasLocalCopy, serverOnly: false, scope, entry, request: entry.request });
+        canCancel: !!entry.reference, canDiscard: entry.hasLocalCopy, serverOnly: false, scope, entry, request: entry.request, needsAttention: entry.hasLocalCopy });
+    const display = (row: StoredOperation): DocumentCategoryRecoveryRow => {
+        const status = row.serverStatus;
+        const currentState = row.cleanupFailed ? '기기 사본 정리 필요' : row.copyMismatch && row.canDiscard ? '보관 내용 확인 필요'
+            : status === 'applied' ? '분류 처리 완료' : status === 'rejected' ? '분류 처리 거절'
+                : status === 'cancelled' ? '미처리 요청 중단 완료' : row.busy ? '분류 처리 확인 중' : '처리 여부 확인 필요';
+        return { operation: { ...row }, currentState,
+            cause: row.displayCause ?? row.message,
+            nextAction: row.displayNextAction ?? (row.serverOnly && status !== 'unknown' ? '현재 분류를 확인한 뒤 필요한 작업을 새로 진행해 주세요.'
+                : '같은 요청의 결과를 확인하거나 미처리 요청 중단을 선택해 주세요.') };
+    };
     const finishDraft = (reference: DocumentCategoryReference, observation: DocumentCategoryObservation, matchedRequest?: DocumentCategoryRequest) => {
         if (observation.copyMismatch || observation.cleanupFailed || observation.outcome.status === 'unknown')
             return;
@@ -128,12 +151,19 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         if (!current())
             return;
         row.serverStatus = observation.result.status;
+        row.copyMismatch = observation.copyMismatch;
+        row.cleanupFailed = observation.cleanupFailed;
         row.message = observation.outcome.status === 'saved' ? observation.result.message : saveOutcomeMessage(observation.outcome);
         row.canCancel = observation.result.status === 'unknown';
         if (row.serverOnly) {
+            row.needsAttention = observation.result.status === 'unknown';
+            row.displayCause = observation.result.message;
+            row.displayNextAction = observation.result.status === 'unknown' ? '처리 여부를 다시 확인하거나 미처리 요청을 중단해 주세요.' : '이 기기에 보관 원문이 없는 과거 기록입니다. 현재 입력은 그대로 두고 필요한 작업을 새로 진행해 주세요.';
             row.canRetry = false;
             row.canDiscard = false;
             setMessage(row.message);
+            const view = display(row);
+            setNotice([view.cause, view.nextAction].join('\n'));
             return;
         }
         const entry = await writes.read(row.scope, row.reference!);
@@ -150,6 +180,16 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         row.observedLocalText = entry.hasLocalCopy ? entry.observedLocalText : null;
         row.canRetry = !!entry.readable && observation.result.status === 'unknown' && !observation.copyMismatch;
         row.canDiscard = entry.hasLocalCopy;
+        row.needsAttention = observation.result.status === 'unknown' || entry.hasLocalCopy;
+        row.displayCause = observation.copyMismatch
+            ? observation.result.message + (entry.hasLocalCopy ? ' 이 기기의 원문이 달라 해당 사본의 완료로 처리하지 않았습니다.' : ' 이 기기에 보관 원문이 없어 현재 입력의 완료로 처리하지 않았습니다.')
+            : row.message;
+        row.displayNextAction = !entry.hasLocalCopy && observation.result.status !== 'unknown'
+            ? '현재 입력은 그대로 유지했습니다. 확인한 처리 내용을 바탕으로 필요한 작업을 새로 진행해 주세요.'
+            : observation.copyMismatch ? '처리 내용을 확인한 뒤 화면에 보인 기기 사본만 명시적으로 정리해 주세요.'
+                : 'nextAction' in observation.outcome ? observation.outcome.nextAction : '현재 분류를 확인해 주세요.';
+        if (observation.result.status === 'rejected' && matchedRequest && (['cat','sub'] as const).some(kind => same(token[kind].request?.reference ?? null, row.reference)))
+            setFormMessage(observation.result.message);
         if (!observation.copyMismatch && observation.result.status !== 'unknown') {
             const request = row.request;
             if (request?.action === 'seedDefaults')
@@ -161,6 +201,8 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
                 operations.current.delete(row.id);
         }
         setMessage(row.message);
+        const view = display(row);
+        setNotice([view.cause, view.nextAction].filter(Boolean).join('\n'));
     };
     const recover = async (id: string, mode: 'inspect' | 'apply' | 'cancel') => {
         if (!current() || token.lock)
@@ -177,7 +219,10 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         catch (error) {
             if (current(token)) {
                 row.message = `${error instanceof Error ? error.message : '처리 결과를 확인하지 못했습니다.'}\n같은 요청의 결과 확인 또는 미처리 요청 중단을 선택해 주세요.`;
-                setMessage(row.message);
+                row.displayCause = row.message;
+                if (!row.serverOnly)
+                    row.needsAttention = true;
+                announce(row.message);
             }
         }
         finally {
@@ -200,6 +245,7 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
                 return;
             const row = fromEntry(entry, scope);
             row.busy = true;
+            row.needsAttention = false;
             operations.current.set(row.id, row);
             force();
             try {
@@ -214,6 +260,13 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
             if (!current(token))
                 return;
             const cause = `${error instanceof Error ? error.message : '분류 요청을 준비하지 못했습니다.'}\n보관된 요청이 있으면 결과 확인을 먼저 선택해 주세요.`;
+            const failed = [...operations.current.values()].find(row => visible(row) && same(row.reference, request.reference));
+            if (failed) {
+                failed.needsAttention = true;
+                failed.displayCause = cause;
+            }
+            if (['createCategory','createSubCategory','deleteCategory','deleteSubCategory'].includes(request.action))
+                setFormMessage(cause);
             if (!submitted) {
                 try {
                     const entry = await writes.read(scopeOf(token), request.reference);
@@ -233,7 +286,7 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
                 }
                 catch { /* 보관소 읽기도 실패하면 원문이 없다고 추정하거나 같은 요청을 재생성하지 않는다. */ }
             }
-            setMessage(cause);
+            announce(cause);
         }
         finally {
             if (current(token)) {
@@ -264,11 +317,11 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
                     continue;
                 const id = `server:${JSON.stringify([scope.companyId, scope.actorUid, scope.employeeId, entry.result.reference.planId])}`;
                 operations.current.set(id, { id, scope, reference: entry.result.reference, observedLocalText: null, description: entry.label, message: entry.result.message,
-                    serverStatus: entry.result.status, busy: false, canInspect: true, canRetry: false, canCancel: entry.result.status === 'unknown', canDiscard: false, serverOnly: true });
+                    serverStatus: entry.result.status, busy: false, canInspect: true, canRetry: false, canCancel: entry.result.status === 'unknown', canDiscard: false, serverOnly: true, needsAttention: entry.result.status === 'unknown' });
             }
             cursor.current = page.nextCursor;
             setHistoryMore(page.nextCursor !== null);
-            setMessage(`이번 조회에서 서버 분류 요청 ${page.entries.length}건을 확인했습니다. ${page.nextCursor ? '더 확인할 요청이 있으니 다음 목록을 읽어 주세요.' : '목록에 없다는 이유로 미처리를 확정하지 않습니다.'}`);
+            announce(`이번 조회에서 분류 처리 기록 ${page.entries.length}건을 확인했습니다. ${page.nextCursor ? '더 확인할 기록이 있으니 다음 목록을 읽어 주세요.' : '목록에 없다는 이유로 미처리를 확정하지 않습니다.'}`);
             force();
         }
         catch (error) {
@@ -324,7 +377,7 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
             }
         }
     };
-    useEffect(() => { confirming.current = null; historyLock.current = null; cursor.current = null; setReadError(''); setHistoryError(''); setHistoryMore(false); setMessage(''); setActive({ category: '', subCategory: '' }); void refresh(false); }, [options.companyId, options.actorUid, options.employeeId]);
+    useEffect(() => { confirming.current = null; historyLock.current = null; cursor.current = null; setHistoryLoading(false); setReadError(''); setHistoryError(''); setHistoryMore(false); announce(''); setFormMessage(''); setActive({ category: '', subCategory: '' }); void refresh(false); }, [options.companyId, options.actorUid, options.employeeId]);
     const sortedCats = useMemo(() => [...options.categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)), [options.categories]);
     useEffect(() => {
         if (!current())
@@ -376,11 +429,13 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         if (!name || form.request)
             return;
         if (kind === 'cat' ? latest.current.categories.some(row => row.name === name) : latest.current.subCategories.some(row => row.category === active.category && row.name === name)) {
-            setMessage('이미 있는 분류입니다.');
+            announce('이미 있는 분류입니다.');
+            setFormMessage('이미 있는 분류입니다.');
             return;
         }
         if (kind === 'sub' && !active.category) {
-            setMessage('먼저 대분류를 선택하세요.');
+            announce('먼저 대분류를 선택하세요.');
+            setFormMessage('먼저 대분류를 선택하세요.');
             return;
         }
         const base = { version: 1 as const, reference: { companyId: token.companyId, planId: form.planId }, name, createdAt: new Date().toISOString() };
@@ -398,11 +453,13 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         force();
         try {
             if (kind === 'category' && ((latest.current.docCountByCat?.get(frozen.name) ?? 0) > 0 || latest.current.subCategories.some(sub => sub.category === frozen.name))) {
-                setMessage('파일 또는 중분류가 있어 삭제할 수 없습니다.');
+                announce('파일 또는 중분류가 있어 삭제할 수 없습니다.');
+                setFormMessage('파일 또는 중분류가 있어 삭제할 수 없습니다.');
                 return;
             }
             if (kind === 'subCategory' && (latest.current.docCountBySub?.get(`${(frozen as CabinetSubCategory).category}|${frozen.name}`) ?? 0) > 0) {
-                setMessage('파일이 있어 삭제할 수 없습니다.');
+                announce('파일이 있어 삭제할 수 없습니다.');
+                setFormMessage('파일이 있어 삭제할 수 없습니다.');
                 return;
             }
             if (!await (options.confirm ?? appConfirm)(`${kind === 'category' ? '대분류' : '중분류'} "${frozen.name}"을(를) 삭제할까요?`) || !current(token))
@@ -414,7 +471,7 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         }
         catch (error) {
             if (current(token))
-                setMessage(error instanceof Error ? error.message : '분류 삭제 확인을 완료하지 못했습니다.');
+                announce(error instanceof Error ? error.message : '분류 삭제 확인을 완료하지 못했습니다.');
         }
         finally {
             if (current(confirmation)) {
@@ -437,7 +494,7 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
             const result = await writes.discard(row.scope, row.reference, raw, () => current(token), row.entry?.key);
             if (!current(token))
                 return;
-            setMessage(result.message);
+            announce(result.message);
             if (result.status === 'cleared')
                 operations.current.delete(id);
         }
@@ -449,6 +506,9 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
             }
         }
     };
+    const visibleRows = [...operations.current.values()].filter(visible);
+    const failureRows = visibleRows.filter(row => row.needsAttention).map(display);
+    const historyRows = visibleRows.filter(row => !row.needsAttention).map(display);
     return { activeCat: readyOwner.current === token ? active.category : '', activeSub: readyOwner.current === token ? active.subCategory : '', sortedCats,
         selectCat: (name: string) => { if (current()) {
             token.selectionAck = undefined;
@@ -461,18 +521,22 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         addingCat: token.addingCat, addingSub: token.addingSub, newCatName: token.cat.name, newSubName: token.sub.name,
         categoryLocked: !canWrite() || !!token.cat.request, subCategoryLocked: !canWrite() || !!token.sub.request,
         openAddCategory: () => { if (canWrite()) {
+            setFormMessage('');
             token.cat = draft();
             token.addingCat = true;
             force();
         } }, openAddSubCategory: () => { if (canWrite()) {
+            setFormMessage('');
             token.sub = draft();
             token.addingSub = true;
             force();
         } },
         changeCategoryName: (name: string) => { if (canWrite() && !token.cat.request) {
+            setFormMessage('');
             token.cat.name = name;
             force();
         } }, changeSubName: (name: string) => { if (canWrite() && !token.sub.request) {
+            setFormMessage('');
             token.sub.name = name;
             force();
         } },
@@ -488,6 +552,8 @@ export function useDocumentCategories(options: DocumentCategoriesOptions) {
         addCategory: () => add('cat'), addSubCategory: () => add('sub'), deleteCategory: (row: CabinetCategory) => remove(row, 'category'), deleteSubCategory: (row: CabinetSubCategory) => remove(row, 'subCategory'),
         busy: current() && token.lock, confirmationBusy: current() && confirming.current === token,
         message: readyOwner.current === token ? message : '', readError: readyOwner.current === token ? readError : '', readLoading: readyOwner.current !== token || readLoading,
+        notice: readyOwner.current === token ? notice : '', formMessage: readyOwner.current === token ? formMessage : '',
+        failureRows, historyRows, failureCount: failureRows.length,
         operations: [...operations.current.values()].filter(visible).map(row => ({ ...row })), historyLoading, historyError: readyOwner.current === token ? historyError : '', historyMore: readyOwner.current === token && historyMore,
         refresh: () => refresh(), nextPage: () => history(false), inspect: (id: string) => recover(id, 'inspect'), retry: (id: string) => recover(id, 'apply'), cancel: (id: string) => recover(id, 'cancel'), discard };
 }

@@ -53,6 +53,48 @@ export interface DocumentTransfersOptions {
 }
 const terminal = (result?: DocumentMetadataResult) => !!result && ['applied', 'rejected', 'cancelled'].includes(result.status);
 const cleanupPending = (result?: DocumentMetadataResult) => result?.cleanupStatus === 'pending';
+const hasDocumentCopy = (job: StoredJob) => job.observedLocalText !== null || !!job.entry?.hasLocalCopy || !!job.entry?.readable;
+
+export interface DocumentTransferDisplayRow {
+    job: DocumentTransferJob;
+    currentState: string;
+    cause: string;
+    nextAction: string;
+}
+// 원문 오류는 job에 보존하고 화면에는 업무 표현만 전달한다.
+const documentDisplayText = (text: string) => text.replace(/서버\s*결과\s*[:：]\s*/g, '').trim();
+function documentTransferDisplay(job: StoredJob): DocumentTransferDisplayRow {
+    const result = job.serverResult;
+    const cause = documentDisplayText(job.message);
+    if (cleanupPending(result)) {
+        const currentState = result?.status === 'rejected'
+            ? '문서 요청이 거절됐고 남은 파일 정리가 필요합니다.'
+            : result?.status === 'cancelled'
+                ? '문서 요청을 중단했고 남은 파일 정리가 필요합니다.'
+                : result?.status === 'applied'
+                    ? '문서 처리는 끝났고 남은 파일 정리가 필요합니다.'
+                    : '문서 처리 결과 확인과 남은 파일 정리가 필요합니다.';
+        return {job, currentState, cause, nextAction: '남은 파일 정리만 다시 시도해 주세요. 문서 요청은 다시 보내지 않습니다.'};
+    }
+    if (job.busy)
+        return {job, currentState: '문서 요청을 처리하고 있습니다.', cause: '처리 응답을 기다리고 있습니다.', nextAction: '잠시 기다려 주세요. 같은 요청을 다시 보내지 않습니다.'};
+    if (terminal(result)) {
+        const done = result?.status === 'applied' ? '문서 처리가 완료됐습니다.'
+            : result?.status === 'rejected' ? '문서 요청이 거절됐습니다.' : '문서 요청을 중단했습니다.';
+        return {job, currentState: !hasDocumentCopy(job) ? done : done + ' 이 기기에 남은 사본을 확인해 주세요.', cause,
+            nextAction: !hasDocumentCopy(job) ? '필요하면 문서 목록에서 현재 내용을 확인해 주세요.' : '처리 결과와 원문을 확인한 뒤 이 기기 사본만 정리해 주세요.'};
+    }
+    if (!job.reference)
+        return {job, currentState: '보관된 문서 요청을 식별하지 못했습니다.', cause,
+            nextAction: '보관 원문과 현재 문서 목록을 직접 확인한 뒤 이 기기 사본만 명시적으로 정리해 주세요. 처리 여부나 중단은 확인하지 못했습니다.'};
+    if (job.requiresFile)
+        return {job, currentState: '문서 등록을 이어가려면 원본 파일이 필요합니다.', cause,
+            nextAction: '처음 선택했던 같은 파일을 다시 선택해 주세요. 파일 내용을 확인한 뒤 이어갑니다.'};
+    return {job, currentState: result?.status === 'active' ? '문서 요청이 아직 완료되지 않았습니다.' : '문서 요청의 처리 결과를 아직 확인하지 못했습니다.', cause,
+        nextAction: job.serverOnly ? '결과를 확인하거나 미처리 요청을 중단해 주세요. 이 기기에 원문이 없어 등록을 다시 보내지는 않습니다.'
+            : '같은 요청의 결과를 확인한 뒤 이어가거나 미처리 요청을 중단해 주세요.'};
+}
+
 export function useDocumentTransfers(options: DocumentTransfersOptions) {
     const [, render] = useReducer(n => n + 1, 0);
     const [readLoading, setReadLoading] = useState(true), [readError, setReadError] = useState('');
@@ -410,7 +452,15 @@ export function useDocumentTransfers(options: DocumentTransfersOptions) {
                 repaint();
         }
     };
-    return { jobs: [...jobs.current.values()].filter(visible), readLoading: readOwner.current !== renderOwner || readLoading, readError: readOwner.current === renderOwner ? readError : '', message: readOwner.current === renderOwner ? message : '', confirmationBusy,
+    const visibleJobs = [...jobs.current.values()].filter(visible);
+    const needsAttention = (job: StoredJob) => cleanupPending(job.serverResult)
+        || (terminal(job.serverResult) ? hasDocumentCopy(job) : job.serverOnly || !job.busy);
+    const failureRows = visibleJobs.filter(needsAttention).map(documentTransferDisplay);
+    const historyRows = visibleJobs.filter(job => !needsAttention(job)).map(documentTransferDisplay);
+    return { jobs: visibleJobs, failureRows, historyRows, failureCount: failureRows.length,
+        displayMessage: documentDisplayText(readOwner.current === renderOwner ? message : ''),
+        displayReadError: documentDisplayText(readOwner.current === renderOwner ? readError : ''),
+        displayHistoryError: documentDisplayText(readOwner.current === renderOwner ? historyError : ''), readLoading: readOwner.current !== renderOwner || readLoading, readError: readOwner.current === renderOwner ? readError : '', message: readOwner.current === renderOwner ? message : '', confirmationBusy,
         historyLoading, historyError: readOwner.current === renderOwner ? historyError : '', historyMore: readOwner.current === renderOwner && historyMore, nextPage: () => readHistory(false), startUploads,
         deleteDocument: (doc: CabinetDoc) => prepareExisting(doc, 'delete'), editNote: (doc: CabinetDoc) => prepareExisting(doc, 'note'),
         inspect: (id: string) => perform(id, 'inspect'), resume: (id: string, file?: File) => perform(id, 'resume', file),
