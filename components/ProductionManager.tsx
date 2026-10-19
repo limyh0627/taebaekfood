@@ -1,18 +1,17 @@
+import {useProductionRecordEditor} from '../src/features/production/hooks/useProductionRecordEditor';
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { buildConsumedByOrderId, buildLedgerByOrderId, buildOrderIdsWithData, buildLotConsumption, filterRecallResults, productionTraceOf, type ItemFormulaRow } from '../src/features/production/domain/productionTrace';
-import {projectProductionRecords,hasProductionRecordIndex} from '../src/shared/productionRecordProjection';
-import { appConfirm, appNotice } from '../src/shared/components/appDialog';
+import {projectProductionRecords} from '../src/shared/productionRecordProjection';
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
-import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
-import { dateOfLocal, isCalendarDay, endOfMonth, addMonths } from '../src/shared/day';
+import { ProductionRecord, Item, Order, RawMaterialEntry, CompanyId } from '../types';
+import { isCalendarDay, endOfMonth, addMonths } from '../src/shared/day';
 
 
 
-const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
 // 제품 종류 분류 (참기름/들기름 등) — 생산 요약 그룹핑용
 const TYPE_ORDER = ['참기름', '들기름', '생들기름', '볶음참깨', '검정참깨', '들깨가루', '들깨', '기타'];
@@ -35,9 +34,11 @@ interface ProductionManagerProps {
   ledger?: RawMaterialEntry[];
   itemFormulas?: ItemFormulaRow[];
   onAdd: (record: ProductionRecord) => Promise<void>;
-  onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<ProductionRecord>) => void;
+  onDelete: (id: string) => Promise<void>;
+  onUpdate: (id: string, updates: Partial<ProductionRecord>) => Promise<void>;
   currentUserName?: string;
+  companyId?: CompanyId;
+  actorUid?: string;
 }
 
 const toLocalYMD = (d: Date) =>
@@ -53,6 +54,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   onDelete,
   onUpdate,
   currentUserName,
+  companyId,
+  actorUid,
 }) => {
   const today = toLocalYMD(new Date());
   const thisMonth = today.slice(0, 7);
@@ -64,10 +67,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const showAll=!from&&!to;
   const [filterProductId, setFilterProductId] = useState('');
   const [searchText, setSearchText] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editingDateId, setEditingDateId] = useState<string | null>(null);
-  const [editingDateVal, setEditingDateVal] = useState('');
-  const [syncing, setSyncing] = useState(false);
+  const editor=useProductionRecordEditor({companyId,actorUid,items,orders,records,currentUserName,onAdd,onUpdate,onDelete});
+  const {form,showForm,editingDateId,editingDateVal,syncing}=editor;
   const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
   const [recLimit, setRecLimit] = useState(30);
   // #5 로트 역추적(리콜)
@@ -97,14 +98,6 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   }, [lotConsumption, recallQuery]);
   const traceOf = (r: ProductionRecord) => productionTraceOf(r, items, itemFormulas, consumedByOrderId, ledgerByOrderId, orderIdsWithData);
 
-  const [form, setForm] = useState({
-    date: today,
-    itemId: '',
-    finishedQty: '',
-    wipItemId: '',
-    wipUsed: '',
-    note: '',
-  });
 
   const finishedProducts = useMemo(
     () => items.filter(p => !p.archived && (p.type === 'product' || p.type === '완제품')),
@@ -152,83 +145,6 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const prevMonth = () => {const month=addMonths(filterMonth,-1);setFrom(month+'-01');setTo(endOfMonth(month));setQuick('');};
   const nextMonth = () => {const month=addMonths(filterMonth,1);setFrom(month+'-01');setTo(endOfMonth(month));setQuick('');};
 
-  const handleSubmit = () => {
-    if (!form.itemId || !form.finishedQty) {
-      alert('품목과 생산수량을 입력해주세요.');
-      return;
-    }
-    const product = items.find(p => p.id === form.itemId);
-    const wipProduct = form.wipItemId ? items.find(p => p.id === form.wipItemId) : undefined;
-
-    const record: ProductionRecord = {
-      id: `pr-${Date.now()}`,
-      date: form.date,
-      itemId: form.itemId,
-      itemName: product?.name ?? '',
-      finishedQty: Number(form.finishedQty),
-      ...(wipProduct?.id ? { wipItemId: wipProduct.id, wipItemName: wipProduct.name } : {}),
-      ...(form.wipUsed ? { wipUsed: Number(form.wipUsed) } : {}),
-      ...(product?.cost != null ? { cost: product.cost } : {}),
-      ...(form.note ? { note: form.note } : {}),
-      ...(currentUserName ? { createdBy: currentUserName } : {}),
-      createdAt: new Date().toISOString(),
-    };
-
-    onAdd(record);
-    setForm({ date: today, itemId: '', finishedQty: '', wipItemId: '', wipUsed: '', note: '' });
-    setShowForm(false);
-  };
-
-  // 기존 DELIVERED 주문에서 생산 실적 동기화
-  const handleSyncFromOrders = async () => {
-    try {
-      const deliveredOrders = orders.filter(
-        o => o.status === OrderStatus.DELIVERED && o.partnerName !== '생산기록'
-      );
-
-      if (deliveredOrders.length === 0) {
-        await appNotice('이력에 완료된 주문이 없습니다.');
-        setSyncing(false);
-        return;
-      }
-
-      const existingIds = new Set(records.map(r => r.id));
-      let count = 0;
-
-      for (const order of deliveredOrders) {
-        // 새 계약의 현재 기록을 손으로 삭제해도 옛 동기화 경로로 다시 만들지 않는다.
-        if(hasProductionRecordIndex(order))continue;
-        for (const item of order.items) {
-          const product = items.find(p => p.id === item.itemId);
-          if (product && SUB_ONLY_CATS.has(product.type)) continue;
-
-          const recordId = `pr-${order.id}-${item.itemId}`;
-          if (existingIds.has(recordId)) continue;
-
-          const record: ProductionRecord = {
-            id: recordId,
-            date: dateOfLocal(order.deliveredAt || order.createdAt),
-            itemId: item.itemId,
-            itemName: product?.name ?? item.name,
-            finishedQty: item.quantity,
-            ...(product?.cost != null ? { cost: product.cost } : {}),
-            note: `주문 자동 연동 (${order.partnerName})`,
-            createdAt: new Date().toISOString(),
-          };
-          await onAdd(record);
-          existingIds.add(recordId);
-          count++;
-        }
-      }
-
-      await appNotice(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`, '처리 완료');
-    } catch (e) {
-      console.error('동기화 오류:', e);
-      await appNotice(`동기화 중 오류가 발생했습니다: ${e}`);
-    }
-    setSyncing(false);
-  };
-
   const formatDate = (dateStr: string) => {
     if(!isCalendarDay(dateStr))return '생산일 미확인';
     const [, m, d] = dateStr.split('-');
@@ -243,15 +159,16 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
-              disabled={syncing}
+              onClick={() => void editor.syncFromOrders()}
+              disabled={editor.busy}
               className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm"
             >
               <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
               주문 동기화
             </button>
             <button
-              onClick={() => setShowForm(v => !v)}
+              onClick={() => showForm?editor.closeForm():editor.openCreate()}
+              disabled={editor.busy}
               className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm"
             >
               <Plus size={14} />직접 입력
@@ -260,12 +177,14 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         }
       />
 
+      {editor.error&&<p role="alert" className="text-sm text-slate-700">{editor.error}</p>}
+      {editor.message&&<p role="status" className="text-sm text-slate-600">{editor.message}</p>}
       {/* 입력 폼 */}
       {showForm && (
         <div className="bg-white rounded-2xl border border-emerald-200 p-5 space-y-4">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-black text-slate-700 text-sm">신규 생산 실적</h3>
-            <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
+            <button onClick={() => editor.closeForm()} disabled={editor.busy} className="text-slate-400 hover:text-slate-600">
               <X size={18} />
             </button>
           </div>
@@ -275,8 +194,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <label className="block text-xs font-bold text-slate-500 mb-1.5">생산일자</label>
               <input
                 type="date"
+                aria-label="생산일자"
                 value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                onChange={e => editor.setField('date',e.target.value)}
+                disabled={editor.busy||editor.locked}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
               />
             </div>
@@ -286,7 +207,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <select
                 aria-label="생산 품목"
                 value={form.itemId}
-                onChange={e => setForm(f => ({ ...f, itemId: e.target.value }))}
+                onChange={e => editor.setField('itemId',e.target.value)}
+                disabled={editor.busy||editor.locked}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
               >
                 <option value="">품목 선택</option>
@@ -301,8 +223,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <div className="relative">
                 <input
                   type="number"
+                  aria-label="생산 수량"
                   value={form.finishedQty}
-                  onChange={e => setForm(f => ({ ...f, finishedQty: e.target.value }))}
+                  onChange={e => editor.setField('finishedQty',e.target.value)}
+                disabled={editor.busy||editor.locked}
                   placeholder="0"
                   min={0}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
@@ -320,7 +244,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <select
                 aria-label="투입 반제품"
                 value={form.wipItemId}
-                onChange={e => setForm(f => ({ ...f, wipItemId: e.target.value }))}
+                onChange={e => editor.setField('wipItemId',e.target.value)}
+                disabled={editor.busy||editor.locked}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
               >
                 <option value="">선택 안 함</option>
@@ -336,7 +261,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 <input
                   type="number"
                   value={form.wipUsed}
-                  onChange={e => setForm(f => ({ ...f, wipUsed: e.target.value }))}
+                  onChange={e => editor.setField('wipUsed',e.target.value)}
+                disabled={editor.busy||editor.locked}
                   placeholder="0"
                   min={0}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
@@ -348,8 +274,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <label className="block text-xs font-bold text-slate-500 mb-1.5">비고</label>
               <input
                 type="text"
+                aria-label="생산 비고"
                 value={form.note}
-                onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                onChange={e => editor.setField('note',e.target.value)}
+                disabled={editor.busy||editor.locked}
                 placeholder="메모 (선택)"
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
               />
@@ -358,13 +286,14 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
           <div className="flex justify-end gap-2 pt-1">
             <button
-              onClick={() => setShowForm(false)}
+              onClick={() => editor.closeForm()} disabled={editor.busy}
               className="px-4 py-2 border border-slate-200 rounded-xl text-sm text-slate-500 hover:bg-slate-50"
             >
               취소
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => void editor.submit()}
+              disabled={editor.busy||editor.locked}
               className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700"
             >
               저장
@@ -546,25 +475,23 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                           <input
                             type="date"
                             value={editingDateVal}
-                            onChange={e => setEditingDateVal(e.target.value)}
+                            onChange={e => editor.changeDate(e.target.value)}
+                            disabled={editor.busy} aria-label="수정할 생산일"
                             className="border border-emerald-300 rounded-lg px-2 py-1 text-xs focus:outline-none w-32"
                           />
                           <button
-                            onClick={() => {
-                              if (editingDateVal) onUpdate(r.id, { date: editingDateVal });
-                              setEditingDateId(null);
-                            }}
+                            onClick={() => void editor.saveDate()} disabled={!editor.canSaveDate} aria-label="생산일 저장"
                             className="text-emerald-500 hover:text-emerald-700"
                           >
                             <Check size={14} />
                           </button>
-                          <button onClick={() => setEditingDateId(null)} className="text-slate-400">
+                          <button onClick={() => editor.cancelDate()} disabled={editor.busy} aria-label="생산일 수정 취소" className="text-slate-400">
                             <X size={14} />
                           </button>
                         </div>
                       ) : (
                         <button
-                          onClick={() => { setEditingDateId(r.id); setEditingDateVal(r.date); }}
+                          onClick={() => editor.openDate(r)} disabled={editor.busy} aria-label={`${r.itemName} 생산일 수정`}
                           className="flex items-center gap-1 group font-bold text-slate-600"
                         >
                           {formatDate(r.date)}
@@ -603,11 +530,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                           </button>
                         )}
                         <button
-                          onClick={async () => {
-                            if (await appConfirm('이 생산 실적을 삭제하시겠습니까?')) {
-                              onDelete(r.id);
-                            }
-                          }}
+                          onClick={() => void editor.removeRecord(r)} disabled={!editor.canRemoveRecord(r)} aria-label={`${r.itemName} 생산 실적 삭제`}
                           className="text-slate-300 hover:text-red-400 transition-colors"
                         >
                           <Trash2 size={14} />

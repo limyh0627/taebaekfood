@@ -4729,6 +4729,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'production' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <ProductionManager
+                companyId={companyId}
+                actorUid={employeeEditRenderUid??undefined}
                 records={productionRecords}
                 items={allItems}
                 orders={allOrders}
