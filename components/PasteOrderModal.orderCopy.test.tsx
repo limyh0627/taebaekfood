@@ -1,12 +1,17 @@
 /** @vitest-environment jsdom */
 import React from 'react';
+import {useOrderCopyRecovery} from '../src/features/admin/hooks/useOrderCopyRecovery';
+import type {OrderInterpretationRequest} from '../src/shared/orderInterpretation';
+import type {OrderCopyRecoveryEntry,OrderCopyRecoveryObservation} from '../src/shared/services/orderCopyService';
 import {render,screen,fireEvent,waitFor,act,cleanup} from '@testing-library/react';
 import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 import PasteOrderModal from './PasteOrderModal';
 import {buildBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex} from '../src/shared/packIndex';
-const api=vi.hoisted(()=>({rules:vi.fn(),call:vi.fn()}));
-vi.mock('../src/shared/services/orderCopyService',()=>({listOrderInterpretationRules:api.rules}));
+const api=vi.hoisted(()=>({auth:{currentUser:{uid:'actor'}},rules:vi.fn(),call:vi.fn()}));
+vi.mock('../src/shared/services/orderCopyService',async importOriginal=>({...await importOriginal<typeof import('../src/shared/services/orderCopyService')>(),listOrderInterpretationRules:api.rules}));
+vi.mock('../src/shared/firebase',()=>({auth:api.auth,authReady:Promise.resolve()}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,listener:(user:{uid:string}|null)=>void)=>{listener(api.auth.currentUser);return()=>{};}}));
 vi.mock('firebase/app',()=>({getApp:()=>({})}));vi.mock('firebase/functions',()=>({getFunctions:()=>({}),httpsCallable:()=>api.call}));
 const items:any[]=[{id:'oil',companyId:'taebaek',name:'참기름',type:'product',unit:'개',spec:'350ml',stock:0,minStock:0,image:''},{id:'other',companyId:'taebaek',name:'들기름',type:'product',unit:'개',spec:'350ml',stock:0,minStock:0,image:''}];
 const partner:any={id:'partner',companyId:'taebaek',name:'거래처',type:'일반'};
@@ -124,4 +129,21 @@ it('확정된 주문과 승인 별칭 충돌만 있으면 AI를 호출하지 않
 
 it('UI와 범위 분류기의 단위 해석이 달라도 기존 별칭 충돌 판정을 AI로 우회하지 않는다',async()=>{
  api.rules.mockResolvedValue([{partnerId:'partner',alias:'기름2L',itemId:'oil',status:'approved'},{partnerId:'partner',alias:'기름2L',itemId:'other',status:'approved'}]);render(<PasteOrderModal {...props} onSave={vi.fn()}/>);await analyze('기름2L');expect(screen.getByRole('combobox')).toHaveValue('');fireEvent.click(screen.getByRole('button',{name:'AI로 다시 읽기'}));expect(api.call).not.toHaveBeenCalled();
+});
+it('저장 입력 전체 서명은 초기에는 알리지 않고 품목 수량·일정·비고 변경을 layout 단계에서 전달한다',async()=>{
+ const changed=vi.fn(),save=vi.fn();render(<PasteOrderModal {...props} onSave={save} onDraftChange={changed}/>);expect(changed).not.toHaveBeenCalled();await analyze('참기름 2박스');changed.mockClear();fireEvent.change(screen.getByRole('spinbutton'),{target:{value:'3'}});expect(changed).toHaveBeenCalled();let signature=JSON.parse(changed.mock.calls.at(-1)![0]);expect(signature.payload.draft.items[0].quantity).toBe(36);expect(signature.payload.evidence.inputLines[0].quantity).toBe(3);
+ const dates=document.querySelectorAll('input[type="date"]');fireEvent.change(dates[1],{target:{value:'2026-12-01'}});signature=JSON.parse(changed.mock.calls.at(-1)![0]);expect(signature.payload.draft.deliveryDate).toContain('2026-12-01');fireEvent.change(screen.getByLabelText('주문 비고'),{target:{value:'새 비고'}});signature=JSON.parse(changed.mock.calls.at(-1)![0]);expect(signature.payload.draft.note).toBe('새 비고');fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());expect(save.mock.calls[0]).toEqual([signature.payload.draft,signature.payload.evidence]);
+});
+it('조회 대기 중 같은 거래처의 배송 구독 값 변경과 늦은 AI 결과도 전체 저장 서명을 바꾼다',async()=>{
+ const changed=vi.fn(),view=render(<PasteOrderModal {...props} onSave={vi.fn()} onDraftChange={changed}/>);await analyze('참기름 2박스');changed.mockClear();view.rerender(<PasteOrderModal {...props} partners={[{...partner,defaultShipMethod:'화물'}]} onSave={vi.fn()} onDraftChange={changed} recoveryBusy/>);await waitFor(()=>expect(JSON.parse(changed.mock.calls.at(-1)![0]).payload.draft.shipMethod).toBe('화물'));
+ let finish!:(value:unknown)=>void;api.call.mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));fireEvent.click(screen.getByRole('button',{name:'원문 수정'}));fireEvent.change(screen.getByPlaceholderText(/주문 내용을 그대로 붙여넣으세요/),{target:{value:'들기름 두 박스요'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));fireEvent.click(await screen.findByRole('button',{name:'AI로 다시 읽기'}));await waitFor(()=>expect(finish).toBeTypeOf('function'));changed.mockClear();await act(async()=>finish({data:{results:[{sourceId:api.call.mock.calls.at(-1)![0].scopedSources[0].sourceId,lines:[{itemId:'other',qty:2,isBox:true,source:'들기름 두 박스요'}],rejected:[]}]}}));expect(changed).toHaveBeenCalled();const signature=JSON.parse(changed.mock.calls.at(-1)![0]);expect(signature.payload.evidence.firstAnalysis.scopedAiEvidence.rawResponse).toBeTruthy();expect(signature.payload.draft.items[0].itemId).toBe('other');
+});
+it('실제 작성창은 수량 A→B 중 늦은 성공으로 닫히지 않고 A 명시 저장 때 조회만으로 종결한다',async()=>{
+ let controller!:ReturnType<typeof useOrderCopyRecovery>,finish!:(value:OrderCopyRecoveryObservation)=>void,first!:OrderInterpretationRequest;
+ const entries:OrderCopyRecoveryEntry[]=[],committed=vi.fn();
+ const applied=():OrderCopyRecoveryObservation=>({terminal:true,outcome:{status:'saved'},result:{version:1,reference:{companyId:'taebaek',requestId:first.requestId},actorUid:'actor',status:'applied',requestHash:'a'.repeat(64),message:'주문 저장 완료',orderId:String(first.confirmed.orderDraft.id)}});
+ const services={read:vi.fn(async()=>[...entries]),send:vi.fn((request:OrderInterpretationRequest)=>{first=request;return new Promise<OrderCopyRecoveryObservation>(resolve=>finish=resolve);}),reconnect:vi.fn(async()=>applied()),resolve:vi.fn(async()=>applied()),retry:vi.fn(async()=>applied()),discard:vi.fn(async()=>({status:'cleared' as const,message:'정리 완료'})),list:vi.fn(async()=>({version:1 as const,companyId:'taebaek' as const,actorUid:'actor',entries:[],nextCursor:null}))};
+ function ActualFlow(){controller=useOrderCopyRecovery({companyId:'taebaek',orders:[],onCommitted:committed},services);const opened=React.useRef(false);React.useEffect(()=>{if(!controller.readLoading&&!opened.current){opened.current=true;controller.openDraft();}},[controller.readLoading]);return controller.draftOpen?<PasteOrderModal {...props} actorUid={controller.actorUid} onSave={controller.save} onClose={()=>controller.closeDraft()} onSourceTextChange={controller.updateSourceText} onDraftChange={controller.updateDraftSignature} recoveryBusy={controller.busy} saveBlocked={controller.saveBlocked}/>:<p>작성 종료</p>;}
+ render(<ActualFlow/>);await screen.findByRole('button',{name:'거래처'});await analyze('참기름 2박스');fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await waitFor(()=>expect(services.send).toHaveBeenCalledOnce());fireEvent.change(screen.getByRole('spinbutton'),{target:{value:'3'}});await act(async()=>finish(applied()));expect(screen.getByRole('spinbutton')).toHaveValue(3);expect(controller.draftOpen).toBe(true);expect(controller.error).toBe('');expect(committed).toHaveBeenCalledWith(String(first.confirmed.orderDraft.id),false);
+ fireEvent.change(screen.getByRole('spinbutton'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await waitFor(()=>expect(services.reconnect).toHaveBeenCalledOnce());await screen.findByText('작성 종료');expect(services.send).toHaveBeenCalledOnce();expect(committed).toHaveBeenLastCalledWith(String(first.confirmed.orderDraft.id),true);
 });

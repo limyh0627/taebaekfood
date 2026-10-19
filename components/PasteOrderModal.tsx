@@ -1,6 +1,6 @@
 import { parseLine, scoreProduct, type ParsedLine } from '../src/features/orders/domain/pasteOrderParser';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { validateScopedExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
@@ -84,13 +84,14 @@ interface PasteOrderModalProps {
   recoveryBusy?: boolean;
   saveBlocked?:boolean;
   onSourceTextChange?: (text:string)=>void;
+  onDraftChange?: (signature:string)=>void;
   onSave: (_order: Omit<Order, 'id' | 'status'>,evidence?:OrderCopyEvidence) => Promise<void>;
 }
 
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  companyId,actorUid,suspended=false,isCurrentActor,items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,onOpenRules,saveRecovery,recoveryBusy=false,saveBlocked=false,onSourceTextChange,
+  companyId,actorUid,suspended=false,isCurrentActor,items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,onOpenRules,saveRecovery,recoveryBusy=false,saveBlocked=false,onSourceTextChange,onDraftChange,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -335,9 +336,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const matchedLineCount = parsedLines.filter((_,index) => lineConfirmed(index)).length;
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
-  const handleSubmit = async () => {
-    if (savingRef.current || recoveryBusy || saveBlocked || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
-    invalidateAiRead();
+  const buildPayload = () => {
+    if (!selectedClient || !orderDate || !deadline) return null;
     const draft = buildNewOrderDraft({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
       lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
@@ -347,12 +347,34 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       orderDate, deliveryDate: deadline, shipToId, shipMethod,
       note: orderNote, noteImportant, pallets,
     });
-    if (!draft.items.length) return;
+    const evidence:OrderCopyEvidence = {sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.orderedAs?.trim()??line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox})),expressionConfirmations:expressionLines.flatMap(line=>{const row=expressionInputs[line.sourceStart];if(!row?.confirmed||!row.suggest)return [];if(!draft.note?.split(/\r?\n/).includes(row.value))return [];return [{...line,scope:row.scope,target:row.target,value:row.value}];})};
+    return {draft,evidence};
+  };
+  let currentPayload:ReturnType<typeof buildPayload> = null;
+  try { currentPayload = buildPayload(); } catch { /* 입력 중인 날짜는 저장 시 검증한다. */ }
+  const draftSignature = JSON.stringify({
+    payload:currentPayload, pasteText, parsedLines, orderDate, deadline, selectedClient,
+    shipToId, shipMethod, orderNote, noteImportant, pallets, expressionInputs,
+    firstAnalysis:firstAnalysis.current,
+  });
+  const previousDraftSignature = useRef<string|null>(null);
+  useLayoutEffect(() => {
+    if (previousDraftSignature.current === null) { previousDraftSignature.current=draftSignature; return; }
+    if (previousDraftSignature.current === draftSignature) return;
+    previousDraftSignature.current=draftSignature;
+    onDraftChange?.(draftSignature);
+  },[draftSignature,onDraftChange]);
+
+  const handleSubmit = async () => {
+    if (savingRef.current || recoveryBusy || saveBlocked || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
+    invalidateAiRead();
+    const payload = buildPayload();
+    if (!payload?.draft.items.length) return;
     savingRef.current = true;
     setIsSaving(true);
     setSaveError('');
     try {
-      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.orderedAs?.trim()??line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox})),expressionConfirmations:expressionLines.flatMap(line=>{const row=expressionInputs[line.sourceStart];if(!row?.confirmed||!row.suggest)return [];if(!draft.note?.split(/\r?\n/).includes(row.value))return [];return [{...line,scope:row.scope,target:row.target,value:row.value}];})});
+      await onSave(payload.draft,payload.evidence);
     } catch (error) {
       console.error('복사 주문 저장 실패', error);
       setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');

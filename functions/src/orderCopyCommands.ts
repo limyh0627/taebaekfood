@@ -55,7 +55,7 @@ export async function submitOrderCopy(db:admin.firestore.Firestore,scope:OrderIn
  const base={requestId:request.requestId,orderId,requestHash:input.requestHash};
  return db.runTransaction(async tx=>{
   const gate=await tx.get(releaseGateRef(db));const saved=await tx.get(operation);
-  if(saved.exists){const row=saved.data()!;if(row.companyId!==scope.companyId||row.actorUid!==scope.actorUid||row.requestText!==input.requestText||row.requestHash!==input.requestHash||row.orderId!==orderId||!['applied','rejected'].includes(row.status))throw new HttpsError('already-exists','같은 주문 요청 ID의 최초 원문이나 계정이 다릅니다.');
+  if(saved.exists){const row=saved.data()!;if(row.status==='stopped'&&row.recoveryFence===true){if(row.companyId!==scope.companyId||row.actorUid!==scope.actorUid||row.requestId!==request.requestId)throw new HttpsError('permission-denied','다른 작성자의 주문 요청입니다.');return {...base,status:'rejected' as const,reason:'미처리 요청이 중단되어 주문을 만들지 않았습니다.'};}if(row.companyId!==scope.companyId||row.actorUid!==scope.actorUid||row.requestText!==input.requestText||row.requestHash!==input.requestHash||row.orderId!==orderId||!['applied','rejected'].includes(row.status))throw new HttpsError('already-exists','같은 주문 요청 ID의 최초 원문이나 계정이 다릅니다.');
    return {...base,status:row.status==='applied'?'duplicate' as const:'rejected' as const,...(row.reason?{reason:row.reason}:{})};}
   if(input.action==='inspect')return {...base,status:'unknown' as const,reason:'최초 요청의 처리 결과가 아직 확인되지 않았습니다.'};
   assertReleaseActive(gate,input.releaseId??'');
@@ -80,7 +80,7 @@ export async function submitOrderCopy(db:admin.firestore.Firestore,scope:OrderIn
   return {...base,status:'applied' as const};
  });
 }
-export const submitOrderCopyCommand=onCall({region:'asia-northeast3'},request=>submitOrderCopy(admin.firestore(),authorizeOrderCopy(request.auth),request.data));
+export const submitOrderCopyCommand=onCall({region:'asia-northeast3'},request=>{const scope=authorizeOrderCopy(request.auth);return request.data?.action==='stop'||request.data?.action==='listHistory'||request.data?.action==='inspect'&&request.data?.reference?recoverOrderCopy(admin.firestore(),scope,request.data):submitOrderCopy(admin.firestore(),scope,request.data);});
 export async function listOrderInterpretationRules(db:admin.firestore.Firestore,scope:OrderInterpretationScope,includeAll=false):Promise<InterpretationRule[]>{
  const snapshot=await db.collection(ORDER_INTERPRETATION_RULES).where('companyId','==',scope.companyId).get();return snapshot.docs.map(row=>row.data() as InterpretationRule).filter(row=>includeAll||row.status==='approved');
 }
@@ -104,3 +104,88 @@ export async function reviewOrderInterpretationRule(db:admin.firestore.Firestore
 }
 export const listOrderInterpretationRulesCommand=onCall({region:'asia-northeast3'},request=>{const scope=authorizeOrderCopy(request.auth,request.data?.includeAll===true);if(request.data?.companyId!==scope.companyId)throw new HttpsError('permission-denied','다른 회사의 별칭 규칙은 조회하지 않습니다.');return listOrderInterpretationRules(admin.firestore(),scope,request.data?.includeAll===true);});
 export const reviewOrderInterpretationRuleCommand=onCall({region:'asia-northeast3'},request=>reviewOrderInterpretationRule(admin.firestore(),authorizeOrderCopy(request.auth,true),request.data));
+import { normalizeOrderCopyRecoveryReference, type OrderCopyRecoveryCommand, type OrderCopyRecoveryReference, type OrderCopyRecoveryResult, type OrderCopyRecoveryHistoryResult } from './shared/orderCopyRecovery';
+/** 최초 영수증을 확인한다. 이후 주문 편집·삭제는 과거 저장 성공을 되돌리지 않는다. */
+async function readOrderCopyRecovery(tx: admin.firestore.Transaction, db: admin.firestore.Firestore, scope: OrderInterpretationScope, reference: OrderCopyRecoveryReference, saved?: admin.firestore.DocumentSnapshot): Promise<OrderCopyRecoveryResult> {
+    const base = { version: 1 as const, reference, actorUid: scope.actorUid };
+    const operation = saved ?? await tx.get(db.collection(ORDER_COPY_OPERATIONS).doc(orderCopyHash(`${reference.companyId}:${reference.requestId}`)));
+    const unknown = (message = '보관된 주문의 원문 증거를 확인하지 못했습니다. 처리 기록과 현재 주문을 확인해 주세요.'): OrderCopyRecoveryResult => ({ ...base, status: 'unknown', requestHash: null, message });
+    if (!operation.exists)
+        return unknown('이 요청의 처리 기록이 아직 없습니다. 늦게 도착할 수 있으니 결과를 다시 확인하거나 미처리 요청을 중단해 주세요.');
+    const row = operation.data()!;
+    if (row.companyId !== scope.companyId || row.actorUid !== scope.actorUid)
+        throw new HttpsError('permission-denied', '다른 회사·작성자의 복사 주문은 확인할 수 없습니다.');
+    if (row.requestId !== reference.requestId || operation.id !== orderCopyHash(`${scope.companyId}:${reference.requestId}`))
+        return unknown();
+    if (row.status === 'stopped' && row.recoveryFence === true && row.requestHash === null)
+        return { ...base, status: 'stopped', requestHash: null, message: '미처리 복사 주문 요청을 중단했습니다. 이미 만들어진 주문은 삭제하지 않았습니다.' };
+    if (!['applied', 'rejected'].includes(row.status) || typeof row.requestText !== 'string' || orderCopyHash(row.requestText) !== row.requestHash)
+        return unknown();
+    try {
+        const request = validateOrderInterpretation(JSON.parse(row.requestText), scope);
+        if (canonicalOrderInterpretation(request, scope) !== row.requestText || request.requestId !== reference.requestId)
+            return unknown();
+        const draft = request.confirmed.orderDraft;
+        if (row.orderId !== (id(draft.id) ? draft.id : ''))
+            return unknown();
+        if (row.status === 'rejected')
+            return typeof row.reason === 'string' ? { ...base, status: 'rejected', requestHash: row.requestHash, message: `이 요청은 주문을 만들지 않았습니다. ${row.reason}` } : unknown();
+        const approved = JSON.parse(row.orderText);
+        const selected = selectOrderCopyDraft(draft);
+        if (typeof approved.createdBy !== 'string' || !approved.createdBy || JSON.stringify(approved) !== JSON.stringify({ ...selected, companyId: scope.companyId, createdBy: approved.createdBy, status: 'PENDING' }))
+            return unknown();
+        return { ...base, status: 'applied', requestHash: row.requestHash, orderId: row.orderId, cardNo: selected.cardNo, partnerName: selected.partnerName, createdAt: selected.createdAt, message: '이 요청의 주문 등록이 완료됐습니다. 같은 주문을 다시 만들지 않습니다.' };
+    }
+    catch {
+        return unknown();
+    }
+}
+export async function recoverOrderCopy(db: admin.firestore.Firestore, scope: OrderInterpretationScope & {
+    employeeId: string;
+}, input: OrderCopyRecoveryCommand): Promise<OrderCopyRecoveryResult | OrderCopyRecoveryHistoryResult> {
+    if (!input || !['inspect', 'stop', 'listHistory'].includes(input.action))
+        fail('복사 주문 복구 작업을 확인해 주세요.');
+    if (input.action === 'listHistory') {
+        normalizeOrderCopyRecoveryReference({ companyId: input.companyId, requestId: 'history' });
+        if (input.companyId !== scope.companyId)
+            throw new HttpsError('permission-denied', '다른 회사의 복사 주문 기록은 조회하지 않습니다.');
+        const binding = orderCopyHash(JSON.stringify([scope.companyId, scope.actorUid]));
+        let after: string | undefined;
+        if (input.cursor !== undefined) {
+            try {
+                if (typeof input.cursor !== 'string' || !/^[A-Za-z0-9_-]{1,2048}$/.test(input.cursor))
+                    throw Error();
+                const decoded = JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8'));
+                if (decoded.version !== 1 || decoded.binding !== binding || !/^[a-f0-9]{64}$/.test(decoded.after))
+                    throw Error();
+                after = decoded.after;
+            }
+            catch {
+                throw new HttpsError('invalid-argument', '이력 페이지의 회사·작성자가 다릅니다. 처음부터 다시 조회해 주세요.');
+            }
+        }
+        let query = db.collection(ORDER_COPY_OPERATIONS).where('actorUid', '==', scope.actorUid).orderBy(admin.firestore.FieldPath.documentId()).limit(50);
+        if (after)
+            query = query.startAfter(after);
+        return db.runTransaction(async (tx) => {
+            const page = await tx.get(query), entries: OrderCopyRecoveryResult[] = [];
+            for (const row of page.docs) {
+                const value = row.data();
+                if (value.companyId !== scope.companyId || !id(value.requestId) || row.id !== orderCopyHash(`${scope.companyId}:${value.requestId}`))
+                    continue;
+                entries.push(await readOrderCopyRecovery(tx, db, scope, { companyId: scope.companyId, requestId: value.requestId }, row));
+            }
+            return { version: 1, companyId: scope.companyId, actorUid: scope.actorUid, entries, nextCursor: page.size === 50 ? Buffer.from(JSON.stringify({ version: 1, binding, after: page.docs[49].id })).toString('base64url') : null };
+        });
+    }
+    const reference = normalizeOrderCopyRecoveryReference(input.reference);
+    if (reference.companyId !== scope.companyId)
+        throw new HttpsError('permission-denied', '요청 회사가 다릅니다.');
+    return db.runTransaction(async (tx) => {
+        const saved = await tx.get(db.collection(ORDER_COPY_OPERATIONS).doc(orderCopyHash(`${scope.companyId}:${reference.requestId}`)));
+        if (saved.exists || input.action === 'inspect')
+            return readOrderCopyRecovery(tx, db, scope, reference, saved);
+        tx.create(saved.ref, { version: 1, companyId: scope.companyId, actorUid: scope.actorUid, requestId: reference.requestId, status: 'stopped', recoveryFence: true, requestHash: null });
+        return { version: 1, reference, actorUid: scope.actorUid, status: 'stopped', requestHash: null, message: '미처리 복사 주문 요청을 중단했습니다. 늦게 도착하는 같은 요청도 주문을 만들지 않습니다.' };
+    });
+}
