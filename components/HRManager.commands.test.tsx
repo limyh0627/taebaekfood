@@ -186,3 +186,42 @@ it('급여 저장 중 모든 변경을 잠그고 UID 변경 뒤 이전 ACK 안�
     await act(async () => finish({ revision: 4 }));
     expect(screen.queryByText('저장했습니다')).toBeNull();
 });
+
+it('직원 다른 사본 결과 확인과 명시 사본 정리는 실제 후크를 통해 초안·창을 유지한다',async()=>{
+ const reference={companyId:'taebaek' as const,targetId:'e1',planId:'copy-plan'};
+ let refs=[{key:'observed-key',reference,readable:true,observedLocalText:'관측 직원 원문'}];
+ const inspect=vi.fn(async()=>({status:'rejected' as const,copyMismatch:true as const,requiresReopen:true,message:'서버 완료지만 다른 기기 사본'}));
+ const discard=vi.fn(async()=>{refs=[];return {status:'cleared' as const,message:'이 기기 사본만 정리했습니다.'};});
+ const save=vi.fn();render(<HRManager {...props} companyId='taebaek' onSaveEmployeeEdit={save} onReadEmployeeEditReferences={()=>refs} onInspectEmployeeEdit={inspect} onDiscardEmployeeEditCopy={discard}/>);
+ fireEvent.click(screen.getByRole('button',{name:'사원 정보 수정'}));const dialog=screen.getByRole('dialog',{name:'정보 수정'});
+ fireEvent.click(within(dialog).getByRole('button',{name:'결과 확인'}));await waitFor(()=>expect(within(dialog).getByRole('status')).toHaveTextContent('다른 기기 사본'));
+ fireEvent.click(within(dialog).getByRole('button',{name:'이 기기 사본 정리'}));await waitFor(()=>expect(discard).toHaveBeenCalledWith(reference,'관측 직원 원문'));
+ expect(dialog).toBeInTheDocument();expect(dialog.querySelector('input[type="text"]')).toHaveValue('사원');expect(save).not.toHaveBeenCalled();
+ expect(within(dialog).getByRole('status')).toHaveTextContent('사본만 정리');
+});
+it('손상 직원 원문도 유효참조 결과 확인·중단·관측 사본 정리 포트를 제공한다',async()=>{
+ const reference={companyId:'taebaek' as const,targetId:'deleted-employee',planId:'broken-plan'};
+ const inspect=vi.fn(async()=>({status:'rejected' as const,copyMismatch:true as const,message:'서버 중단 확인'}));
+ const cancel=vi.fn(async()=>({status:'rejected' as const,copyMismatch:true as const,message:'중단된 다른 사본'}));
+ const discard=vi.fn(async()=>({status:'cleared' as const,message:'사본 정리'}));
+ render(<HRManager {...props} companyId='taebaek' onReadEmployeeEditReferences={()=>[{key:'broken',reference,readable:false,observedLocalText:'{'}]} onInspectEmployeeEdit={inspect} onCancelEmployeeEdit={cancel} onDiscardEmployeeEditCopy={discard}/>);
+ const region=screen.getByRole('region',{name:'처리 결과 확인이 필요한 직원 저장'});
+ fireEvent.click(within(region).getByRole('button',{name:'결과 확인'}));await waitFor(()=>expect(inspect).toHaveBeenCalledWith(reference));
+ fireEvent.click(within(region).getByRole('button',{name:'요청 중단'}));await waitFor(()=>expect(cancel).toHaveBeenCalledWith(reference));
+ fireEvent.click(within(region).getByRole('button',{name:'이 기기 사본 정리'}));await waitFor(()=>expect(discard).toHaveBeenCalledWith(reference,'{'));
+});
+
+it('직원 partial은 실제 저장 ACK를 안내하고 모달·초안을 유지해 같은 요청 조회로 사본 정리만 완료한다',async()=>{
+ const reference={companyId:'taebaek' as const,targetId:'e1',planId:'partial-plan'};
+ let refs:Array<{key:string;reference:typeof reference;readable:boolean;observedLocalText:string}>=[];
+ const save=vi.fn(async()=>{refs=[{key:'partial',reference,readable:true,observedLocalText:'partial원문'}];return {status:'partial' as const,reason:'followup-unconfirmed' as const,committedIds:['e1'],unconfirmedIds:[],message:'직원 저장 확인·기기 사본 정리 미확인',nextAction:'같은 요청 결과 확인'};});
+ const inspect=vi.fn(async()=>{refs=[];return {status:'saved' as const};});
+ render(<HRManager {...props} onSaveEmployeeEdit={save} onReadEmployeeEditReferences={()=>refs} onInspectEmployeeEdit={inspect}/>);
+ fireEvent.click(screen.getByRole('button',{name:'사원 정보 수정'}));const dialog=screen.getByRole('dialog',{name:'정보 수정'});
+ fireEvent.change(dialog.querySelector('input[type="text"]')!,{target:{value:'partial 이름'}});
+ await act(async()=>{fireEvent.click(within(dialog).getByRole('button',{name:'저장 완료'}));});
+ expect(dialog).toBeInTheDocument();expect(within(dialog).getByRole('status')).toHaveTextContent('직원 저장 확인');expect(dialog.querySelector('input[type="text"]')).toHaveValue('partial 이름');expect(within(dialog).getByRole('button',{name:'저장 완료'})).toBeDisabled();
+ fireEvent.click(within(dialog).getByRole('button',{name:'결과 확인'}));await waitFor(()=>expect(inspect).toHaveBeenCalledExactlyOnceWith(reference));
+ expect(dialog).toBeInTheDocument();expect(save).toHaveBeenCalledOnce();expect(dialog.querySelector('input[type="text"]')).toHaveValue('partial 이름');
+ fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));expect(screen.queryByRole('dialog',{name:'정보 수정'})).toBeNull();
+});

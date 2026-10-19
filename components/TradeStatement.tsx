@@ -254,7 +254,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
   voucherMode = 'full',
-  issuedStatements, onUpdateStatus, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,
+  issuedStatements, onUpdateStatus, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,onDiscardPartnerItemTermsCopy,
   onAddIssuedStatement,
   onApplyStatement,
   onUpdateIssuedStatement,
@@ -445,7 +445,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   recoverySelectionRef.current=recoverySelection;
   const [issuePendingError,setIssuePendingError]=useState('');
   const issueActor=auth.currentUser?.uid;
-  const termsEditor=usePartnerItemTermsEditor({scopeKey:companyId+':'+(requestScopeKey??issueActor??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms});
+  const termsEditor=usePartnerItemTermsEditor({scopeKey:companyId+':'+(requestScopeKey??issueActor??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms,discard:onDiscardPartnerItemTermsCopy});
   const savePartnerTermsRow=async(pc:PartnerItem,terms:PartnerItemTerms,opening:PartnerItem|null=pc):Promise<PartnerItemTermsOutcome>=>{
     if(!pc.itemId||!pc.partnerId)return {status:'rejected',message:'품목 또는 거래처 번호가 없어 저장하지 않았습니다.'};
     const target={itemId:pc.itemId,partnerId:pc.partnerId,direction:pc.Direction??(createMode==='매입'?'in' as const:'out' as const),...(opening?.id?{existingLinkId:opening.id}:{}),opening};

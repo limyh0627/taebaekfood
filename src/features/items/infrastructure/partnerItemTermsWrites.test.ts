@@ -200,7 +200,7 @@ it('key본문 바꿔치기와 해시 손상은 원문을 보존하고 reference-
     }
     expect((await f.service.run(scope, reference, 'apply')).status).toBe('unknown');
     expect(f.command).toHaveBeenCalledTimes(1);
-    expect((await f.service.run(scope, reference, 'cancel')).status).toBe('cancelled');
+    expect(await f.service.run(scope, reference, 'cancel')).toMatchObject({status:'rejected',copyMismatch:true,observedServerStatus:'cancelled'});
     expect(f.command.mock.lastCall?.[0]).toEqual({
       mode: 'cancel',
       reference
@@ -296,4 +296,21 @@ it('호출자가 명시 undefined를 정본에서 제거한 최종 terms에는 �
   expect(apply.request.terms).toEqual({
     price: 0
   });
+});
+
+it('다른 유효사본은 reference-only 실제 완료를 알리지만 현재saved나 자동정리로 승격하지 않는다',async()=>{
+ const f=fixture(),plan=await f.service.prepare(scope,input,async()=>{}),[key,text]=[...f.data][0],other=JSON.parse(text);other.request.terms.price=999;other.requestHash=sha(serializePartnerItemTermsRequest(other.request));const observed=JSON.stringify(other);f.data.set(key,observed);f.command.mockResolvedValue({...reference,actorUid:'actor',requestHash:plan.requestHash,status:'applied',message:'서버의 최초 거래조건 저장 완료'});const result=await f.service.run(scope,reference,'inspect');expect(f.command.mock.lastCall?.[0]).toEqual({mode:'inspect',reference});expect(result).toMatchObject({status:'rejected',copyMismatch:true,observedServerStatus:'applied'});expect(result.status).not.toBe('saved');expect(f.data.get(key)).toBe(observed);expect(f.service.references(scope)[0].observedLocalText).toBe(observed);expect((await f.service.discard(scope,reference,observed)).status).toBe('cleared');expect(f.data.size).toBe(0);
+});
+it('손상원문도 실제번호로 서버결과를 조회하고 미처리중단 후 명시사본정리한다',async()=>{
+ const f=fixture();await f.service.prepare(scope,input,async()=>{});const key=[...f.data.keys()][0];f.data.set(key,'{손상');f.command.mockResolvedValue({...reference,actorUid:'actor',requestHash:null,status:'cancelled',message:'미처리 요청 중단'});expect(await f.service.run(scope,reference,'inspect')).toMatchObject({copyMismatch:true,observedServerStatus:'cancelled'});expect(f.data.get(key)).toBe('{손상');expect((await f.service.discard(scope,reference,'{손상')).status).toBe('cleared');
+});
+it('미종결·관측후교체·scope변경은 사본삭제 없이 보존한다',async()=>{
+ const f=fixture(),plan=await f.service.prepare(scope,input,async()=>{}),[key,text]=[...f.data][0];f.command.mockResolvedValue({...reference,actorUid:'actor',requestHash:null,status:'unknown',message:'서버처리기록아직없음'});expect((await f.service.discard(scope,reference,text)).status).toBe('blocked');expect(f.data.get(key)).toBe(text);f.command.mockImplementation(async()=>{f.data.set(key,'교체사본');return {...reference,actorUid:'actor',requestHash:plan.requestHash,status:'applied',message:'완료'};});expect((await f.service.discard(scope,reference,text)).status).toBe('blocked');expect(f.data.get(key)).toBe('교체사본');expect((await f.service.discard(scope,reference,'교체사본',()=>false)).status).toBe('unknown');expect(f.data.get(key)).toBe('교체사본');
+});
+it('reference 표시와 정리입력은 한 번 관측한 동일 raw를 사용한다',async()=>{
+ const f=fixture();await f.service.prepare(scope,input,async()=>{});const[key,text]=[...f.data][0],get=f.storage.getItem;let calls=0;f.storage.getItem=(id:string)=>{if(id===key){calls++;return calls===1?text:'{교체';}return get(id);};const row=f.service.references(scope)[0];expect(row.readable).toBe(true);expect(row.observedLocalText).toBe(text);expect(calls).toBe(1);
+});
+
+it('현재 기기 원문 없는 reference조회는 실제서버완료를 알려도 현재saved로 승격하지 않는다',async()=>{
+ const f=fixture();f.command.mockResolvedValue({...reference,actorUid:'actor',requestHash:'a'.repeat(64),status:'applied',message:'서버의 기존 거래조건 완료'});const result=await f.service.run(scope,reference,'inspect');expect(result).toMatchObject({status:'rejected',copyMismatch:true,requiresReopen:true,observedServerStatus:'applied'});expect(result.status).not.toBe('saved');expect(result.status!=='saved'&&result.message).toContain('현재 원문이 없어');expect(f.data.size).toBe(0);expect(f.command).toHaveBeenCalledExactlyOnceWith({mode:'inspect',reference});
 });

@@ -39,3 +39,6 @@ it('두 소비자는 같은 typed 복구 배선을 쓰고 옛 재귀 writer를 �
  expect(source).not.toContain('const handleUpsertPartnerItem');expect(source).not.toContain('const upsertPartnerItemSafe');
  expect(source).toContain('onInspectPartnerItemTerms:inspectPartnerTerms');expect(source).toContain('onReadPartnerItemTermsReferences:readPartnerTermsReferences');
 });
+it('사본 정리는 업무갱신 helper를 거치지 않고 관측원문과 scope만 직접전달한다',async()=>{
+ let current=true;const discard=vi.fn(async()=>({status:'cleared',message:'사본만'})),ref={companyId:'taebaek',planId:'plan',targetId:'link',itemId:'item',partnerId:'partner',direction:'in'};const run=new Function('isCurrentPartnerTerms','termsActor','companyId','discardPartnerItemTermsCopy',expression('discardPartnerTerms'))(()=>current,'actor','taebaek',discard);expect(await run(ref,'observed')).toMatchObject({status:'cleared'});expect(discard).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'actor'},ref,'observed',expect.any(Function));current=false;expect((await run(ref,'observed')).status).toBe('blocked');expect(discard).toHaveBeenCalledOnce();expect(expression('discardPartnerTerms')).not.toMatch(/runPartnerItemTerms|refreshStaticData|submit/);expect(source).toContain('onDiscardPartnerItemTermsCopy:discardPartnerTerms');
+});

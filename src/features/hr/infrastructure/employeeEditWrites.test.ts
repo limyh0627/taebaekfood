@@ -113,7 +113,10 @@ it('손상 key/body는 원문을 보존하고 명시 중단만 정확 reference�
     requestHash: null,
     message: '중단'
   });
-  expect((await f.service.run(scope, reference, 'cancel')).status).toBe('cancelled');
+  expect(await f.service.run(scope, reference, 'cancel')).toMatchObject({status:'rejected',copyMismatch:true,observedServerStatus:'cancelled'});
+  expect(f.data.size).toBe(1);
+  expect((await f.service.discard(scope,reference,f.data.get(key)!)).status).toBe('cleared');
+  expect(f.data.size).toBe(0);
   expect(f.command).toHaveBeenCalledWith({
     mode: 'cancel',
     reference
@@ -190,8 +193,10 @@ it('구문이 정상이어도 hash가 바뀐 원문은 apply하지 않고 refere
     };
   const [key, text] = [...f.data][0];
   f.data.set(key, text.replace('합성 직원', '변경된 직원'));
-  expect((await f.service.run(scope, reference, 'inspect')).status).toBe('unknown');
-  expect(f.command).not.toHaveBeenCalled();
+  f.command.mockResolvedValue({...reference,actorUid:scope.actorUid,status:'applied',requestHash:plan.requestHash,message:'서버 저장 완료'});
+  expect(await f.service.run(scope, reference, 'inspect')).toMatchObject({status:'rejected',copyMismatch:true,observedServerStatus:'applied'});
+  expect(f.command).toHaveBeenCalledWith({mode:'inspect',reference});
+  expect(f.data.size).toBe(1);
   f.command.mockResolvedValue({
     ...reference,
     actorUid: scope.actorUid,
@@ -200,7 +205,8 @@ it('구문이 정상이어도 hash가 바뀐 원문은 apply하지 않고 refere
     message: '중단'
   });
   expect(await f.service.run(scope, reference, 'cancel')).toMatchObject({
-    status: 'cancelled',
+    status: 'rejected',
+    copyMismatch: true,
     requiresReopen: true
   });
 });
@@ -248,9 +254,54 @@ it('원문 없는 정확 reference는 기존 서버 영수증 조회로 복구�
     requestHash: 'a'.repeat(64),
     message: '이미 저장됨'
   });
-  expect((await f.service.run(scope, reference, 'inspect')).status).toBe('saved');
+  expect(await f.service.run(scope, reference, 'inspect')).toMatchObject({status:'rejected',observedServerStatus:'duplicate',requiresReopen:true});
   expect(f.command).toHaveBeenCalledWith({
     mode: 'inspect',
     reference
   });
+});
+
+it('유효한 다른 사본도 서버 원문 hash와 따로 비교하고 명시 정리만 해당 관측 사본을 지운다',async()=>{
+ const f=fixture(),plan=await f.service.prepare(scope,input),reference=f.service.pending(scope)[0].reference;
+ const [key,original]=[...f.data][0],copy=JSON.parse(original);
+ copy.request.profile.name='다른 사본';
+ const {serializeEmployeeEditRequest}=await import('../../../shared/employeeEditCommand');
+ copy.requestHash=[...new Uint8Array(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(serializeEmployeeEditRequest(copy.request))))].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const observed=JSON.stringify(copy);f.data.set(key,observed);
+ f.command.mockResolvedValue({...reference,actorUid:scope.actorUid,status:'applied',requestHash:plan.requestHash,message:'서버 원요청 저장 완료'});
+ expect(await f.service.run(scope,reference,'inspect')).toMatchObject({status:'rejected',copyMismatch:true,observedServerStatus:'applied'});
+ expect(f.command).toHaveBeenLastCalledWith({mode:'inspect',reference});expect(f.data.get(key)).toBe(observed);
+ expect(f.service.references(scope)[0].observedLocalText).toBe(observed);
+ expect(await f.service.discard(scope,reference,observed)).toMatchObject({status:'cleared'});expect(f.data.size).toBe(0);
+});
+it('unknown 결과와 관측 후 교체된 사본은 명시 정리로도 삭제하지 않는다',async()=>{
+ const f=fixture(),plan=await f.service.prepare(scope,input),reference=f.service.pending(scope)[0].reference;
+ const [key,observed]=[...f.data][0];
+ f.command.mockResolvedValue({...reference,actorUid:scope.actorUid,status:'unknown',requestHash:null,message:'처리 기록 없음'});
+ expect((await f.service.discard(scope,reference,observed)).status).toBe('blocked');expect(f.data.get(key)).toBe(observed);
+ f.command.mockImplementation(async()=>{f.data.set(key,'새 사본');return {...reference,actorUid:scope.actorUid,status:'applied',requestHash:plan.requestHash,message:'완료'};});
+ expect((await f.service.discard(scope,reference,observed)).status).toBe('blocked');expect(f.data.get(key)).toBe('새 사본');
+});
+it('사본 정리 응답의 다른 UID와 응답 후 scope 변경은 삭제 근거가 아니다',async()=>{
+ for(const wrongUid of [true,false]){
+  const f=fixture(),plan=await f.service.prepare(scope,input),reference=f.service.pending(scope)[0].reference;
+  const [key,observed]=[...f.data][0];let changed=false;
+  f.port.assertScope=async()=>{if(changed)throw Error('scope 변경');};
+  f.command.mockImplementation(async()=>{changed=!wrongUid;return {...reference,actorUid:wrongUid?'other':scope.actorUid,status:'applied',requestHash:plan.requestHash,message:'완료'};});
+  expect((await f.service.discard(scope,reference,observed)).status).toBe('unknown');expect(f.data.get(key)).toBe(observed);
+ }
+});
+
+it('기기 원문이 없는 reference 조회 완료도 현재 초안의 saved로 승격하지 않는다',async()=>{
+ const f=fixture(),reference={companyId:scope.companyId,targetId:'fixed-employee',planId:'fixed-plan'};
+ f.command.mockResolvedValue({...reference,actorUid:scope.actorUid,status:'applied',requestHash:'a'.repeat(64),message:'서버 완료'});
+ expect(await f.service.run(scope,reference,'inspect')).toMatchObject({status:'rejected',observedServerStatus:'applied',requiresReopen:true});
+ expect(f.command).toHaveBeenCalledWith({mode:'inspect',reference});expect(f.data.size).toBe(0);
+});
+it('표시할 원문과 관측raw는 한 번 읽은 같은 snapshot이다',async()=>{
+ const f=fixture();await f.service.prepare(scope,input);const [key,original]=[...f.data][0];let reads=0;
+ f.port.storage.getItem=()=>{reads++;return reads===1?original:'교체된 원문';};
+ const refs=f.service.references(scope);expect(reads).toBe(1);expect(refs[0]).toMatchObject({readable:true,observedLocalText:original});
+ reads=0;const pending=f.service.pending(scope);expect(reads).toBe(1);expect(pending[0]).toMatchObject({description:'직원 저장 · 합성 직원',observedLocalText:original});
+ expect(f.data.get(key)).toBe(original);
 });

@@ -3,7 +3,7 @@ import { primaryCommitted, saveOutcomeMessage, type SaveOutcome } from '../../..
 import { today } from '../../../shared/day';
 import type { Employee } from '../../../shared/types';
 import type { EmployeeProfileDraft, EmployeeBalanceDraft, EmployeeEditReference } from '../../../shared/employeeEditCommand';
-import type { EmployeeEditInput, PendingEmployeeEdit, EmployeeEditStoredReference, EmployeeEditSaveOutcome } from '../infrastructure/employeeEditWrites';
+import type { EmployeeEditInput, PendingEmployeeEdit, EmployeeEditStoredReference, EmployeeEditSaveOutcome, EmployeeEditCopyDiscardResult } from '../infrastructure/employeeEditWrites';
 export type { EmployeeEditBindings, EmployeeEditInput, PendingEmployeeEdit, EmployeeEditStoredReference } from '../infrastructure/employeeEditWrites';
 export interface EmployeeEditorOptions {
   scopeKey: string;
@@ -12,6 +12,7 @@ export interface EmployeeEditorOptions {
   inspect?: (reference: EmployeeEditReference) => Promise<EmployeeEditSaveOutcome>;
   cancel?: (reference: EmployeeEditReference) => Promise<EmployeeEditSaveOutcome>;
   readReferences?: () => EmployeeEditStoredReference[];
+  discardCopy?: (reference: EmployeeEditReference, observedLocalText: string) => Promise<EmployeeEditCopyDiscardResult>;
 }
 const unknown = (): SaveOutcome => ({
   status: 'unknown',
@@ -70,6 +71,8 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
   latest.current = options;
   const profile = useRef<EmployeeProfileSession | null>(null);
   const balances = useRef<Record<string, EmployeeBalanceSession>>({});
+  const lastOperation = useRef<{targetId:string;planId:string}|null>(null);
+  const resetAfterCopyClear = useRef<string|null>(null);
   const [, renderDraft] = useState(0);
   const redraw = () => renderDraft(value => value + 1);
   const [stateOwner, setStateOwner] = useState(options.scopeKey);
@@ -83,6 +86,8 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
     locked.current = false;
     profile.current = null;
     balances.current = {};
+    lastOperation.current = null;
+    resetAfterCopyClear.current = null;
   }
   const [busy, setBusy] = useState(false),
     [targetId, setTargetId] = useState<string | null>(null);
@@ -93,7 +98,9 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
   const [lastOutcome, setLastOutcome] = useState<EmployeeEditSaveOutcome | null>(null);
   const refresh = () => {
     setPending(latest.current.readPending?.() ?? []);
-    setReferences(latest.current.readReferences?.() ?? []);
+    const rows=latest.current.readReferences?.() ?? [];
+    setReferences(rows);
+    return rows;
   };
   useEffect(() => {
     setStateOwner(options.scopeKey);
@@ -117,11 +124,14 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
   }, [options.scopeKey]);
   const perform = async (reference: {
     targetId: string;
+    planId?: string;
   }, task: (() => Promise<EmployeeEditSaveOutcome>) | undefined, inspecting = false) => {
     if (locked.current) return false;
     const turn = generation.current;
     setMessageTargetId(reference.targetId);
     setLastOutcome(null);
+    lastOperation.current = null;
+    resetAfterCopyClear.current = null;
     if (!task) {
       setMessage('직원 저장 기능이 연결되지 않아 전송하지 않았습니다. 관리자에게 연결 상태를 확인해 주세요.');
       return false;
@@ -140,13 +150,15 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
       if (turn !== generation.current) return false;
       setLastOutcome(result);
       const committed = primaryCommitted(result, reference.targetId);
-      setMessage(inspecting && committed ? '직원 저장이 확인됐습니다. 창을 닫고 현재 직원을 다시 열어 주세요.' : saveOutcomeMessage(result));
+      setMessage(inspecting && result.status === 'saved' && committed ? '직원 저장이 확인됐습니다. 창을 닫고 현재 직원을 다시 열어 주세요.' : saveOutcomeMessage(result));
       try {
-        refresh();
+        const rows=refresh().filter(row=>row.reference?.targetId===reference.targetId);
+        const planId=reference.planId??(rows.length===1?rows[0].reference?.planId:undefined);
+        if(planId)lastOperation.current={targetId:reference.targetId,planId};
       } catch {
         setMessage(current => current + '\n기기 보관 요청을 읽지 못했습니다. 원문을 삭제하지 말고 다시 확인해 주세요.');
       }
-      return committed;
+      return result.status === 'saved' && committed;
     } finally {
       if (turn === generation.current) {
         locked.current = false;
@@ -272,7 +284,7 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
     };
     redraw();
   };
-  const canResetBalance = (id: string) => !locked.current && !hasPending(id) && !(visible && messageTargetId === id && lastOutcome && ['unknown', 'partial'].includes(lastOutcome.status));
+  const canResetBalance = (id: string) => !locked.current && !hasPending(id) && !(visible && messageTargetId === id && lastOutcome && ['unknown', 'partial'].includes(lastOutcome.status) && resetAfterCopyClear.current!==id);
   const submitBalance = async (id: string) => {
     const session = balances.current[id];
     if (!session || locked.current || hasPending(id) || needsReopen(id)) return false;
@@ -298,6 +310,41 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
     if (!locked.current) return true;
     setMessage('직원 저장 결과를 확인하는 중입니다. 응답을 받은 뒤 닫아 주세요.');
     return false;
+  };
+  const discardCopy = async (reference: EmployeeEditReference, observedLocalText: string) => {
+    if (locked.current) return false;
+    const port = latest.current.discardCopy;
+    if (!port) {
+      setMessage('직원 사본 정리 기능이 연결되지 않았습니다. 원문을 보존해 주세요.');
+      return false;
+    }
+    const turn = generation.current;
+    locked.current = true;
+    setBusy(true);
+    setTargetId(reference.targetId);
+    setMessageTargetId(reference.targetId);
+    try {
+      const result = await port(reference, observedLocalText);
+      if (turn !== generation.current) return false;
+      setMessage(result.message);
+      if(result.status==='cleared'&&lastOperation.current?.targetId===reference.targetId&&lastOperation.current.planId===reference.planId){
+        resetAfterCopyClear.current=reference.targetId;
+      }
+      try { refresh(); } catch {
+        setMessage(current => current + '\n기기 요청 목록을 다시 읽지 못했습니다. 원문을 확인해 주세요.');
+      }
+      // 사본 정리는 직원 업무 ACK가 아니므로 초안·연차 입력·마지막 업무 결과를 초기화하지 않는다.
+      return result.status === 'cleared';
+    } catch {
+      if (turn === generation.current) setMessage('직원 사본 정리를 확인하지 못했습니다. 같은 요청의 결과를 다시 확인해 주세요.');
+      return false;
+    } finally {
+      if (turn === generation.current) {
+        locked.current = false;
+        setBusy(false);
+        setTargetId(null);
+      }
+    }
   };
   return {
     busy: visible && busy,
@@ -352,6 +399,7 @@ export function useEmployeeEditor(options: EmployeeEditorOptions) {
       const port = latest.current.cancel;
       return perform(reference, port ? () => port(reference) : undefined, true);
     },
+    discardCopy,
     clearMessage,
     close: closeProfile
   };

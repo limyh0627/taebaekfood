@@ -113,7 +113,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const deleteReference=editor.deleteSession?.reference;
   const visiblePending=editor.pending.filter(row=>!sameReference(row.reference,activeReference)&&!sameReference(row.reference,deleteReference));
   const damagedReferences=editor.references.filter(row=>!row.readable&&(!row.reference||(!sameReference(row.reference,activeReference)&&!sameReference(row.reference,deleteReference))));
-  const recoveryActions=(reference:NonNullable<typeof activeReference>)=><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={()=>void editor.inspect(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">결과 확인</button><button type="button" disabled={saving} onClick={()=>void editor.cancel(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">요청 중단</button></div>;
+  const observedCopy=(reference:NonNullable<typeof activeReference>)=>editor.references.find(row=>sameReference(row.reference,reference))?.observedLocalText;
+  const recoveryActions=(reference:NonNullable<typeof activeReference>,observedLocalText:string|null|undefined)=><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={()=>void editor.inspect(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">결과 확인</button><button type="button" disabled={saving} onClick={()=>void editor.cancel(reference)} className="rounded border border-slate-200 px-3 py-2 text-xs">요청 중단</button>{typeof observedLocalText==='string'&&<button type="button" disabled={saving} onClick={()=>void editor.discardCopy(reference,observedLocalText)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 기기 사본만 정리</button>}</div>;
   const pendingFor=(reference:NonNullable<typeof activeReference>)=>editor.pending.some(row=>sameReference(row.reference,reference))||editor.references.some(row=>sameReference(row.reference,reference));
   return (
     <div className="space-y-4">
@@ -141,8 +142,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
 
       {editor.message&&!(editor.open&&editor.message===editor.sessionMessage)&&!(editor.deleteSession&&editor.message===editor.deleteMessage)&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.message}</p>}
       {(visiblePending.length>0||damagedReferences.length>0)&&<section aria-label="처리 결과 확인이 필요한 견적" className="space-y-2 rounded-lg border border-slate-200 p-3"><h3 className="text-sm font-bold text-slate-700">처리 결과 확인이 필요한 견적</h3>
-        {visiblePending.map(row=><div key={row.reference.planId} className="flex flex-wrap items-center gap-2 text-xs"><span>{row.description}</span>{recoveryActions(row.reference)}</div>)}
-        {damagedReferences.map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs"><span>요청 원문을 읽지 못했습니다. 대상 번호: {row.reference?.targetId??'확인 필요 · 다른 견적 작업은 계속할 수 있습니다.'}</span>{row.reference&&recoveryActions(row.reference)}</div>)}
+        {visiblePending.map(row=><div key={row.reference.planId} className="flex flex-wrap items-center gap-2 text-xs"><span>{row.description}</span>{recoveryActions(row.reference,row.observedLocalText)}</div>)}
+        {damagedReferences.map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs"><span>요청 원문을 읽지 못했습니다. 대상 번호: {row.reference?.targetId??'확인 필요 · 다른 견적 작업은 계속할 수 있습니다.'}</span>{row.reference&&recoveryActions(row.reference,row.observedLocalText)}</div>)}
       </section>}
       {/* 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -415,7 +416,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               </div>
           </fieldset>
           {editor.sessionMessage&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.sessionMessage}</p>}
-          {activeReference&&pendingFor(activeReference)&&recoveryActions(activeReference)}
+          {activeReference&&pendingFor(activeReference)&&recoveryActions(activeReference,observedCopy(activeReference))}
           {editor.session?.requiresReopen&&<button type="button" disabled={saving} onClick={()=>{if(editor.session?.mode==='create')editor.newFromDraft();else void editor.reopen();}} className="rounded border border-slate-200 px-3 py-2 text-xs">{editor.session.mode==='create'?'새 견적 초안으로 작성':'현재 견적 다시 열기'}</button>}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100">
               <button onClick={()=>void editor.close()} disabled={saving} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
@@ -519,7 +520,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {editor.deleteSession&&<ConfirmModal title="견적서 삭제" message={editor.deleteSession.quotation.quoteNo+' 견적서를 삭제하시겠습니까?'} subMessage="선택한 견적 원문을 확인한 뒤 삭제합니다. 이미 보낸 요청의 중단은 삭제를 되돌리는 기능이 아닙니다."
         confirmText={saving?'처리 중…':editor.deleteSession.ready?'삭제':'확인창 닫기'} confirmDisabled={saving||(!editor.deleteSession.ready&&!editor.deleteSession.reference)} confirmOnly={!editor.deleteSession.ready&&!!editor.deleteSession.reference}
         onConfirm={()=>{if(editor.deleteSession?.ready)void editor.confirmDelete();else void editor.closeDelete();}} onCancel={()=>void editor.closeDelete()}
-        body={<div className="mt-3 space-y-3">{editor.deleteMessage&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.deleteMessage}</p>}{deleteReference&&pendingFor(deleteReference)&&!editor.deleteSession.ready&&recoveryActions(deleteReference)}</div>}/>}
+        body={<div className="mt-3 space-y-3">{editor.deleteMessage&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.deleteMessage}</p>}{deleteReference&&pendingFor(deleteReference)&&!editor.deleteSession.ready&&recoveryActions(deleteReference,observedCopy(deleteReference))}</div>}/>}
       {/* ── 보기 · 인쇄 ── */}
       {viewing && (<QuotationPreview viewing={viewing} printCompany={printCompany} companyName={companyName} onClose={() => setViewing(null)} onPrint={printQuotation} />)}
     </div>

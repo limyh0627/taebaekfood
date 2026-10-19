@@ -137,8 +137,8 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms, onCreateBoxItem, onCalcCost, costOf, onPartnerItemCleanupChanged, isAdmin = true }) => {
-  const termsEditor=usePartnerItemTermsEditor({scopeKey:(companyId??'taebaek')+':'+(requestScopeKey??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms});
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,onDiscardPartnerItemTermsCopy, onCreateBoxItem, onCalcCost, costOf, onPartnerItemCleanupChanged, isAdmin = true }) => {
+  const termsEditor=usePartnerItemTermsEditor({scopeKey:(companyId??'taebaek')+':'+(requestScopeKey??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms,discard:onDiscardPartnerItemTermsCopy});
 
   const readBom = (id: string) => orderUnitInputs ? orderUnitInputs.bom.of(id) : bomOf(id);
   const shownCostOf = (item: Item): number | undefined => {
@@ -1008,7 +1008,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                                   className="w-16 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
                                 />
                                 <button onClick={savePrice} disabled={termsEditor.locked(editKey)} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shrink-0" title="저장"><Save size={12} /></button>
-                                {termsEditor.outcomes[editKey]?.requiresReopen ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 shrink-0" title="취소"><X size={12} /></button>}
+                                {(termsEditor.outcomes[editKey]?.requiresReopen||termsEditor.copyCleared(editKey)) ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 shrink-0" title="취소"><X size={12} /></button>}
                               </div>
                             );
                           })()}
@@ -1238,7 +1238,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                               <button onClick={savePrice} disabled={termsEditor.locked(editKey)} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-all shrink-0" title="저장">
                                 <Save size={12} />
                               </button>
-                              {termsEditor.outcomes[editKey]?.requiresReopen ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 transition-all shrink-0" title="취소"><X size={12} /></button>}
+                              {(termsEditor.outcomes[editKey]?.requiresReopen||termsEditor.copyCleared(editKey)) ? <button onClick={()=>termsEditor.reopen(target)} disabled={!termsEditor.canCancelEdit(editKey)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600">현재 값으로 다시 열기</button> : <button onClick={cancelEdit} disabled={!termsEditor.canCancelEdit(editKey)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 transition-all shrink-0" title="취소"><X size={12} /></button>}
                             </div>
                           )}
                         </td>

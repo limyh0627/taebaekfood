@@ -1,6 +1,7 @@
 import {useDirectoryDelete,type DirectoryDeleteBindings} from '../src/shared/hooks/useDirectoryDelete';
 import DirectoryDeleteDialogs from '../src/shared/components/DirectoryDeleteDialogs';
 import {useEmployeeEditor} from '../src/features/hr/hooks/useEmployeeEditor';
+import type {EmployeeEditReference} from '../src/shared/employeeEditCommand';
 import type {EmployeeEditBindings} from '../src/features/hr/infrastructure/employeeEditWrites';
 import {usePayrollDraft} from '../src/features/hr/hooks/usePayrollDraft';
 import {useLeaveActions,type LeaveActionBindings} from '../src/features/hr/hooks/useLeaveActions';
@@ -78,7 +79,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   companyId = TAEBAEK, cashAccounts = [],requestScopeKey,
   employees: allEmployees,
   leaveRequests,
-  onSaveEmployeeEdit,onReadPendingEmployeeEdits,onInspectEmployeeEdit,onCancelEmployeeEdit,onReadEmployeeEditReferences,
+  onSaveEmployeeEdit,onReadPendingEmployeeEdits,onInspectEmployeeEdit,onCancelEmployeeEdit,onReadEmployeeEditReferences,onDiscardEmployeeEditCopy,
   onPrepareDirectoryDelete,onConfirmDirectoryDelete,onInspectDirectoryDelete,onCancelDirectoryDelete,onReadPendingDirectoryDeletes,onReadDirectoryDeleteReferences,
   onLeaveAction,onReadPendingLeaveActions,onInspectLeaveAction,onCancelLeaveAction,
   onAddLeaveRequests,onReadPendingLeaveGroups,onInspectLeaveRequest,onCancelLeaveRequest,onReadLeaveReferences,onCancelLeaveReference,
@@ -87,8 +88,12 @@ const HRManager: React.FC<HRManagerProps> = ({
   const deletion=useDirectoryDelete({scopeKey:actionScopeKey,prepare:onPrepareDirectoryDelete,confirm:onConfirmDirectoryDelete,inspect:onInspectDirectoryDelete,cancel:onCancelDirectoryDelete,readPending:onReadPendingDirectoryDeletes,readReferences:onReadDirectoryDeleteReferences});
   const actionScope=useRef(actionScopeKey);actionScope.current=actionScopeKey;
   const actions=useLeaveActions({scopeKey:actionScopeKey,onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
-  const employeeEditor=useEmployeeEditor({scopeKey:actionScopeKey,onSave:onSaveEmployeeEdit,readPending:onReadPendingEmployeeEdits,inspect:onInspectEmployeeEdit,cancel:onCancelEmployeeEdit,readReferences:onReadEmployeeEditReferences});
+  const employeeEditor=useEmployeeEditor({scopeKey:actionScopeKey,onSave:onSaveEmployeeEdit,readPending:onReadPendingEmployeeEdits,inspect:onInspectEmployeeEdit,cancel:onCancelEmployeeEdit,readReferences:onReadEmployeeEditReferences,discardCopy:onDiscardEmployeeEditCopy});
   const {formData,changeProfile:setFormData}=employeeEditor;
+  const employeeCopyButton=(reference:EmployeeEditReference,observed:string|null|undefined)=>{
+    if(typeof observed!=='string')return null;
+    return <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.discardCopy(reference,observed)} className="rounded border border-slate-200 px-3 py-2 text-xs">이 기기 사본 정리</button>;
+  };
   React.useEffect(()=>setIsModalOpen(false),[actionScopeKey]);
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
@@ -219,10 +224,11 @@ const HRManager: React.FC<HRManagerProps> = ({
           <span>{row.description} · 대상 번호 {row.id}</span>
           <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
           <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button>
+          {employeeCopyButton(row.reference,row.observedLocalText)}
         </div>)}
         {employeeEditor.references.filter(row=>!row.readable).map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs">
           <span>원문 확인 필요 · {row.reference?'대상 번호 '+row.reference.targetId:'대상 번호를 읽지 못했습니다.'}</span>
-          {row.reference&&<><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button></>}
+          {row.reference&&<><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button><button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button>{employeeCopyButton(row.reference!,row.observedLocalText)}</>}
         </div>)}
       </section>}
       <PageHeader
@@ -686,6 +692,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               {employeeEditor.references.filter(row=>row.reference?.targetId===employeeEditor.profileSession?.targetId).map(row=><div key={row.key} className="flex gap-2">
                 <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">결과 확인</button>
                 <button type="button" disabled={employeeEditor.busy} onClick={()=>void employeeEditor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2 text-xs">요청 중단</button>
+                {employeeCopyButton(row.reference!,row.observedLocalText)}
               </div>)}
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex space-x-3 mt-4">
                 <button type="button" disabled={employeeEditor.busy} onClick={closeEmployeeEditor} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>

@@ -35,15 +35,23 @@ export interface PendingEmployeeEdit {
   reference: EmployeeEditReference;
   kind: EmployeeEditRequest['kind'];
   description: string;
+  observedLocalText?: string | null;
 }
 export interface EmployeeEditStoredReference {
   reference: EmployeeEditReference | null;
   readable: boolean;
   key: string;
+  observedLocalText?: string | null;
 }
 export type EmployeeEditSaveOutcome = SaveOutcome & {
   requiresReopen?: boolean;
+  copyMismatch?: true;
+  observedServerStatus?: 'applied' | 'duplicate' | 'rejected' | 'cancelled' | 'unknown';
 };
+export interface EmployeeEditCopyDiscardResult {
+  status: 'cleared' | 'blocked' | 'unknown';
+  message: string;
+}
 export interface EmployeeEditBindings {
   requestScopeKey?: string;
   onSaveEmployeeEdit?: (input: EmployeeEditInput) => Promise<EmployeeEditSaveOutcome>;
@@ -51,6 +59,7 @@ export interface EmployeeEditBindings {
   onInspectEmployeeEdit?: (reference: EmployeeEditReference) => Promise<EmployeeEditSaveOutcome>;
   onCancelEmployeeEdit?: (reference: EmployeeEditReference) => Promise<EmployeeEditSaveOutcome>;
   onReadEmployeeEditReferences?: () => EmployeeEditStoredReference[];
+  onDiscardEmployeeEditCopy?: (reference: EmployeeEditReference, observedLocalText: string) => Promise<EmployeeEditCopyDiscardResult>;
 }
 export interface EmployeeEditWritePort {
   storage: Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -86,8 +95,7 @@ const unknown = (message = '직원 저장 결과를 확인하지 못했습니다
   nextAction: '보관 요청의 결과 확인 또는 요청 중단을 선택해 주세요. 같은 내용을 새 요청으로 다시 보내지 마세요.'
 });
 export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
-  const read = (scope: EmployeeEditScope, reference: EmployeeEditReference): EmployeeEditPlan => {
-    const text = port.storage.getItem(keyOf(scope, reference));
+  const readText = (scope: EmployeeEditScope, reference: EmployeeEditReference, text: string | null): EmployeeEditPlan => {
     if (text === null) throw Error('보관 원문이 없습니다.');
     const value = JSON.parse(text) as EmployeeEditPlan;
     const request = normalizeEmployeeEditRequest(value.request);
@@ -99,6 +107,7 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
       requestHash: value.requestHash
     };
   };
+  const read = (scope: EmployeeEditScope, reference: EmployeeEditReference) => readText(scope, reference, port.storage.getItem(keyOf(scope, reference)));
   const references = (scope: EmployeeEditScope): EmployeeEditStoredReference[] => {
     const result: EmployeeEditStoredReference[] = [];
     for (let index = 0; index < port.storage.length; index++) {
@@ -106,6 +115,7 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
       if (!key?.startsWith(prefix(scope))) continue;
       let reference: EmployeeEditReference | null = null,
         readable = false;
+      const observedLocalText = port.storage.getItem(key);
       try {
         const parts = key.slice(prefix(scope).length).split(':');
         if (parts.length !== 2) throw Error('저장 위치 손상');
@@ -114,25 +124,27 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
           targetId: decodeURIComponent(parts[0]),
           planId: decodeURIComponent(parts[1])
         });
-        read(scope, reference);
+        readText(scope, reference, observedLocalText);
         readable = true;
       } catch {/* 손상 한 건 때문에 다른 직원의 정상 작업을 막지 않는다. */}
       result.push({
         key,
         reference,
-        readable
+        readable,
+        observedLocalText
       });
     }
     return result;
   };
   const pending = (scope: EmployeeEditScope): PendingEmployeeEdit[] => references(scope).filter(row => row.readable && row.reference).map(row => {
-    const plan = read(scope, row.reference!);
+    const plan = readText(scope, row.reference!, row.observedLocalText ?? null);
     return {
       id: plan.request.targetId,
       planId: plan.request.planId,
       reference: refOf(plan.request),
       kind: plan.request.kind,
-      description: plan.request.kind === 'balance' ? '연차 조정 · 대상 번호 ' + plan.request.targetId : '직원 저장 · ' + plan.request.profile.name
+      description: plan.request.kind === 'balance' ? '연차 조정 · 대상 번호 ' + plan.request.targetId : '직원 저장 · ' + plan.request.profile.name,
+      observedLocalText: row.observedLocalText
     };
   });
   const prepare = async (scope: EmployeeEditScope, input: EmployeeEditInput) => port.exclusive(scope, input.targetId, async () => {
@@ -185,10 +197,10 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
       original = port.storage.getItem(keyOf(scope, reference));
       if (original !== null) {
         try {
-          plan = read(scope, reference);
+          plan = readText(scope, reference, original);
           if ((await hash(plan.request)) !== plan.requestHash) throw Error('원문 해시 변경');
         } catch {
-          if (mode !== 'cancel') return unknown('보관 원문이 손상됐습니다. 원문은 유지하고 요청 중단으로 확인해 주세요.');
+          if (mode === 'apply') return unknown('보관 원문이 손상됐습니다. 원문은 유지하고 결과 확인 또는 요청 중단을 선택해 주세요.');
           plan = null;
         }
       }
@@ -199,15 +211,27 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
         request: plan!.request
       } : {
         mode,
-        reference,
-        ...(plan ? {
-          requestHash: plan.requestHash
-        } : {})
+        reference
       };
       const value = await port.command(command);
       await port.assertScope(scope);
-      const result = normalizeEmployeeEditResult(value, reference, scope.actorUid, plan?.requestHash);
+      const result = normalizeEmployeeEditResult(value, reference, scope.actorUid, mode === 'apply' ? plan?.requestHash : undefined);
       if (result.status === 'unknown') return unknown(result.message);
+      if (original === null && mode !== 'apply') {
+        return {
+          status: 'rejected', observedServerStatus: result.status, requiresReopen: true,
+          message: `${result.message} 이 기기에 해당 요청의 원문이 없어 현재 작성 내용의 저장 완료로 처리하지 않았습니다.`,
+          nextAction: '현재 직원을 다시 열어 서버에 반영된 내용을 확인해 주세요. 새 작성 내용은 그대로 유지합니다.'
+        };
+      }
+      if (original !== null && (!plan || result.requestHash !== null && result.requestHash !== plan.requestHash)) {
+        return {
+          status: 'rejected', copyMismatch: true, observedServerStatus: result.status,
+          message: `${result.message} ${plan ? '이 기기 사본과 서버의 원문이 달라' : '이 기기 사본의 원문을 검증할 수 없어'} 현재 사본의 저장 완료로 처리하지 않았습니다.`,
+          nextAction: '서버 결과를 확인한 뒤 이 기기 사본만 명시적으로 정리할 수 있습니다. 이미 처리된 직원 정보는 되돌리지 않습니다.',
+          requiresReopen: true
+        };
+      }
       const committed = result.status === 'applied' || result.status === 'duplicate';
       const outcome: EmployeeEditSaveOutcome = committed ? {
         status: 'saved'
@@ -242,6 +266,33 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
       return unknown();
     }
   };
+  const discard = async (scope: EmployeeEditScope, reference: EmployeeEditReference, observedLocalText: string): Promise<EmployeeEditCopyDiscardResult> => {
+    try {
+      normalizeEmployeeEditReference(reference);
+      if (reference.companyId !== scope.companyId || typeof observedLocalText !== 'string') {
+        return { status: 'blocked', message: '정리할 회사와 관측한 직원 사본을 확인해 주세요.' };
+      }
+      await port.assertScope(scope);
+      const value = await port.command({ mode: 'inspect', reference });
+      await port.assertScope(scope);
+      const result = normalizeEmployeeEditResult(value, reference, scope.actorUid);
+      if (result.status === 'unknown') {
+        return { status: 'blocked', message: `${result.message} 서버의 종결 기록이 없어 사본을 지우지 않았습니다. 먼저 같은 요청을 중단해 주세요.` };
+      }
+      return await port.exclusive<EmployeeEditCopyDiscardResult>(scope, reference.targetId, async () => {
+        await port.assertScope(scope);
+        const key = keyOf(scope, reference);
+        if (port.storage.getItem(key) !== observedLocalText) {
+          return { status: 'blocked', message: '관측 후 직원 사본이 바뀌어 정리하지 않았습니다. 목록을 다시 읽어 주세요.' };
+        }
+        port.storage.removeItem(key);
+        if (port.storage.getItem(key) !== null) throw Error('직원 사본 정리를 확인하지 못했습니다.');
+        return { status: 'cleared', message: '이 기기의 직원 요청 사본만 정리했습니다. 서버 직원 정보와 현재 작성 내용은 변경하지 않았습니다.' };
+      });
+    } catch {
+      return { status: 'unknown', message: '직원 사본 정리를 확인하지 못했습니다. 원문을 보존하고 같은 요청의 결과를 다시 확인해 주세요.' };
+    }
+  };
   const submit = async (scope: EmployeeEditScope, input: EmployeeEditInput): Promise<EmployeeEditSaveOutcome> => {
     let plan: EmployeeEditPlan;
     try {
@@ -261,6 +312,7 @@ export function createEmployeeEditWriter(port: EmployeeEditWritePort) {
     pending,
     prepare,
     run,
+    discard,
     submit
   };
 }
@@ -290,3 +342,4 @@ export const employeeEditReferences = (scope: EmployeeEditScope) => writer().ref
 export const submitEmployeeEdit = (scope: EmployeeEditScope, input: EmployeeEditInput) => writer().submit(scope, input);
 export const inspectEmployeeEdit = (scope: EmployeeEditScope, reference: EmployeeEditReference) => writer().run(scope, reference, 'inspect');
 export const cancelEmployeeEdit = (scope: EmployeeEditScope, reference: EmployeeEditReference) => writer().run(scope, reference, 'cancel');
+export const discardEmployeeEditCopy = (scope: EmployeeEditScope, reference: EmployeeEditReference, observedLocalText: string) => writer().discard(scope, reference, observedLocalText);

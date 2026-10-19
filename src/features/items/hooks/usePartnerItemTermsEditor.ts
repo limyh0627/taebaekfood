@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { primaryCommitted, saveOutcomeMessage } from '../../../shared/saveOutcome';
 import { termsFromOpening, type PartnerItemTermsReference } from '../../../shared/partnerItemTermsCommand';
-import { partnerItemTermsTargetId, partnerItemTermsTargetKey, type PartnerItemTermsTarget, type PartnerItemTermsInput, type PartnerItemTermsOutcome, type PartnerItemTerms, type PendingPartnerItemTerms, type PartnerItemTermsStoredReference } from '../infrastructure/partnerItemTermsWrites';
+import { partnerItemTermsTargetId, partnerItemTermsTargetKey, type PartnerItemTermsTarget, type PartnerItemTermsInput, type PartnerItemTermsOutcome, type PartnerItemTerms, type PendingPartnerItemTerms, type PartnerItemTermsStoredReference,type PartnerItemTermsCopyDiscardResult } from '../infrastructure/partnerItemTermsWrites';
 export type { PartnerItemTermsBindings } from '../infrastructure/partnerItemTermsWrites';
 export interface PartnerItemTermsDraft {
   price: string;
@@ -23,6 +23,7 @@ export interface PartnerItemTermsEditorOptions {
   readReferences?: () => PartnerItemTermsStoredReference[];
   inspect?: (reference: PartnerItemTermsReference) => Promise<PartnerItemTermsOutcome>;
   cancel?: (reference: PartnerItemTermsReference) => Promise<PartnerItemTermsOutcome>;
+  discard?:(reference:PartnerItemTermsReference,observedLocalText:string)=>Promise<PartnerItemTermsCopyDiscardResult>;
 }
 const unknown = (): PartnerItemTermsOutcome => ({
   status: 'unknown',
@@ -36,6 +37,7 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
     generation = useRef(0),
     lock = useRef(false);
   const sessions = useRef(new Map<string, PartnerItemTermsSession>());
+  const clearedCopies=useRef(new Map<string,PartnerItemTermsReference>());
   const confirmed = useRef(new Map<string, {
     fingerprint: string;
     outcome: PartnerItemTermsOutcome;
@@ -50,6 +52,7 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
     lock.current = false;
     sessions.current.clear();
     confirmed.current.clear();
+    clearedCopies.current.clear();
   }
   const [busyKey, setBusyKey] = useState<string | null>(null),
     [messageKey, setMessageKey] = useState<string | null>(null),
@@ -84,6 +87,7 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
   const open = (target: PartnerItemTermsTarget, initial?: PartnerItemTerms, mode: PartnerItemTermsSession['mode'] = 'price', eligibleCodes: readonly string[] = []) => {
     const key = partnerItemTermsTargetKey(target);
     if (lock.current || sessions.current.has(key)) return key;
+    for(const [plan,ref] of clearedCopies.current)if(partnerItemTermsTargetKey(ref)===key)clearedCopies.current.delete(plan);
     const value = target.opening;
     setOutcomes(current => {
       const next = {
@@ -158,8 +162,8 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
         status: 'cancelled',
         message: '회사 또는 계정이 바뀌어 이전 화면 결과를 반영하지 않았습니다.'
       };
-      const committed = primaryCommitted(result, 'targetId' in target ? String(target.targetId) : `${target.itemId}_${target.partnerId}_${target.direction}`);
-      const presented: PartnerItemTermsOutcome = inspecting && committed ? {
+      const inspectionSaved=inspecting&&result.status==='saved';
+      const presented: PartnerItemTermsOutcome = inspectionSaved ? {
         ...result,
         requiresReopen: true
       } : result;
@@ -172,7 +176,7 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
         ...cached,
         outcome: presented
       });
-      setMessage(inspecting && committed ? '거래조건 저장이 확인됐습니다. 현재 자료를 다시 열어 확인해 주세요.' : saveOutcomeMessage(result));
+      setMessage(inspectionSaved ? '거래조건 저장이 확인됐습니다. 현재 자료를 다시 열어 확인해 주세요.' : saveOutcomeMessage(result));
       try {
         refresh();
       } catch {
@@ -249,7 +253,7 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
     return outcome;
   };
   const hasStored = (key: string) => visible && (pending.some(row => partnerItemTermsTargetKey(row.reference) === key) || references.some(row => row.reference && partnerItemTermsTargetKey(row.reference) === key));
-  const canCancelEdit = (key: string) => !lock.current && !hasStored(key) && !(visible && outcomes[key] && ['unknown', 'partial'].includes(outcomes[key].status));
+  const canCancelEdit = (key: string) => !lock.current && !hasStored(key) && !(visible && outcomes[key] && ['unknown', 'partial'].includes(outcomes[key].status)&&![...clearedCopies.current.values()].some(ref=>partnerItemTermsTargetKey(ref)===key));
   const cancelEdit = (key: string) => {
     if (!canCancelEdit(key)) return false;
     sessions.current.delete(key);
@@ -317,8 +321,29 @@ export function usePartnerItemTermsEditor(options: PartnerItemTermsEditorOptions
     }
     return result;
   };
+  const discard=async(reference:PartnerItemTermsReference,observedLocalText:string):Promise<PartnerItemTermsCopyDiscardResult>=>{
+    if(scope.current!==options.scopeKey)return {status:'blocked',message:'회사 또는 계정이 바뀌어 사본 정리를 시작하지 않았습니다.'};
+    if(lock.current)return {status:'blocked',message:'다른 거래조건 처리 결과를 확인하고 있습니다.'};
+    const port=latest.current.discard;
+    if(!port)return {status:'blocked',message:'사본 정리 기능이 연결되지 않았습니다.'};
+    const turn=generation.current,key=partnerItemTermsTargetKey(reference);
+    lock.current=true;setBusyKey(key);setMessage('');setMessageKey(key);
+    try{
+      const result=await port(reference,observedLocalText);
+      if(turn!==generation.current)return {status:'unknown',message:'회사 또는 계정이 바뀌어 이전 결과를 표시하지 않았습니다.'};
+      if(result.status==='cleared')clearedCopies.current.set(JSON.stringify(reference),reference);
+      setMessage(result.message);
+      try{refresh();}catch{setMessage(result.message+' 목록을 읽지 못했습니다. 기기 저장소를 확인해 주세요.');}
+      update();return result;
+    }catch{
+      const result:PartnerItemTermsCopyDiscardResult={status:'unknown',message:'사본 정리 결과를 확인하지 못했습니다. 원문을 보존하고 다시 확인해 주세요.'};
+      if(turn===generation.current)setMessage(result.message);return result;
+    }finally{if(turn===generation.current){lock.current=false;setBusyKey(null);}}
+  };
   return {
     open,
+    discard,
+    copyCleared:(key:string)=>[...clearedCopies.current.values()].some(ref=>partnerItemTermsTargetKey(ref)===key),
     reopen,
     change,
     submit,

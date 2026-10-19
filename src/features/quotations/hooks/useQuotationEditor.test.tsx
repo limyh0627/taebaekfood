@@ -97,17 +97,20 @@ function fixture() {
       message: '중단 확인'
     };
   });
+  const discard=vi.fn<QuotationEditorPorts['discard']>(async reference=>{stored.delete(reference.planId);return {status:'cleared',message:'이 기기 사본만 정리했습니다.'};});
   const ports: QuotationEditorPorts = {
     capture,
     prepare,
     apply,
     inspect,
     cancel,
+    discard,
     pending: () => [...stored.values()],
     references: () => [...stored.values()].map(row => ({
       reference: row.reference,
       readable: true,
-      key: row.reference.planId
+      key: row.reference.planId,
+      observedLocalText: row.observedLocalText
     }))
   };
   const onSaved = vi.fn<(q: Quotation) => void>(),
@@ -134,6 +137,7 @@ function fixture() {
     apply,
     inspect,
     cancel,
+    discard,
     stored,
     onSaved,
     onDeleted
@@ -576,4 +580,19 @@ describe('견적 실제 초안과 저장 수명', () => {
     expect(view.result.current.form.note).toBe('수정 가능');
     expect(f.apply).not.toHaveBeenCalled();
   });
+});
+
+it('사본 정리는 관측 raw를 그대로 전달하고 같은대상 새초안·업무callback을 건드리지 않는다',async()=>{
+ const f=fixture();f.stored.set('old-plan',{reference:{companyId:'taebaek',targetId:'new-1',planId:'old-plan'},action:'create',description:'옛사본',observedLocalText:'관측raw'});
+ const view=renderHook(()=>useQuotationEditor(f.options));await act(async()=>{await view.result.current.openNew();});act(()=>fill(view.result.current));const before=view.result.current.form,session=view.result.current.session;
+ await act(async()=>{expect((await view.result.current.discardCopy({companyId:'taebaek',targetId:'new-1',planId:'old-plan'},'관측raw'))?.status).toBe('cleared');});
+ expect(f.discard).toHaveBeenCalledExactlyOnceWith({companyId:'taebaek',targetId:'new-1',planId:'old-plan'},'관측raw',expect.any(Function));expect(view.result.current.open).toBe(true);expect(view.result.current.session).toBe(session);expect(view.result.current.form).toBe(before);expect(f.onSaved).not.toHaveBeenCalled();expect(f.onDeleted).not.toHaveBeenCalled();expect(view.result.current.lastOutcome).toBeNull();expect(view.result.current.message).toContain('사본만');expect(view.result.current.pending).toEqual([]);
+});
+it('동일 원문 cleanup partial은 저장·삭제창을 자동 닫거나 업무를 다시 보내지 않는다',async()=>{
+ const f=fixture();f.apply.mockResolvedValue({status:'partial',reason:'followup-unconfirmed',committedIds:['new-1',quote.id],unconfirmedIds:[],message:'업무완료 정리미확인',nextAction:'결과확인'});const view=renderHook(()=>useQuotationEditor(f.options));
+ await act(async()=>{await view.result.current.openNew();});act(()=>fill(view.result.current));await act(async()=>{expect(await view.result.current.save()).toBe(false);});expect(view.result.current.open).toBe(true);expect(view.result.current.locked).toBe(true);expect(view.result.current.message).toContain('정리미확인');await act(async()=>{expect(await view.result.current.save()).toBe(false);});expect(f.apply).toHaveBeenCalledOnce();
+ await act(async()=>{view.result.current.close();await view.result.current.requestDelete(quote);});await act(async()=>{expect(await view.result.current.confirmDelete()).toBe(false);});expect(view.result.current.deleteSession).not.toBeNull();expect(view.result.current.deleteSession?.ready).toBe(false);await act(async()=>{expect(await view.result.current.confirmDelete()).toBe(false);});expect(f.apply).toHaveBeenCalledTimes(2);expect(f.onSaved).not.toHaveBeenCalled();expect(f.onDeleted).not.toHaveBeenCalled();
+});
+it('사본 정리 대기 중 UID가 바뀌면 이전 안내·finally가 새초안을 변경하지 않는다',async()=>{
+ const f=fixture(),gate=deferred<{status:'cleared';message:string}>();f.discard.mockImplementation(()=>gate.promise);const view=renderHook(({actorUid})=>useQuotationEditor({...f.options,actorUid}),{initialProps:{actorUid:'uid-a'}});let working!:Promise<unknown>;act(()=>{working=view.result.current.discardCopy({companyId:'taebaek',targetId:quote.id,planId:'old'},'raw');});view.rerender({actorUid:'uid-b'});await act(async()=>{await view.result.current.openNew();});const session=view.result.current.session;await act(async()=>{gate.resolve({status:'cleared',message:'옛완료'});await working;});expect(view.result.current.session).toBe(session);expect(view.result.current.message).not.toContain('옛완료');expect(view.result.current.busy).toBe(false);
 });

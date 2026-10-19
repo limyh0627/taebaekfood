@@ -383,3 +383,57 @@ it('연차 미확정 원문이 있으면 되돌리기로 초안과 잠금을 없
   });
   expect(view.result.current.balanceFor(input.opening!).bonusLeave).toBe(4);
 });
+
+it('다른 사본의 서버 완료와 사본 정리는 현재 직원·연차 초안을 성공으로 초기화하지 않는다',async()=>{
+ const ref={companyId:'taebaek' as const,targetId:'e1',planId:'retained'};
+ const inspect=vi.fn(async()=>({status:'rejected' as const,message:'서버 원요청 완료·다른 사본',copyMismatch:true as const,requiresReopen:true}));
+ const discard=vi.fn(async()=>({status:'cleared' as const,message:'이 기기 사본만 정리'}));
+ const save=vi.fn();const view=renderHook(()=>useEmployeeEditor({scopeKey:'A',onSave:save,inspect,discardCopy:discard}));
+ act(()=>{view.result.current.openProfile(input.opening!);view.result.current.changeProfile({name:'새 초안'});view.result.current.changeBalance(input.opening!,'bonusLeave',7);});
+ await act(async()=>expect(await view.result.current.inspect(ref)).toBe(false));
+ await act(async()=>expect(await view.result.current.discardCopy(ref,'관측 원문')).toBe(true));
+ expect(discard).toHaveBeenCalledWith(ref,'관측 원문');expect(view.result.current.formData.name).toBe('새 초안');expect(view.result.current.balanceFor(input.opening!).bonusLeave).toBe(7);expect(save).not.toHaveBeenCalled();
+ expect(view.result.current.lastOutcome?.status).toBe('rejected');
+});
+it('늦은 사본 정리 결과는 새 범위 초안과 잠금을 변경하지 않는다',async()=>{
+ let finish!:(v:{status:'cleared';message:string})=>void;const discard=vi.fn(()=>new Promise<{status:'cleared';message:string}>(resolve=>finish=resolve));
+ const view=renderHook(({scopeKey})=>useEmployeeEditor({scopeKey,discardCopy:discard}),{initialProps:{scopeKey:'A'}});
+ let pending!:Promise<boolean>;act(()=>{pending=view.result.current.discardCopy({companyId:'taebaek',targetId:'e1',planId:'old'},'old');});
+ view.rerender({scopeKey:'B'});act(()=>{view.result.current.openProfile(input.opening!);view.result.current.changeProfile({name:'B초안'});});
+ await act(async()=>{finish({status:'cleared',message:'A사본 정리'});expect(await pending).toBe(false);});
+ expect(view.result.current.formData.name).toBe('B초안');expect(view.result.current.message).not.toContain('A사본');expect(view.result.current.busy).toBe(false);
+});
+
+it('미확정 연차와 같은 plan의 사본 정리 뒤에만 명시 되돌리기로 현재 값을 다시 연다',async()=>{
+ const reference={companyId:'taebaek' as const,targetId:'e1',planId:'same-plan'};
+ let refs:Array<{key:string;reference:typeof reference;readable:boolean;observedLocalText:string}>=[];
+ const save=vi.fn(async()=>{refs=[{key:'same',reference,readable:true,observedLocalText:'same-raw'}];return {status:'unknown' as const,message:'미확정',nextAction:'확인'};});
+ const discard=vi.fn(async(ref:import('../../../shared/employeeEditCommand').EmployeeEditReference)=>{refs=[];return {status:'cleared' as const,message:'사본 정리'};});
+ const view=renderHook(()=>useEmployeeEditor({scopeKey:'A',onSave:save,readReferences:()=>refs,discardCopy:discard}));
+ act(()=>view.result.current.changeBalance(input.opening!,'bonusLeave',7));await act(async()=>{await view.result.current.submitBalance('e1');});
+ expect(view.result.current.canResetBalance('e1')).toBe(false);
+ await act(async()=>{await view.result.current.discardCopy({...reference,planId:'other-plan'},'other');});
+ expect(view.result.current.canResetBalance('e1')).toBe(false);
+ await act(async()=>{await view.result.current.discardCopy(reference,'same-raw');});
+ expect(view.result.current.balanceFor(input.opening!).bonusLeave).toBe(7);expect(view.result.current.lastOutcome?.status).toBe('unknown');
+ expect(view.result.current.canResetBalance('e1')).toBe(true);
+ act(()=>expect(view.result.current.resetBalance('e1')).toBe(true));
+ const fresh={...input.opening!,annualLeave:{carryOverLeave:8,bonusLeave:9}};
+ act(()=>view.result.current.changeBalance(fresh,'bonusLeave',10));expect(view.result.current.balanceFor(fresh)).toEqual({carryOverLeave:8,bonusLeave:10});
+});
+
+it('직원 partial 업무 ACK는 보존하지만 프로필·연차 초안을 자동 종결하지 않는다',async()=>{
+ const partial={status:'partial' as const,reason:'followup-unconfirmed' as const,committedIds:['e1'],unconfirmedIds:[],message:'직원 저장 확인·기기 정리 미확인',nextAction:'같은 요청 조회'};
+ const save=vi.fn(async()=>partial);const view=renderHook(()=>useEmployeeEditor({scopeKey:'A',onSave:save,inspect:async()=>partial}));
+ act(()=>{view.result.current.openProfile(input.opening!);view.result.current.changeProfile({name:'partial 초안'});});
+ await act(async()=>expect(await view.result.current.submitProfile()).toBe(false));
+ expect(view.result.current.profileSession?.draft.name).toBe('partial 초안');expect(view.result.current.lastOutcome).toMatchObject(partial);expect(view.result.current.profileLocked).toBe(true);
+ await act(async()=>expect(await view.result.current.inspect({companyId:'taebaek',targetId:'e1',planId:'partial-plan'})).toBe(false));
+ expect(view.result.current.message).toContain('기기 정리 미확인');expect(view.result.current.message).toContain('같은 요청 조회');expect(view.result.current.message).not.toContain('창을 닫고');
+ act(()=>view.result.current.changeBalance(input.opening!,'bonusLeave',8));
+ // 다른 인수는 별도 훅에서 확인해 앞 partial의 대상 잠금과 섞지 않는다.
+ const balances=renderHook(()=>useEmployeeEditor({scopeKey:'B',onSave:save}));
+ act(()=>balances.result.current.changeBalance(input.opening!,'bonusLeave',8));
+ await act(async()=>expect(await balances.result.current.submitBalance('e1')).toBe(false));
+ expect(balances.result.current.hasBalanceDraft('e1')).toBe(true);expect(balances.result.current.balanceFor(input.opening!).bonusLeave).toBe(8);
+});

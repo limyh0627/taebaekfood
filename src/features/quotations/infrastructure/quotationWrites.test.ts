@@ -70,12 +70,14 @@ function fixture() {
       expectedVersion: '123:000000007'
     };
     const reference = command.mode === 'apply' ? command.request.reference : command.reference;
+    const stored=[...map.values()].map(text=>{try{return JSON.parse(text) as QuotationPlan;}catch{return null;}}).find(plan=>plan?.request.reference.planId===reference.planId);
+    const storedHash=stored?.requestHash??'b'.repeat(64);
     return {
       version: 1,
       reference,
       actorUid: scope.actorUid,
       status: command.mode === 'cancel' ? 'cancelled' : 'applied',
-      requestHash: command.mode === 'apply' ? createHash('sha256').update(serializeQuotationRequest(command.request)).digest('hex') : command.requestHash ?? null,
+      requestHash: command.mode === 'apply' ? createHash('sha256').update(serializeQuotationRequest(command.request)).digest('hex') : command.mode==='cancel'?null:storedHash,
       message: '처리 확인'
     };
   });
@@ -198,7 +200,7 @@ describe('견적 영속 원문 저장 경계', () => {
     expect((await f.writer.run(scope, prepared.reference, 'inspect')).status).toBe('saved');
     expect(f.command.mock.calls.map(([c]) => c.mode)).toEqual(['apply', 'inspect']);
   });
-  it('키와 본문 계획ID·해시 손상은 원문을 보존하고 명시 reference cancel만 허용한다', async () => {
+  it('키와 본문 계획ID·해시 손상은 ref 조회·중단 뒤 명시 사본 정리로 종결한다', async () => {
     for (const mode of ['key', 'hash'] as const) {
       const f = fixture(),
         prepared = await f.writer.prepare(scope, {
@@ -213,7 +215,9 @@ describe('견적 영속 원문 저장 경계', () => {
       f.map.set(key, JSON.stringify(plan));
       expect((await f.writer.run(scope, prepared.reference, 'apply')).status).toBe('unknown');
       expect(f.command).not.toHaveBeenCalled();
-      expect((await f.writer.run(scope, prepared.reference, 'cancel')).status).toBe('cancelled');
+      expect(await f.writer.run(scope, prepared.reference, 'cancel')).toMatchObject({status:'rejected',copyMismatch:true});
+      const observed=f.map.get(key)!;expect(f.map.size).toBe(1);
+      expect((await f.writer.discardCopy(scope,prepared.reference,observed)).status).toBe('cleared');expect(f.map.size).toBe(0);
       expect(f.command.mock.calls[0][0]).toEqual({
         mode: 'cancel',
         reference: prepared.reference
@@ -369,4 +373,36 @@ describe('견적 영속 원문 저장 경계', () => {
     })).status).toBe('ready');
     expect(f.command.mock.calls.map(([c]) => c.mode)).toEqual(['open']);
   });
+});
+
+it('다른 유효 사본은 ref-only로 서버 완료를 확인하되 현재 saved·자동삭제로 승격하지 않는다',async()=>{
+ const f=fixture(),prepared=await f.writer.prepare(scope,{targetId:quotation.id,action:'create',snapshot:quotation});if(prepared.status!=='ready')throw Error('준비');
+ const key=[...f.map.keys()][0],plan=f.writer.read(scope,prepared.reference),serverHash=plan.requestHash;
+ plan.request.snapshot=quotationSnapshot({...quotation,partnerName:'다른 유효 사본'});plan.requestHash=createHash('sha256').update(serializeQuotationRequest(plan.request)).digest('hex');const observed=JSON.stringify(plan);f.map.set(key,observed);
+ f.command.mockResolvedValue({version:1,reference:prepared.reference,actorUid:scope.actorUid,status:'applied',requestHash:serverHash,message:'최초 견적 완료'});
+ for(const mode of ['inspect','cancel'] as const){expect(await f.writer.run(scope,prepared.reference,mode)).toMatchObject({status:'rejected',copyMismatch:true,message:expect.stringContaining('최초 견적 완료')});expect(f.command).toHaveBeenLastCalledWith({mode,reference:prepared.reference});expect(f.map.get(key)).toBe(observed);}
+ expect(f.writer.references(scope)[0].observedLocalText).toBe(observed);
+ expect(await f.writer.discardCopy(scope,prepared.reference,observed)).toMatchObject({status:'cleared'});expect(f.map.size).toBe(0);expect(f.command).toHaveBeenLastCalledWith({mode:'inspect',reference:prepared.reference});
+});
+it('손상 원문도 서버 조회 뒤 보존하고 명시 사본 정리만 허용한다',async()=>{
+ const f=fixture(),prepared=await f.writer.prepare(scope,{targetId:quotation.id,action:'create',snapshot:quotation});if(prepared.status!=='ready')throw Error('준비');const key=[...f.map.keys()][0];f.map.set(key,'{broken');
+ f.command.mockResolvedValue({version:1,reference:prepared.reference,actorUid:scope.actorUid,status:'applied',requestHash:'b'.repeat(64),message:'실서버 완료'});
+ expect(await f.writer.run(scope,prepared.reference,'inspect')).toMatchObject({status:'rejected',copyMismatch:true,message:expect.stringContaining('실서버 완료')});expect(f.map.get(key)).toBe('{broken');
+ expect((await f.writer.discardCopy(scope,prepared.reference,'{broken')).status).toBe('cleared');expect(f.map.size).toBe(0);
+});
+it('unknown·관측 후 교체·UID변경은 사본 정리를 막고 해당 계획 외 사본을 유지한다',async()=>{
+ const f=fixture(),prepared=await f.writer.prepare(scope,{targetId:quotation.id,action:'create',snapshot:quotation});if(prepared.status!=='ready')throw Error('준비');const key=[...f.map.keys()][0],raw=f.map.get(key)!;f.map.set('무관계획','무관원문');
+ f.command.mockResolvedValueOnce({version:1,reference:prepared.reference,actorUid:scope.actorUid,status:'unknown',requestHash:null,message:'서버미확인'});
+ expect((await f.writer.discardCopy(scope,prepared.reference,raw)).status).toBe('blocked');expect(f.map.get(key)).toBe(raw);
+ f.command.mockImplementationOnce(async()=>{f.map.set(key,'교체원문');return {version:1,reference:prepared.reference,actorUid:scope.actorUid,status:'cancelled',requestHash:null,message:'중단'};});
+ expect((await f.writer.discardCopy(scope,prepared.reference,raw)).status).toBe('blocked');expect(f.map.get(key)).toBe('교체원문');
+ f.port.assertScope=vi.fn(async()=>{throw Error('계정변경');});expect((await f.writer.discardCopy(scope,prepared.reference,'교체원문')).status).toBe('unknown');expect(f.map.get('무관계획')).toBe('무관원문');
+});
+it('원문 없는 참조의 실제 applied는 새 작성의 저장 ACK로 쓰지 않는다',async()=>{
+ const f=fixture(),reference={companyId:'taebaek' as const,targetId:quotation.id,planId:'외부계획'};f.command.mockResolvedValue({version:1,reference,actorUid:scope.actorUid,status:'applied',requestHash:'a'.repeat(64),message:'과거 요청 완료'});
+ expect(await f.writer.run(scope,reference,'inspect')).toMatchObject({status:'rejected',message:expect.stringContaining('과거 요청 완료')});expect(f.map.size).toBe(0);expect(f.command).toHaveBeenCalledExactlyOnceWith({mode:'inspect',reference});
+});
+it('목록 표시와 observed raw는 같은 한 번의 저장소 관측을 사용한다',async()=>{
+ const f=fixture(),prepared=await f.writer.prepare(scope,{targetId:quotation.id,action:'create',snapshot:quotation});if(prepared.status!=='ready')throw Error('준비');const raw=[...f.map.values()][0];let reads=0;f.storage.getItem=()=>++reads===1?raw:'{교체';
+ expect(f.writer.pending(scope)[0]).toMatchObject({description:expect.stringContaining(quotation.quoteNo),observedLocalText:raw});expect(reads).toBe(1);
 });

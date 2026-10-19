@@ -23,16 +23,22 @@ export interface PartnerItemTermsInput {
 }
 export type PartnerItemTermsOutcome = SaveOutcome & {
   requiresReopen?: boolean;
+  copyMismatch?:true;
+  observedServerStatus?:'applied'|'duplicate'|'rejected'|'cancelled';
 };
 export interface PendingPartnerItemTerms {
   reference: PartnerItemTermsReference;
   description: string;
+  observedLocalText?:string|null;
 }
 export interface PartnerItemTermsStoredReference {
   key: string;
   reference: PartnerItemTermsReference | null;
   readable: boolean;
+  observedLocalText?:string|null;
+  description?:string;
 }
+export interface PartnerItemTermsCopyDiscardResult {status:'cleared'|'blocked'|'unknown';message:string}
 export interface PartnerItemTermsBindings {
   requestScopeKey?: string;
   onSavePartnerItemTerms?: (input: PartnerItemTermsInput) => Promise<PartnerItemTermsOutcome>;
@@ -40,6 +46,7 @@ export interface PartnerItemTermsBindings {
   onReadPartnerItemTermsReferences?: () => PartnerItemTermsStoredReference[];
   onInspectPartnerItemTerms?: (reference: PartnerItemTermsReference) => Promise<PartnerItemTermsOutcome>;
   onCancelPartnerItemTerms?: (reference: PartnerItemTermsReference) => Promise<PartnerItemTermsOutcome>;
+  onDiscardPartnerItemTermsCopy?:(reference:PartnerItemTermsReference,observedLocalText:string)=>Promise<PartnerItemTermsCopyDiscardResult>;
 }
 export const partnerItemTermsTargetKey = (target: Pick<PartnerItemTermsTarget, 'itemId' | 'partnerId' | 'direction'>) => JSON.stringify([target.itemId, target.partnerId, target.direction]);
 export const partnerItemTermsTargetId = (target: PartnerItemTermsTarget) => target.existingLinkId ?? target.opening?.id ?? `${target.itemId}_${target.partnerId}_${target.direction}`;
@@ -92,8 +99,8 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
     await port.assertScope(scope);
     if (!isCurrent()) throw Error('작성 화면이 바뀌었습니다.');
   };
-  const read = (scope: PartnerItemTermsScope, reference: PartnerItemTermsReference): PartnerItemTermsPlan => {
-    const text = port.storage.getItem(keyOf(scope, reference));
+  const read = (scope: PartnerItemTermsScope, reference: PartnerItemTermsReference, observedLocalText?:string|null): PartnerItemTermsPlan => {
+    const text = observedLocalText===undefined?port.storage.getItem(keyOf(scope, reference)):observedLocalText;
     if (text === null) throw Error('보관 원문이 없습니다.');
     const plan = JSON.parse(text) as PartnerItemTermsPlan;
     const request = normalizePartnerItemTermsRequest(plan.request);
@@ -110,8 +117,10 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
     for (let index = 0; index < port.storage.length; index++) {
       const key = port.storage.key(index);
       if (!key?.startsWith(prefix(scope))) continue;
+      const observedLocalText=port.storage.getItem(key);
       let reference: PartnerItemTermsReference | null = null,
         readable = false;
+      let description='원문 확인 필요';
       try {
         const parts = key.slice(prefix(scope).length).split(':').map(decodeURIComponent);
         if (parts.length !== 5) throw Error('저장 위치 손상');
@@ -123,22 +132,26 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
           direction: parts[3],
           planId: parts[4]
         });
-        read(scope, reference);
+        const plan=read(scope, reference,observedLocalText);
+        description=[plan.request.direction==='in'?'매입 거래조건':'판매 거래조건','품목 '+plan.request.itemId,'거래처 '+plan.request.partnerId,
+          ...(plan.request.terms.price!==undefined?['단가 '+plan.request.terms.price]:[]),
+          ...(plan.request.terms.taxType!==undefined?['과세 '+String(plan.request.terms.taxType??'미지정')]:[]),
+          ...(plan.request.terms.Account_Code!==undefined?['계정 '+(plan.request.terms.Account_Code||'미지정')]:[])].join(' · ');
         readable = true;
       } catch {/* 손상 한 건이 다른 품목·거래처의 정상 작업을 막지는 않는다. */}
       result.push({
         key,
         reference,
-        readable
+        readable,observedLocalText,description
       });
     }
     return result;
   };
   const pending = (scope: PartnerItemTermsScope): PendingPartnerItemTerms[] => references(scope).filter(row => row.readable && row.reference).map(row => {
-    const plan = read(scope, row.reference!);
+    const plan = read(scope, row.reference!,row.observedLocalText);
     return {
       reference: refOf(plan.request),
-      description: `${plan.request.direction === 'in' ? '매입' : '판매'} 거래조건 · 품목 ${plan.request.itemId} · 거래처 ${plan.request.partnerId}`
+      observedLocalText:row.observedLocalText,description: row.description??`${plan.request.direction === 'in' ? '매입' : '판매'} 거래조건 · 품목 ${plan.request.itemId} · 거래처 ${plan.request.partnerId}`
     };
   });
   const prepare = async (scope: PartnerItemTermsScope, input: PartnerItemTermsInput, notice: (message: string) => Promise<void>, isCurrent: () => boolean = () => true) => {
@@ -219,10 +232,10 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
       let plan: PartnerItemTermsPlan | null = null;
       if (original !== null) {
         try {
-          plan = read(scope, reference);
+          plan = read(scope, reference,original);
           if ((await digest(serializePartnerItemTermsRequest(plan.request))) !== plan.requestHash) throw Error('해시 불일치');
         } catch {
-          if (mode !== 'cancel') return unknown('보관 원문이 손상됐습니다. 원문은 유지하고 명시 요청 중단으로 확인해 주세요.');
+          if (mode === 'apply') return unknown('보관 원문이 손상됐습니다. 원문은 유지하고 결과 확인 또는 명시 요청 중단을 선택해 주세요.');
           plan = null;
         }
       }
@@ -233,15 +246,17 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
         request: plan!.request
       } : {
         mode,
-        reference,
-        ...(plan ? {
-          requestHash: plan.requestHash
-        } : {})
+        reference
       };
       const value = await port.command(command);
       await assert(scope, isCurrent);
-      const result = normalizePartnerItemTermsResult(value, reference, scope.actorUid, plan?.requestHash);
+      const result = normalizePartnerItemTermsResult(value, reference, scope.actorUid, mode==='apply'?plan?.requestHash:undefined);
       if (result.status === 'unknown') return unknown(result.message);
+      if(original===null||!plan||result.requestHash!==null&&plan.requestHash!==result.requestHash)return {
+        status:'rejected',copyMismatch:true,observedServerStatus:result.status,requiresReopen:true,
+        message:result.message+' '+(original===null?'이 기기의 현재 원문이 없어':plan?'서버 원문과 이 기기 사본이 달라':'이 기기 사본의 원문을 검증할 수 없어')+' 현재 사본의 완료로 처리하지 않았습니다.',
+        nextAction:'서버 결과를 확인한 뒤 이 기기 사본만 명시적으로 정리해 주세요. 이미 처리된 거래조건을 되돌리지 않습니다.'
+      };
       const saved = result.status === 'applied' || result.status === 'duplicate';
       const outcome: PartnerItemTermsOutcome = saved ? {
         status: 'saved'
@@ -276,6 +291,25 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
       return unknown();
     }
   };
+  const discard=async(scope:PartnerItemTermsScope,reference:PartnerItemTermsReference,observedLocalText:string,isCurrent:()=>boolean=()=>true):Promise<PartnerItemTermsCopyDiscardResult>=>{
+    try{
+      normalizePartnerItemTermsReference(reference);
+      if(reference.companyId!==scope.companyId||typeof observedLocalText!=='string')return {status:'blocked',message:'정리할 회사와 관측한 기기 사본을 확인해 주세요.'};
+      await assert(scope,isCurrent);
+      const raw=await port.command({mode:'inspect',reference});
+      await assert(scope,isCurrent);
+      const result=normalizePartnerItemTermsResult(raw,reference,scope.actorUid);
+      if(result.status==='unknown')return {status:'blocked',message:result.message+' 미처리 요청을 먼저 중단한 뒤 사본을 정리해 주세요.'};
+      return await port.exclusive(scope,partnerItemTermsTargetKey(reference),async()=>{
+        await assert(scope,isCurrent);
+        const key=keyOf(scope,reference);
+        if(port.storage.getItem(key)!==observedLocalText)return {status:'blocked',message:'관측한 뒤 사본이 바뀌어 정리하지 않았습니다. 목록을 다시 읽어 주세요.'};
+        port.storage.removeItem(key);
+        if(port.storage.getItem(key)!==null)throw Error('정리를 확인하지 못했습니다.');
+        return {status:'cleared',message:'이 기기 사본만 정리했습니다. 이미 저장된 거래조건은 변경하지 않았습니다.'};
+      });
+    }catch{return {status:'unknown',message:'사본 정리 결과를 확인하지 못했습니다. 원문을 유지하고 같은 요청의 결과를 다시 확인해 주세요.'};}
+  };
   const submit = async (scope: PartnerItemTermsScope, input: PartnerItemTermsInput, notice: (message: string) => Promise<void>, isCurrent: () => boolean = () => true): Promise<PartnerItemTermsOutcome> => {
     let plan: PartnerItemTermsPlan;
     try {
@@ -295,6 +329,7 @@ export function createPartnerItemTermsWriter(port: PartnerItemTermsWritePort) {
     pending,
     prepare,
     run,
+    discard,
     submit
   };
 }
@@ -324,3 +359,5 @@ export const pendingPartnerItemTerms = (scope: PartnerItemTermsScope) => writer(
 export const partnerItemTermsReferences = (scope: PartnerItemTermsScope) => writer().references(scope);
 export const inspectPartnerItemTerms = (scope: PartnerItemTermsScope, reference: PartnerItemTermsReference, isCurrent: () => boolean = () => true) => writer().run(scope, reference, 'inspect', isCurrent);
 export const cancelPartnerItemTerms = (scope: PartnerItemTermsScope, reference: PartnerItemTermsReference, isCurrent: () => boolean = () => true) => writer().run(scope, reference, 'cancel', isCurrent);
+
+export const discardPartnerItemTermsCopy=(scope:PartnerItemTermsScope,reference:PartnerItemTermsReference,observedLocalText:string,isCurrent:()=>boolean=()=>true)=>writer().discard(scope,reference,observedLocalText,isCurrent);

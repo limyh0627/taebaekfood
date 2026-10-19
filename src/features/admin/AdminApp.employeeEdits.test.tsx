@@ -50,3 +50,7 @@ it('직원 모달과 고아 요청 복구 배선이 직접 CRUD를 우회하지 
     expect(source).not.toContain("onUpdateEmployee={(emp) => updateItem('employees'");
     expect(source).not.toContain("onAddEmployee={(emp) => addItem('employees'");
 });
+
+it('직원 사본 정리 포트는 업무saved나 부모갱신과 분리해 정확 관측문자열을 전달한다',async()=>{
+ let scope:{companyId:string;actorUid:string}|null={companyId:'taebaek',actorUid:'actor'};const discard=vi.fn(async()=>({status:'cleared',message:'사본만'})),ref={companyId:'taebaek',planId:'fixed',targetId:'employee'};const run=new Function('currentEmployeeEditScope','discardEmployeeEditCopy',expression('handleDiscardEmployeeEditCopy'))(()=>scope,discard);expect(await run(ref,'observed-employee')).toMatchObject({status:'cleared'});expect(discard).toHaveBeenCalledWith(scope,ref,'observed-employee');scope=null;expect((await run(ref,'observed-employee')).status).toBe('blocked');expect(discard).toHaveBeenCalledOnce();expect(expression('handleDiscardEmployeeEditCopy')).not.toMatch(/runEmployeeEdit|refresh|submit|onClose/);expect(source).toContain('onDiscardEmployeeEditCopy={handleDiscardEmployeeEditCopy}');
+});

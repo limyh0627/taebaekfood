@@ -22,7 +22,12 @@ export interface QuotationWriteInput {
 }
 export type QuotationOutcome = SaveOutcome & {
   requiresReopen?: boolean;
+  copyMismatch?: true;
 };
+export interface QuotationCopyDiscardResult {
+  status: 'cleared' | 'blocked' | 'unknown';
+  message: string;
+}
 export type QuotationPrepared = {
   status: 'ready';
   reference: QuotationReference;
@@ -41,11 +46,13 @@ export interface PendingQuotation {
   reference: QuotationReference;
   action: QuotationRequest['action'];
   description: string;
+  observedLocalText?: string | null;
 }
 export interface QuotationStoredReference {
   key: string;
   reference: QuotationReference | null;
   readable: boolean;
+  observedLocalText?: string | null;
 }
 export interface QuotationWritePort {
   storage: Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -86,8 +93,7 @@ const rejected = (error: unknown): QuotationOutcome => ({
   nextAction: '업무 저장은 전송하지 않았습니다. 작성 내용과 기기 저장소를 확인해 주세요.'
 });
 export function createQuotationWriter(port: QuotationWritePort) {
-  const read = (scope: QuotationScope, reference: QuotationReference): QuotationPlan => {
-    const text = port.storage.getItem(keyOf(scope, reference));
+  const parsePlan = (scope: QuotationScope, reference: QuotationReference, text: string | null): QuotationPlan => {
     if (text === null) throw Error('보관된 견적 원문이 없습니다.');
     const value = JSON.parse(text) as QuotationPlan,
       request = normalizeQuotationRequest(value.request);
@@ -100,6 +106,7 @@ export function createQuotationWriter(port: QuotationWritePort) {
       description: value.description
     };
   };
+  const read = (scope: QuotationScope, reference: QuotationReference): QuotationPlan => parsePlan(scope, reference, port.storage.getItem(keyOf(scope, reference)));
   const references = (scope: QuotationScope): QuotationStoredReference[] => {
     const rows: QuotationStoredReference[] = [];
     for (let i = 0; i < port.storage.length; i++) {
@@ -107,6 +114,7 @@ export function createQuotationWriter(port: QuotationWritePort) {
       if (!key?.startsWith(prefix(scope))) continue;
       let reference: QuotationReference | null = null,
         readable = false;
+      const observedLocalText = port.storage.getItem(key);
       try {
         const parts = key.slice(prefix(scope).length).split(':').map(decodeURIComponent);
         if (parts.length !== 2) throw Error('보관 위치 손상');
@@ -115,23 +123,25 @@ export function createQuotationWriter(port: QuotationWritePort) {
           targetId: parts[0],
           planId: parts[1]
         });
-        read(scope, reference);
+        parsePlan(scope, reference, observedLocalText);
         readable = true;
       } catch {/* 손상 한 건 때문에 다른 견적까지 막지 않는다. */}
       rows.push({
         key,
         reference,
-        readable
+        readable,
+        observedLocalText
       });
     }
     return rows;
   };
   const pending = (scope: QuotationScope): PendingQuotation[] => references(scope).filter(row => row.reference && row.readable).map(row => {
-    const plan = read(scope, row.reference!);
+    const plan = parsePlan(scope, row.reference!, row.observedLocalText ?? null);
     return {
       reference: plan.request.reference,
       action: plan.request.action,
-      description: plan.description
+      description: plan.description,
+      observedLocalText: row.observedLocalText
     };
   });
   const capture = async (scope: QuotationScope, selected: Quotation): Promise<QuotationOpening> => {
@@ -220,10 +230,10 @@ export function createQuotationWriter(port: QuotationWritePort) {
       original = port.storage.getItem(keyOf(scope, reference));
       if (original !== null) {
         try {
-          plan = read(scope, reference);
+          plan = parsePlan(scope, reference, original);
           if ((await hash(plan.request)) !== plan.requestHash) throw Error('원문 해시 변경');
         } catch {
-          if (mode !== 'cancel') return unknown('보관 원문이 손상됐습니다. 원문을 유지하고 요청 중단으로 확인해 주세요.');
+          if (mode === 'apply') return unknown('보관 원문이 손상됐습니다. 원문을 유지하고 결과 확인 또는 요청 중단을 선택해 주세요.');
           plan = null;
         }
       }
@@ -234,15 +244,20 @@ export function createQuotationWriter(port: QuotationWritePort) {
         request: plan!.request
       } : {
         mode,
-        reference,
-        ...(plan ? {
-          requestHash: plan.requestHash
-        } : {})
+        reference
       };
       const value = await port.command(command);
       await port.assertScope(scope);
-      const result = normalizeQuotationResult(value, reference, scope.actorUid, plan?.requestHash);
+      const result = normalizeQuotationResult(value, reference, scope.actorUid);
       if (result.status === 'unknown') return unknown(result.message);
+      if ((original === null && result.status === 'applied') || (original !== null && (!plan || result.requestHash !== null && result.requestHash !== plan.requestHash))) {
+        const state = result.status === 'applied' ? '서버에서는 견적 처리가 완료됐습니다.' : result.status === 'cancelled' ? '서버에서는 미처리 요청 중단이 확인됐습니다.' : '서버에서는 요청 거절이 확인됐습니다.';
+        return {
+          status: 'rejected', copyMismatch: true, requiresReopen: true,
+          message: `${state} ${result.message} ${original === null ? '이 기기에 최초 원문이 없어 현재 작성의 완료로 처리하지 않았습니다.' : '이 기기 사본과 같은 원문인지는 확인하지 못해 보존했습니다.'}`,
+          nextAction: original === null ? '현재 목록에서 서버 처리 내역을 확인해 주세요. 이 조회는 현재 작성 내용을 저장하지 않습니다.' : '서버 결과를 확인한 뒤 필요한 경우 이 기기 사본만 명시적으로 정리해 주세요. 이미 처리된 견적은 되돌리지 않습니다.'
+        };
+      }
       const committed = result.status === 'applied';
       const outcome: QuotationOutcome = committed ? {
         status: 'saved'
@@ -277,13 +292,35 @@ export function createQuotationWriter(port: QuotationWritePort) {
       return unknown();
     }
   };
+  const discardCopy = async (scope: QuotationScope, reference: QuotationReference, observedLocalText: string): Promise<QuotationCopyDiscardResult> => {
+    try {
+      normalizeQuotationReference(reference);
+      if (reference.companyId !== scope.companyId || typeof observedLocalText !== 'string') throw Error('정리할 회사와 관측한 사본을 확인해 주세요.');
+      await port.assertScope(scope);
+      const raw = await port.command({mode: 'inspect', reference});
+      await port.assertScope(scope);
+      const result = normalizeQuotationResult(raw, reference, scope.actorUid);
+      if (result.status === 'unknown') return {status: 'blocked', message: result.message + ' 미처리 요청을 먼저 중단한 뒤 사본을 정리해 주세요.'};
+      return await port.exclusive<QuotationCopyDiscardResult>(scope, reference.targetId, async () => {
+        await port.assertScope(scope);
+        const key = keyOf(scope, reference);
+        if (port.storage.getItem(key) !== observedLocalText) return {status: 'blocked', message: '관측한 뒤 사본이 바뀌어 지우지 않았습니다. 요청 목록을 다시 확인해 주세요.'};
+        port.storage.removeItem(key);
+        if (port.storage.getItem(key) !== null) throw Error('기기 사본 정리를 확인하지 못했습니다.');
+        return {status: 'cleared', message: '이 기기 사본만 정리했습니다. 견적 저장이나 삭제 결과를 바꾸지 않았습니다.'};
+      });
+    } catch (error) {
+      return {status: 'unknown', message: error instanceof Error ? error.message : '이 기기 사본 정리를 확인하지 못했습니다.'};
+    }
+  };
   return {
     read,
     references,
     pending,
     capture,
     prepare,
-    run
+    run,
+    discardCopy
   };
 }
 async function active(scope: QuotationScope) {
@@ -316,6 +353,7 @@ export const prepareQuotation = (scope: QuotationScope, input: QuotationWriteInp
 export const applyQuotation = (scope: QuotationScope, reference: QuotationReference, isCurrent?: () => boolean) => writer(isCurrent).run(scope, reference, 'apply');
 export const inspectQuotation = (scope: QuotationScope, reference: QuotationReference, isCurrent?: () => boolean) => writer(isCurrent).run(scope, reference, 'inspect');
 export const cancelQuotation = (scope: QuotationScope, reference: QuotationReference, isCurrent?: () => boolean) => writer(isCurrent).run(scope, reference, 'cancel');
+export const discardQuotationCopy = (scope: QuotationScope, reference: QuotationReference, observedLocalText: string, isCurrent?: () => boolean) => writer(isCurrent).discardCopy(scope, reference, observedLocalText);
 export const pendingQuotations = (scope: QuotationScope) => writer().pending(scope);
 export const quotationReferences = (scope: QuotationScope) => writer().references(scope);
 export const quotationFromOpening = (opening: QuotationOpening): Quotation => decodeQuotationOpenSnapshot(opening.snapshot, codec) as unknown as Quotation;

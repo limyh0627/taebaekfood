@@ -6,28 +6,31 @@ import QuotationManager from './QuotationManager';
 import type {Quotation} from '../src/features/quotations/domain/quotation';
 import type {QuotationReference} from '../src/shared/quotationCommand';
 import {quotationSnapshot} from '../src/shared/quotationCommand';
-import type {QuotationScope,QuotationWriteInput,QuotationOpening,QuotationOutcome,QuotationPrepared,PendingQuotation} from '../src/features/quotations/infrastructure/quotationWrites';
-const io=vi.hoisted(()=>({auth:{currentUser:{uid:'actor-a'}},subscribe:vi.fn(),capture:vi.fn(),prepare:vi.fn(),apply:vi.fn(),inspect:vi.fn(),cancel:vi.fn(),oldAdd:vi.fn(),oldDelete:vi.fn()}));
+import type {QuotationScope,QuotationWriteInput,QuotationOpening,QuotationOutcome,QuotationPrepared,PendingQuotation,QuotationStoredReference} from '../src/features/quotations/infrastructure/quotationWrites';
+const io=vi.hoisted(()=>({auth:{currentUser:{uid:'actor-a'}},subscribe:vi.fn(),capture:vi.fn(),prepare:vi.fn(),apply:vi.fn(),inspect:vi.fn(),cancel:vi.fn(),discard:vi.fn(),oldAdd:vi.fn(),oldDelete:vi.fn()}));
 let quotes:Quotation[]=[],pending:PendingQuotation[]=[],sequence=0;
+let extraReferences:QuotationStoredReference[]=[];
+let referenceRawOverride:string|undefined;
 const plans=new Map<string,QuotationWriteInput>();
 let emit:(rows:Quotation[])=>void=()=>{};
 vi.mock('../src/shared/firebase',()=>({auth:io.auth,authReady:Promise.resolve(),db:{},functions:{}}));
 vi.mock('../src/shared/services/firebaseService',()=>({subscribeToCollection:io.subscribe,addItem:io.oldAdd,deleteItem:io.oldDelete}));
 vi.mock('../src/features/quotations/infrastructure/quotationWrites',async importOriginal=>{
  const actual=await importOriginal<typeof import('../src/features/quotations/infrastructure/quotationWrites')>();
- return {...actual,captureQuotation:io.capture,prepareQuotation:io.prepare,applyQuotation:io.apply,inspectQuotation:io.inspect,cancelQuotation:io.cancel,pendingQuotations:()=>pending,quotationReferences:()=>pending.map(row=>({reference:row.reference,key:row.reference.planId,readable:true}))};
+ return {...actual,captureQuotation:io.capture,prepareQuotation:io.prepare,applyQuotation:io.apply,inspectQuotation:io.inspect,cancelQuotation:io.cancel,discardQuotationCopy:io.discard,pendingQuotations:()=>pending,quotationReferences:()=>[...pending.map(row=>({reference:row.reference,key:row.reference.planId,readable:true,observedLocalText:referenceRawOverride??row.observedLocalText})),...extraReferences]};
 });
 const selected:Quotation={id:'원래-견적',companyId:'taebaek',quoteNo:'Q250202-01',date:'2025-02-02',validUntil:'2025-02-10',partnerId:'',partnerName:'기존 문의처',lines:[{name:'기존 품목',spec:'20kg',qty:2.5,price:100,isTaxExempt:true}],totalSupply:250,totalTax:0,totalAmount:250,createdAt:'2025-02-02T00:00:00Z'};
 const reference=(scope:QuotationScope,targetId:string):QuotationReference=>({companyId:scope.companyId,targetId,planId:'plan-'+(++sequence)});
 const opening=(scope:QuotationScope,quote:Quotation):QuotationOpening=>({reference:reference(scope,quote.id),expectedVersion:'1:000000001',snapshot:quotationSnapshot({...quote,companyId:scope.companyId})});
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
 beforeEach(()=>{
- vi.clearAllMocks();io.auth.currentUser.uid='actor-a';quotes=[];pending=[];sequence=0;plans.clear();
+ vi.clearAllMocks();io.auth.currentUser.uid='actor-a';quotes=[];pending=[];extraReferences=[];referenceRawOverride=undefined;sequence=0;plans.clear();
  io.subscribe.mockImplementation((_name:string,onRows:(rows:Quotation[])=>void)=>{emit=onRows;onRows(quotes);return()=>{};});
  io.capture.mockImplementation(async(scope:QuotationScope,quote:Quotation)=>opening(scope,quote));
  io.prepare.mockImplementation(async(scope:QuotationScope,input:QuotationWriteInput):Promise<QuotationPrepared>=>{const ref=input.opening?.reference??reference(scope,input.targetId);plans.set(ref.planId,input);pending=[...pending.filter(row=>row.reference.planId!==ref.planId),{reference:ref,action:input.action,description:(input.snapshot?.partnerName??'기존 견적')+' 결과 확인'}];return {status:'ready',reference:ref};});
  io.apply.mockImplementation(async(_scope:QuotationScope,ref:QuotationReference):Promise<QuotationOutcome>=>{pending=pending.filter(row=>row.reference.planId!==ref.planId);return {status:'saved'};});
  io.inspect.mockImplementation(async(_scope:QuotationScope,ref:QuotationReference):Promise<QuotationOutcome>=>{pending=pending.filter(row=>row.reference.planId!==ref.planId);return {status:'saved'};});
+ io.discard.mockImplementation(async(_scope:QuotationScope,ref:QuotationReference,_raw:string)=>{pending=pending.filter(row=>row.reference.planId!==ref.planId);extraReferences=extraReferences.filter(row=>row.reference?.planId!==ref.planId);return {status:'cleared',message:'이 기기 사본만 정리했습니다. 견적 업무는 변경하지 않았습니다.'};});
  io.cancel.mockImplementation(async(_scope:QuotationScope,ref:QuotationReference):Promise<QuotationOutcome>=>{pending=pending.filter(row=>row.reference.planId!==ref.planId);return {status:'cancelled',requiresReopen:true,message:'견적 요청을 중단했습니다.',nextAction:'현재 자료를 다시 열어 주세요.'};});
 });
 const mount=()=>render(<QuotationManager items={[]} partners={[]} currentUser={{id:'employee',name:'담당자'}}/>);
@@ -77,4 +80,20 @@ it('옛 견적의 생성시각과 규격이 없어도 삭제 준비와 완료 AC
  fireEvent.click(within(modal).getByRole('button',{name:'삭제'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'견적서 삭제'})).toBeNull());
  expect(screen.queryByText(legacy.quoteNo)).toBeNull();expect(io.apply).toHaveBeenCalledOnce();expect(io.oldDelete).not.toHaveBeenCalled();
+});
+
+it('다른 사본의 서버완료 확인과 명시 사본정리는 새 견적 초안·기존 목록을 바꾸지 않는다',async()=>{
+ quotes=[selected];const ref:QuotationReference={companyId:'taebaek',targetId:selected.id,planId:'copy-plan'};pending=[{reference:ref,action:'update',description:'보관 사본',observedLocalText:'관측한 원문raw'}];
+ io.inspect.mockResolvedValue({status:'rejected',copyMismatch:true,requiresReopen:true,message:'서버 최초견적은 완료, 다른 기기사본 보존'});mount();const panel=screen.getByRole('region',{name:'처리 결과 확인이 필요한 견적'});const modal=fillNew('새 입력 보존');
+ fireEvent.click(within(panel).getByRole('button',{name:'결과 확인'}));await screen.findByText(/서버 최초견적은 완료/);expect(screen.getByRole('dialog',{name:'견적서 작성'})).toBe(modal);expect(modal).toHaveTextContent('새 입력 보존');
+ fireEvent.click(within(panel).getByRole('button',{name:'이 기기 사본만 정리'}));await waitFor(()=>expect(io.discard).toHaveBeenCalledExactlyOnceWith({companyId:'taebaek',actorUid:'actor-a'},ref,'관측한 원문raw',expect.any(Function)));
+ expect(screen.getByRole('dialog',{name:'견적서 작성'})).toBe(modal);expect(screen.getByText(selected.quoteNo)).toBeInTheDocument();expect(io.apply).not.toHaveBeenCalled();expect(io.oldAdd).not.toHaveBeenCalled();expect(io.oldDelete).not.toHaveBeenCalled();expect(screen.queryByRole('region',{name:'처리 결과 확인이 필요한 견적'})).toBeNull();expect(screen.getByRole('status')).toHaveTextContent('이 기기 사본만 정리');
+});
+it('손상 원문은 유효 참조일 때만 조회·사본정리가 가능하며 식별불가 건에 버튼을 만들지 않는다',async()=>{
+ const ref:QuotationReference={companyId:'taebaek',targetId:'고아견적',planId:'broken-plan'};extraReferences=[{key:'broken',reference:ref,readable:false,observedLocalText:'{broken'},{key:'invalid',reference:null,readable:false,observedLocalText:'식별불가'}];mount();const panel=screen.getByRole('region',{name:'처리 결과 확인이 필요한 견적'});expect(within(panel).getAllByRole('button',{name:'이 기기 사본만 정리'})).toHaveLength(1);
+ io.discard.mockResolvedValueOnce({status:'blocked',message:'서버 결과 미확인, 먼저 요청 중단'});fireEvent.click(within(panel).getByRole('button',{name:'이 기기 사본만 정리'}));await screen.findByText(/서버 결과 미확인/);expect(extraReferences).toHaveLength(2);expect(io.discard).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'actor-a'},ref,'{broken',expect.any(Function));expect(io.apply).not.toHaveBeenCalled();
+});
+
+it('후속 참조목록이 다른 사본을 관측해도 표시한 행의 원문 A만 정리포트로 전달한다',async()=>{
+ const ref:QuotationReference={companyId:'taebaek',targetId:'원대상',planId:'동일계획'};pending=[{reference:ref,action:'update',description:'원문 A 표시',observedLocalText:'원문 A raw'}];referenceRawOverride='후속 원문 B raw';mount();const panel=screen.getByRole('region',{name:'처리 결과 확인이 필요한 견적'});expect(panel).toHaveTextContent('원문 A 표시');fireEvent.click(within(panel).getByRole('button',{name:'이 기기 사본만 정리'}));await waitFor(()=>expect(io.discard).toHaveBeenCalledExactlyOnceWith({companyId:'taebaek',actorUid:'actor-a'},ref,'원문 A raw',expect.any(Function)));expect(io.apply).not.toHaveBeenCalled();
 });

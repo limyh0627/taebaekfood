@@ -2,9 +2,9 @@ import type { AccountManagementReference } from '../../shared/accountManagementC
 import type { AccountCode, AccountGroup } from '../../shared/types';
 import {prepareDirectoryDelete,confirmDirectoryDelete,inspectDirectoryDelete,cancelDirectoryDelete,pendingDirectoryDeletes,directoryDeleteReferences,type DirectoryDeleteInput,type DirectoryDeleteOutcome,type DirectoryDeletePrepared} from '../../shared/services/directoryDeleteWrites';
 import type {DirectoryDeleteReference} from '../../shared/directoryDeleteCommand';
-import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
+import {submitPartnerItemTerms,pendingPartnerItemTerms,partnerItemTermsReferences,inspectPartnerItemTerms,cancelPartnerItemTerms,discardPartnerItemTermsCopy,type PartnerItemTermsCopyDiscardResult,type PartnerItemTermsInput,type PartnerItemTermsOutcome} from '../items/infrastructure/partnerItemTermsWrites';
 import type {PartnerItemTermsReference} from '../../shared/partnerItemTermsCommand';
-import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
+import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,discardEmployeeEditCopy,type EmployeeEditCopyDiscardResult,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
 import type {EmployeeEditReference} from '../../shared/employeeEditCommand';
 import type {ItemEditorProgress,ItemEditorSaveResult} from '../items/application/itemEditorSave';
 import {captureItemEditorOpening,pendingItemEditorPlans,itemEditorReferences,submitItemEditorSave,inspectItemEditorSave,continueItemEditorSave,cancelItemEditorSave,discardItemEditorCopy,type ItemEditorSaveInput} from '../items/infrastructure/itemEditorWrites';
@@ -437,9 +437,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const savePartnerItemTerms=(input:PartnerItemTermsInput)=>runPartnerItemTerms(scope=>submitPartnerItemTerms(scope,input,awaitNotice,isCurrentPartnerTerms));
   const inspectPartnerTerms=(reference:PartnerItemTermsReference)=>runPartnerItemTerms(scope=>inspectPartnerItemTerms(scope,reference,isCurrentPartnerTerms));
   const cancelPartnerTerms=(reference:PartnerItemTermsReference)=>runPartnerItemTerms(scope=>cancelPartnerItemTerms(scope,reference,isCurrentPartnerTerms));
+  const discardPartnerTerms=async(reference:PartnerItemTermsReference,observedLocalText:string):Promise<PartnerItemTermsCopyDiscardResult>=>{
+    if(!isCurrentPartnerTerms()||!termsActor)return {status:'blocked',message:'회사 또는 로그인 정보가 바뀌어 사본을 정리하지 않았습니다.'};
+    return discardPartnerItemTermsCopy({companyId,actorUid:termsActor},reference,observedLocalText,isCurrentPartnerTerms);
+  };
   const readPendingPartnerTerms=()=>isCurrentPartnerTerms()&&termsActor?pendingPartnerItemTerms({companyId,actorUid:termsActor}):[];
   const readPartnerTermsReferences=()=>isCurrentPartnerTerms()&&termsActor?partnerItemTermsReferences({companyId,actorUid:termsActor}):[];
-  const partnerTermsBindings={requestScopeKey:termsActor??'',onSavePartnerItemTerms:savePartnerItemTerms,onReadPendingPartnerItemTerms:readPendingPartnerTerms,onReadPartnerItemTermsReferences:readPartnerTermsReferences,onInspectPartnerItemTerms:inspectPartnerTerms,onCancelPartnerItemTerms:cancelPartnerTerms};
+  const partnerTermsBindings={requestScopeKey:termsActor??'',onSavePartnerItemTerms:savePartnerItemTerms,onReadPendingPartnerItemTerms:readPendingPartnerTerms,onReadPartnerItemTermsReferences:readPartnerTermsReferences,onInspectPartnerItemTerms:inspectPartnerTerms,onCancelPartnerItemTerms:cancelPartnerTerms,onDiscardPartnerItemTermsCopy:discardPartnerTerms};
 
   // 저장 ACK와 목록 재조회 요청은 다른 단계다. 뒤의 오류를 주업무 미저장으로 바꾸지 않는다.
   const saveProfitAccountChange = async (id: string, context: AccountEditContext, save: () => Promise<SaveOutcome>): Promise<SaveOutcome> => {
@@ -2252,6 +2256,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleEmployeeEdit=(input:EmployeeEditInput)=>runEmployeeEdit(scope=>submitEmployeeEdit(scope,input));
   const handleInspectEmployeeEdit=(reference:EmployeeEditReference)=>runEmployeeEdit(scope=>inspectEmployeeEdit(scope,reference));
   const handleCancelEmployeeEdit=(reference:EmployeeEditReference)=>runEmployeeEdit(scope=>cancelEmployeeEdit(scope,reference));
+  const handleDiscardEmployeeEditCopy=async(reference:EmployeeEditReference,observedLocalText:string):Promise<EmployeeEditCopyDiscardResult>=>{
+    const scope=currentEmployeeEditScope();
+    if(!scope||scope.companyId!==reference.companyId)return {status:'blocked',message:'회사 또는 로그인 정보가 바뀌어 직원 사본을 정리하지 않았습니다.'};
+    return discardEmployeeEditCopy(scope,reference,observedLocalText);
+  };
   const readPendingEmployeeEdits=()=>{const scope=currentEmployeeEditScope();return scope?pendingEmployeeEdits(scope):[];};
   const readEmployeeEditReferences=()=>{const scope=currentEmployeeEditScope();return scope?employeeEditReferences(scope):[];};
 
@@ -3241,6 +3250,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onInspectEmployeeEdit={handleInspectEmployeeEdit}
               onCancelEmployeeEdit={handleCancelEmployeeEdit}
               onReadEmployeeEditReferences={readEmployeeEditReferences}
+              onDiscardEmployeeEditCopy={handleDiscardEmployeeEditCopy}
               {...directoryDeleteBindings}
               onLeaveAction={handleLeaveAction}
               onReadPendingLeaveActions={readPendingLeaveActions}

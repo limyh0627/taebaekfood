@@ -10,13 +10,26 @@ interface ServiceTermsProps extends PartnerItemTermsBindings {
  editor?:PartnerItemTermsEditor;
 }
 export function PartnerItemTermsRecovery({editor,showMessage=true}:{editor:PartnerItemTermsEditor;showMessage?:boolean}){
- const damaged=editor.references.filter(row=>!row.readable);
+ const matches=(a:import('../infrastructure/partnerItemTermsWrites').PartnerItemTermsReference|null,b:import('../infrastructure/partnerItemTermsWrites').PartnerItemTermsReference)=>!!a&&a.companyId===b.companyId&&a.targetId===b.targetId&&a.planId===b.planId&&editor.keyFor(a)===editor.keyFor(b);
+ const rows=editor.references.map(row=>({
+  ...row,description:row.description??'거래조건 요청 · 대상 '+(row.reference?.targetId??'번호 확인 불가')
+ }));
+ for(const pending of editor.pending){
+  if(!rows.some(row=>matches(row.reference,pending.reference)))rows.push({key:pending.reference.planId,reference:pending.reference,readable:true,description:pending.description,observedLocalText:pending.observedLocalText});
+ }
  return <>
   {showMessage&&editor.message&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{editor.message}</p>}
-  {(editor.pending.length>0||damaged.length>0)&&<section aria-label="처리 결과 확인이 필요한 거래조건" className="space-y-2 rounded-lg border border-slate-200 p-3">
+  {rows.length>0&&<section aria-label="처리 결과 확인이 필요한 거래조건" className="max-h-60 min-w-0 shrink-0 space-y-2 overflow-y-auto break-words rounded-lg border border-slate-200 p-3">
    <h3 className="text-sm font-bold text-slate-700">처리 결과 확인이 필요한 거래조건</h3>
-   {editor.pending.map(row=><div key={row.reference.planId} className="flex flex-wrap items-center gap-2 text-xs"><span>{row.description}</span><button type="button" disabled={editor.busy} onClick={()=>void editor.inspect(row.reference)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button><button type="button" disabled={editor.busy} onClick={()=>void editor.cancel(row.reference)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button></div>)}
-   {damaged.map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs"><span>원문 확인 필요 · {row.reference?.targetId??'대상 번호를 읽지 못했습니다.'}</span>{row.reference&&<><button type="button" disabled={editor.busy} onClick={()=>void editor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button><button type="button" disabled={editor.busy} onClick={()=>void editor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button></>}</div>)}
+   {rows.map(row=><div key={row.key} className="flex flex-wrap items-center gap-2 text-xs">
+    <span>{row.description}{row.reference&&' · 요청 '+row.reference.planId}</span>
+    {row.reference&&<>
+     <button type="button" disabled={editor.busy} onClick={()=>void editor.inspect(row.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
+     <button type="button" disabled={editor.busy} onClick={()=>void editor.cancel(row.reference!)} className="rounded border border-slate-200 px-3 py-2">요청 중단</button>
+     {typeof row.observedLocalText==='string'&&<button type="button" disabled={editor.busy} onClick={()=>void editor.discard(row.reference!,row.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
+    </>}
+   </div>)}
+   <p className="text-xs text-slate-600">요청 중단은 미처리 요청의 늦은 실행을 막습니다. 사본 정리는 이 기기의 기록만 지우며 이미 저장된 거래조건을 되돌리지 않습니다.</p>
   </section>}
  </>;
 }
@@ -27,7 +40,7 @@ function Fields({editor,item,partnerId,direction,value,accountCodes,accountGroup
  const eligibleCodes=filterCodesForContext(accountCodes,accountGroups,direction==='out'?'매출':'매입');
  useEffect(()=>{editor.open(selection.current.target,undefined,'service',eligibleCodes.map(row=>row.code));},[key]);
  const draft=editor.draftFor(key),locked=editor.locked(key)||!draft;
- const completed=!draft&&editor.outcomes[key]?.status==='saved'||!!editor.outcomes[key]?.requiresReopen;
+ const completed=!draft&&editor.outcomes[key]?.status==='saved'||!!editor.outcomes[key]?.requiresReopen||editor.copyCleared(key);
  return <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2" onClick={e=>e.stopPropagation()}>
   <label className="text-[10px] font-bold text-slate-500">단가<input aria-label="용역 단가" type="number" min="0" disabled={locked} value={draft?.price??''} onChange={e=>editor.change(key,'price',e.target.value)} className="block w-28 rounded-md border border-slate-200 px-2 py-1 text-xs"/></label>
   <label className="text-[10px] font-bold text-slate-500">과세<select aria-label="용역 과세 여부" disabled={locked} value={draft?.taxType??''} onChange={e=>editor.change(key,'taxType',e.target.value)} className="block rounded-md border border-slate-200 px-2 py-1 text-xs"><option value="">선택</option><option value="과세">과세</option><option value="면세">면세</option></select></label>
@@ -36,7 +49,7 @@ function Fields({editor,item,partnerId,direction,value,accountCodes,accountGroup
  </div>;
 }
 function Standalone(props:ServiceTermsProps){
- const editor=usePartnerItemTermsEditor({scopeKey:(props.item.companyId??'taebaek')+':'+(props.requestScopeKey??''),onSave:props.onSave??props.onSavePartnerItemTerms,readPending:props.onReadPendingPartnerItemTerms,readReferences:props.onReadPartnerItemTermsReferences,inspect:props.onInspectPartnerItemTerms,cancel:props.onCancelPartnerItemTerms});
+ const editor=usePartnerItemTermsEditor({scopeKey:(props.item.companyId??'taebaek')+':'+(props.requestScopeKey??''),onSave:props.onSave??props.onSavePartnerItemTerms,readPending:props.onReadPendingPartnerItemTerms,readReferences:props.onReadPartnerItemTermsReferences,inspect:props.onInspectPartnerItemTerms,cancel:props.onCancelPartnerItemTerms,discard:props.onDiscardPartnerItemTermsCopy});
  return <><Fields {...props} editor={editor}/><PartnerItemTermsRecovery editor={editor}/></>;
 }
 export const ServiceTerms:React.FC<ServiceTermsProps>=props=>props.editor?<Fields {...props} editor={props.editor}/>:<Standalone key={(props.item.companyId??'taebaek')+':'+(props.requestScopeKey??'')} {...props}/>;

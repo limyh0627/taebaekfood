@@ -9,7 +9,7 @@ import { saleTaxTypeOf } from '../../../shared/partnerPrice';
 import type { Item, PartnerItem, CompanyId } from '../../../shared/types';
 import type { Quotation, QuotationLine } from '../domain/quotation';
 import type { QuotationReference } from '../../../shared/quotationCommand';
-import { captureQuotation, prepareQuotation, applyQuotation, inspectQuotation, cancelQuotation, pendingQuotations, quotationReferences, quotationFromOpening, cloneQuotation, type QuotationScope, type QuotationOpening, type QuotationPrepared, type QuotationWriteInput, type QuotationOutcome, type PendingQuotation, type QuotationStoredReference } from '../infrastructure/quotationWrites';
+import { captureQuotation, prepareQuotation, applyQuotation, inspectQuotation, cancelQuotation, discardQuotationCopy, pendingQuotations, quotationReferences, quotationFromOpening, cloneQuotation, type QuotationScope, type QuotationOpening, type QuotationPrepared, type QuotationWriteInput, type QuotationOutcome, type QuotationCopyDiscardResult, type PendingQuotation, type QuotationStoredReference } from '../infrastructure/quotationWrites';
 export interface QuotationForm {
   date: string;
   validUntil?: string;
@@ -45,6 +45,7 @@ export interface QuotationEditorPorts {
   apply(reference: QuotationReference, isCurrent: () => boolean): Promise<QuotationOutcome>;
   inspect(reference: QuotationReference, isCurrent: () => boolean): Promise<QuotationOutcome>;
   cancel(reference: QuotationReference, isCurrent: () => boolean): Promise<QuotationOutcome>;
+  discard(reference: QuotationReference, observedLocalText: string, isCurrent: () => boolean): Promise<QuotationCopyDiscardResult>;
   pending(): PendingQuotation[];
   references(): QuotationStoredReference[];
 }
@@ -190,6 +191,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       apply: (r, ok) => applyQuotation(captured, r, ok),
       inspect: (r, ok) => inspectQuotation(captured, r, ok),
       cancel: (r, ok) => cancelQuotation(captured, r, ok),
+      discard: (r, text, ok) => discardQuotationCopy(captured, r, text, ok),
       pending: () => pendingQuotations(captured),
       references: () => quotationReferences(captured)
     };
@@ -472,7 +474,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       const rawOutcome = await p.apply(prepared.reference, () => valid(captured, token));
       if (!valid(captured, token)) return false;
       const outcome = applyOutcome(rawOutcome, prepared.reference);
-      if (primaryCommitted(outcome, session.targetId)) {
+      if (outcome.status === 'saved' && primaryCommitted(outcome, session.targetId)) {
         notify('save', session.targetId, quotation);
         patch({
           open: false
@@ -614,7 +616,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       const raw = await p[mode](reference, () => valid(captured, token));
       if (!valid(captured, token)) return null;
       const outcome = applyOutcome(raw, reference);
-      if (same(sessionRef.current?.reference, reference) && outcome.status !== 'unknown') {
+      if (same(sessionRef.current?.reference, reference) && outcome.status !== 'unknown' && outcome.status !== 'partial') {
         sessionRef.current = {
           ...sessionRef.current!,
           requiresReopen: true
@@ -649,6 +651,28 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       }
     }
   };
+  // 이 기기 사본 정리는 견적 업무 ACK가 아니므로 notify나 창 종료를 호출하지 않는다.
+  const discardCopy = async (reference: QuotationReference, observedLocalText: string): Promise<QuotationCopyDiscardResult | null> => {
+    if (owner.current !== key || busyRef.current) return null;
+    const captured = owner.current, token = generation.current, p = ports();
+    busyRef.current = true;
+    patch({busy: true, message: '', messageReference: reference, messageTargetId: reference.targetId});
+    try {
+      const result = await p.discard(reference, observedLocalText, () => valid(captured, token));
+      if (!valid(captured, token)) return null;
+      patch({message: result.message, lastOutcome: null});
+      if (result.status === 'cleared' && same(sessionRef.current?.reference, reference)) {
+        sessionRef.current = {...sessionRef.current!, requiresReopen: true};
+        patch({session: sessionRef.current});
+      }
+      return result;
+    } catch {
+      if (valid(captured, token)) patch({message: '이 기기 사본 정리를 확인하지 못했습니다. 원문을 보존하고 결과를 다시 확인해 주세요.', lastOutcome: null});
+      return null;
+    } finally {
+      if (valid(captured, token)) {busyRef.current = false; patch({busy: false}); refresh();}
+    }
+  };
   const confirmDelete = async () => {
     const deletion = deleteRef.current;
     if (!deletion?.ready || !deletion.reference || busyRef.current) return false;
@@ -659,7 +683,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       }
     });
     const outcome = await recover(deletion.reference, 'apply');
-    if (outcome && primaryCommitted(outcome, deletion.quotation.id) && same(deleteRef.current?.reference, deletion.reference)) {
+    if (outcome?.status === 'saved' && primaryCommitted(outcome, deletion.quotation.id) && same(deleteRef.current?.reference, deletion.reference)) {
       notify('delete', deletion.quotation.id);
       deleteRef.current = null;
       patch({
@@ -667,7 +691,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       });
       return true;
     }
-    return !!outcome && primaryCommitted(outcome, deletion.quotation.id);
+    return outcome?.status === 'saved' && primaryCommitted(outcome, deletion.quotation.id);
   };
   const closeDelete = async () => {
     if (busyRef.current) {
@@ -681,7 +705,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
       token = generation.current;
     if (deletion?.ready && deletion.reference) {
       const outcome = await recover(deletion.reference, 'cancel');
-      if (!valid(captured, token) || !outcome || outcome.status !== 'cancelled' && !primaryCommitted(outcome, deletion.quotation.id)) return false;
+      if (!valid(captured, token) || !outcome || outcome.status === 'partial' || outcome.status !== 'cancelled' && !primaryCommitted(outcome, deletion.quotation.id)) return false;
       if (primaryCommitted(outcome, deletion.quotation.id)) notify('delete', deletion.quotation.id);
     }
     deleteRef.current = null;
@@ -767,6 +791,7 @@ export function useQuotationEditor(options: UseQuotationEditorOptions) {
     close,
     inspect: (r: QuotationReference) => recover(r, 'inspect'),
     cancel: (r: QuotationReference) => recover(r, 'cancel'),
+    discardCopy,
     refresh,
     reopen,
     newFromDraft
