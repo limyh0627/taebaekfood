@@ -1,14 +1,13 @@
+import { useDocumentTransfers } from '../src/features/documents/hooks/useDocumentTransfers';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { where } from 'firebase/firestore';
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash2, Plus, Upload, Search, X, FolderPlus } from 'lucide-react';
-import { storage } from '../src/shared/firebase';
+import { auth } from '../src/shared/firebase';
 import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection } from '../src/shared/services/firebaseService';
 import { CabinetCategory, CabinetSubCategory, CabinetDoc, companyOf, type CompanyId } from '../src/shared/types';
 import { dateOfLocal } from '../src/shared/day';
-import { cabinetStoragePath } from '../src/shared/companyStoragePath';
 
 const DEFAULT_CATEGORIES = ['직원용', '업무용', '거래처용'];
 /** 이번 탭에서 이미 세운 자리 — 화면을 드나들어도 두 번 안 만든다 */
@@ -57,7 +56,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const [activeCat, setActiveCat] = useState<string>('');
   const [activeSub, setActiveSub] = useState<string>(''); // '' = 전체
   const [search, setSearch] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const transfers = useDocumentTransfers({companyId, actorUid: auth.currentUser?.uid, employeeId: currentUser.id, uploadedBy: currentUser.name});
   const [addingCat, setAddingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [addingSub, setAddingSub] = useState(false);
@@ -194,50 +193,10 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     const tooBig = list.find(f => f.size > MAX_SIZE_MB * 1024 * 1024);
     if (tooBig) { alert(`"${tooBig.name}" 이(가) ${MAX_SIZE_MB}MB를 초과합니다.`); return; }
 
-    setUploading(true);
-    try {
-      for (const file of list) {
-        const safeName = file.name.replace(/[#?%]/g, '_');
-        const path = cabinetStoragePath(
-          companyId, activeCat, activeSub, `${Date.now()}_${safeName}`,
-        );
-        const storageRef = ref(storage, path);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
-        await addItem('fileCabinetDocs', {
-          category: activeCat,
-          subCategory: activeSub,
-          fileName: file.name,
-          storagePath: path,
-          downloadUrl: url,
-          size: file.size,
-          contentType: file.type || 'application/octet-stream',
-          note: '',
-          uploadedBy: currentUser.name,
-          uploadedAt: new Date().toISOString(),
-          companyId,
-        });
-      }
-    } catch (e: any) {
-      console.error('[문서함] 업로드 실패:', e);
-      alert(`업로드에 실패했습니다.\n(${e?.code ?? e?.message ?? '알 수 없는 오류'})`);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDelete = async (d: CabinetDoc) => {
-    if (!await appConfirm(`"${d.fileName}" 파일을 삭제할까요?`)) return;
-    try {
-      await deleteObject(ref(storage, d.storagePath)).catch((e) => {
-        if (e?.code !== 'storage/object-not-found') throw e; // 이미 없으면 메타만 정리
-      });
-      await deleteItem('fileCabinetDocs', d.id);
-    } catch (e) {
-      console.error('[문서함] 삭제 실패:', e);
-      alert('삭제에 실패했습니다.');
-    }
+    // 후크가 File을 보존한 뒤 입력만 비워 같은 파일도 다시 선택할 수 있게 한다.
+    const task = transfers.startUploads(list, activeCat, activeSub);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    await task;
   };
 
   const handleEditNote = async (d: CabinetDoc) => {
@@ -398,10 +357,10 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
         className={`rounded-2xl border-2 border-dashed p-5 text-center transition-colors ${dragOver ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white'}`}
       >
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
-        <Upload className={`w-6 h-6 mx-auto mb-2 ${uploading ? 'animate-pulse text-indigo-500' : 'text-slate-400'}`} />
+        <input aria-label="문서 파일 첨부" ref={fileInputRef} type="file" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
+        <Upload className={`w-6 h-6 mx-auto mb-2 text-slate-400`} />
         <p className="text-xs font-bold text-slate-600">
-          {uploading ? '업로드 중…' : <>여기로 파일을 끌어놓거나 <button onClick={() => fileInputRef.current?.click()} className="text-indigo-600 underline">파일 선택</button></>}
+          여기로 파일을 끌어놓거나 <button onClick={() => fileInputRef.current?.click()} className="text-indigo-600 underline">파일 선택</button>
         </p>
         <p className="text-[10px] text-slate-400 mt-1">
           {!activeCat ? '먼저 대분류를 선택하세요'
@@ -409,6 +368,20 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
             : `현재 "${activeCat} > ${activeSub}"에 저장됩니다 · 최대 ${MAX_SIZE_MB}MB`}
         </p>
       </div>
+
+      {transfers.jobs.length > 0 && <section aria-label="처리 중이거나 확인이 필요한 문서" className="space-y-3 rounded-lg border border-slate-200 p-3">
+        <h3 className="text-sm font-bold text-slate-700">처리 중이거나 확인이 필요한 문서</h3>
+        {transfers.jobs.map(job => <div key={job.jobId} className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="min-w-0">
+            <p className="font-bold text-slate-700">{job.fileName}</p>
+            <p className="text-slate-500">문서 번호: {job.documentId}</p>
+            <p role="status" className="whitespace-pre-line text-slate-600">{job.message}</p>
+          </div>
+          {job.kind === 'upload' && (job.stage === 'upload' || job.stage === 'url') && <button type="button" disabled={job.busy || !job.canRetry} aria-label={job.fileName+' · '+job.documentId+' · '+(job.stage === 'url' ? '주소 받기 다시 시도' : '업로드 다시 시도')} onClick={() => void transfers.retryUpload(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.busy ? '처리 중…' : job.stage === 'url' ? '주소 받기 다시 시도' : '업로드 다시 시도'}</button>}
+          {job.stage === 'metadata' && job.canRetry && !job.busy && <button type="button" aria-label={job.fileName+' · '+job.documentId+' · '+(job.kind === 'upload' ? '목록 등록 이어하기' : '목록 삭제 이어하기')} onClick={() => void transfers.retry(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.kind === 'upload' ? '목록 등록 이어하기' : '목록 삭제 이어하기'}</button>}
+          {job.kind === 'delete' && job.stage === 'cleanup' && <button type="button" disabled={job.busy || !job.canRetry} aria-label={job.fileName+' · '+job.documentId+' · 파일 정리 다시 시도'} onClick={() => void transfers.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.busy ? '파일 정리 중…' : '파일 정리 다시 시도'}</button>}
+        </div>)}
+      </section>}
 
       {/* 파일 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -429,7 +402,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
                 </div>
                 <button onClick={() => handleEditNote(d)} className="shrink-0 px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-600">메모</button>
                 <a href={d.downloadUrl} target="_blank" rel="noopener noreferrer" download={d.fileName} className="shrink-0 p-2 rounded-lg text-indigo-600 hover:bg-indigo-50" title="다운로드"><Download className="w-4 h-4" /></a>
-                <button onClick={() => handleDelete(d)} className="shrink-0 p-2 rounded-lg text-red-500 hover:bg-red-50" title="삭제"><Trash2 className="w-4 h-4" /></button>
+                {!transfers.jobs.some(job => job.documentId === d.id) && <button onClick={() => void transfers.deleteDocument(d)} className="shrink-0 p-2 rounded-lg text-red-500 hover:bg-red-50" title="삭제"><Trash2 className="w-4 h-4" /></button>}
               </li>
             ))}
           </ul>
