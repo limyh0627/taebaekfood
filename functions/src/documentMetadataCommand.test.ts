@@ -295,6 +295,7 @@ it('다른회사·타Storage경로는파일사전조회0·본문ID충돌은업�
 });
 it('늦은객체정리트리거는실패이벤트재시도를등록한다', () => {
     expect(cleanupLateDocumentUpload.__endpoint).toMatchObject({
+        region: ['us-east1'],
         eventTrigger: {
             retry: true
         }

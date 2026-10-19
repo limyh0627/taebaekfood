@@ -364,7 +364,7 @@ export async function cleanupLateDocumentObject(db: admin.firestore.Firestore, o
 }
 /** 중단 뒤 도착한 객체의 정리 실패도 이벤트 ACK하지 않아 같은 원문으로 재개한다. */
 export const cleanupLateDocumentUpload = onObjectFinalized({
-    region: 'asia-northeast3', retry: true
+    region: 'us-east1', retry: true
 }, async (event) => {
     await cleanupLateDocumentObject(admin.firestore(), {
         name: event.data.name, generation: String(event.data.generation), bucket: event.data.bucket
