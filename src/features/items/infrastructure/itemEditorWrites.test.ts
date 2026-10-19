@@ -326,8 +326,7 @@ it('명시 continue는 inspect 부재를 미저장으로 단정하지 않고 최
   expect((await service.execute(scope, plan.reference, progress, () => true)).outcome.status).toBe('saved');
   expect(vi.mocked(port.command).mock.calls[0][0]).toEqual({
     mode: 'inspect',
-    reference: plan.reference,
-    requestHash: plan.requestHash
+    reference: plan.reference
   });
   expect(vi.mocked(port.command).mock.calls.filter(([c]) => c.mode === 'apply').every(([c]) => c.mode === 'apply' && c.request.planId === plan.reference.planId)).toBe(true);
 });
@@ -389,7 +388,7 @@ it('다른 품목의 손상 entry는 새 품목을 막지 않고 같은 품목�
   });
   await expect(service.prepare(scope, input, () => true)).rejects.toThrow('보관 요청');
 });
-it('키·본문 번호 불일치 또는 hash손상은 새 apply0이며 ref cancel로만 종결한다', async () => {
+it('키·본문 번호 불일치 또는 hash손상은 새 apply0이며 ref cancel 뒤 명시 사본 정리로 종결한다', async () => {
   const {
       service,
       input
@@ -403,11 +402,15 @@ it('키·본문 번호 불일치 또는 hash손상은 새 apply0이며 ref cance
   const progress = createPendingItemEditorProgress(plan);
   expect((await service.execute(scope, plan.reference, progress, () => true)).outcome.status).toBe('unknown');
   expect(vi.mocked(port.command).mock.calls.some(([c]) => c.mode === 'apply')).toBe(false);
-  expect((await service.resolve(scope, plan.reference, progress, () => true, 'cancel')).outcome.status).toBe('cancelled');
+  expect(await service.resolve(scope, plan.reference, progress, () => true, 'cancel')).toMatchObject({
+    copyMismatch: true, observedServerStatus: 'cancelled', outcome: { status: 'rejected' }
+  });
   expect(port.command).toHaveBeenLastCalledWith({
     mode: 'cancel',
     reference: plan.reference
   });
+  expect(memory.size).toBe(1);
+  expect((await service.discard(scope, plan.reference, memory.get(key)!, () => true)).status).toBe('cleared');
   expect(memory.size).toBe(0);
 });
 it('중간 cancel은 완료 단계는 유지하고 같은 plan의 남은 쓰기만 봉쇄한다', async () => {
@@ -541,4 +544,70 @@ it('정규화된 ACK 이후 다른 원문이 같은 키에 들어오면 삭제�
     message: expect.stringContaining('모든 단계는 완료')
   });
   expect([...memory.values()]).toEqual(['다른 원문']);
+});
+
+async function conflictingCopy(status: 'active' | 'completed' = 'completed') {
+  const { service, input } = await setup();
+  const plan = await service.prepare(scope, input, () => true);
+  receipts.set(plan.reference.planId, { ...plan.reference, actorUid: 'actor', status,
+    confirmedStageIds: status === 'completed' ? [...ITEM_EDITOR_STAGES] : ['primary'], requestHash: plan.requestHash,
+    message: status === 'completed' ? '최초 원문 저장 완료' : '최초 원문 일부 단계 완료' });
+  const key = [...memory.keys()][0], body = JSON.parse(memory.get(key)!);
+  body.request.draft.metadata.name = '재해시한 다른 유효 원문';
+  body.requestHash = await hash(serializeItemEditorRequest(body.request));
+  const observed = JSON.stringify(body); memory.set(key, observed);
+  return { service, plan, key, observed, progress: createPendingItemEditorProgress(plan) };
+}
+it('다른 유효 사본도 ref-only 서버 완료를 알리되 현재 progress나 saved로 승격하지 않는다', async () => {
+  const f = await conflictingCopy();
+  const before = JSON.stringify(f.progress);
+  const result = await f.service.resolve(scope, f.plan.reference, f.progress, () => true, 'inspect');
+  expect(port.command).toHaveBeenCalledExactlyOnceWith({ mode: 'inspect', reference: f.plan.reference });
+  expect(result).toMatchObject({ copyMismatch: true, observedServerStatus: 'completed', outcome: { status: 'rejected' } });
+  expect(JSON.stringify(f.progress)).toBe(before); expect(memory.get(f.key)).toBe(f.observed);
+  expect(result.outcome.status !== 'saved' && result.outcome.message).toContain('모든 단계가 완료');
+  expect(f.service.references(scope)[0].observedLocalText).toBe(f.observed);
+});
+it('다른 원문 active는 자동 이어하기 없이 남은 단계만 명시 중단할 수 있다', async () => {
+  const f = await conflictingCopy('active');
+  const result = await f.service.execute(scope, f.plan.reference, f.progress, () => true);
+  expect(result.copyMismatch).toBe(true); expect(port.command).toHaveBeenCalledOnce();
+  expect(f.progress.confirmedStageIds).toEqual([]);
+  const cancelled = await f.service.resolve(scope, f.plan.reference, f.progress, () => true, 'cancel');
+  expect(vi.mocked(port.command).mock.calls[1][0]).toEqual({ mode: 'cancel', reference: f.plan.reference });
+  expect(cancelled).toMatchObject({ copyMismatch: true, observedServerStatus: 'cancelled', outcome: { status: 'rejected' } });
+  expect(f.progress.confirmedStageIds).toEqual([]); expect(memory.get(f.key)).toBe(f.observed);
+});
+it('명시 사본 정리는 서버 terminal을 재확인하고 그 사본만 제거한다', async () => {
+  const f = await conflictingCopy();
+  expect(await f.service.discard(scope, f.plan.reference, f.observed, () => true)).toMatchObject({ status: 'cleared' });
+  expect(port.command).toHaveBeenCalledExactlyOnceWith({ mode: 'inspect', reference: f.plan.reference });
+  expect(memory.has(f.key)).toBe(false); expect(f.progress.confirmedStageIds).toEqual([]);
+});
+it.each(['unknown', 'active'] as const)('서버 %s는 기기 사본을 정리하지 않는다', async status => {
+  const f = await conflictingCopy('active');
+  if (status === 'unknown') receipts.delete(f.plan.reference.planId);
+  expect((await f.service.discard(scope, f.plan.reference, f.observed, () => true)).status).toBe('blocked');
+  expect(memory.get(f.key)).toBe(f.observed);
+});
+it('관측 뒤 교체된 사본과 수명이 끝난 응답은 사본을 제거하지 않는다', async () => {
+  const f = await conflictingCopy(), remote = port.command;
+  port.command = vi.fn(async command => { const result = await remote(command); memory.set(f.key, '새 사본'); return result; });
+  expect((await f.service.discard(scope, f.plan.reference, f.observed, () => true)).status).toBe('blocked');
+  expect(memory.get(f.key)).toBe('새 사본');
+  let current = true;
+  port.command = vi.fn(async command => { const result = await remote(command); current = false; return result; });
+  expect((await f.service.discard(scope, f.plan.reference, '새 사본', () => current)).status).toBe('unknown');
+  expect(memory.get(f.key)).toBe('새 사본');
+});
+it('손상 원문도 유효 reference로 결과 확인 후 명시 사본 정리가 가능하다', async () => {
+  const f = await conflictingCopy(); memory.set(f.key, '{손상');
+  const entry = f.service.references(scope)[0];
+  expect(entry).toMatchObject({ readable: false, reference: f.plan.reference, observedLocalText: '{손상' });
+  const before = JSON.stringify(f.progress);
+  const result = await f.service.resolve(scope, f.plan.reference, f.progress, () => true, 'inspect');
+  expect(result).toMatchObject({ copyMismatch: true, observedServerStatus: 'completed', outcome: { status: 'rejected' } });
+  expect(result.outcome.status !== 'saved' && result.outcome.message).toContain('검증할 수 없어');
+  expect(JSON.stringify(f.progress)).toBe(before); expect(memory.get(f.key)).toBe('{손상');
+  expect((await f.service.discard(scope, f.plan.reference, '{손상', () => true)).status).toBe('cleared');
 });

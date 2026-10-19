@@ -60,3 +60,8 @@ it('모달 저장과 복구 포트는 동일 회사·UID scope와 현재 세대�
     expect(source).toContain('<ItemEditorRecoveryList entries={itemEditorRecoveryEntries}');
     expect(source).not.toContain('itemEditorCommittedSnapshot');
 });
+
+it('품목 사본 관측 원문은 복구 entry부터 모달 정리 포트까지 그대로 연결한다',()=>{
+ expect(source).toContain('observedLocalText:row.observedLocalText');expect(source).toContain('initialObservedLocalText={itemEditorRecovery?.observedLocalText}');expect(source).toContain('discardItemEditorCopy(itemEditorRequestScope,reference,observed,()=>isCurrentItemEditor()&&current())');
+ const file=ts.createSourceFile('AdminApp.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let port:ts.Expression|undefined;const visit=(node:ts.Node)=>{if(ts.isJsxAttribute(node)&&node.name.getText(file)==='onDiscardItemEditorCopy'&&node.initializer&&ts.isJsxExpression(node.initializer))port=node.initializer.expression;ts.forEachChild(node,visit);};visit(file);expect(port).toBeDefined();expect(port!.getText(file)).not.toMatch(/refreshStaticData|onSave|deleteObject|setIsProductModalOpen/);
+});

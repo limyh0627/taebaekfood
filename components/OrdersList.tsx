@@ -437,7 +437,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [], orderUnitInputs,
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateNote, onSaveOrderEdit, onUpdateDeliveryBoxes,
-  requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,editApplication,hideOrderEditPanel=false,
+  requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy,editApplication,hideOrderEditPanel=false,
   onToggleInvoicePrinted,
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
@@ -692,7 +692,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-  const ownEditApplication=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),onSaveOrderEdit:editApplication?undefined:onSaveOrderEdit,onReadPendingOrderEdits:editApplication?undefined:onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference});
+  const ownEditApplication=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),onSaveOrderEdit:editApplication?undefined:onSaveOrderEdit,onReadPendingOrderEdits:editApplication?undefined:onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy});
   const orderEdits=editApplication??ownEditApplication;
   const onUpdateItems=(opening:Order,items:OrderItem[])=>orderEdits.run(opening,{kind:'items',items});
   const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),application:orderEdits,onBeforeOpen:()=>{

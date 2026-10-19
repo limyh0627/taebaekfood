@@ -133,7 +133,7 @@ it('다른 target·hash의 응답은 ACK로 삼지 않고 최초 원문을 유�
   }, 'apply')).status).toBe('unknown');
   expect([...map.values()][0]).toBe(original);
 });
-it('손상 JSON은 apply/inspect를 막고 같은 키의 참조 중단만 보낸다', async () => {
+it('손상 JSON은 apply를 막고 같은 키의 참조 조회와 중단을 보낸다', async () => {
   const service = createOrderEditWriter(port),
     plan = await service.prepare(scope, opening, edit, false),
     key = [...map.keys()][0];
@@ -143,13 +143,13 @@ it('손상 JSON은 apply/inspect를 막고 같은 키의 참조 중단만 보낸
     planId: plan.request.planId,
     targetId: plan.request.targetId
   }, 'inspect')).status).toBe('unknown');
-  expect(port.command).not.toHaveBeenCalled();
+  expect(port.command).toHaveBeenCalledWith({mode:'inspect',reference:{companyId:'taebaek',planId:'plan-1',targetId:'order'}});
   vi.mocked(port.command).mockImplementation(c => result(c, 'cancelled'));
   expect((await service.run(scope, {
     companyId: plan.request.companyId,
     planId: plan.request.planId,
     targetId: plan.request.targetId
-  }, 'cancel')).status).toBe('cancelled');
+  }, 'cancel')).status).toBe('rejected');
   expect(port.command).toHaveBeenCalledWith({
     mode: 'cancel',
     reference: {
@@ -158,6 +158,9 @@ it('손상 JSON은 apply/inspect를 막고 같은 키의 참조 중단만 보낸
       targetId: 'order'
     }
   });
+  expect(map.get(key)).toBe('{broken');
+  expect(await service.discardCopy(scope, {companyId: 'taebaek', planId: 'plan-1', targetId: 'order'}, '{broken')).toEqual({status: 'saved'});
+  expect(map.size).toBe(0);
 });
 it('키와 본문 계획 번호 불일치는 보존하고 손상 참조로 표시한다', async () => {
   const service = createOrderEditWriter(port),
@@ -171,7 +174,8 @@ it('키와 본문 계획 번호 불일치는 보존하고 손상 참조로 표�
       targetId: 'order',
       planId: 'wrong'
     },
-    readable: false
+    readable: false,
+    observedLocalText: map.get(key.replace('plan-1', 'wrong'))
   }]);
   expect(() => service.read(scope, {
     ...plan.request,
@@ -219,4 +223,25 @@ it('저장소 조회 실패는 원문 변경과 서버 송신 없이 끝난다',
   await expect(service.prepare(scope, opening, edit, false)).rejects.toThrow('storage denied');
   expect(port.command).not.toHaveBeenCalled();
   expect(map.size).toBe(0);
+});
+
+it('다른 유효 사본은 refonly 조회와 중단으로 서버 원인을 보이고 자동 정리하지 않는다',async()=>{
+ const service=createOrderEditWriter(port),plan=await service.prepare(scope,opening,edit,false),reference={companyId:scope.companyId,planId:plan.request.planId,targetId:plan.request.targetId};
+ const original=[...map.values()][0];
+ vi.mocked(port.command).mockResolvedValue({...reference,actorUid:'actor',status:'applied',requestHash:'f'.repeat(64),message:'서버 최초 주문 완료'});
+ for(const mode of ['inspect','cancel'] as const){expect(await service.run(scope,reference,mode)).toMatchObject({status:'rejected',message:expect.stringContaining('서버 최초 주문 완료')});expect(port.command).toHaveBeenLastCalledWith({mode,reference});expect([...map.values()][0]).toBe(original);}
+ expect(await service.discardCopy(scope,reference,original)).toEqual({status:'saved'});expect(map.size).toBe(0);expect(port.command).toHaveBeenLastCalledWith({mode:'inspect',reference});
+});
+it('사본 정리는 unknown과 조회 중 바뀐 사본을 보존하고 다른 계획은 건드리지 않는다',async()=>{
+ const service=createOrderEditWriter(port),plan=await service.prepare(scope,opening,edit,false),reference={companyId:scope.companyId,planId:plan.request.planId,targetId:plan.request.targetId},key=[...map.keys()][0],raw=map.get(key)!;
+ vi.mocked(port.command).mockImplementation(c=>result(c,'unknown'));
+ expect((await service.discardCopy(scope,reference,raw)).status).toBe('unknown');expect(map.get(key)).toBe(raw);
+ vi.mocked(port.command).mockImplementation(async()=>{map.set(key,'새 사본');return {...reference,actorUid:'actor',status:'cancelled',requestHash:null,message:'중단'};});
+ expect((await service.discardCopy(scope,reference,raw)).status).toBe('unknown');expect(map.get(key)).toBe('새 사본');
+});
+it('손상 사본은 서버 terminal 조회를 현재 성공으로 오판하지 않고 명시 사본 정리로 끝낸다',async()=>{
+ const service=createOrderEditWriter(port),plan=await service.prepare(scope,opening,edit,false),reference={companyId:scope.companyId,planId:plan.request.planId,targetId:plan.request.targetId},key=[...map.keys()][0];map.set(key,'{broken');
+ vi.mocked(port.command).mockResolvedValue({...reference,actorUid:'actor',status:'applied',requestHash:'a'.repeat(64),message:'이미 완료'});
+ expect(await service.run(scope,reference,'inspect')).toMatchObject({status:'rejected',message:expect.stringContaining('이미 완료')});expect(map.get(key)).toBe('{broken');expect(port.command).toHaveBeenCalledWith({mode:'inspect',reference});
+ expect(await service.discardCopy(scope,reference,'{broken')).toEqual({status:'saved'});expect(map.size).toBe(0);
 });

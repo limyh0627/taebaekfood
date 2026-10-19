@@ -174,3 +174,11 @@ it('오류 안내 대상은 busy 종료 뒤에도 A에만 남고 B 처리시 B�
   expect(hook.result.current.messageTargetId).toBe('B');
 });
 it('과거 요청 inspect ACK는 새 초안 종료 대신 해당 주문 재확인을 안내한다',async()=>{const hook=renderHook(()=>useOrderEditApplication({scopeKey:'A',onInspectOrderEdit:async()=>({status:'saved'})}));await act(async()=>{expect((await hook.result.current.inspect({id:'A',planId:'old',description:'이전 요청'})).committed).toBe(true);});expect(hook.result.current.messageTargetId).toBe('A');expect(hook.result.current.message).toContain('현재 주문을 다시 열어');});
+
+it('사본 정리는 관측 원문을 그대로 전달하고 업무 완료나 새 초안 종료로 반환하지 않는다',async()=>{
+ let pending=[{id:'A',planId:'old',description:'사본',observedLocalText:'원관측'}];
+ const discard=vi.fn(async():Promise<SaveOutcome>=>{pending=[];return {status:'saved'};});
+ const hook=renderHook(()=>useOrderEditApplication({scopeKey:'scope',onReadPendingOrderEdits:()=>pending,onDiscardOrderEditCopy:discard}));
+ await act(async()=>{expect(await hook.result.current.discardCopy(pending[0],'원관측')).toEqual({committed:false,cancelled:false});});
+ expect(discard).toHaveBeenCalledExactlyOnceWith('old','A','원관측');expect(hook.result.current.pendingEdits).toEqual([]);expect(hook.result.current.message).toContain('사본만 정리');
+});

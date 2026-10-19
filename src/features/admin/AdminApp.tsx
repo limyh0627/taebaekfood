@@ -7,8 +7,8 @@ import type {PartnerItemTermsReference} from '../../shared/partnerItemTermsComma
 import {submitEmployeeEdit,pendingEmployeeEdits,employeeEditReferences,inspectEmployeeEdit,cancelEmployeeEdit,type EmployeeEditInput,type EmployeeEditScope} from '../hr/infrastructure/employeeEditWrites';
 import type {EmployeeEditReference} from '../../shared/employeeEditCommand';
 import type {ItemEditorProgress,ItemEditorSaveResult} from '../items/application/itemEditorSave';
-import {captureItemEditorOpening,pendingItemEditorPlans,itemEditorReferences,submitItemEditorSave,inspectItemEditorSave,continueItemEditorSave,cancelItemEditorSave,type ItemEditorSaveInput} from '../items/infrastructure/itemEditorWrites';
-import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit} from '../orders/infrastructure/orderEditWrites';
+import {captureItemEditorOpening,pendingItemEditorPlans,itemEditorReferences,submitItemEditorSave,inspectItemEditorSave,continueItemEditorSave,cancelItemEditorSave,discardItemEditorCopy,type ItemEditorSaveInput} from '../items/infrastructure/itemEditorWrites';
+import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,cancelOrderEdit,discardOrderEditCopy} from '../orders/infrastructure/orderEditWrites';
 import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
 import { primaryCommitted, type SaveOutcome } from '../../shared/saveOutcome';
@@ -2170,7 +2170,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const plans=pendingItemEditorPlans(itemEditorRequestScope);
       const references=itemEditorReferences(itemEditorRequestScope);
       if(references.some(row=>!row.reference))itemEditorRecoveryError='품목 저장 요청의 대상 번호를 읽지 못했습니다. 원문을 임의로 다시 보내지 않았습니다. 기기 저장소를 확인해 주세요.';
-      itemEditorRecoveryEntries=references.flatMap(row=>row.reference?[{reference:row.reference,pending:plans.find(plan=>plan.reference.planId===row.reference?.planId),error:row.error}]:[]);
+      itemEditorRecoveryEntries=references.flatMap(row=>row.reference?[{reference:row.reference,pending:plans.find(plan=>plan.reference.planId===row.reference?.planId),error:row.error,observedLocalText:row.observedLocalText}]:[]);
     }
   }catch {itemEditorRecoveryError='기기에 남은 품목 저장 요청을 읽지 못했습니다. 기기 저장소를 확인한 뒤 다시 열어 주세요.';}
 
@@ -2203,7 +2203,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const scope = currentOrderEditScope();
       return scope ? cancelOrderEdit(scope, planId, targetId) : Promise.resolve(orderEditScopeRejected());
   };
-  const orderEditBindings = { requestScopeKey: orderEditRenderUid ?? '', onSaveOrderEdit: handleSaveOrderEdit, onReadPendingOrderEdits: readPendingOrderEdits, onReadOrderEditReferences: readOrderEditReferences, onInspectOrderEdit: handleInspectOrderEdit, onCancelOrderEdit: handleCancelOrderEdit, onCancelOrderEditReference: handleCancelOrderEdit };
+  const handleDiscardOrderEditCopy = (planId:string,targetId:string,observedLocalText:string):Promise<OrderEditSaveResult> => {
+    const scope=currentOrderEditScope();
+    return scope ? discardOrderEditCopy(scope,planId,targetId,observedLocalText) : Promise.resolve(orderEditScopeRejected());
+  };
+  const orderEditBindings = { requestScopeKey: orderEditRenderUid ?? '', onSaveOrderEdit: handleSaveOrderEdit, onReadPendingOrderEdits: readPendingOrderEdits, onReadOrderEditReferences: readOrderEditReferences, onInspectOrderEdit: handleInspectOrderEdit, onCancelOrderEdit: handleCancelOrderEdit, onCancelOrderEditReference: handleCancelOrderEdit, onDiscardOrderEditCopy: handleDiscardOrderEditCopy };
 
   const leaveRenderUid = auth.currentUser?.uid;
   const leaveRenderToken = orderAskScope.current.token;
@@ -5035,6 +5039,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           }}
           initialPending={itemEditorRecovery?.pending}
           initialReference={itemEditorRecovery?.reference}
+          initialObservedLocalText={itemEditorRecovery?.observedLocalText}
+          onDiscardItemEditorCopy={(reference,observed,current)=>discardItemEditorCopy(itemEditorRequestScope,reference,observed,()=>isCurrentItemEditor()&&current())}
           onCaptureItemEditorOpening={(targetId,current)=>captureItemEditorOpening(itemEditorRequestScope,targetId,()=>isCurrentItemEditor()&&current())}
           onInspectItemEditor={(reference,progress,current)=>inspectItemEditorSave(itemEditorRequestScope,reference,progress,()=>isCurrentItemEditor()&&current())}
           onContinueItemEditor={(reference,progress,current)=>continueItemEditorSave(itemEditorRequestScope,reference,progress,()=>isCurrentItemEditor()&&current())}

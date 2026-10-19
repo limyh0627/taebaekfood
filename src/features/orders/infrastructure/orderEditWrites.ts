@@ -53,6 +53,7 @@ export function createOrderEditWriter(port: OrderEditWritePort) {
     const rows: {
       reference: OrderEditReference;
       readable: boolean;
+      observedLocalText: string | null;
     }[] = [];
     for (let i = 0; i < port.storage.length; i++) {
       const key = port.storage.key(i);
@@ -72,7 +73,8 @@ export function createOrderEditWriter(port: OrderEditWritePort) {
       }
       rows.push({
         reference,
-        readable
+        readable,
+        observedLocalText: port.storage.getItem(key)
       });
     }
     return rows;
@@ -142,7 +144,7 @@ export function createOrderEditWriter(port: OrderEditWritePort) {
         plan = read(scope, reference);
         if ((await hash(plan.request)) !== plan.requestHash) throw Error('보관 원문의 해시가 다릅니다.');
       } catch {
-        if (mode !== 'cancel') return unknown('보관 원문이 손상됐습니다. 원문을 유지하고 요청 중단으로 확인해 주세요.');
+        if (mode === 'apply') return unknown('보관 원문이 손상됐습니다. 원문을 유지하고 처리 결과를 확인해 주세요.');
         plan = null;
       }
     }
@@ -153,15 +155,22 @@ export function createOrderEditWriter(port: OrderEditWritePort) {
         request: plan!.request
       } : {
         mode,
-        reference,
-        ...(plan ? {
-          requestHash: plan.requestHash
-        } : {})
+        reference
       };
       await port.assertScope(scope);
       const value = await port.command(command);
       await port.assertScope(scope);
-      const result = normalizeOrderEditResult(value, reference, scope.actorUid, plan?.requestHash);
+      const result = normalizeOrderEditResult(value, reference, scope.actorUid);
+      if (original !== null && !plan && result.status !== 'unknown') return {
+        status: 'rejected',
+        message: '서버 처리 결과를 확인했지만 이 기기 사본의 원문은 검증하지 못했습니다.\n' + result.message,
+        nextAction: '서버 결과를 확인한 뒤 필요한 경우 이 기기 사본만 정리해 주세요.'
+      };
+      if (plan && result.requestHash !== null && result.requestHash !== plan.requestHash) return {
+        status: 'rejected',
+        message: '같은 요청 번호로 다른 내용이 먼저 확정됐습니다. 이 기기 사본은 적용된 내용으로 확인하지 않았습니다.\n' + result.message,
+        nextAction: '서버 결과를 확인한 뒤 필요한 경우 이 기기 사본만 정리해 주세요.'
+      };
       if (result.status === 'unknown') return unknown(result.message);
       const outcome: SaveOutcome = result.status === 'applied' || result.status === 'duplicate' ? {
         status: 'saved'
@@ -194,11 +203,32 @@ export function createOrderEditWriter(port: OrderEditWritePort) {
       return unknown();
     }
   };
+  // 업무 완료와 사본 정리는 별개다. 서버 종결을 다시 확인한 뒤 관측한 바이트만 지운다.
+  const discardCopy = async (scope: OrderEditScope, reference: OrderEditReference, observedLocalText: string): Promise<SaveOutcome> => {
+    try {
+      await port.assertScope(scope);
+      normalizeOrderEditReference(reference);
+      if (reference.companyId !== scope.companyId) throw Error('회사 불일치');
+      if (typeof observedLocalText !== 'string') throw Error('정리할 사본을 먼저 읽어 주세요.');
+      const value = await port.command({mode: 'inspect', reference});
+      await port.assertScope(scope);
+      const result = normalizeOrderEditResult(value, reference, scope.actorUid);
+      if (result.status === 'unknown') return unknown(result.message + '\n아직 결과가 확인되지 않아 사본을 정리하지 않았습니다. 먼저 요청 중단으로 확인해 주세요.');
+      await port.exclusive(scope, reference.targetId, async () => {
+        await port.assertScope(scope);
+        remove(scope, reference, observedLocalText);
+      });
+      return {status: 'saved'};
+    } catch (error) {
+      return unknown(error instanceof Error ? error.message : '이 기기 사본을 정리하지 못했습니다.');
+    }
+  };
   return {
     prepare,
     read,
     references,
-    run
+    run,
+    discardCopy
   };
 }
 async function active(scope: OrderEditScope) {
@@ -227,14 +257,16 @@ export function pendingOrderEdits(scope: OrderEditScope) {
   return service.references(scope).filter(p => p.readable).map(p => ({
     id: p.reference.targetId,
     planId: p.reference.planId,
-    description: '보관된 주문 수정 요청'
+    description: '보관된 주문 수정 요청',
+    observedLocalText: p.observedLocalText
   }));
 }
 export function orderEditReferences(scope: OrderEditScope) {
   return writer().references(scope).map(p => ({
     id: p.reference.targetId,
     planId: p.reference.planId,
-    readable: p.readable
+    readable: p.readable,
+    observedLocalText: p.observedLocalText
   }));
 }
 export const inspectOrderEdit = (scope: OrderEditScope, planId: string, targetId: string) => writer().run(scope, {
@@ -261,3 +293,6 @@ export async function submitOrderEdit(scope: OrderEditScope, opening: Order, edi
   }
   return service.run(scope, refOf(plan.request), 'apply');
 }
+
+/** saved는 이 기기 사본 정리이며 주문 저장 ACK가 아니다. */
+export const discardOrderEditCopy = (scope: OrderEditScope, planId: string, targetId: string, observedLocalText: string) => writer().discardCopy(scope, {companyId: scope.companyId, planId, targetId}, observedLocalText);

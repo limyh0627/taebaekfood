@@ -6,6 +6,7 @@ export interface PendingOrderEdit {
   id: string;
   planId: string;
   description: string;
+  observedLocalText?: string | null;
 }
 export interface OrderEditBindings {
   requestScopeKey?: string;
@@ -13,10 +14,12 @@ export interface OrderEditBindings {
   onReadPendingOrderEdits?: () => PendingOrderEdit[];
   onInspectOrderEdit?: (planId: string, targetId: string) => Promise<SaveOutcome>;
   onCancelOrderEdit?: (planId: string, targetId: string) => Promise<SaveOutcome>;
+  onDiscardOrderEditCopy?: (planId: string, targetId: string, observedLocalText: string) => Promise<SaveOutcome>;
   onReadOrderEditReferences?: () => {
     id: string;
     planId: string;
     readable: boolean;
+    observedLocalText?: string | null;
   }[];
   onCancelOrderEditReference?: (planId: string, targetId: string) => Promise<SaveOutcome>;
 }
@@ -41,12 +44,14 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
     [damagedReferences, setDamaged] = useState<{
       id: string;
       planId: string;
+      observedLocalText?: string | null;
     }[]>([]);
   const refresh = () => {
     setPending(latest.current.onReadPendingOrderEdits?.() ?? []);
     setDamaged((latest.current.onReadOrderEditReferences?.() ?? []).filter(p => !p.readable).map(p => ({
       id: p.id,
-      planId: p.planId
+      planId: p.planId,
+      observedLocalText: p.observedLocalText
     })));
   };
   useEffect(() => {
@@ -67,7 +72,7 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
       generation.current++;
     };
   }, [options.scopeKey]);
-  const perform = async (id: string, task: () => Promise<SaveOutcome>, cancelling = false, inspecting = false) => {
+  const perform = async (id: string, task: () => Promise<SaveOutcome>, cancelling = false, inspecting = false, discarding = false) => {
     if (locked.current) return {
       committed: false,
       cancelled: false
@@ -89,9 +94,9 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
         committed: false,
         cancelled: false
       };
-      const committed = primaryCommitted(outcome, id),
-        cancelled = outcome.status === 'cancelled';
-      setMessage(inspecting && committed ? '이 주문 수정은 저장됐습니다. 현재 주문을 다시 열어 내용을 확인해 주세요.' : cancelling && committed ? '이 요청은 이미 저장됐습니다. 기존 주문은 유지했습니다. 주문을 다시 열어 확인해 주세요.' : saveOutcomeMessage(outcome));
+      const committed = !discarding && primaryCommitted(outcome, id),
+        cancelled = !discarding && outcome.status === 'cancelled';
+      setMessage(discarding && outcome.status === 'saved' ? '이 기기 사본만 정리했습니다. 주문의 저장이나 취소 결과를 바꾸지 않았습니다.' : inspecting && committed ? '이 주문 수정은 저장됐습니다. 현재 주문을 다시 열어 내용을 확인해 주세요.' : cancelling && committed ? '이 요청은 이미 저장됐습니다. 기존 주문은 유지했습니다. 주문을 다시 열어 확인해 주세요.' : saveOutcomeMessage(outcome));
       try {
         refresh();
       } catch {
@@ -152,6 +157,8 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
     run,
     inspect: (pending: PendingOrderEdit) => perform(pending.id, () => latest.current.onInspectOrderEdit?.(pending.planId, pending.id) ?? Promise.resolve(unknown()), false, true),
     cancel: (pending: PendingOrderEdit) => perform(pending.id, () => latest.current.onCancelOrderEdit?.(pending.planId, pending.id) ?? Promise.resolve(unknown()), true),
+    discardCopy: (entry: {id: string; planId: string}, text: string) => perform(entry.id, () => latest.current.onDiscardOrderEditCopy?.(entry.planId, entry.id, text) ?? Promise.resolve(unknown()), false, false, true),
+    inspectDamaged: (entry: {id: string; planId: string}) => perform(entry.id, () => latest.current.onInspectOrderEdit?.(entry.planId, entry.id) ?? Promise.resolve(unknown()), false, true),
     cancelDamaged: (reference: {
       id: string;
       planId: string;

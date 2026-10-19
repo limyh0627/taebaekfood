@@ -33,6 +33,15 @@ export interface ItemEditorStoredReference {
   reference: ItemEditorReference | null;
   readable: boolean;
   error: string;
+  observedLocalText?: string | null;
+}
+export type ItemEditorRecoveryResult = ItemEditorSaveResult & {
+  copyMismatch?: true;
+  observedServerStatus?: ItemEditorResult['status'];
+};
+export interface ItemEditorCopyDiscardResult {
+  status: 'cleared' | 'blocked' | 'unknown';
+  message: string;
 }
 export interface ItemEditorWritePort {
   storage: Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -132,6 +141,7 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
       const key = port.storage.key(i);
       if (!key?.startsWith(prefix(scope))) continue;
       let reference: ItemEditorReference | null = null;
+      const observedLocalText = port.storage.getItem(key);
       try {
         const [target, plan, ...extra] = key.slice(prefix(scope).length).split(':');
         if (extra.length) throw Error('저장 위치 형식이 다릅니다.');
@@ -145,14 +155,14 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
           key,
           reference,
           readable: true,
-          error: ''
+          error: '', observedLocalText
         });
       } catch (error) {
         rows.push({
           key,
           reference,
           readable: false,
-          error: error instanceof Error ? error.message : '보관 요청을 읽지 못했습니다.'
+          error: error instanceof Error ? error.message : '보관 요청을 읽지 못했습니다.', observedLocalText
         });
       }
     }
@@ -201,7 +211,7 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
     port.storage.removeItem(key);
     if (port.storage.getItem(key) !== null) throw Error('보관 요청 정리를 확인하지 못했습니다.');
   });
-  const resolve = async (scope: ItemEditorScope, reference: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean, mode: 'inspect' | 'cancel' | 'apply', stage?: typeof ITEM_EDITOR_STAGES[number]): Promise<ItemEditorSaveResult> => {
+  const resolve = async (scope: ItemEditorScope, reference: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean, mode: 'inspect' | 'cancel' | 'apply', stage?: typeof ITEM_EDITOR_STAGES[number]): Promise<ItemEditorRecoveryResult> => {
     if (progress.itemId !== reference.targetId || reference.companyId !== scope.companyId || progress.reference && (progress.reference.planId !== reference.planId || progress.reference.targetId !== reference.targetId || progress.reference.companyId !== reference.companyId)) return itemEditorUnknown(progress, '다른 품목 또는 회사의 보관 요청입니다.');
     let original: string | null,
       plan: PendingItemEditorPlan | null = null;
@@ -229,20 +239,28 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
         request: plan!.request
       } : {
         mode,
-        reference,
-        ...(plan ? {
-          requestHash: plan.requestHash
-        } : {})
+        reference
       };
       await active(scope, isCurrent);
       const raw = await port.command(command);
       await active(scope, isCurrent);
-      const result = normalizeItemEditorResult(raw, reference, scope.actorUid, plan?.requestHash);
+      const result = normalizeItemEditorResult(raw, reference, scope.actorUid, mode === 'apply' ? plan?.requestHash : undefined);
+      if (result.status === 'unknown') return { ...itemEditorUnknown(progress, result.message), serverStatus: 'unknown' };
+      if (original !== null && (!plan || result.requestHash !== null && plan.requestHash !== result.requestHash)) {
+        const state = result.status === 'active' ? '서버 요청은 일부 단계까지 처리되어 남은 단계가 있습니다.'
+          : result.status === 'completed' ? '서버 요청은 모든 단계가 완료됐습니다.'
+          : result.status === 'cancelled' ? '서버 요청은 남은 단계 중단이 확정됐습니다.'
+          : '서버 요청은 거절이 확정됐습니다.';
+        return { progress, copyMismatch: true, observedServerStatus: result.status,
+          outcome: { status: 'rejected', message: `${state} ${result.message} ${plan ? '이 기기 사본과 원문이 달라' : '이 기기 사본의 원문을 검증할 수 없어'} 현재 사본의 완료로 처리하지 않았습니다.`,
+            nextAction: result.status === 'active' ? '서버 결과를 확인하고 필요하면 남은 단계를 명시적으로 중단해 주세요. 이미 완료된 업무는 유지됩니다.'
+              : '현재 품목을 확인한 뒤 이 기기 사본만 명시적으로 정리할 수 있습니다. 이미 처리된 업무는 되돌리지 않습니다.' } };
+      }
       const mapped: ItemEditorSaveResult = {
         ...applyItemEditorResult(result, progress),
         serverStatus: result.status
       };
-      if (result.status !== 'unknown' && progress.unknownStageId) return {
+      if (progress.unknownStageId) return {
         ...mapped,
         serverStatus: undefined
       };
@@ -269,7 +287,7 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
       return itemEditorUnknown(progress);
     }
   };
-  const execute = async (scope: ItemEditorScope, reference: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean, inspectFirst = true): Promise<ItemEditorSaveResult> => {
+  const execute = async (scope: ItemEditorScope, reference: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean, inspectFirst = true): Promise<ItemEditorRecoveryResult> => {
     if (inspectFirst) {
       const inspected = await resolve(scope, reference, progress, isCurrent, 'inspect');
       if (!inspected.serverStatus) return inspected;
@@ -289,6 +307,34 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
         status: 'saved'
       }
     };
+  };
+  const discard = async (scope: ItemEditorScope, reference: ItemEditorReference, observedLocalText: string,
+    isCurrent: () => boolean): Promise<ItemEditorCopyDiscardResult> => {
+    try {
+      normalizeItemEditorReference(reference);
+      if (reference.companyId !== scope.companyId || typeof observedLocalText !== 'string') {
+        return { status: 'blocked', message: '정리할 회사와 관측한 기기 사본을 확인해 주세요.' };
+      }
+      await active(scope, isCurrent);
+      const response = await port.command({ mode: 'inspect', reference });
+      await active(scope, isCurrent);
+      const result = normalizeItemEditorResult(response, reference, scope.actorUid);
+      if (!['completed', 'cancelled', 'rejected'].includes(result.status)) {
+        return { status: 'blocked', message: `${result.message} 서버의 종결 결과가 없어 사본을 지우지 않았습니다. 필요하면 남은 단계를 먼저 중단해 주세요.` };
+      }
+      return await port.exclusive<ItemEditorCopyDiscardResult>(scope, reference.targetId, async () => {
+        await active(scope, isCurrent);
+        const key = keyOf(scope, reference);
+        if (port.storage.getItem(key) !== observedLocalText) {
+          return { status: 'blocked', message: '관측 후 기기 사본이 바뀌어 정리하지 않았습니다. 목록을 다시 읽어 주세요.' };
+        }
+        port.storage.removeItem(key);
+        if (port.storage.getItem(key) !== null) throw Error('기기 사본 정리를 확인하지 못했습니다.');
+        return { status: 'cleared', message: '이 기기에 보관된 사본만 정리했습니다. 이미 완료된 업무와 사진은 변경하지 않았습니다.' };
+      });
+    } catch {
+      return { status: 'unknown', message: '이 기기 사본 정리를 확인하지 못했습니다. 원문을 보존하고 같은 요청의 결과를 다시 확인해 주세요.' };
+    }
   };
   const submit = async (scope: ItemEditorScope, input: ItemEditorSaveInput, progress: ItemEditorProgress, isCurrent: () => boolean) => {
     if (progress.itemId !== input.opening.targetId) return rejected(progress, '작성한 품목과 진행 기록의 대상이 다릅니다.');
@@ -314,7 +360,8 @@ export function createItemEditorWriter(port: ItemEditorWritePort) {
     prepare,
     resolve,
     execute,
-    submit
+    submit,
+    discard
   };
 }
 async function assertScope(scope: ItemEditorScope) {
@@ -362,6 +409,7 @@ export const submitItemEditorSave = (scope: ItemEditorScope, input: ItemEditorSa
 export const inspectItemEditorSave = (scope: ItemEditorScope, ref: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean) => writer().resolve(scope, ref, progress, isCurrent, 'inspect');
 export const continueItemEditorSave = (scope: ItemEditorScope, ref: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean) => writer().execute(scope, ref, progress, isCurrent, true);
 export const cancelItemEditorSave = (scope: ItemEditorScope, ref: ItemEditorReference, progress: ItemEditorProgress, isCurrent: () => boolean) => writer().resolve(scope, ref, progress, isCurrent, 'cancel');
+export const discardItemEditorCopy = (scope: ItemEditorScope, ref: ItemEditorReference, observedLocalText: string, isCurrent: () => boolean) => writer().discard(scope, ref, observedLocalText, isCurrent);
 export const createPendingItemEditorProgress = (plan: PendingItemEditorPlan): ItemEditorProgress => ({
   ...createItemEditorProgress(plan.reference.targetId),
   durableVersion: 1,

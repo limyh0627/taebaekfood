@@ -100,8 +100,8 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onSaveOrderEdit,requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, renderOrderRecovery, orderRecoveryOrphans }) => {
-  const orderEdits=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??''),onSaveOrderEdit,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference});
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onSaveOrderEdit,requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, renderOrderRecovery, orderRecoveryOrphans }) => {
+  const orderEdits=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??''),onSaveOrderEdit,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy});
   const onUpdateItems=(opening:Order,items:OrderItem[])=>orderEdits.run(opening,{kind:'items',items});
   const renderEditRecovery=(order:Order)=><OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>;
   // Compute derived variables

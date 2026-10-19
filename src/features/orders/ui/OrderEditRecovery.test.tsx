@@ -41,3 +41,18 @@ it('한 주문의 미확정 안내는 다른 주문에 복제하지 않는다', 
     expect(within(screen.getByRole('region', { name: 'A 영역' })).getByText(/A 응답 미확인/)).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'B 영역' })).queryByText(/A 응답 미확인/)).toBeNull();
 });
+
+it('관측한 사본만 명시 정리하고 손상 참조도 결과 확인을 제공한다',async()=>{
+ const discard=vi.fn(async():Promise<SaveOutcome>=>({status:'saved'})),inspect=vi.fn(async():Promise<SaveOutcome>=>({status:'unknown',message:'확인중',nextAction:'중단'}));
+ function View(){const application=useOrderEditApplication({scopeKey:'scope',onReadPendingOrderEdits:()=>[{id:'a',planId:'valid',description:'유효',observedLocalText:'관측원문'}],onReadOrderEditReferences:()=>[{id:'b',planId:'broken',readable:false}],onDiscardOrderEditCopy:discard,onInspectOrderEdit:inspect});return <OrderEditRecovery application={application} allTargets/>;}
+ render(<View/>);expect(screen.getAllByRole('button',{name:'이 기기 사본만 정리'})).toHaveLength(1);
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'이 기기 사본만 정리'})));expect(discard).toHaveBeenCalledExactlyOnceWith('valid','a','관측원문');
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'손상된 주문 수정 결과 확인'})));expect(inspect).toHaveBeenCalledExactlyOnceWith('broken','b');
+});
+
+it('마지막 사본 정리 뒤에도 완료 status를 남기고 새 저장이나 닫기를 호출하지 않는다',async()=>{
+ let pending=[{id:'a',planId:'old',description:'보관',observedLocalText:'raw'}];const save=vi.fn(),discard=vi.fn(async():Promise<SaveOutcome>=>{pending=[];return {status:'saved'};});
+ function View(){const application=useOrderEditApplication({scopeKey:'scope',onSaveOrderEdit:save,onReadPendingOrderEdits:()=>pending,onDiscardOrderEditCopy:discard});return <OrderEditRecovery application={application} allTargets/>;}
+ render(<View/>);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'이 기기 사본만 정리'})));
+ expect(screen.getByRole('status')).toHaveTextContent('이 기기 사본만 정리');expect(screen.queryByRole('button')).toBeNull();expect(save).not.toHaveBeenCalled();
+});

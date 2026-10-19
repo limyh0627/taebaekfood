@@ -1,7 +1,7 @@
 import {createItemEditorProgress,type ItemEditorProgress,type ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
 import {saveOutcomeMessage} from '../src/shared/saveOutcome';
 import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
-import {itemEditorOpeningMatches,type ItemEditorOpening,type PendingItemEditorPlan,type ItemEditorSaveInput} from '../src/features/items/infrastructure/itemEditorWrites';
+import {itemEditorOpeningMatches,type ItemEditorOpening,type PendingItemEditorPlan,type ItemEditorSaveInput,type ItemEditorRecoveryResult,type ItemEditorCopyDiscardResult} from '../src/features/items/infrastructure/itemEditorWrites';
 import {ITEM_EDITOR_METADATA_FIELDS,itemEditorStageLabel,type ItemEditorDraft,type ItemEditorReference} from '../src/shared/itemEditorCommand';
 import { useItemPhotoSave, PHOTO_TYPES } from '../src/features/items/hooks/useItemPhotoSave';
 import {confirmItemEditorPurchaseNotices} from '../src/features/items/services/saveItemEditorRelations';
@@ -37,6 +37,8 @@ interface ProductModalProps {
   onSave: (input:ItemEditorSaveInput,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
   initialPending?:PendingItemEditorPlan;
   initialReference?:ItemEditorReference;
+  initialObservedLocalText?:string|null;
+  onDiscardItemEditorCopy?:(reference:ItemEditorReference,observedLocalText:string,isCurrent:()=>boolean)=>Promise<ItemEditorCopyDiscardResult>;
   onInspectItemEditor:ItemEditorRecoveryPort;
   onContinueItemEditor:ItemEditorRecoveryPort;
   onCancelItemEditor:ItemEditorRecoveryPort;
@@ -46,7 +48,7 @@ interface ProductModalProps {
   /** 편집 중인 초안 기준 롤업 원가 — 원가 토글이 계산값을 보여주는 데 쓴다. */
   rollupCostOf?: (draft: Item, bomDraft?: BomDraftLine[]) => number;
 }
-type ItemEditorRecoveryPort=(reference:ItemEditorReference,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorSaveResult>;
+type ItemEditorRecoveryPort=(reference:ItemEditorReference,progress:ItemEditorProgress,isCurrent:()=>boolean)=>Promise<ItemEditorRecoveryResult>;
 
 const CAT_NORM: Record<string, string> = {
   'Cap': '마개', 'Tape': '테이프', '박스': '박스', '용기': '용기', '라벨': '라벨', '마개': '마개', '테이프': '테이프',
@@ -1156,6 +1158,7 @@ export interface ItemEditorRecoveryEntry {
   reference:ItemEditorReference;
   pending?:PendingItemEditorPlan;
   error?:string;
+  observedLocalText?:string|null;
 }
 export function ItemEditorRecoveryList({entries,onOpen}:{entries:ItemEditorRecoveryEntry[];onOpen:(entry:ItemEditorRecoveryEntry)=>void}) {
   if(!entries.length)return null;
@@ -1167,10 +1170,18 @@ export function ItemEditorRecoveryList({entries,onOpen}:{entries:ItemEditorRecov
     </div>)}
   </section>;
 }
-function ItemEditorRecovery({reference,pending,progress:initialProgress,onInspect,onContinue,onCancel,isCurrent,onResult,onBusy,canContinue,initialResult}:{reference:ItemEditorReference;pending?:PendingItemEditorPlan;progress?:ItemEditorProgress;onInspect:ItemEditorRecoveryPort;onContinue:ItemEditorRecoveryPort;onCancel:ItemEditorRecoveryPort;isCurrent:()=>boolean;onResult?:(result:ItemEditorSaveResult)=>void;onBusy?:(busy:boolean)=>void;canContinue?:boolean;initialResult?:ItemEditorSaveResult}) {
+function ItemEditorRecovery({reference,pending,observedLocalText,onDiscard,progress:initialProgress,onInspect,onContinue,onCancel,isCurrent,onResult,onBusy,canContinue,initialResult}:{reference:ItemEditorReference;pending?:PendingItemEditorPlan;observedLocalText?:string|null;onDiscard?:ProductModalProps['onDiscardItemEditorCopy'];progress?:ItemEditorProgress;onInspect:ItemEditorRecoveryPort;onContinue:ItemEditorRecoveryPort;onCancel:ItemEditorRecoveryPort;isCurrent:()=>boolean;onResult?:(result:ItemEditorSaveResult)=>void;onBusy?:(busy:boolean)=>void;canContinue?:boolean;initialResult?:ItemEditorSaveResult}) {
   const progress=useRef(initialProgress??createItemEditorProgress(reference.targetId));
-  const [result,setResult]=useState<ItemEditorSaveResult|null>(initialResult??null),[busy,setBusy]=useState(false);
+  const [result,setResult]=useState<ItemEditorRecoveryResult|null>(initialResult??null),[busy,setBusy]=useState(false);
   const busyRef=useRef(false);
+  const [copyResult,setCopyResult]=useState<ItemEditorCopyDiscardResult|null>(null);
+  const discard=async()=>{
+    if(!onDiscard||typeof observedLocalText!=='string'||busyRef.current||!isCurrent())return;
+    busyRef.current=true;setBusy(true);onBusy?.(true);
+    try {const next=await onDiscard(reference,observedLocalText,isCurrent);if(isCurrent())setCopyResult(next);}
+    catch {if(isCurrent())setCopyResult({status:'unknown',message:'이 기기 사본 정리 결과를 확인하지 못했습니다. 원문을 보존하고 다시 확인해 주세요.'});}
+    finally {busyRef.current=false;onBusy?.(false);if(isCurrent())setBusy(false);}
+  };
   useEffect(()=>{setResult(initialResult??null);},[initialResult]);
   const run=async(port:ItemEditorRecoveryPort)=>{
     if(busyRef.current||!isCurrent())return;
@@ -1185,7 +1196,7 @@ function ItemEditorRecovery({reference,pending,progress:initialProgress,onInspec
   };
   const terminal=['completed','cancelled','rejected'].includes(result?.progress.terminalStatus??'');
   return <section aria-label="품목 저장 결과 복구" className="space-y-3 text-sm text-slate-600">
-    <p>대상 번호: {reference.targetId}</p>
+    <p>대상 번호: {reference.targetId}</p><p className="text-xs break-all">요청 번호: {reference.planId}</p>
     {pending&&<><p>작성 품목: {String(pending.request.draft.metadata.name)}</p>
       {typeof pending.request.draft.metadata.image==='string'&&pending.request.draft.metadata.image&&<img src={pending.request.draft.metadata.image} alt="저장 요청에 보관된 품목 사진" className="h-24 w-24 object-contain"/>}
       <dl className="grid grid-cols-2 gap-2 text-xs">
@@ -1201,11 +1212,15 @@ function ItemEditorRecovery({reference,pending,progress:initialProgress,onInspec
       {!!result.progress.confirmedStageIds.length&&<p>확인된 단계: {result.progress.confirmedStageIds.map(id=>itemEditorStageLabel(id as Parameters<typeof itemEditorStageLabel>[0])).join(', ')}</p>}
     </div>}
     {terminal&&result&&result.outcome.status!=='saved'&&(!('nextAction' in result.outcome)||!result.outcome.nextAction)&&<p className="text-xs">창을 닫고 현재 자료를 새로 열어 주세요.</p>}
-    {!terminal&&<div className="flex flex-wrap gap-2">
+    {!terminal&&copyResult?.status!=='cleared'&&<div className="flex flex-wrap gap-2">
       <button type="button" disabled={busy} onClick={()=>void run(onInspect)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
-      {(pending||canContinue)&&<button type="button" disabled={busy} onClick={()=>void run(onContinue)} className="rounded border border-slate-200 px-3 py-2">미완료 단계 이어하기</button>}
+      {!result?.copyMismatch&&(pending||canContinue)&&<button type="button" disabled={busy} onClick={()=>void run(onContinue)} className="rounded border border-slate-200 px-3 py-2">미완료 단계 이어하기</button>}
       <button type="button" disabled={busy} onClick={()=>void run(onCancel)} className="rounded border border-slate-200 px-3 py-2">남은 단계 중단</button>
     </div>}
+    {result?.copyMismatch&&typeof observedLocalText!=='string'&&<p className="text-xs">창을 닫고 품목 목록의 저장 결과 확인에서 이 기기 사본을 정리할 수 있습니다.</p>}
+    {copyResult&&<p role="status" className="whitespace-pre-line">{copyResult.message}</p>}
+    {onDiscard&&typeof observedLocalText==='string'&&copyResult?.status!=='cleared'&&<button type="button" disabled={busy} onClick={()=>void discard()} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
+    <p className="text-xs">사본 정리는 이 기기의 요청 기록만 지웁니다. 품목·사진이나 이미 완료된 업무를 삭제하지 않습니다.</p>
     <p className="text-xs">중단해도 이미 완료된 단계는 유지됩니다. 완료된 자료를 되돌리는 작업은 아닙니다.</p>
   </section>;
 }
@@ -1231,7 +1246,7 @@ const ProductModal:React.FC<ProductModalProps>=(props)=>{
     }).catch(()=>{if(isCurrent())setError('품목 원본을 확인하지 못했습니다. 창을 닫고 다시 열어 주세요. 저장 요청은 보내지 않았습니다.');});
     return()=>{current.current=false;};
   },[scope]);
-  if(reference)return <ModalShell title="품목 저장 결과 확인" onClose={()=>{if(!recoveryBusy.current)props.onClose();}}><ItemEditorRecovery reference={reference} pending={pending} onInspect={props.onInspectItemEditor} onContinue={props.onContinueItemEditor} onCancel={props.onCancelItemEditor} onBusy={busy=>{recoveryBusy.current=busy;}} isCurrent={()=>current.current&&scopeRef.current===scope}/></ModalShell>;
+  if(reference)return <ModalShell title="품목 저장 결과 확인" onClose={()=>{if(!recoveryBusy.current)props.onClose();}}><ItemEditorRecovery reference={reference} pending={pending} observedLocalText={props.initialObservedLocalText} onDiscard={props.onDiscardItemEditorCopy} onInspect={props.onInspectItemEditor} onContinue={props.onContinueItemEditor} onCancel={props.onCancelItemEditor} onBusy={busy=>{recoveryBusy.current=busy;}} isCurrent={()=>current.current&&scopeRef.current===scope}/></ModalShell>;
   if(!opening)return <ModalShell title={props.initialData?'품목 정보 수정':'신규 품목 등록'} onClose={props.onClose}><p role="status" className="p-6 text-sm text-slate-600">{error||'품목 원본을 확인하고 있습니다. 확인이 끝나면 작성할 수 있습니다.'}</p></ModalShell>;
   return <ProductModalForm {...initialProps.current} opening={opening}/>;
 };

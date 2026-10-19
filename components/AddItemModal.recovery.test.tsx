@@ -88,3 +88,16 @@ it.each([[undefined, 1], [null, 1], [0, 0]])('열 때 원본 BOM 수량 %s는 �
     fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
     await waitFor(() => expect(p.onSave).toHaveBeenCalledWith(expect.objectContaining({ draft: expect.objectContaining({ bomDraft: [{ childId: 'child', qty: expected }] }) }), expect.any(Object), expect.any(Function)));
 });
+
+it('다른 사본의 실제 상태는 안내하되 현재 품목 단계 완료나 이어하기로 승격하지 않는다',async()=>{
+ const p=props();const inspect=vi.fn(async(_ref:ItemEditorReference,progress:ItemEditorProgress)=>({progress,copyMismatch:true as const,observedServerStatus:'active' as const,outcome:{status:'rejected' as const,message:'다른 원문은 일부 단계가 완료된 진행 중 요청입니다.',nextAction:'남은 단계를 중단한 뒤 이 기기 사본을 정리해 주세요.'}}));render(<ProductModal {...p} initialPending={pending()} onInspectItemEditor={inspect}/>);fireEvent.click(screen.getByRole('button',{name:'결과 확인'}));expect(await screen.findByText(/다른 원문은 일부 단계/)).toBeInTheDocument();expect(screen.getByText(/창을 닫고 품목 목록의 저장 결과 확인/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'미완료 단계 이어하기'})).toBeNull();expect(screen.getByRole('button',{name:'남은 단계 중단'})).toBeEnabled();expect(screen.queryByText(/모든 단계의 저장이 확인/)).toBeNull();expect(inspect.mock.calls[0][1].confirmedStageIds).toEqual([]);expect(p.onClose).not.toHaveBeenCalled();expect(p.onSave).not.toHaveBeenCalled();
+});
+it('명시 사본 정리는 관측 원문과 정확 요청만 전달하고 품목·사진 저장 완료로 처리하지 않는다',async()=>{
+ const p=props(),raw='{ \"observed\": \"original\" }';const discard=vi.fn(async()=>({status:'cleared' as const,message:'이 기기 사본만 정리했습니다. 이미 완료된 품목과 사진은 유지됩니다.'}));render(<ProductModal {...p} initialPending={pending()} initialObservedLocalText={raw} onDiscardItemEditorCopy={discard}/>);fireEvent.click(screen.getByRole('button',{name:'이 기기 사본 정리'}));expect(await screen.findByText(/이 기기 사본만 정리했습니다/)).toBeInTheDocument();expect(discard).toHaveBeenCalledWith(reference,raw,expect.any(Function));expect(screen.queryByRole('button',{name:'이 기기 사본 정리'})).toBeNull();expect(p.onClose).not.toHaveBeenCalled();expect(p.onSave).not.toHaveBeenCalled();expect(p.onContinueItemEditor).not.toHaveBeenCalled();expect(upload).not.toHaveBeenCalled();expect(screen.queryByText(/모든 단계의 저장이 확인/)).toBeNull();
+});
+it('관측 원문 없는 손상 참조는 사본 정리 없이 실제 결과 확인과 남은 단계 중단만 제공한다',()=>{
+ const p=props(),discard=vi.fn();render(<ProductModal {...p} initialReference={reference} onDiscardItemEditorCopy={discard}/>);expect(screen.getByRole('button',{name:'결과 확인'})).toBeEnabled();expect(screen.getByRole('button',{name:'남은 단계 중단'})).toBeEnabled();expect(screen.queryByRole('button',{name:'이 기기 사본 정리'})).toBeNull();expect(screen.queryByRole('button',{name:'미완료 단계 이어하기'})).toBeNull();expect(discard).not.toHaveBeenCalled();
+});
+it('서버 미종결이나 관측 이후 사본 변경으로 정리가 막히면 원문과 복구 버튼을 유지한다',async()=>{
+ const p=props(),discard=vi.fn(async()=>({status:'blocked' as const,message:'관측 후 사본이 바뀌어 정리하지 않았습니다.'}));render(<ProductModal {...p} initialReference={reference} initialObservedLocalText='old-observed' onDiscardItemEditorCopy={discard}/>);fireEvent.click(screen.getByRole('button',{name:'이 기기 사본 정리'}));expect(await screen.findByText(/사본이 바뀌어 정리하지/)).toBeInTheDocument();expect(screen.getByRole('button',{name:'이 기기 사본 정리'})).toBeEnabled();expect(screen.getByRole('button',{name:'결과 확인'})).toBeEnabled();expect(p.onClose).not.toHaveBeenCalled();
+});
