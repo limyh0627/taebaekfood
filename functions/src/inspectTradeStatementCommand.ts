@@ -4,8 +4,8 @@ import {statementIssueIdentity,statementIssueTextHash,statementIssueRef,assertSt
 import {hash,statementBusiness,tradeStatementIssueHashes} from './tradeStatementIssue';
 import {readStatementCreation} from './statementCreationReceipt';
 import {readStatementDeletion} from './deleteIssuedStatementCommand';
-import {fingerprint} from './partnerPaymentCommand';
-import {readCashCreationMutation} from './cashMutationReceipt';
+import {fingerprint,readPartnerPaymentReceipt} from './partnerPaymentReceipt';
+
 
 type Row=Record<string,any>;
 export type InspectTradeStatementInput={companyId:string;requestText?:string;requestHash?:string;inspectionId:string;operationId?:string;statementId?:string;paymentRequestText?:string};
@@ -44,34 +44,13 @@ export async function inspectTradeStatement(db:admin.firestore.Firestore,company
   if(payment){
    const request=payment,requestHash=fingerprint({...request,note:request.note?.trim()??''});
    const proof:Row={status:'unknown',operationId:request.operationId,requestHash,reason:'수금·지불 결과를 아직 확인하지 못했습니다. 최초 수금 요청을 보관해 주세요.'};
-   const operation=await tx.get(db.collection('partnerPaymentOperations').doc(request.operationId));
-   const entry=await tx.get(db.collection('cashEntries').doc(request.operationId));
-   const other=await tx.get(db.collection('issuedStatements').doc(request.operationId));
-   if(operation.exists){
-    const prior=operation.data()!;
-    if(prior.companyId!==companyId||prior.createdBy!==actorId||prior.partnerId!==request.partnerId||prior.requestHash!==requestHash)
-     throw new HttpsError('failed-precondition','보관된 수금 요청과 처리 영수증의 회사·사용자·원문이 다릅니다.');
-    const settlements=await tx.get(db.collection('settlements').where('operationId','==',request.operationId));
-    if(prior.status==='rejected'&&failure(prior)&&!entry.exists&&!other.exists&&settlements.empty){proof.status='rejected';proof.reason=prior.failureMessage;}
-    else if((prior.status===undefined||prior.status==='applied')&&!other.exists&&typeof prior.docNo==='string'&&prior.docNo&&prior.cashEntryId===request.operationId){
-     const validates=(row:Row)=>row.companyId===companyId&&row.partnerId===request.partnerId
-      &&row.issueOperationId===request.operationId&&row.issuePayloadHash===requestHash
-      &&row.issuePrefix===(prior.issuePrefix??'')&&row.docNo===prior.docNo
-      &&fingerprint({companyId:row.companyId,partnerId:row.partnerId,date:row.date,cashAccountId:row.cashAccountId,
-       dir:row.dir,amount:row.amount,lines:row.lines,note:row.note})===prior.entryHash;
-     try{
-      const original=await readCashCreationMutation(db,tx,companyId,request.operationId,entry,validates);
-      const unchanged=entry.exists&&(entry.data()!.mutationRevision??0)===0&&validates(entry.data()!);
-      const stored:Row[]=prior.settlements??[];
-      const settlementMatch=Array.isArray(stored)&&settlements.size===stored.length&&stored.every(row=>{
-       const document=settlements.docs.find(doc=>doc.id===`st-${request.operationId}-${row.statementId}`)?.data();
-       return document&&document.companyId===companyId&&document.cashEntryId===request.operationId
-        &&document.statementId===row.statementId&&document.amount===row.amount;
-      });
-      if(original||(unchanged&&settlementMatch)){proof.status='applied';proof.cashEntryId=request.operationId;proof.docNo=prior.docNo;proof.reason='최초 수금·지불 요청의 반영을 확인했습니다.';}
-     }catch(error){if(!(error instanceof HttpsError))throw error;}
-    }
-   }
+   const confirmed=await readPartnerPaymentReceipt(db,tx,{companyId:companyId as 'taebaek'|'punghoe',partnerId:request.partnerId,operationId:request.operationId},actorId,requestHash);
+   if(confirmed.requestHash!==null&&confirmed.requestHash!==requestHash)throw new HttpsError('failed-precondition','보관된 수금 원문과 서버 처리 원문이 다릅니다.');
+   // 옛 전표 wire의 rejected는 금융 미반영 확정이다. 독립 복구와 저장 receipt는 cancelled를 유지한다.
+   // opaque fence의 null hash를 발명하지 않고, 기존 wire requestHash는 위에서 검증한 보관 원문 hash를 유지한다.
+   proof.status=confirmed.status==='cancelled'?'rejected':confirmed.status;
+   proof.reason=confirmed.status==='cancelled'?'적용 전 요청 중단을 확인했습니다. 이 요청의 금융 기록은 생성되지 않았습니다.':confirmed.message;
+   if(confirmed.status==='applied'){proof.cashEntryId=confirmed.cashEntryId;proof.docNo=confirmed.docNo;}
    result.payment=proof;
   }
    return result;

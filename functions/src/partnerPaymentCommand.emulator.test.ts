@@ -9,12 +9,12 @@ vi.mock('firebase-functions/v2/https', () => ({
   onCall: (_options: unknown, handler: unknown) => handler,
 }));
 
-import { recordPartnerPayment, recordPartnerPaymentCommand } from './partnerPaymentCommand';
+import { recordPartnerPayment, recordPartnerPaymentCommand, recoverPartnerPayment } from './partnerPaymentCommand';
 import {statementIssueRef} from './statementIssueReceipt';
 import { journalizeStatement } from '../../src/shared/autoJournal';
 import type { IssuedStatement } from '../../src/shared/types';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
+const available = /^(?:127\.0\.0\.1|localhost):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '');
 const runId = `pay-${randomUUID()}`;
 const projectId = 'demo-payment-'+randomUUID().slice(0,8);
 const date = '2026-10-03';
@@ -111,7 +111,7 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
   beforeAll(async () => {
     app = admin.initializeApp({ projectId });
     db = admin.firestore(app);
-    authApp=admin.initializeApp({projectId:'demo-taebaekfood-local'},runId+'-auth-app');
+    authApp=admin.initializeApp({projectId:'demo-payment-recovery-20261019'},runId+'-auth-app');
   });
   afterAll(async () => {
     if (!db) return;
@@ -154,7 +154,7 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     const password = `Demo-${randomUUID()}-pass`;
     await admin.auth(authApp).createUser({ uid, email, password });
     await admin.auth(authApp).setCustomUserClaims(uid, { companyId: 'taebaek', isAdmin: true });
-    clientApp = initializeClientApp({ apiKey: 'demo-key', projectId:'demo-taebaekfood-local' }, `${runId}-client`);
+    clientApp = initializeClientApp({ apiKey: 'demo-key', projectId:'demo-payment-recovery-20261019' }, `${runId}-client`);
     const auth = getAuth(clientApp);
     connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
     const credential = await signInWithEmailAndPassword(auth, email, password);
@@ -300,4 +300,59 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     await expect(issue(malformed)).rejects.toThrow('방향·계정');
     await noWrites(malformed, 0);
   }, 25_000);
-});
+  it('고정100 최초 요청은 잔액·날짜 변경 뒤에도 같은 결과를 조회하고 재전송 중복을 만들지 않는다',async()=>{
+    const statementId=await seed('recover'),input=request('recover',statementId);
+    const first=await issue(input),reference={companyId:'taebaek' as const,partnerId:input.partnerId,operationId:input.operationId};
+    await ref('cashAccounts',input.cashAccountId).update({active:false});
+    await ref('appMeta',`partnerPaymentState_taebaek_${input.partnerId}`).update({revision:9});
+    const result=await recoverPartnerPayment(db,'taebaek',actorId,{mode:'inspect',reference});
+    expect(result).toMatchObject({status:'applied',amount:100,tradeDate:date,cashAccountId:input.cashAccountId,docNo:first.docNo});
+    expect(await issue(input)).toEqual({...first,status:'duplicate'});
+    await expect(recoverPartnerPayment(db,'taebaek','other',{mode:'inspect',reference})).rejects.toThrow('사용자');
+    await expect(recoverPartnerPayment(db,'punghoe',actorId,{mode:'inspect',reference})).rejects.toThrow('현재 회사');
+  });
+  it('중단 fence는 뒤늦은 apply 금융쓰기를 막고 apply와 경합해도 적용 또는 중단 하나만 남긴다',async()=>{
+    const statementId=await seed('cancel'),input=request('cancel',statementId);
+    const reference={companyId:'taebaek' as const,partnerId:input.partnerId,operationId:input.operationId};
+    expect(await recoverPartnerPayment(db,'taebaek',actorId,{mode:'inspect',reference})).toMatchObject({status:'unknown'});
+    expect(await recoverPartnerPayment(db,'taebaek',actorId,{mode:'cancel',reference})).toMatchObject({status:'cancelled',requestHash:null});
+    await expect(issue(input)).rejects.toMatchObject({details:{partnerPaymentCancelled:{financialWrites:false}}});
+    expect((await ref('cashEntries',input.operationId).get()).exists).toBe(false);
+    expect((await ref('appMeta',counterId).get()).data()?.last).toBe(0);
+    const raceInput=request('race',statementId),raceRef={...reference,operationId:raceInput.operationId};
+    await Promise.allSettled([issue(raceInput),recoverPartnerPayment(db,'taebaek',actorId,{mode:'cancel',reference:raceRef})]);
+    const result=await recoverPartnerPayment(db,'taebaek',actorId,{mode:'inspect',reference:raceRef});
+    expect(['applied','cancelled']).toContain('status' in result&&result.status);
+    if (!('status' in result)) throw Error('결과 형식');
+    expect((await ref('cashEntries',raceInput.operationId).get()).exists).toBe(result.status==='applied');
+  });
+  it('현재 회사 사용자 거래처 목록만20개와 cursor로 반환하고 금융근거 없는금액을 추정하지 않는다',async()=>{
+    await seed('list');
+    const partnerId=`${runId}-partner`;
+    for(let i=0;i<22;i++)await put('partnerPaymentOperations',`${runId}-list-${String(i).padStart(2,'0')}`,{companyId:'taebaek',partnerId,createdBy:actorId,status:'cancelled',requestHash:null,financialWrites:false,cancelledAt:new Date().toISOString()});
+    await put('partnerPaymentOperations',`${runId}-foreign-user`,{companyId:'taebaek',partnerId,createdBy:'other',status:'cancelled',requestHash:null,financialWrites:false,cancelledAt:new Date().toISOString()});
+    const first=await recoverPartnerPayment(db,'taebaek',actorId,{mode:'list',companyId:'taebaek',partnerId});
+    expect('entries' in first&&first.entries).toHaveLength(20);
+    if(!('entries' in first))throw Error('목록 형식');
+    expect(first.entries.every(row=>row.actorUid===actorId&&row.amount===undefined)).toBe(true);
+    const next=await recoverPartnerPayment(db,'taebaek',actorId,{mode:'list',companyId:'taebaek',partnerId,cursor:first.nextCursor!});
+    expect('entries' in next&&next.entries).toHaveLength(2);
+  });  it('실제 commit 오류는 금융자료와 영수증을 함께 롤백하고 원문으로 재시도할 수 있다',async()=>{
+    const statementId=await seed('rollback'),input=request('rollback',statementId);
+    const failing=new Proxy(db,{get(target,key){
+      if(key!=='runTransaction'){const member=Reflect.get(target,key);return typeof member==='function'?member.bind(target):member;}
+      return (callback:any)=>target.runTransaction(tx=>callback(new Proxy(tx,{get(transaction,property){
+        if(property==='create')return (document:any,data:any)=>transaction.create(document,document.path.startsWith('partnerPaymentOperations/')?{...data,padding:'x'.repeat(1100000)}:data);
+        const member=Reflect.get(transaction,property);return typeof member==='function'?member.bind(transaction):member;
+      }})));
+    }});
+    await expect(recordPartnerPayment(failing,'taebaek',actorId,input)).rejects.toThrow();
+    await noWrites(input,0,false);
+    expect((await issue(input)).status).toBe('applied');
+  });  it('원영수증이 없어도 현금변경감사 근거가 남으면 중단을 금융0으로 확정하지 않는다',async()=>{
+    const statementId=await seed('audit-remains'),input=request('audit-remains',statementId);
+    await put('voucherMutationOperations',input.operationId+'-audit',{companyId:'taebaek',cashEntryIds:[input.operationId],kind:'cashEntries'});
+    const reference={companyId:'taebaek' as const,partnerId:input.partnerId,operationId:input.operationId};
+    expect(await recoverPartnerPayment(db,'taebaek',actorId,{mode:'cancel',reference})).toMatchObject({status:'unknown'});
+    expect((await ref('partnerPaymentOperations',input.operationId).get()).exists).toBe(false);
+  });});

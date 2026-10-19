@@ -1,9 +1,10 @@
+import { normalizePartnerPaymentRecoveryCommand, type PartnerPaymentRecoveryCommand, type PartnerPaymentRecoveryResult, type PartnerPaymentListResult } from './shared/partnerPaymentRecovery';
 import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import { projectCashLines, cashLineReduction, CashLineProjectionError } from './shared/cashLineProjection';
-import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
-import { createHash } from 'crypto';
+import { fingerprint, readPartnerPaymentReceipt } from './partnerPaymentReceipt';
+export { fingerprint } from './partnerPaymentReceipt';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
@@ -22,11 +23,6 @@ type Input = {
 const invalid = (message: string): never => { throw new HttpsError('invalid-argument', message); };
 const conflict = (message: string): never => { throw new HttpsError('failed-precondition', message); };
 const owner = (row: Row) => row.companyId ?? 'taebaek';
-const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
-  : value && typeof value === 'object'
-    ? Object.fromEntries(Object.entries(value as Row).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)]))
-    : value;
-export const fingerprint = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
   && !Number.isNaN(new Date(`${date}T00:00:00Z`).valueOf())
   && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
@@ -117,7 +113,6 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
       tx.get(db.collection('issuedStatements').where('partnerId','==',input.partnerId)),tx.get(db.collection('cashEntries').where('partnerId','==',input.partnerId)),
       tx.get(db.collection('settlements')),tx.get(db.collection('returnApplications').where('partnerId','==',input.partnerId)),
     ]);
-    const creationAudit=await tx.get(db.collection('voucherMutationOperations').where('cashEntryIds','array-contains',input.operationId));
     const normalCounterSnap=await tx.get(counter),catchUpCounterSnap=await tx.get(catchUpCounter);
     const targetClaims=await readStatementTargetClaims(db,tx,companyId,input.operationId);
     const [operationSnap, entrySnap, otherSnap, cutoverSnap, stateSnap, accountSnap, partnerSnap] = await Promise.all([
@@ -125,45 +120,24 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     ]);
     const prior = operationSnap.data();
     const ownedSettlements = settlementRows.docs.filter(doc => doc.data().operationId === input.operationId);
+    if (operationSnap.exists && prior?.status === 'cancelled') {
+      const cancelled = await readPartnerPaymentReceipt(db, tx,
+        { companyId: companyId as 'taebaek' | 'punghoe', partnerId: input.partnerId, operationId: input.operationId }, actorId);
+      if (cancelled.status !== 'cancelled') conflict('중단된 수금 요청의 금융 근거를 확인해 주세요.');
+      return { status: 'cancelled' as const };
+    }
     if (operationSnap.exists && prior?.status === 'rejected') {
-      if (prior.companyId !== companyId || prior.partnerId !== input.partnerId || prior.requestHash !== requestHash
-        || entrySnap.exists || otherSnap.exists || ownedSettlements.length
-        || !['invalid-argument', 'failed-precondition'].includes(prior.failureCode)
-        || typeof prior.failureMessage !== 'string') conflict('기존 거절 작업과 요청·금융문서가 다릅니다.');
+      const rejected = await readPartnerPaymentReceipt(db, tx,
+        { companyId: companyId as 'taebaek' | 'punghoe', partnerId: input.partnerId, operationId: input.operationId }, actorId, requestHash);
+      if (rejected.status !== 'rejected') conflict('기존 거절 작업의 금융 미반영 근거를 확인하지 못했습니다.');
       return { status: 'rejected' as const, failureCode: prior.failureCode as 'invalid-argument' | 'failed-precondition', failureMessage: prior.failureMessage as string };
     }
     let writesStarted = false;
     try {
     if (operationSnap.exists) {
-      const prior = operationSnap.data()!;
-      const effectivePrefix=prior.issuePrefix??'';
-      if(!['','추가'].includes(effectivePrefix))conflict('기존 지급 접두사 근거가 다릅니다.');
-      const currentEntry = entrySnap.data();
-      if (creationAudit.docs.length && prior.companyId === companyId && prior.requestHash === requestHash && (!entrySnap.exists || (currentEntry?.mutationRevision ?? 0) > 0)) {
-        const original = await readCashCreationMutation(db, tx, companyId, input.operationId, entrySnap, row => {
-          const business = { companyId: row.companyId, partnerId: row.partnerId, date: row.date, cashAccountId: row.cashAccountId,
-            dir: row.dir, amount: row.amount, lines: row.lines, note: row.note };
-          return row.partnerId === input.partnerId && row.issueOperationId === input.operationId && row.issuePayloadHash === requestHash
-            && row.issuePrefix === effectivePrefix && row.docNo === prior.docNo && fingerprint(business) === prior.entryHash;
-        });
-        if (original) return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo };
-      }
-      const currentHash = currentEntry && fingerprint({ companyId: currentEntry.companyId, partnerId: currentEntry.partnerId,
-        date: currentEntry.date, cashAccountId: currentEntry.cashAccountId, dir: currentEntry.dir,
-        amount: currentEntry.amount, lines: currentEntry.lines, note: currentEntry.note });
-      const priorSettlements: { statementId: string; amount: number }[] = prior.settlements ?? [];
-      const storedSettlements = settlementRows.docs.filter(doc => doc.data().operationId === input.operationId);
-      if (prior.companyId !== companyId || prior.requestHash !== requestHash || !entrySnap.exists
-        || (prior.issuePrefix ?? '') !== effectivePrefix || currentEntry?.issuePrefix !== effectivePrefix
-        || currentEntry?.docNo !== prior.docNo || currentEntry?.issueOperationId !== input.operationId
-        || currentEntry?.issuePayloadHash !== requestHash || currentHash !== prior.entryHash
-        || storedSettlements.length !== priorSettlements.length
-        || priorSettlements.some(row => {
-          const stored = storedSettlements.find(doc => doc.id === `st-${input.operationId}-${row.statementId}`)?.data();
-          return !stored || stored.companyId !== companyId || stored.cashEntryId !== input.operationId
-            || stored.statementId !== row.statementId || stored.amount !== row.amount;
-        })) conflict('기존 지급 작업과 요청이 다릅니다.');
-      return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo };
+      const confirmed=await readPartnerPaymentReceipt(db,tx,{companyId:companyId as 'taebaek'|'punghoe',partnerId:input.partnerId,operationId:input.operationId},actorId);
+      if(confirmed.status!=='applied'||confirmed.requestHash!==requestHash) conflict('기존 지급 작업과 요청 또는 금융 근거가 다릅니다.');
+      return {status:'duplicate' as const,id:input.operationId,docNo:confirmed.docNo!};
     }
     assertReleaseActive(releaseSnap, input.releaseId);
     const mode = assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate, true);
@@ -227,6 +201,9 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
       throw error;
     }
   });
+  if(outcome.status==='cancelled')throw new HttpsError('failed-precondition','적용 전에 중단된 수금·지불 요청입니다.',{
+    partnerPaymentCancelled:{version:1,companyId,partnerId:input.partnerId,operationId:input.operationId,operationCancelled:true,financialWrites:false},
+  });
   if (outcome.status === 'rejected') throw new HttpsError(outcome.failureCode, outcome.failureMessage, {
     partnerPaymentFailure: { version: 1, companyId, partnerId: input.partnerId, operationId: input.operationId,
       operationRejected: true, financialWrites: false },
@@ -240,4 +217,53 @@ export const recordPartnerPaymentCommand = onCall({ region: 'asia-northeast3' },
   if (!request.auth.token.isAdmin || (companyId !== 'taebaek' && companyId !== 'punghoe'))
     throw new HttpsError('permission-denied', '관리자 회사 권한이 필요합니다.');
   return recordPartnerPayment(admin.firestore(), companyId, request.auth.uid, request.data as Input);
+});
+
+export async function recoverPartnerPayment(db: admin.firestore.Firestore, companyId: string, actorUid: string,
+  value: PartnerPaymentRecoveryCommand): Promise<PartnerPaymentRecoveryResult | PartnerPaymentListResult> {
+  let input: PartnerPaymentRecoveryCommand;
+  try { input = normalizePartnerPaymentRecoveryCommand(value); }
+  catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '복구 요청을 확인해 주세요.'); }
+  const reference = input.mode === 'list' ? { companyId: input.companyId, partnerId: input.partnerId } : input.reference;
+  if (!actorUid || reference.companyId !== companyId) throw new HttpsError('permission-denied', '현재 회사와 계정의 수금 요청만 확인할 수 있습니다.');
+  if (input.mode === 'list') {
+    return db.runTransaction(async tx => {
+      let query = db.collection('partnerPaymentOperations').where('companyId', '==', companyId)
+        .where('createdBy', '==', actorUid).where('partnerId', '==', input.partnerId)
+        .orderBy(admin.firestore.FieldPath.documentId()).limit(21);
+      if (input.cursor) query = query.startAfter(input.cursor);
+      const rows = await tx.get(query);
+      const entries: PartnerPaymentRecoveryResult[] = [];
+      for (const row of rows.docs.slice(0, 20)) {
+        entries.push(await readPartnerPaymentReceipt(db, tx, { companyId: input.companyId, partnerId: input.partnerId, operationId: row.id }, actorUid));
+      }
+      return { version: 1, companyId: input.companyId, partnerId: input.partnerId, actorUid, entries,
+        nextCursor: rows.docs.length > 20 ? rows.docs[19].id : null };
+    });
+  }
+  return db.runTransaction(async tx => {
+    const confirmed = await readPartnerPaymentReceipt(db, tx, input.reference, actorUid);
+    if (input.mode === 'inspect' || confirmed.status !== 'unknown') return confirmed;
+    const operation = db.collection('partnerPaymentOperations').doc(input.reference.operationId);
+    const prior = await tx.get(operation);
+    const entry = await tx.get(db.collection('cashEntries').doc(input.reference.operationId));
+    const other = await tx.get(db.collection('issuedStatements').doc(input.reference.operationId));
+    const settlements = await tx.get(db.collection('settlements').where('operationId', '==', input.reference.operationId));
+    const mutations = await tx.get(db.collection('voucherMutationOperations').where('cashEntryIds', 'array-contains', input.reference.operationId));
+    if (prior.exists || entry.exists || other.exists || settlements.docs.length > 0 || mutations.docs.length > 0) return confirmed;
+    const request = input.requestText === undefined ? null : JSON.parse(input.requestText);
+    const requestHash = request === null ? null : fingerprint({ ...request, note: request.note?.trim() ?? '' });
+    const cancelled: PartnerPaymentRecoveryResult = { version: 1, reference: input.reference, actorUid,
+      status: 'cancelled', requestHash, message: '이 수금·지불 요청을 적용 전에 중단했습니다. 늦게 도착하는 같은 요청도 금융 자료를 만들지 않습니다.' };
+    tx.create(operation, { companyId, partnerId: input.reference.partnerId, createdBy: actorUid, status: 'cancelled',
+      requestHash, financialWrites: false, cancelledAt: new Date().toISOString() });
+    return cancelled;
+  });
+}
+
+export const partnerPaymentRecoveryCommand = onCall({ region: 'asia-northeast3' }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  const companyId = request.auth.token.companyId;
+  if (request.auth.token.isAdmin !== true || !['taebaek', 'punghoe'].includes(String(companyId))) throw new HttpsError('permission-denied', '현재 회사의 관리자 권한이 필요합니다.');
+  return recoverPartnerPayment(admin.firestore(), companyId as string, request.auth.uid, request.data);
 });

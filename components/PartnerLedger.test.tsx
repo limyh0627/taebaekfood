@@ -1,20 +1,22 @@
-vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,cb:(user:{uid:string})=>void)=>{cb({uid:'test-user'});return ()=>{};}}));
+const ledgerAuth=vi.hoisted(()=>({user:{uid:'test-user'},listeners:new Set<(user:{uid:string})=>void>()}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,cb:(user:{uid:string})=>void)=>{ledgerAuth.listeners.add(cb);cb(ledgerAuth.user);return ()=>{ledgerAuth.listeners.delete(cb);};}}));
 /**
  * @vitest-environment jsdom
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act,fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PartnerLedger from './PartnerLedger';
 import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import type { AccountCode, CashEntry, IssuedStatement } from '../src/shared/types';
 import { lineAmount } from '../src/shared/lineAmount';
 
-vi.mock('../src/shared/firebase', () => ({auth:{currentUser:{uid:'test-user'}},authReady:Promise.resolve()}));
+vi.mock('../src/shared/firebase', () => ({auth:{currentUser:ledgerAuth.user},authReady:Promise.resolve()}));
 vi.mock('./PartnerAdvanceModal', () => ({default: ({onStateChange}: {onStateChange?: (state:{blocked:boolean;applied:boolean;busy:boolean;sourceBalance:number;lookupBlocked:boolean;pendingUnknown:boolean;selectionValid:boolean;resetVersion:number;selectedAmount:number})=>void}) => { React.useEffect(() => {onStateChange?.({blocked:false,applied:false,busy:false,sourceBalance:0,lookupBlocked:false,pendingUnknown:false,selectionValid:false,resetVersion:0,selectedAmount:0});},[onStateChange]); return <p>상계 영역</p>; }}));
 import React from 'react';
-vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand', () => ({ recordPartnerPayment: vi.fn() }));
+vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand', async importOriginal => ({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(), recordPartnerPayment: vi.fn() }));
+vi.mock('../src/features/statements/infrastructure/partnerPaymentRecovery',async importOriginal=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/partnerPaymentRecovery')>(),readPartnerPaymentRecoveries:vi.fn(async()=>[]),resolvePartnerPaymentRecovery:vi.fn(),retryPartnerPaymentRecovery:vi.fn(),discardPartnerPaymentCopy:vi.fn(),listPartnerPaymentHistory:vi.fn(async()=>({entries:[],nextCursor:null}))}));
 const scrollDescriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'scrollIntoView');
-beforeEach(()=>Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()}));
+beforeEach(()=>{ledgerAuth.user.uid='test-user';Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()});});
 afterEach(()=>{if(scrollDescriptor)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',scrollDescriptor);else delete (HTMLElement.prototype as any).scrollIntoView;});
 const accounts = [{ id: 'bank-1', companyId: 'taebaek' as const, name: '보통예금', active: true,
   type: '통장' as const, openingBalance: 0, openingDate: '2026-08-01', createdAt: '2026-08-01T00:00:00.000Z' }];
@@ -75,6 +77,7 @@ describe('거래처 원장 수금 입력', () => {
     expect(amount).toHaveValue('1,428,000');
     expect(screen.getByLabelText('수금 날짜')).toHaveValue('2026-08-10');
 
+    await waitFor(() => expect(screen.getByRole('button', { name: '수금 기록' })).toBeEnabled());
     fireEvent.change(amount, { target: { value: '1000000' } });
     expect(amount).toHaveValue('1,000,000');
     fireEvent.change(screen.getByRole('combobox', { name: '입출금 계좌' }), { target: { value: 'bank-1' } });
@@ -83,7 +86,7 @@ describe('거래처 원장 수금 입력', () => {
 
     await waitFor(() => expect(recordPartnerPayment).toHaveBeenCalledWith('taebaek', expect.objectContaining({
       partnerId: 'partner-1', amount: 1_000_000, tradeDate: '2026-08-10', direction: '입금', cashAccountId: 'bank-1',
-    })));
+    }),expect.objectContaining({isCurrent:expect.any(Function)})));
   });
 
   it('저장 실패 시 입력창을 유지하고 오류를 알린다', async () => {
@@ -197,4 +200,8 @@ describe('거래처 원장 월별 오늘 범위',()=>{
  it('다음날 새 전표가 들어오면 선택월의 이력과 기간 금액에 포함한다',()=>{const first=make('FIRST','2026-10-15',100),next=make('NEXT','2026-10-16',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:'월별'}));openSales();expect(within(history()).getByRole('button',{name:'FIRST'})).toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','100','0','100']);vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(within(history()).getByRole('button',{name:'NEXT'})).toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','300','0','300']);expect(recordPartnerPayment).not.toHaveBeenCalled();});
  it('새달에도 선택한 이전 달을 유지하고 새달 전표를 섞지 않는다',()=>{vi.setSystemTime(new Date('2026-10-31T12:00:00+09:00'));const first=make('OCTOBER','2026-10-31',100),next=make('NOVEMBER','2026-11-01',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:'월별'}));openSales();vi.setSystemTime(new Date('2026-11-01T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(view.container.querySelector('input[type="month"]')).toHaveValue('2026-10');expect(within(history()).getByRole('button',{name:'OCTOBER'})).toBeInTheDocument();expect(within(history()).queryByRole('button',{name:'NOVEMBER'})).not.toBeInTheDocument();expect(within(receivable()).getAllByRole('cell').map(c=>c.textContent)).toEqual(['0','100','0','100']);expect(recordPartnerPayment).not.toHaveBeenCalled();});
  it.each(['기간','전체'])('%s 모드는 다음날에도 기존 필터 정책을 유지한다',mode=>{const first=make('FIRST','2026-10-15',100),next=make('NEXT','2026-10-16',200);const view=render(<PartnerLedger {...baseProps} issuedStatements={[first]}/>);fireEvent.click(screen.getByRole('button',{name:mode}));openSales();vi.setSystemTime(new Date('2026-10-16T12:00:00+09:00'));view.rerender(<PartnerLedger {...baseProps} issuedStatements={[first,next]}/>);expect(within(history()).getByRole('button',{name:'FIRST'})).toBeInTheDocument();expect(!!within(history()).queryByRole('button',{name:'NEXT'})).toBe(mode==='전체');if(mode==='기간')expect(view.container.querySelectorAll('input[type="date"]')[1]).toHaveValue('2026-10-15');expect(recordPartnerPayment).not.toHaveBeenCalled();});
+});
+
+it('같은 회사 UID가 바뀌면 이전 결제창을 닫고 늦은 ACK가 새 계정 창을 닫지 않는다',async()=>{
+ let finish!:()=>void;vi.mocked(recordPartnerPayment).mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));render(<PartnerLedger companyId='taebaek' issuedStatements={[전표]} cashEntries={[]} cashAccounts={accounts} accountCodes={계정}/>);fireEvent.click(screen.getByRole('button',{name:'전체'}));fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));fireEvent.click(screen.getByRole('button',{name:'살림터'}));fireEvent.click(screen.getByRole('button',{name:'1,428,000 수금'}));await waitFor(()=>expect(screen.getByRole('button',{name:'수금 기록'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'수금 기록'}));await waitFor(()=>expect(finish).toBeTypeOf('function'));act(()=>{ledgerAuth.user.uid='new-user';ledgerAuth.listeners.forEach(listener=>listener(ledgerAuth.user));});expect(screen.queryByRole('dialog')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'1,428,000 수금'}));await screen.findByLabelText('수금 금액');await act(async()=>finish());expect(screen.getByRole('dialog')).toBeInTheDocument();expect(screen.getByLabelText('수금 금액')).toHaveValue('1,428,000');
 });

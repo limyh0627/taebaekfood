@@ -5,6 +5,9 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../../shared/firebase';
 import { companyScopedWriteData } from '../../../shared/services/firebaseService';
 import type { CashEntry, IssuedStatement } from '../../../shared/types';
+import {normalizePartnerPaymentReference,normalizePartnerPaymentRecoveryResult,type PartnerPaymentRecoveryCommand} from '../../../shared/partnerPaymentRecovery';
+import {validatePartnerPaymentInput,paymentReferenceKey,paymentHash,clearPaymentCopies,paymentTerminalFailure,PartnerPaymentTerminalError,type PartnerPaymentInput} from './partnerPaymentRecovery';
+export * from './partnerPaymentRecovery';
 
 export type TradeStatementIssueInput = {
   operationId: string;
@@ -156,31 +159,17 @@ export async function issueNumberedCashEntry(entry: CashEntry): Promise<{ id: st
   return (await submit()).data;
 }
 
-type PartnerPaymentInput = {
-  tradeDate: string; partnerId: string; direction: '입금' | '출금'; amount: number;
-  cashAccountId: string; pin: boolean; allocations: { statementId: string; amount: number }[]; note?: string;
-};
-
 const partnerPaymentRunning = new Set<string>();
 
 /** 번호·정산·자금 전표는 한 서버 거래로 확정하며 불확실 요청 전체를 보존한다. */
-export async function recordPartnerPayment(companyId: string, input: PartnerPaymentInput, recovery?: {requestText:string;isCurrent:()=>boolean}): Promise<void> {
-  const validDay = /^\d{4}-\d{2}-\d{2}$/.test(input.tradeDate)
-    && Number.isFinite(Date.parse(`${input.tradeDate}T00:00:00Z`))
-    && new Date(`${input.tradeDate}T00:00:00Z`).toISOString().slice(0, 10) === input.tradeDate;
-  if (!validDay || !input.partnerId || input.partnerId.includes('/') || !input.cashAccountId || input.cashAccountId.includes('/')
-    || !['입금', '출금'].includes(input.direction) || !Number.isSafeInteger(input.amount) || input.amount <= 0
-    || typeof input.pin !== 'boolean' || !Array.isArray(input.allocations)
-    || input.allocations.some(row => !row || !row.statementId || row.statementId.includes('/') || !Number.isSafeInteger(row.amount) || row.amount <= 0)
-    || new Set(input.allocations.map(row => row.statementId)).size !== input.allocations.length
-    || input.note !== undefined && (typeof input.note !== 'string' || input.note.length > 500))
-    throw new Error('수금·지불 날짜·금액·대상·입력을 확인해 주세요.');
+export async function recordPartnerPayment(companyId: string, input: PartnerPaymentInput, recovery?: {requestText?:string;isCurrent:()=>boolean}): Promise<void> {
+  validatePartnerPaymentInput(input);
   await authReady;
   const user = auth.currentUser;
   if (!user) throw new Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');
   const assertCompany = async () => {
     const { claims } = await user.getIdTokenResult();
-    if (auth.currentUser?.uid !== user.uid || claims.companyId !== companyId || claims.isAdmin !== true)
+    if (recovery&&!recovery.isCurrent() || auth.currentUser?.uid !== user.uid || claims.companyId !== companyId || claims.isAdmin !== true)
       throw new Error('관리자 회사 권한이 바뀌었습니다.');
   };
   await assertCompany();
@@ -195,21 +184,11 @@ export async function recordPartnerPayment(companyId: string, input: PartnerPaym
   try {
     let pending: { version: 2; fingerprint: string; request: Request } | undefined;
     const saved = localStorage.getItem(key);
+    if(saved===null&&Object.keys(localStorage).some(k=>k.startsWith(key+':ref:')))throw Error('이 거래처의 보관된 수금 참조가 있습니다. 결과 확인 또는 미처리 요청 중단을 먼저 선택해 주세요.');
     if (saved) {
       try { pending = JSON.parse(saved); } catch { throw new Error('이전 수금 요청 기록을 확인할 수 없습니다.'); }
       if (pending?.version !== 2) {
-        const legacy = pending as unknown as { fingerprint?: string; operationId?: string; revision?: number };
-        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(input)));
-        const oldFingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-        if (legacy?.fingerprint !== oldFingerprint || !Number.isSafeInteger(legacy.revision) || legacy.revision! < 0
-          || !/^[A-Za-z0-9_-]{1,160}$/.test(legacy.operationId ?? ''))
-          throw new Error('이 거래처의 이전 수금 결과가 불확실합니다. 같은 내용으로 다시 시도해 주세요.');
-        // 원래 release를 추정하지 않는다. 기존 방식의 현재 release 확인 요청을 같은 작업으로 고정한다.
-        const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
-        if (gate?.status !== 'active' || !/^[A-Za-z0-9_-]{1,100}$/.test(gate?.releaseId ?? '')) throw new Error('수금 서버가 준비되지 않았습니다.');
-        pending = { version: 2, fingerprint, request: { ...normalized, operationId: legacy.operationId!,
-          expectedRevision: legacy.revision!, releaseId: gate.releaseId } };
-        localStorage.setItem(key, JSON.stringify(pending));
+        throw new Error('이 거래처의 이전 수금 결과가 불확실합니다. 보관 요청에서 결과 확인 또는 미처리 요청 중단을 선택해 주세요.');
       }
       const request = pending?.request;
       if (!request || pending.fingerprint !== fingerprint || !Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 0
@@ -231,21 +210,41 @@ export async function recordPartnerPayment(companyId: string, input: PartnerPaym
       localStorage.setItem(key, JSON.stringify(pending));
     }
     const expectedPendingText=localStorage.getItem(key);
-    const assertRecovery=()=>{if(recovery&&(!recovery.isCurrent()||JSON.stringify(pending!.request)!==recovery.requestText))throw new Error('수금 최초 요청 또는 로그인 상태가 변경되었습니다.');if(localStorage.getItem(key)!==expectedPendingText)throw new Error('수금 최초 원문이 변경되었습니다.');};
+    const reference=normalizePartnerPaymentReference({companyId,partnerId:input.partnerId,operationId:pending.request.operationId});
+    const sidecarKey=paymentReferenceKey({companyId:reference.companyId,actorUid:user.uid,partnerId:input.partnerId},reference.operationId);
+    const sidecarText=JSON.stringify({version:1,reference,actorUid:user.uid,requestHash:await paymentHash(pending.request)});
+    const previousSidecar=localStorage.getItem(sidecarKey);
+    if(previousSidecar!==null&&previousSidecar!==sidecarText)throw Error('보관된 수금 참조와 원문이 다릅니다. 결과를 먼저 확인해 주세요.');
+    localStorage.setItem(sidecarKey,sidecarText);
+    if(localStorage.getItem(key)!==expectedPendingText||localStorage.getItem(sidecarKey)!==sidecarText)throw Error('수금 원문과 참조의 보관을 확인하지 못해 전송하지 않았습니다.');
+    const assertRecovery=()=>{if(recovery&&(!recovery.isCurrent()||recovery.requestText!==undefined&&JSON.stringify(pending!.request)!==recovery.requestText))throw new Error('수금 최초 요청 또는 로그인 상태가 변경되었습니다.');if(localStorage.getItem(key)!==expectedPendingText||localStorage.getItem(sidecarKey)!==sidecarText)throw new Error('수금 최초 원문이나 참조가 변경되었습니다.');};
     assertRecovery();await assertCompany();assertRecovery();
     const call = httpsCallable<Request, { status: 'applied' | 'duplicate'; id: string }>(functions, 'recordPartnerPaymentCommand');
     let result;
     try { result = await call(pending.request); }
     catch (error) {
       const failure = (error as { details?: { partnerPaymentFailure?: Record<string, unknown> } })?.details?.partnerPaymentFailure;
-      if (!recovery && failure?.version === 1 && failure.companyId === companyId && failure.partnerId === input.partnerId
-        && failure.operationId === pending.request.operationId && failure.operationRejected === true && failure.financialWrites === false)
-        localStorage.removeItem(key);
+      if (!recovery?.requestText && failure?.version === 1 && failure.companyId === companyId && failure.partnerId === input.partnerId
+        && failure.operationId === pending.request.operationId && failure.operationRejected === true && failure.financialWrites === false) {
+        await assertCompany();assertRecovery();
+        clearPaymentCopies(localStorage,[{key,text:expectedPendingText},{key:sidecarKey,text:sidecarText}]);
+        throw new PartnerPaymentTerminalError({status:'rejected',message:error instanceof Error?error.message:'이번 수금·지불 요청은 반영되지 않았습니다.',nextAction:'현재 내역을 확인한 뒤 필요한 경우 새 결제를 작성해 주세요.'});
+      }
+      if (paymentTerminalFailure(error,reference,'cancelled')) {
+        await assertCompany();assertRecovery();
+        const raw=(await httpsCallable<PartnerPaymentRecoveryCommand,unknown>(functions,'partnerPaymentRecoveryCommand')({mode:'inspect',reference})).data;
+        await assertCompany();assertRecovery();
+        const verified=normalizePartnerPaymentRecoveryResult(raw,reference,user.uid);
+        if(verified.status==='unknown'||verified.requestHash!==null&&verified.requestHash!==await paymentHash(pending.request))throw error;
+        if(!recovery?.requestText)clearPaymentCopies(localStorage,[{key,text:expectedPendingText},{key:sidecarKey,text:sidecarText}]);
+        if(verified.status==='applied')return;
+        throw new PartnerPaymentTerminalError({status:verified.status,message:verified.message,nextAction:'현재 내역을 확인한 뒤 필요한 경우 새 결제를 작성해 주세요.'});
+      }
       throw error;
     }
     if (result.data.id !== pending.request.operationId || !['applied', 'duplicate'].includes(result.data.status))
       throw new Error('수금·지불 응답을 확인할 수 없습니다. 같은 내용으로 재시도해 주세요.');
     await assertCompany();assertRecovery();
-    if(!recovery)localStorage.removeItem(key);
+    if(!recovery?.requestText)clearPaymentCopies(localStorage,[{key,text:expectedPendingText},{key:sidecarKey,text:sidecarText}]);
   } finally { partnerPaymentRunning.delete(key); }
 }

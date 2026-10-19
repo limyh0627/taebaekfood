@@ -7,7 +7,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 }));
 vi.mock('firebase-admin', () => ({ firestore: () => ({}) }));
 
-import { cashFromEntry, claimFromStatement, recordPartnerPayment } from './partnerPaymentCommand';
+import { cashFromEntry, claimFromStatement, recordPartnerPayment, recoverPartnerPayment } from './partnerPaymentCommand';
 
 type Row = Record<string, any>;
 type Ref = { key: string };
@@ -72,7 +72,15 @@ function auditOnly(rows: Map<string, Row>, initial: Record<string, Row>, request
   expect([...rows.keys()].some(key => key.startsWith(`settlements/st-${request.operationId}-`))).toBe(false);
   expect(rows.has(`appMeta/partnerPaymentState_taebaek_${request.partnerId}`)).toBe(false);
 }
-describe('partner payment transaction', () => {
+describe('partner payment transaction', () => {  it('참조만 중단을 확정한 뒤 같은 apply는 금융 쓰기 없이 거절한다',async()=>{
+    const {db,rows}=fakeDb(source),reference={companyId:'taebaek' as const,partnerId:input.partnerId,operationId:input.operationId};
+    expect(await recoverPartnerPayment(db,'taebaek','admin',{mode:'inspect',reference})).toMatchObject({status:'unknown'});
+    expect(await recoverPartnerPayment(db,'taebaek','admin',{mode:'cancel',reference})).toMatchObject({status:'cancelled',requestHash:null});
+    await expect(recordPartnerPayment(db,'taebaek','admin',input)).rejects.toThrow('중단');
+    expect(rows.has('cashEntries/'+input.operationId)).toBe(false);
+    expect(rows.get(counter)?.last).toBe(9);
+    await expect(recoverPartnerPayment(db,'taebaek','other',{mode:'inspect',reference})).rejects.toThrow('사용자');
+  });
   it('uses the same catch-up number pool and rejects a missing additional counter', async () => {
     const extraDate = '2026-09-30';
     const extraInput = { ...input, tradeDate: extraDate };

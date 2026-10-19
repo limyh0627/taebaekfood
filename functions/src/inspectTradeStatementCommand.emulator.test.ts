@@ -7,7 +7,7 @@ import {issueTradeStatement} from './tradeStatementIssue';
 import {statementIssueIdentity,statementIssueRef,statementIssueTextHash,prepareStatementIssue,STATEMENT_ISSUE_FENCE_GENERATION} from './statementIssueReceipt';
 import {statementOriginalHash} from './deleteIssuedStatementCommand';
 import {cashOriginalHash} from './cashMutationReceipt';
-import {fingerprint} from './partnerPaymentCommand';
+import {fingerprint,recoverPartnerPayment,recordPartnerPayment} from './partnerPaymentCommand';
 
 const available=/^(?:127\.0\.0\.1|localhost):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST??'');
 const projectId='demo-inspect-statement-'+randomUUID();
@@ -122,6 +122,7 @@ describe.skipIf(!available)('전표 결과 확인의 실제 로컬 SDK 읽기',(
   const before=await state(),request={...f.input,paymentRequestText:JSON.stringify(payment)};
   if(kind==='wrongActor')await expect(inspect(request)).rejects.toThrow('사용자');
   else expect(await inspect(request)).toMatchObject({status:'applied',payment:{status:kind==='wrongEntry'||kind==='absent'?'unknown':kind==='rejected'?'rejected':'applied',operationId,requestHash}});
+  if(kind==='changed'||kind==='deleted')expect(await recoverPartnerPayment(db,companyId,actor,{mode:'inspect',reference:{companyId,partnerId:'partner',operationId}})).toMatchObject({status:'applied',amount:100,cashAccountId:'inactive',tradeDate:date});
   expect(await state()).toEqual(before);
  });
  it.each(['cancelled-applied','cancelled-rejected','cancelled-absent','missing-applied','wrongActor','wrongCompany','wrongAllocation','wrongPartner','wrongHash'] as const)('전표 원문이 없는 %s에서도 기존 결제 결과만 검증해 읽는다',async kind=>{
@@ -150,4 +151,24 @@ describe.skipIf(!available)('전표 결과 확인의 실제 로컬 SDK 읽기',(
   const f=fixture();if(kind==='date')f.command.statement.tradeDate='2026-02-30';else f.command.statement.items[0].qty=0;
   await expect(issueTradeStatement(db,companyId,actor,f.command)).rejects.toMatchObject({code:'invalid-argument'});expect((await ref('issuedStatements',f.id).get()).exists).toBe(false);
  });
-});
+ it('중단된 결제는 옛 전표 wire 미반영확정으로 투영하며 captured hash와 operation을 보존한다',async()=>{
+  const f=fixture();await applied(f);
+  const operationId='payment-'+randomUUID(),payment={operationId,tradeDate:date,partnerId:'partner',direction:'입금',amount:100,cashAccountId:'inactive',pin:false,allocations:[{statementId:f.id,amount:100}],note:'',expectedRevision:0,releaseId};
+  const reference={companyId,partnerId:'partner',operationId};
+  expect(await recoverPartnerPayment(db,companyId,actor,{mode:'cancel',reference})).toMatchObject({status:'cancelled',requestHash:null});
+  const result=await inspect({...f.input,paymentRequestText:JSON.stringify(payment)});
+  expect(result).toMatchObject({status:'applied',payment:{status:'rejected',operationId,requestHash:fingerprint(payment),reason:expect.stringContaining('중단')}});
+  expect((await ref('partnerPaymentOperations',operationId).get()).data()).toMatchObject({status:'cancelled',requestHash:null,financialWrites:false});
+  expect((await ref('cashEntries',operationId).get()).exists).toBe(false);
+ }); it.each(['cancelled','rejected'] as const)('금융0 %s 영수증에 현금 삭제 감사가 함께 있으면 inspect와 cancel은 unknown이고 늦은 apply도 금융0 확정을 주장하지 않는다',async status=>{
+  const operationId='payment-'+randomUUID(),payment={operationId,tradeDate:date,partnerId:'partner',direction:'입금' as const,amount:100,cashAccountId:'inactive',pin:false,allocations:[],note:'',expectedRevision:0,releaseId};
+  const hash=fingerprint(payment),reference={companyId,partnerId:'partner',operationId};
+  const original={companyId,partnerId:'partner',date,amount:100,cashAccountId:'inactive',dir:'입금',lines:[],note:'',issueOperationId:operationId,issuePayloadHash:hash,issuePrefix:'',docNo:'원번호'};
+  await ref('partnerPaymentOperations',operationId).set({companyId,partnerId:'partner',createdBy:actor,status,requestHash:hash,financialWrites:false,cancelledAt:new Date().toISOString(),failureCode:'failed-precondition',failureMessage:'거절'});
+  await ref('voucherMutationOperations',operationId+'-audit').set({kind:'cashEntries',status:'applied',action:'delete',companyId,voucherId:operationId,cashEntryIds:[operationId],createdBy:actor,expectedRevision:0,beforeSnapshot:original,beforeHash:cashOriginalHash(original),afterHash:null});
+  const before=await state();
+  expect(await recoverPartnerPayment(db,companyId,actor,{mode:'inspect',reference})).toMatchObject({status:'unknown'});
+  expect(await recoverPartnerPayment(db,companyId,actor,{mode:'cancel',reference})).toMatchObject({status:'unknown'});
+  await expect(recordPartnerPayment(db,companyId,actor,payment)).rejects.toMatchObject({code:'failed-precondition',details:undefined});
+  expect(await state()).toEqual(before);
+ });});

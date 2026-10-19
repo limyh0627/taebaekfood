@@ -28,7 +28,7 @@ export { issueNumberedVoucher } from './voucherIssue';
 export { issueTradeStatementCommand } from './tradeStatementIssue';
 export { issueOemFeeVoucherCommand } from './oemFeeVoucher';
 export { receiveOemFinishedGoodsCommand } from './oemReceiptCommand';
-export { recordPartnerPaymentCommand } from './partnerPaymentCommand';
+export { recordPartnerPaymentCommand, partnerPaymentRecoveryCommand } from './partnerPaymentCommand';
 export { recordLoanMovementCommand } from './loanMovementCommand';
 export { mutateManualSettlementCommand } from './manualSettlementCommand';
 export { processGeneralStockReturnCommand } from './processReturnCommand';

@@ -57,10 +57,11 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
   const [payOpen, setPayOpen] = useState(false);
+  const [paymentActorUid,setPaymentActorUid]=useState(()=>auth.currentUser?.uid??'');
   const outputScope = useRef<{ companyId: CompanyId; uid: string; controller: AbortController } | null>(null);
   useEffect(() => {
     let live = true, stop = () => {};
-    const replace = (uid: string) => { outputScope.current?.controller.abort(); outputScope.current = {companyId, uid, controller:new AbortController()}; };
+    const replace = (uid: string) => { if(outputScope.current&&outputScope.current.uid!==uid)setPayOpen(false);setPaymentActorUid(uid);outputScope.current?.controller.abort(); outputScope.current = {companyId, uid, controller:new AbortController()}; };
     replace(auth.currentUser?.uid ?? '');
     void Promise.resolve(authReady).then(() => { if (live) stop = onAuthStateChanged(auth, user => { if (live) replace(user?.uid ?? ''); }); });
     return () => {live = false; stop(); outputScope.current?.controller.abort(); outputScope.current = null;};
@@ -552,7 +553,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
       })()}
 
       {/*  수금·지불 창 — 전표에 안 붙인다. 어느 청구서를 갚았는지는 배분이 알아서 맞춘다. */}
-      {payOpen && sel && <PartnerPaymentModal key={companyId + ':' + sel.partnerId} companyId={companyId} partnerId={sel.partnerId} partnerName={sel.partnerName} type={type} balance={sel.balance} cashAccounts={cashAccounts} initialAmount={payForm.amount ? parseMoneyInput(payForm.amount) : undefined} initialDate={payForm.date} onClose={() => setPayOpen(false)} />}
+      {payOpen && sel && <PartnerPaymentModal key={companyId + ':' + paymentActorUid + ':' + sel.partnerId} companyId={companyId} partnerId={sel.partnerId} partnerName={sel.partnerName} type={type} balance={sel.balance} cashAccounts={cashAccounts} initialAmount={payForm.amount ? parseMoneyInput(payForm.amount) : undefined} initialDate={payForm.date} onClose={() => setPayOpen(false)} />}
     </div>
   );
 }
