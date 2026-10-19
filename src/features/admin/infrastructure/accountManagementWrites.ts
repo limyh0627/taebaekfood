@@ -1,10 +1,8 @@
 import { httpsCallable } from 'firebase/functions';
-import { accountManagementOpening, normalizeAccountManagementReference, normalizeAccountManagementRequest, normalizeAccountManagementOpenResult, normalizeAccountManagementResult, serializeAccountManagementRequest, type AccountManagementReference, type AccountManagementRequest, type AccountManagementCommand } from '../../../shared/accountManagementCommand';
+import { accountManagementOpening, normalizeAccountManagementReference, normalizeAccountManagementRequest, normalizeAccountManagementOpenResult, normalizeAccountManagementResult, serializeAccountManagementRequest, type AccountManagementReference, type AccountManagementRequest, type AccountManagementCommand, type AccountManagementOpenResult } from '../../../shared/accountManagementCommand';
 export type { AccountManagementReference } from '../../../shared/accountManagementCommand';
-import { deleteField } from 'firebase/firestore';
 import { auth, authReady, functions } from '../../../shared/firebase';
 import { withClaimCompany } from '../../../shared/companyWriteBoundary';
-import { updateItem } from '../../../shared/services/firebaseService';
 import type { AccountCode, AccountGroup, CompanyId } from '../../../shared/types';
 import type { SaveOutcome } from '../../../shared/saveOutcome';
 export interface AccountEditContext {
@@ -37,48 +35,14 @@ async function authorizeAccountWrite(collection: 'accountGroups' | 'accountCodes
     }
     return assertCurrent;
 }
-async function saveEdit(collection: 'accountGroups' | 'accountCodes', id: string, patch: Record<string, unknown>, context: AccountEditContext): Promise<SaveOutcome> {
-    const authorized = await authorizeAccountWrite(collection, id, context);
-    if (typeof authorized !== 'function')
-        return authorized;
-    if (Object.keys(patch).length === 0)
-        return { status: 'saved' };
-    try {
-        authorized();
-    }
-    catch (error) {
-        return { status: 'rejected', message: error instanceof Error ? error.message : '현재 창을 다시 열어 주세요.' };
-    }
-    try {
-        await updateItem(collection, id, patch);
-        return { status: 'saved' };
-    }
-    catch {
-        // 공통 writer 내부 await 이후의 실패는 실제 반영 여부를 추측하지 않는다.
-        return { status: 'unknown', message: '계정 저장 여부를 확인하지 못했습니다.',
-            nextAction: '현재 목록을 확인해 주세요. 다시 저장하면 수정한 항목이 입력한 값으로 저장됩니다.' };
-    }
-}
-export function saveAccountGroupEdit(id: string, changes: AccountGroupEditPatch, context: AccountEditContext): Promise<SaveOutcome> {
-    const patch: Record<string, unknown> = {};
-    for (const key of ['name', 'type', 'plLine'] as const) {
-        const value = changes[key];
-        if (value !== undefined)
-            patch[key] = key === 'plLine' && value === null ? deleteField() : value;
-    }
-    return saveEdit('accountGroups', id, patch, context);
-}
-export function saveAccountCodeEdit(id: string, changes: AccountCodeEditPatch, context: AccountEditContext): Promise<SaveOutcome> {
-    const patch: Record<string, unknown> = {};
-    for (const key of ['code', 'name', 'groupId'] as const) {
-        if (changes[key] !== undefined)
-            patch[key] = changes[key];
-    }
-    return saveEdit('accountCodes', id, patch, context);
-}
 export interface AccountOperationContext extends AccountEditContext {
     planId: string;
 }
+export type AccountEditOutcome = SaveOutcome & {requiresReopen?:boolean;requestFinalized?:boolean};
+export interface AccountUpdateContext extends AccountOperationContext {
+    opening: AccountManagementOpenResult;
+}
+export type { AccountManagementOpenResult };
 export interface AccountOperationScope {
     companyId: CompanyId;
     actorUid: string;
@@ -88,6 +52,7 @@ export interface AccountOperationReferenceEntry {
     reference: AccountManagementReference | null;
     status: 'valid' | 'corrupt' | 'missing';
     description: string;
+    action?: AccountManagementRequest['action'];
     observedLocalText?: string | null;
 }
 interface AccountOperationPlan {
@@ -102,6 +67,7 @@ export type AccountOperationRead = {
     request: AccountManagementRequest;
     requestHash: string;
     description: string;
+    observedLocalText: string;
 } | {
     status: 'corrupt' | 'missing';
 };
@@ -117,17 +83,10 @@ const operationKey = (scope: AccountOperationScope, ref: AccountManagementRefere
 const sameReference = (a: AccountManagementReference, b: AccountManagementReference) => a.companyId === b.companyId && a.kind === b.kind && a.targetId === b.targetId && a.planId === b.planId;
 const unknownAccountOperation = (message = '계정 처리 결과를 확인하지 못했습니다.'): SaveOutcome => ({ status: 'unknown', message, nextAction: '같은 요청의 결과 확인 또는 명시 중단을 선택해 주세요. 새로 등록하거나 삭제하지 마세요.' });
 export function createAccountOperationWriter(port: AccountOperationPort) {
-    const read = async (scope: AccountOperationScope, input: AccountManagementReference): Promise<AccountOperationRead> => {
+    const parse = async (scope: AccountOperationScope, input: AccountManagementReference, raw: string | null): Promise<AccountOperationRead> => {
         const ref = normalizeAccountManagementReference(input);
         if (ref.companyId !== scope.companyId)
             return { status: 'corrupt' };
-        let raw: string | null;
-        try {
-            raw = port.storage.getItem(operationKey(scope, ref));
-        }
-        catch {
-            return { status: 'corrupt' };
-        }
         if (raw === null)
             return { status: 'missing' };
         try {
@@ -137,11 +96,14 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
                 || typeof plan.description !== 'string' || !/^[a-f0-9]{64}$/.test(plan.requestHash)
                 || await port.digest(serializeAccountManagementRequest(request)) !== plan.requestHash)
                 return { status: 'corrupt' };
-            return { status: 'valid', request, requestHash: plan.requestHash, description: plan.description };
+            return { status: 'valid', request, requestHash: plan.requestHash, description: plan.description, observedLocalText: raw };
         }
         catch {
             return { status: 'corrupt' };
         }
+    };
+    const read = async (scope: AccountOperationScope, input: AccountManagementReference): Promise<AccountOperationRead> => {
+        try { return await parse(scope, input, port.storage.getItem(operationKey(scope, input))); } catch { return {status:'corrupt'}; }
     };
     const references = async (scope: AccountOperationScope): Promise<AccountOperationReferenceEntry[]> => {
         const entries: AccountOperationReferenceEntry[] = [];
@@ -165,8 +127,8 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
                 reference = null;
             }
             const observedLocalText = port.storage.getItem(key);
-            const value = reference ? await read(scope, reference) : { status: 'corrupt' as const };
-            entries.push({ key, reference, status: port.storage.getItem(key) === observedLocalText ? value.status : 'corrupt', observedLocalText, description: value.status === 'valid' ? value.description : reference ? `계정 처리 · ${reference.targetId}` : '보관 요청 형식 확인 필요' });
+            const value = reference ? await parse(scope, reference, observedLocalText) : { status: 'corrupt' as const };
+            entries.push({ key, reference, status: port.storage.getItem(key) === observedLocalText ? value.status : 'corrupt', action: value.status === 'valid' ? value.request.action : undefined, observedLocalText, description: value.status === 'valid' ? value.description : reference ? `계정 처리 · ${reference.targetId}` : '보관 요청 형식 확인 필요' });
         }
         return entries;
     };
@@ -177,7 +139,7 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
         if (!context.isCurrent())
             throw Error('계정 화면이 바뀌었습니다.');
     };
-    const run = async (refInput: AccountManagementReference, context: AccountEditContext, mode: 'apply' | 'inspect' | 'cancel'): Promise<SaveOutcome> => {
+    const run = async (refInput: AccountManagementReference, context: AccountEditContext, mode: 'apply' | 'inspect' | 'cancel'): Promise<AccountEditOutcome> => {
         const ref = normalizeAccountManagementReference(refInput);
         if (ref.companyId !== context.companyId)
             return { status: 'rejected', message: '현재 회사의 요청만 처리할 수 있습니다.' };
@@ -191,7 +153,7 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
         catch {
             return unknownAccountOperation();
         }
-        const stored = await read(scope, ref);
+        const stored = await parse(scope, ref, raw);
         if (mode === 'apply' && stored.status !== 'valid')
             return unknownAccountOperation();
         try {
@@ -205,13 +167,13 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
             const result = normalizeAccountManagementResult(response, ref, context.actorUid, mode === 'apply' && stored.status === 'valid' ? stored.requestHash : undefined);
             if (result.status === 'unknown')
                 return unknownAccountOperation(result.message);
-            if (stored.status === 'valid' && result.requestHash !== null && stored.requestHash !== result.requestHash)
+            if (raw !== null && (stored.status !== 'valid' || result.requestHash !== null && stored.requestHash !== result.requestHash) || raw === null && result.status === 'applied')
                 return {
                     status: 'rejected', message: `같은 요청 번호로 다른 내용이 먼저 확정되어 이 기기의 사본은 적용할 수 없습니다. ${result.message}`,
-                    nextAction: '현재 계정 목록을 확인해 주세요. 필요하면 이 기기 사본만 명시적으로 정리할 수 있습니다. 이미 처리된 업무는 되돌리지 않습니다.'
+                    nextAction: '현재 계정 목록을 확인해 주세요. 원문이 없거나 다른 사본의 결과를 현재 편집의 완료로 처리하지 않았습니다. 보관 사본이 있으면 해당 사본만 명시적으로 정리할 수 있습니다.'
                 };
-            const outcome: SaveOutcome = result.status === 'applied' ? { status: 'saved' }
-                : { status: result.status === 'cancelled' ? 'cancelled' : 'rejected', message: result.message, nextAction: '현재 목록을 확인한 뒤 필요한 작업을 선택해 주세요.' };
+            const outcome: AccountEditOutcome = result.status === 'applied' ? { status: 'saved' }
+                : { status: result.status === 'cancelled' ? 'cancelled' : 'rejected', message: result.message, requiresReopen: result.status === 'rejected', nextAction: '현재 목록을 확인한 뒤 필요한 작업을 선택해 주세요.' };
             try {
                 const current = port.storage.getItem(key);
                 if (current !== null && current !== raw)
@@ -226,7 +188,7 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
                     return { status: 'partial', reason: 'followup-unconfirmed', committedIds: [ref.targetId], unconfirmedIds: [], message: '계정 처리는 완료됐지만 기기의 보관 요청 정리가 완료되지 않았습니다.', nextAction: '업무를 다시 보내지 말고 결과 확인으로 보관 요청을 정리해 주세요.' };
                 return { status: result.status === 'cancelled' ? 'cancelled' : 'rejected', message: result.message, nextAction: '보관 요청을 정리하지 못했습니다. 같은 요청의 결과 확인을 다시 선택해 주세요.' };
             }
-            return outcome;
+            return stored.status==='valid'&&stored.request.action==='update'||raw===null&&result.status==='cancelled'?{...outcome,requestFinalized:true}:outcome;
         }
         catch {
             return unknownAccountOperation();
@@ -298,7 +260,36 @@ export function createAccountOperationWriter(port: AccountOperationPort) {
             return { status: 'unknown', message: '이 기기 사본 정리를 확인하지 못했습니다.', nextAction: '요청 목록을 다시 읽고 현재 사본을 확인해 주세요. 업무를 다시 보내지 마세요.' };
         }
     };
-    return { read, references, submit, discard, inspect: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'inspect'), retry: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'apply'), cancel: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'cancel') };
+    const open = async (kind: 'code'|'group', row: AccountCode|AccountGroup, context: AccountOperationContext): Promise<AccountManagementOpenResult> => {
+        const reference=normalizeAccountManagementReference({companyId:context.companyId,planId:context.planId,kind,targetId:row.id});
+        const opening=accountManagementOpening({...row},kind);
+        await active(context);
+        const result=normalizeAccountManagementOpenResult(await port.command({mode:'open',reference,opening}),reference,context.actorUid);
+        await active(context);
+        if(JSON.stringify(result.opening)!==JSON.stringify(opening))throw Error('열기 중 계정이 바뀌었습니다. 현재 목록을 확인하고 다시 열어 주세요.');
+        return result;
+    };
+    const update = async (kind:'code'|'group', id:string, changes:AccountGroupEditPatch|AccountCodeEditPatch, context:AccountUpdateContext):Promise<AccountEditOutcome> => {
+        let request:AccountManagementRequest;
+        let raw:string;
+        try {
+            await active(context);
+            const reference=normalizeAccountManagementReference({companyId:context.companyId,planId:context.planId,kind,targetId:id});
+            const opening=normalizeAccountManagementOpenResult(context.opening,reference,context.actorUid);
+            const fields=kind==='code'?['code','name','groupId']:['name','type','plLine'];
+            const patch=Object.fromEntries(fields.filter(key=>Object.prototype.hasOwnProperty.call(changes,key)&&(changes as Record<string,unknown>)[key]!==undefined).map(key=>[key,(changes as Record<string,unknown>)[key]]));
+            request=normalizeAccountManagementRequest({version:1,reference,action:'update',expectedVersion:opening.expectedVersion,patch});
+            const requestHash=await port.digest(serializeAccountManagementRequest(request));
+            await active(context);
+            const key=operationKey(context,reference);
+            if(port.storage.getItem(key)!==null)return unknownAccountOperation();
+            raw=JSON.stringify({version:1,actorUid:context.actorUid,request,requestHash,description:'수정 · '+id} satisfies AccountOperationPlan);
+            port.storage.setItem(key,raw);
+            if(port.storage.getItem(key)!==raw)throw Error('브라우저 보관 원문을 확인하지 못했습니다.');
+        } catch(error) {return {status:'rejected',message:'편집 요청을 보내기 전에 준비를 완료하지 못했습니다. '+(error instanceof Error?error.message:String(error)),nextAction:'보관 요청이 남았다면 결과 확인 또는 중단을 먼저 선택해 주세요.'};}
+        return run(request.reference,context,'apply');
+    };
+    return { read, references, submit, open, update, discard, inspect: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'inspect'), retry: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'apply'), cancel: (ref: AccountManagementReference, context: AccountEditContext) => run(ref, context, 'cancel') };
 }
 const digestAccountOperation = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), value => value.toString(16).padStart(2, '0')).join('');
 // 브라우저가 저장소 접근 자체를 거절해도 준비 단계에서 포착하고 업무 송신 전 거절로 구분한다.
@@ -323,3 +314,7 @@ export const saveAccountCodeCreate = (data: AccountCode, context: AccountOperati
 export const saveAccountGroupCreate = (data: AccountGroup, context: AccountOperationContext) => operationWriter().submit('group', 'create', data, context);
 export const deleteAccountCode = (opening: AccountCode, context: AccountOperationContext) => operationWriter().submit('code', 'delete', opening, context);
 export const deleteAccountGroup = (opening: AccountGroup, context: AccountOperationContext) => operationWriter().submit('group', 'delete', opening, context);
+
+export const captureAccountEditOpening=(kind:'code'|'group',row:AccountCode|AccountGroup,context:AccountOperationContext)=>operationWriter().open(kind,row,context);
+export const saveAccountGroupEdit=(id:string,patch:AccountGroupEditPatch,context:AccountUpdateContext)=>operationWriter().update('group',id,patch,context);
+export const saveAccountCodeEdit=(id:string,patch:AccountCodeEditPatch,context:AccountUpdateContext)=>operationWriter().update('code',id,patch,context);

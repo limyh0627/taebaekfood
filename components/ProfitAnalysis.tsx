@@ -1,7 +1,8 @@
 import { useAccountManagementLifecycle } from '../src/features/admin/hooks/useAccountManagementLifecycle';
 import { useAccountManagementEditor } from '../src/features/admin/hooks/useAccountManagementEditor';
 import { auth } from '../src/shared/firebase';
-import type {AccountEditContext,AccountOperationContext,AccountOperationReferenceEntry,AccountManagementReference,AccountGroupEditPatch,AccountCodeEditPatch} from '../src/features/admin/infrastructure/accountManagementWrites';
+import type {AccountEditContext,AccountUpdateContext,AccountOperationContext,AccountOperationReferenceEntry,AccountManagementReference,AccountGroupEditPatch,AccountCodeEditPatch} from '../src/features/admin/infrastructure/accountManagementWrites';
+import type {AccountManagementOpenResult} from '../src/shared/accountManagementCommand';
 import type {SaveOutcome} from '../src/shared/saveOutcome';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
@@ -56,12 +57,13 @@ interface ProfitAnalysisProps {
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   accountGroups?: AccountGroup[];
   accountCodes?: AccountCode[];
-  onUpdateAccountCode?: (id: string, data: AccountCodeEditPatch, context:AccountEditContext) => Promise<SaveOutcome>;
+  onUpdateAccountCode?: (id: string, data: AccountCodeEditPatch, context:AccountUpdateContext) => Promise<SaveOutcome>;
   onAddAccountCode?: (data: AccountCode, context:AccountOperationContext) => Promise<SaveOutcome>;
   onDeleteAccountCode?: (row: AccountCode,context:AccountOperationContext) => Promise<SaveOutcome>;
   onAddAccountGroup?: (data: AccountGroup,context:AccountOperationContext) => Promise<SaveOutcome>;
-  onUpdateAccountGroup?: (id: string, data: AccountGroupEditPatch, context:AccountEditContext) => Promise<SaveOutcome>;
+  onUpdateAccountGroup?: (id: string, data: AccountGroupEditPatch, context:AccountUpdateContext) => Promise<SaveOutcome>;
   onDeleteAccountGroup?: (row: AccountGroup,context:AccountOperationContext) => Promise<SaveOutcome>;
+  onOpenAccountEdit?: (kind:'code'|'group',opening:AccountCode|AccountGroup,context:AccountOperationContext)=>Promise<AccountManagementOpenResult>;
   onReadAccountOperations?: (context:AccountEditContext) => Promise<AccountOperationReferenceEntry[]>;
   onInspectAccountOperation?: (reference:AccountManagementReference,context:AccountEditContext) => Promise<SaveOutcome>;
   onRetryAccountOperation?: (reference:AccountManagementReference,context:AccountEditContext) => Promise<SaveOutcome>;
@@ -98,7 +100,7 @@ const EMPTY_CASH_FLOW_MANUAL: CashFlowManual[] = [];
 const INVENTORY_EXPENSE_CODE = '500';
 // (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, onReadAccountOperations,onInspectAccountOperation,onRetryAccountOperation,onCancelAccountOperation,onDiscardAccountOperationCopy, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, onOpenAccountEdit,onReadAccountOperations,onInspectAccountOperation,onRetryAccountOperation,onCancelAccountOperation,onDiscardAccountOperationCopy, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -154,14 +156,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // 손익 줄 접기 — 기본은 **전부 펼침**. 닫은 것만 기억한다(하나만 열리는 아코디언이 아니다).
   const [closedPlLines, setClosedPlLines] = useState<Set<string>>(new Set());
   const lifecycleBusyRef = useRef<()=>boolean>(()=>false);
-  const accountEditor = useAccountManagementEditor({companyId,actorUid:auth.currentUser?.uid,onUpdateGroup:onUpdateAccountGroup,onUpdateCode:onUpdateAccountCode,isOtherBusy:()=>lifecycleBusyRef.current()});
+  const accountEditor = useAccountManagementEditor({companyId,actorUid:auth.currentUser?.uid,onUpdateGroup:onUpdateAccountGroup,onUpdateCode:onUpdateAccountCode,onOpenAccountEdit,onReadAccountOperations,onInspectAccountOperation,onRetryAccountOperation,onCancelAccountOperation,onDiscardAccountOperationCopy,isOtherBusy:()=>lifecycleBusyRef.current()});
   const accountLifecycle = useAccountManagementLifecycle({companyId,actorUid:auth.currentUser?.uid,onAddCode:onAddAccountCode,onAddGroup:onAddAccountGroup,onDeleteCode:onDeleteAccountCode,onDeleteGroup:onDeleteAccountGroup,onReadAccountOperations,onInspectAccountOperation,onRetryAccountOperation,onCancelAccountOperation,onDiscardAccountOperationCopy,isOtherBusy:accountEditor.isBusy});
   lifecycleBusyRef.current=accountLifecycle.isBusy;
   const showAddCode=!!accountLifecycle.codeSession,showAddGroup=!!accountLifecycle.groupSession;
   const newCodeForm=accountLifecycle.codeSession?.draft??{code:'',name:'',groupId:''};
   const newGroupForm=accountLifecycle.groupSession?.draft??{name:'',type:'수익' as AccountGroup['type'],plLine:'' as NonNullable<AccountGroup['plLine']>|''};
   const accountsBusy=accountEditor.busy||accountLifecycle.busy;
-  const unknownDelete = (kind:'code'|'group',id:string) => accountLifecycle.unknownOperations.some(operation=>operation.kind==='delete-'+kind && operation.targetId===id) || accountLifecycle.operationReferences.some(entry=>entry.reference?.kind===kind && entry.reference.targetId===id);
+  const editUnavailable=accountsBusy||!!onReadAccountOperations&&(accountEditor.readLoading||!!accountEditor.readError);
+  const unknownDelete = (kind:'code'|'group',id:string) => accountLifecycle.unknownOperations.some(operation=>operation.kind==='delete-'+kind && operation.targetId===id) || accountLifecycle.operationReferences.some(entry=>entry.action==='delete' && entry.reference?.kind===kind && entry.reference.targetId===id);
   const unknownOperations = accountLifecycle.unknownOperations.length>0 ? <section aria-label="이전 방식의 계정 작업 확인" className="max-h-60 min-w-0 shrink-0 overflow-y-auto break-words space-y-2 rounded border border-slate-200 p-3">
     <h3 className="text-sm font-bold text-slate-700">이전 방식의 계정 작업 확인</h3>
     <p className="text-xs text-slate-600">서버 영수증이 없는 이전 요청입니다. 새 요청으로 바꾸거나 자동 재전송하지 않습니다. 현재 목록을 확인해 주세요.</p>
@@ -170,21 +173,26 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       <p>대상 번호: {operation.targetId}</p><p className="whitespace-pre-line">{operation.message}</p>
     </div>)}
   </section> : null;
-  const operationReferences = accountLifecycle.operationReferences.length>0 ? <section aria-label="결과 확인이 필요한 계정 요청" className="max-h-60 min-w-0 shrink-0 overflow-y-auto break-words space-y-3 rounded border border-slate-200 p-3">
+  const recoveryEntries = [
+    ...accountLifecycle.operationReferences.filter(entry=>!entry.reference||!accountEditor.ownsReference(entry.reference)).map(entry=>({entry,controller:accountLifecycle,editController:false})),
+    ...accountEditor.operationReferences.map(entry=>({entry,controller:accountEditor,editController:true})),
+  ];
+  const operationReferences = recoveryEntries.length>0 ? <section aria-label="결과 확인이 필요한 계정 요청" className="max-h-60 min-w-0 shrink-0 overflow-y-auto break-words space-y-3 rounded border border-slate-200 p-3">
     <h3 className="text-sm font-bold text-slate-700">계정 요청 처리 결과</h3>
-    {accountLifecycle.operationReferences.map(entry=><div key={entry.key} className="space-y-1 text-xs text-slate-600">
+    {recoveryEntries.map(({entry,controller,editController})=><div key={entry.key} className="space-y-1 text-xs text-slate-600">
       <p className="font-bold">{entry.description}</p>
       {entry.reference ? <><p>대상 번호: {entry.reference.targetId} · 요청 번호: {entry.reference.planId}</p>
+        {editController && entry.action && entry.action!=='update' && <p>선택한 편집 요청과 사본의 처리 종류가 달라 다시 보내지 않습니다. 서버 결과 확인이나 요청 중단을 선택해 주세요.</p>}
         {entry.status!=='valid' && <p>요청 원문을 읽지 못해 다시 보내지 않습니다. 서버 결과 확인이나 요청 중단을 선택해 주세요.</p>}
         <div className="flex flex-wrap gap-2">
-          <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 결과 확인'} disabled={accountsBusy || !onInspectAccountOperation} onClick={()=>void accountLifecycle.inspectOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
-          {entry.status==='valid' && <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 같은 요청 재시도'} disabled={accountsBusy || !onRetryAccountOperation} onClick={()=>void accountLifecycle.retryOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">같은 요청 재시도</button>}
-          <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 미처리 요청 중단'} disabled={accountsBusy || !onCancelAccountOperation} onClick={()=>void accountLifecycle.cancelOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">미처리 요청 중단</button>
-          {typeof entry.observedLocalText==='string' && <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 이 기기 사본 정리'} disabled={accountsBusy || !onDiscardAccountOperationCopy} onClick={()=>void accountLifecycle.discardOperation(entry.reference!,entry.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
-        </div><p>요청 중단은 아직 처리되지 않은 요청을 막습니다. 이미 적용된 등록·삭제를 되돌리지 않습니다.</p></> : <p>요청 번호를 확인할 수 없어 원문을 보존했습니다. 다른 계정 작업은 계속할 수 있습니다.</p>}
+          <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 결과 확인'} disabled={accountsBusy || !onInspectAccountOperation} onClick={()=>void controller.inspectOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>
+          {entry.status==='valid' && !!entry.action && (editController ? entry.action==='update' : entry.action!=='update') && <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 같은 요청 재시도'} disabled={accountsBusy || !onRetryAccountOperation} onClick={()=>void controller.retryOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">같은 요청 재시도</button>}
+          <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 미처리 요청 중단'} disabled={accountsBusy || !onCancelAccountOperation} onClick={()=>void controller.cancelOperation(entry.reference!)} className="rounded border border-slate-200 px-3 py-2">미처리 요청 중단</button>
+          {typeof entry.observedLocalText==='string' && <button type="button" aria-label={entry.description+' · '+entry.reference.planId+' · 이 기기 사본 정리'} disabled={accountsBusy || !onDiscardAccountOperationCopy} onClick={()=>void controller.discardOperation(entry.reference!,entry.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
+        </div><p>요청 중단은 아직 처리되지 않은 요청을 막습니다. 이미 적용된 등록·수정·삭제를 되돌리지 않습니다.</p></> : <p>요청 번호를 확인할 수 없어 원문을 보존했습니다. 다른 계정 작업은 계속할 수 있습니다.</p>}
     </div>)}
   </section> : null;
-  const retryOperationList = onReadAccountOperations && accountLifecycle.error ? <button type="button" disabled={accountsBusy} onClick={()=>void accountLifecycle.refreshOperations()} className="rounded border border-slate-200 px-3 py-2 text-xs">계정 요청 목록 다시 읽기</button> : null;
+  const retryOperationList = onReadAccountOperations && (accountLifecycle.error || accountEditor.error || accountEditor.readError) ? <button type="button" disabled={accountsBusy} onClick={()=>{void accountLifecycle.refreshOperations();void accountEditor.refreshOperations();}} className="rounded border border-slate-200 px-3 py-2 text-xs">계정 요청 목록 다시 읽기</button> : null;
   const editGroupId=accountEditor.groupSession?.id,editGroupForm=accountEditor.groupSession?.draft;
   const editCodeId=accountEditor.codeSession?.id,editCodeForm=accountEditor.codeSession?.draft;
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
@@ -457,7 +465,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {!showAccountSettings && unknownOperations}
       {!showAccountSettings && (accountLifecycle.error||accountLifecycle.message) && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{accountLifecycle.error||accountLifecycle.message}</p>}
       {!showAccountSettings && retryOperationList}
-      {!showAccountSettings && accountEditor.message && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{accountEditor.message}</p>}
+      {!showAccountSettings && (accountEditor.message || (!accountLifecycle.error && accountEditor.readError)) && <p role="status" className="whitespace-pre-line text-sm text-slate-600">{accountEditor.message || (!accountLifecycle.error && accountEditor.readError)}</p>}
       {!isStandalone && (
         <>
           <PageHeader
@@ -1810,7 +1818,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           {!accountLifecycle.busy && (accountLifecycle.error || accountLifecycle.blockedReason || accountLifecycle.message) && <p role="status" className="whitespace-pre-line px-5 py-3 text-sm text-slate-600">{accountLifecycle.error || accountLifecycle.blockedReason || accountLifecycle.message}</p>}
           {retryOperationList}
           {accountEditor.busy && <p role="status" className="px-5 py-3 text-sm text-slate-600">계정 정보를 저장하고 있습니다. 완료 응답을 기다려 주세요.</p>}
-          {!accountEditor.busy && (accountEditor.error || ((editGroupId || editCodeId) && accountEditor.blockedReason) || accountEditor.message) && <p role="status" className="whitespace-pre-line px-5 py-3 text-sm text-slate-600">{accountEditor.error || ((editGroupId || editCodeId) && accountEditor.blockedReason) || accountEditor.message}</p>}
+          {!accountEditor.busy && (accountEditor.error || (!accountLifecycle.error && accountEditor.readError) || ((editGroupId || editCodeId) && accountEditor.blockedReason) || accountEditor.message) && <p role="status" className="whitespace-pre-line px-5 py-3 text-sm text-slate-600">{accountEditor.error || (!accountLifecycle.error && accountEditor.readError) || ((editGroupId || editCodeId) && accountEditor.blockedReason) || accountEditor.message}</p>}
           <div className="bg-white border-b border-slate-200 px-5 py-3 flex justify-end shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <button disabled={accountsBusy} onClick={() => {if(showAddCode)accountLifecycle.closeDraft();else accountLifecycle.newCode();}}
@@ -1898,15 +1906,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <div className="flex items-center gap-2 mb-3">
                         {editGroupId === group.id && editGroupForm ? (
                           <>
-                            <select disabled={accountsBusy} aria-label="계정그룹 손익 줄" value={editGroupForm.plLine ?? ''} onChange={e => accountEditor.changeGroup({plLine:(e.target.value || '') as AccountGroup['plLine'] | ''})}
+                            <select disabled={accountsBusy || accountEditor.groupSession?.locked} aria-label="계정그룹 손익 줄" value={editGroupForm.plLine ?? ''} onChange={e => accountEditor.changeGroup({plLine:(e.target.value || '') as AccountGroup['plLine'] | ''})}
                               className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold outline-none">
                               {PL_LINES.map(l => <option key={l.value ?? ''} value={l.value ?? ''}>{l.label}</option>)}
                             </select>
-                            <select disabled={accountsBusy} aria-label="계정그룹 유형" value={editGroupForm.type} onChange={e => accountEditor.changeGroup({type:e.target.value as AccountGroup['type']})}
+                            <select disabled={accountsBusy || accountEditor.groupSession?.locked} aria-label="계정그룹 유형" value={editGroupForm.type} onChange={e => accountEditor.changeGroup({type:e.target.value as AccountGroup['type']})}
                               className="text-[11px] font-black bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300">
                               {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
-                            <input disabled={accountsBusy} aria-label="계정그룹 이름" autoFocus value={editGroupForm.name} onChange={e => accountEditor.changeGroup({name:e.target.value})}
+                            <input disabled={accountsBusy || accountEditor.groupSession?.locked} aria-label="계정그룹 이름" autoFocus value={editGroupForm.name} onChange={e => accountEditor.changeGroup({name:e.target.value})}
                               onKeyDown={e => { if(e.key==='Enter')void accountEditor.save();if(e.key==='Escape')accountEditor.cancel(); }}
                               className="flex-1 min-w-0 text-sm font-black bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:ring-2 focus:ring-blue-300" />
                             <button disabled={!accountEditor.canSave || accountsBusy} aria-label={accountEditor.error?'같은 입력 다시 저장':'계정그룹 수정 저장'} onClick={() => void accountEditor.save()}
@@ -1918,7 +1926,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${typeColor[group.type] ?? 'bg-slate-100 text-slate-600'}`}>{group.type}</span>
                             <span className="font-black text-slate-800">{group.name}</span>
                             {onUpdateAccountGroup && (
-                              <button disabled={accountsBusy} aria-label={group.name+' 그룹 수정'} onClick={() => accountEditor.openGroup(group)}
+                              <button disabled={editUnavailable} aria-label={group.name+' 그룹 수정'} onClick={() => accountEditor.openGroup(group)}
                                 className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={12} /></button>
                             )}
                             {onDeleteAccountGroup && !unknownDelete('group',group.id) && (
@@ -1936,12 +1944,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             {editCodeId === ac.id && editCodeForm ? (
                               <>
                                 {accountEditor.codeSession?.intent === 'groupMove' && <span className="text-[11px] font-black text-slate-700">{ac.code} {ac.name}</span>}
-                                <select disabled={accountsBusy} aria-label="수정 계정 그룹" value={editCodeForm.groupId} onChange={e=>accountEditor.changeCode({groupId:e.target.value})} className="text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                                <select disabled={accountsBusy || accountEditor.codeSession?.locked} aria-label="수정 계정 그룹" value={editCodeForm.groupId} onChange={e=>accountEditor.changeCode({groupId:e.target.value})} className="text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
                                   <option value="">그룹 없음</option>{accountGroups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
-                                {accountEditor.codeSession?.intent !== 'groupMove' && <><input disabled={accountsBusy} autoFocus value={editCodeForm.code} onChange={e => accountEditor.changeCode({code:e.target.value})} placeholder="코드"
+                                {accountEditor.codeSession?.intent !== 'groupMove' && <><input disabled={accountsBusy || accountEditor.codeSession?.locked} autoFocus value={editCodeForm.code} onChange={e => accountEditor.changeCode({code:e.target.value})} placeholder="코드"
                                   className="w-12 text-[11px] font-black bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
-                                <input disabled={accountsBusy} value={editCodeForm.name} onChange={e => accountEditor.changeCode({name:e.target.value})} placeholder="계정명"
+                                <input disabled={accountsBusy || accountEditor.codeSession?.locked} value={editCodeForm.name} onChange={e => accountEditor.changeCode({name:e.target.value})} placeholder="계정명"
                                   onKeyDown={e => { if(e.key==='Enter')void accountEditor.save();if(e.key==='Escape')accountEditor.cancel(); }}
                                   className="w-24 text-[11px] bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" /></>}
                                 <button disabled={!accountEditor.canSave || accountsBusy} aria-label={accountEditor.error?'같은 입력 다시 저장':'계정과목 수정 저장'} onClick={() => void accountEditor.save()}
@@ -1953,12 +1961,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                                 <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
                                 <span className="text-[11px] text-slate-500">{ac.name}</span>
                                 {onUpdateAccountCode && (
-                                  <button disabled={accountsBusy} aria-label={ac.name+' 계정 수정'} onClick={() => accountEditor.openCode(ac)}
+                                  <button disabled={editUnavailable} aria-label={ac.name+' 계정 수정'} onClick={() => accountEditor.openCode(ac)}
                                     className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={11} /></button>
                                 )}
                                 {onUpdateAccountCode && (
                                   <select
-                                    disabled={accountsBusy} aria-label={(ac.name||ac.code)+' 계정 그룹'} value={ac.groupId ?? ''}
+                                    disabled={editUnavailable} aria-label={(ac.name||ac.code)+' 계정 그룹'} value={ac.groupId ?? ''}
                                     onChange={e => void accountEditor.moveCodeGroup(ac,e.target.value)}
                                     className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
                                     <option value="">그룹 없음</option>
@@ -1997,12 +2005,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         {editCodeId === ac.id && editCodeForm ? (
                           <>
                             {accountEditor.codeSession?.intent === 'groupMove' && <span className="text-[11px] font-black text-slate-700">{ac.code} {ac.name}</span>}
-                                <select disabled={accountsBusy} aria-label="수정 계정 그룹" value={editCodeForm.groupId} onChange={e=>accountEditor.changeCode({groupId:e.target.value})} className="text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                                <select disabled={accountsBusy || accountEditor.codeSession?.locked} aria-label="수정 계정 그룹" value={editCodeForm.groupId} onChange={e=>accountEditor.changeCode({groupId:e.target.value})} className="text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
                                   <option value="">그룹 없음</option>{accountGroups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
-                                {accountEditor.codeSession?.intent !== 'groupMove' && <><input disabled={accountsBusy} autoFocus value={editCodeForm.code} onChange={e => accountEditor.changeCode({code:e.target.value})} placeholder="코드"
+                                {accountEditor.codeSession?.intent !== 'groupMove' && <><input disabled={accountsBusy || accountEditor.codeSession?.locked} autoFocus value={editCodeForm.code} onChange={e => accountEditor.changeCode({code:e.target.value})} placeholder="코드"
                               className="w-12 text-[11px] font-black bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
-                            <input disabled={accountsBusy} value={editCodeForm.name} onChange={e => accountEditor.changeCode({name:e.target.value})} placeholder="계정명"
+                            <input disabled={accountsBusy || accountEditor.codeSession?.locked} value={editCodeForm.name} onChange={e => accountEditor.changeCode({name:e.target.value})} placeholder="계정명"
                               onKeyDown={e => { if(e.key==='Enter')void accountEditor.save();if(e.key==='Escape')accountEditor.cancel(); }}
                               className="w-24 text-[11px] bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" /></>}
                             <button disabled={!accountEditor.canSave || accountsBusy} aria-label={accountEditor.error?'같은 입력 다시 저장':'계정과목 수정 저장'} onClick={() => void accountEditor.save()}
@@ -2014,11 +2022,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
                             <span className="text-[11px] text-slate-500">{ac.name}</span>
                             {onUpdateAccountCode && (
-                              <button disabled={accountsBusy} aria-label={ac.name+' 계정 수정'} onClick={() => accountEditor.openCode(ac)}
+                              <button disabled={editUnavailable} aria-label={ac.name+' 계정 수정'} onClick={() => accountEditor.openCode(ac)}
                                 className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={11} /></button>
                             )}
                             {onUpdateAccountCode && (
-                              <select disabled={accountsBusy} aria-label={(ac.name||ac.code)+' 계정 그룹'} value={ac.groupId ?? ''}
+                              <select disabled={editUnavailable} aria-label={(ac.name||ac.code)+' 계정 그룹'} value={ac.groupId ?? ''}
                                 onChange={e => void accountEditor.moveCodeGroup(ac,e.target.value)}
                                 className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
                                 <option value="">그룹 선택</option>

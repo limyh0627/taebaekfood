@@ -37,7 +37,7 @@ function parse(input: AccountManagementCommand): {
         throw Error('계정 최초 원문 해시를 확인해 주세요.');
     return { reference, text: null, hash: input.requestHash };
 }
-/** 계정 한 건의 등록·삭제와 처리 근거를 함께 확정한다. 회계 계산이나 연결 정리는 하지 않는다. */
+/** 계정 한 건의 등록·수정·삭제와 처리 근거를 함께 확정한다. 회계 계산이나 연결 정리는 하지 않는다. */
 export async function executeAccountManagementCommand(db: admin.firestore.Firestore, actor: Actor | undefined, input: AccountManagementCommand): Promise<AccountManagementOpenResult | AccountManagementResult> {
     if (!actor?.uid)
         throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -99,7 +99,8 @@ export async function executeAccountManagementCommand(db: admin.firestore.Firest
         if (input.mode === 'cancel')
             return writeReceipt(outcome('cancelled', null, '이 계정 요청을 중단했습니다. 늦게 도착한 같은 요청도 실행하지 않습니다.'));
         const target = await tx.get(targetRef), current = target.data();
-        const issue = !target.exists ? '삭제 대상이 이미 없거나 바뀌었습니다. 현재 목록을 다시 확인해 주세요.' : current!.companyId !== reference.companyId ? '삭제 대상의 회사가 명시적으로 일치하지 않아 삭제하지 않았습니다. 회사 정보를 확인해 주세요.' : null;
+        const operationName = request?.action === 'update' ? '수정' : '삭제';
+        const issue = !target.exists ? `${operationName} 대상이 이미 없거나 바뀌었습니다. 현재 목록을 다시 확인해 주세요.` : current!.companyId !== reference.companyId ? `${operationName} 대상의 회사가 명시적으로 일치하지 않아 처리하지 않았습니다. 회사 정보를 확인해 주세요.` : null;
         const opening = target.exists ? accountManagementOpening(current!, reference.kind) : null;
         if (input.mode === 'open') {
             if (issue)
@@ -117,7 +118,23 @@ export async function executeAccountManagementCommand(db: admin.firestore.Firest
         }
         if (issue) return reject(issue);
         if (nativeVersion(target) !== request!.expectedVersion) {
-            return reject('계정이 확인 후 변경되거나 다시 만들어져 삭제하지 않았습니다. 최신 목록에서 다시 확인해 주세요.');
+            return reject(`계정이 확인 후 변경되거나 다시 만들어져 ${operationName}하지 않았습니다. 최신 목록에서 다시 확인해 주세요.`);
+        }
+        if (request!.action === 'update') {
+            const groupId = request!.patch!.groupId;
+            if (reference.kind === 'code' && groupId) {
+                if (!documentId(groupId)) return reject('이동할 그룹 번호를 확인해 주세요.');
+                const group = await tx.get(db.collection('accountGroups').doc(groupId));
+                if (!group.exists || group.get('companyId') !== reference.companyId)
+                    return reject('이동할 그룹이 없거나 현재 회사와 다릅니다. 현재 그룹 목록을 확인한 뒤 다시 수정해 주세요.');
+            }
+            // 전체 문서의 native 버전은 검사하되 실제 쓰기는 사용자가 바꾼 허용 필드만 한다.
+            const patch: Record<string, string | admin.firestore.FieldValue> = {};
+            for (const [field, value] of Object.entries(request!.patch!)) {
+                patch[field] = value === null ? admin.firestore.FieldValue.delete() : value;
+            }
+            tx.update(targetRef, patch);
+            return writeReceipt(outcome('applied', hash!, '계정 한 건의 수정 항목을 저장했습니다.'));
         }
         tx.delete(targetRef);
         return writeReceipt(outcome('applied', hash!, '계정 한 건을 삭제했습니다.'));    });

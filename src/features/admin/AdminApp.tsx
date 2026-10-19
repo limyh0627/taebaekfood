@@ -12,7 +12,7 @@ import {submitOrderEdit,pendingOrderEdits,orderEditReferences,inspectOrderEdit,c
 import type { OrderEditSaveResult } from '../orders/hooks/useOrderEditorDraft';
 import { saveOrderEdit, type OrderEdit } from '../orders/application/orderEditService';
 import { primaryCommitted, type SaveOutcome } from '../../shared/saveOutcome';
-import { saveAccountCodeEdit, saveAccountGroupEdit, saveAccountCodeCreate, saveAccountGroupCreate, deleteAccountCode, deleteAccountGroup, readAccountOperationReferences, inspectAccountOperation, retryAccountOperation, cancelAccountOperation, discardAccountOperationCopy, type AccountOperationContext, type AccountEditContext, type AccountCodeEditPatch, type AccountGroupEditPatch } from './infrastructure/accountManagementWrites';
+import { captureAccountEditOpening, saveAccountCodeEdit, saveAccountGroupEdit, saveAccountCodeCreate, saveAccountGroupCreate, deleteAccountCode, deleteAccountGroup, readAccountOperationReferences, inspectAccountOperation, retryAccountOperation, cancelAccountOperation, discardAccountOperationCopy, type AccountOperationContext, type AccountUpdateContext, type AccountEditContext, type AccountCodeEditPatch, type AccountGroupEditPatch } from './infrastructure/accountManagementWrites';
 import type { LeaveScope } from '../hr/infrastructure/leaveRequestWrites';
 import { submitLeaveRequests, submitLeaveAction, inspectLeaveAction, cancelLeaveAction, pendingLeaveActions, pendingLeaveRequests, pendingLeaveGroups, inspectLeaveRequest, cancelLeaveRequest, listLeaveReferences, cancelLeaveReference } from '../hr/infrastructure/leaveRequestWrites';
 import type { LeaveMutationAction } from '../../shared/leaveRequestCommand';
@@ -453,15 +453,27 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const result = await save();
     if (!primaryCommitted(result, id) || context.companyId !== companyId || !context.isCurrent()) return result;
     try { refreshStaticData(); }
-    catch { return {
-      status: 'partial', reason: 'followup-unconfirmed', committedIds: [id], unconfirmedIds: [],
-      message: '계정 처리는 완료됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
-    }; }
+    catch {
+      if (result.status === 'partial') return {
+        ...result, message: result.message + ' 목록 갱신도 시작하지 못했습니다.',
+      };
+      return {
+        ...result,
+        status: 'partial', reason: 'followup-unconfirmed', committedIds: [id], unconfirmedIds: [],
+        message: '계정 처리는 완료됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
+      };
+    }
     return result;
   };
-  const updateProfitAccountCode = (id: string, patch: AccountCodeEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
+  const openProfitAccountEdit = async (kind: 'code' | 'group', opening: AccountCode | AccountGroup, context: AccountOperationContext) => {
+    if (!context.isCurrent() || context.companyId !== companyId || auth.currentUser?.uid !== context.actorUid) throw Error('회사 또는 로그인 정보가 바뀌었습니다.');
+    const result = await captureAccountEditOpening(kind, opening, context);
+    if (!context.isCurrent() || auth.currentUser?.uid !== context.actorUid) throw Error('회사 또는 로그인 정보가 바뀌었습니다.');
+    return result;
+  };
+  const updateProfitAccountCode = (id: string, patch: AccountCodeEditPatch, context: AccountUpdateContext): Promise<SaveOutcome> =>
     saveProfitAccountChange(id, context, () => saveAccountCodeEdit(id, patch, context));
-  const updateProfitAccountGroup = (id: string, patch: AccountGroupEditPatch, context: AccountEditContext): Promise<SaveOutcome> =>
+  const updateProfitAccountGroup = (id: string, patch: AccountGroupEditPatch, context: AccountUpdateContext): Promise<SaveOutcome> =>
     saveProfitAccountChange(id, context, () => saveAccountGroupEdit(id, patch, context));
 
   const createProfitAccountCode = (data: AccountCode, context: AccountOperationContext): Promise<SaveOutcome> =>
@@ -4496,6 +4508,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onAddAccountGroup={createProfitAccountGroup}
                 onUpdateAccountGroup={updateProfitAccountGroup}
                 onDeleteAccountGroup={removeProfitAccountGroup}
+                onOpenAccountEdit={openProfitAccountEdit}
                 onReadAccountOperations={readProfitAccountOperations}
                 onInspectAccountOperation={inspectProfitAccountOperation}
                 onRetryAccountOperation={retryProfitAccountOperation}

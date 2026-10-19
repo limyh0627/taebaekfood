@@ -27,3 +27,18 @@ it('삭제 원문은 신규 data를 금지하고 결과는 nullhash·다른회�
   expect(() => normalizeAccountManagementResult({ ...result, status: 'rejected' }, reference, 'u')).toThrow();
   expect(() => normalizeAccountManagementResult({ ...result, requestHash: 'a'.repeat(64) }, reference, 'u', 'b'.repeat(64))).toThrow();
 });
+
+it('수정은허용dirtypatch와native버전만보존하며생략과명시null을구분한다',()=>{
+ const base={version:1,reference:{...reference,kind:'group'},action:'update',expectedVersion:'1:000000001'};
+ expect(normalizeAccountManagementRequest({...base,patch:{name:' 새 그룹 ',type:undefined}}).patch).toEqual({name:' 새 그룹 '});
+ expect(normalizeAccountManagementRequest({...base,patch:{plLine:null}}).patch).toEqual({plLine:null});
+ expect(JSON.parse(serializeAccountManagementRequest(normalizeAccountManagementRequest({...base,patch:{plLine:''}}))).patch).toEqual({plLine:''});
+ expect(normalizeAccountManagementRequest({...base,reference,patch:{code:'',groupId:''}}).patch).toEqual({code:'',groupId:''});
+});
+it.each([{}, {name:''}, {name:'  '}, {name:null}, {companyId:'punghoe'}, {id:'other'}, {normalBalance:'debit'}, {plLine:null}, {code:12}])('code수정의허용밖또는빈patch는거절한다 %j',patch=>{
+ expect(()=>normalizeAccountManagementRequest({version:1,reference,action:'update',expectedVersion:'1:000000001',patch})).toThrow();
+});
+it('수정요청의신규data혼입·버전누락·그룹에code혼입은송신원문으로허용하지않는다',()=>{
+ const request={version:1,reference,action:'update',expectedVersion:'1:000000001',patch:{name:'변경'}};
+ for(const invalid of [{...request,data:{id:reference.targetId,name:'변경',code:'0'}},{...request,expectedVersion:null},{...request,reference:{...reference,kind:'group'},patch:{code:'0'}},{...request,action:'create',expectedVersion:null,data:{id:reference.targetId,name:'코드',code:'0'}},{...request,action:'delete'}])expect(()=>normalizeAccountManagementRequest(invalid)).toThrow();
+});

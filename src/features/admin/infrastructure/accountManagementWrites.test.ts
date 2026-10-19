@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { deleteField } from 'firebase/firestore';
 import { createHash } from 'node:crypto';
-import { serializeAccountManagementRequest, type AccountManagementCommand } from '../../../shared/accountManagementCommand';
+import type { AccountGroup } from '../../../shared/types';
+import { accountManagementOpening, serializeAccountManagementRequest, type AccountManagementCommand } from '../../../shared/accountManagementCommand';
 const state = vi.hoisted(() => ({ uid: 'A', current: true, token: vi.fn(), write: vi.fn(), add: vi.fn(), remove: vi.fn(), command: vi.fn() }));
 vi.mock('firebase/functions', () => ({ httpsCallable: () => async (command: AccountManagementCommand) => ({ data: await state.command(command) }) }));
 vi.mock('../../../shared/firebase', () => ({ functions: {}, authReady: Promise.resolve(), auth: {
@@ -9,8 +10,9 @@ vi.mock('../../../shared/firebase', () => ({ functions: {}, authReady: Promise.r
 } }));
 vi.mock('../../../shared/services/firebaseService', () => ({ updateItem: state.write, addItem: state.add, deleteItem: state.remove }));
 import { saveAccountCodeEdit, saveAccountGroupEdit, saveAccountCodeCreate, saveAccountGroupCreate,
-  deleteAccountCode, deleteAccountGroup, readAccountOperationReferences, readAccountOperation, retryAccountOperation, inspectAccountOperation, cancelAccountOperation, discardAccountOperationCopy, type AccountEditContext } from './accountManagementWrites';
+  deleteAccountCode, deleteAccountGroup, captureAccountEditOpening, readAccountOperationReferences, readAccountOperation, retryAccountOperation, inspectAccountOperation, cancelAccountOperation, discardAccountOperationCopy, type AccountEditContext } from './accountManagementWrites';
 const context = (): AccountEditContext => ({ companyId: 'taebaek', actorUid: 'A', isCurrent: () => state.current });
+const editContext=(id:string,kind:'code'|'group')=>({...context(),planId:'edit-'+id,opening:{reference:{companyId:'taebaek' as const,planId:'edit-'+id,kind,targetId:id},actorUid:'A',expectedVersion:'1:000002000',opening:accountManagementOpening(kind==='group'?{id,name:'원그룹',type:'비용'}:{id,code:'0',name:'원코드'},kind)}});
 beforeEach(() => {
   vi.clearAllMocks(); state.uid = 'A'; state.current = true;
   state.token.mockResolvedValue({ claims: { companyId: 'taebaek' } });
@@ -29,40 +31,40 @@ beforeEach(() => {
 });
 it('손익 명시 해제만 deleteField로 전송하고 미지 필드는 허용하지 않는다', async () => {
   const patch = { name: '이름', plLine: null, note: '미지 원문', cfSection: 'investing' };
-  expect(await saveAccountGroupEdit('g', patch, context())).toEqual({ status: 'saved' });
-  expect(state.write).toHaveBeenCalledExactlyOnceWith('accountGroups', 'g', { name: '이름', plLine: deleteField() });
+  expect(await saveAccountGroupEdit('g', patch, editContext('g','group'))).toEqual({ status: 'saved',requestFinalized:true });
+  expect(state.command).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({mode:'apply',request:expect.objectContaining({action:'update',patch:{name:'이름',plLine:null}})}));expect(state.write).not.toHaveBeenCalled();
 });
 it('생략과 undefined는 그대로 두고 명시 코드 필드만 전송한다', async () => {
-  await saveAccountGroupEdit('g', { name: '이름', plLine: undefined }, context());
-  expect(state.write).toHaveBeenLastCalledWith('accountGroups', 'g', { name: '이름' });
-  await saveAccountCodeEdit('c', { code: '0', name: '', groupId: undefined }, context());
-  expect(state.write).toHaveBeenLastCalledWith('accountCodes', 'c', { code: '0', name: '' });
+  await saveAccountGroupEdit('g', { name: '이름', plLine: undefined }, editContext('g','group'));
+  expect(state.command.mock.calls.at(-1)?.[0]).toMatchObject({request:{patch:{name:'이름'}}});
+  await saveAccountCodeEdit('c', { code: '', name: '코드', groupId: undefined }, editContext('c','code'));
+  expect(state.command.mock.calls.at(-1)?.[0]).toMatchObject({request:{patch:{code:'',name:'코드'}}});
 });
 it('토큰 대기 중 UID 변경은 확정 미송신으로 분류한다', async () => {
   state.token.mockImplementation(async () => { state.uid = 'B'; return { claims: { companyId: 'taebaek' } }; });
-  expect((await saveAccountGroupEdit('g', { plLine: null }, context())).status).toBe('rejected');
+  expect((await saveAccountGroupEdit('g', { plLine: null }, editContext('g','group'))).status).toBe('rejected');
   expect(state.write).not.toHaveBeenCalled();
 });
 it('다른 회사 claim과 닫힌 창은 전송하지 않는다', async () => {
   state.token.mockResolvedValue({ claims: { companyId: 'punghoe' } });
-  expect((await saveAccountCodeEdit('c', { name: '이름' }, context())).status).toBe('rejected');
+  expect((await saveAccountCodeEdit('c', { name: '이름' }, editContext('c','code'))).status).toBe('rejected');
   state.current = false;
-  expect((await saveAccountGroupEdit('g', { name: '이름' }, context())).status).toBe('rejected');
+  expect((await saveAccountGroupEdit('g', { name: '이름' }, editContext('g','group'))).status).toBe('rejected');
   expect(state.write).not.toHaveBeenCalled();
 });
 it('실제 writer 응답 실패는 원인을 추측해 미저장으로 바꾸지 않는다', async () => {
-  state.write.mockRejectedValueOnce(Error('응답 유실'));
-  const result = await saveAccountGroupEdit('g', { name: '이름' }, context());
+  state.command.mockRejectedValueOnce(Error('응답 유실'));
+  const result = await saveAccountGroupEdit('g', { name: '이름' }, editContext('g','group'));
   expect(result.status).toBe('unknown');
-  expect(state.write).toHaveBeenCalledOnce();
+  expect(state.command).toHaveBeenCalledOnce();
 });
 it('실제 업무 ACK 전에는 saved가 반환되지 않는다', async () => {
   let resolve!: () => void;
-  state.write.mockReturnValue(new Promise<void>(done => { resolve = done; }));
+  const original=state.command.getMockImplementation()!;state.command.mockImplementationOnce(async command=>{await new Promise<void>(done=>{resolve=done;});return original(command);});
   let settled = false;
-  const saving = saveAccountCodeEdit('c', { groupId: 'g' }, context()).then(value => { settled = true; return value; });
-  await vi.waitFor(() => expect(state.write).toHaveBeenCalledOnce());
-  expect(settled).toBe(false); resolve(); expect(await saving).toEqual({ status: 'saved' });
+  const saving = saveAccountCodeEdit('c', { groupId: 'g' }, editContext('c','code')).then(value => { settled = true; return value; });
+  await vi.waitFor(() => expect(state.command).toHaveBeenCalledOnce());
+  expect(settled).toBe(false); resolve(); expect(await saving).toEqual({ status: 'saved',requestFinalized:true });
 });
 it('등록은 제출된 고정 ID와 표시 필드만 보내며 계정의 새 필수 정책을 만들지 않는다', async () => {
   await saveAccountCodeCreate({ id: 'ac-fixed', code: '0', name: '코드', groupId: 'g', note: '숨김', normalBalance: 'debit' }, { ...context(), planId: 'code-plan' });
@@ -141,8 +143,13 @@ it('key와 다른 본문 plan 및 hash 손상은 retry 금지이고 정확 ref �
   expect((await retryAccountOperation(durableReference, context())).status).toBe('unknown');
   expect(state.command).not.toHaveBeenCalled();
   state.command.mockResolvedValueOnce({ version: 1, reference: durableReference, actorUid: 'A', status: 'cancelled', requestHash: null, message: '요청을 중단했습니다.' });
-  expect((await cancelAccountOperation(durableReference, context())).status).toBe('cancelled');
+  expect((await cancelAccountOperation(durableReference, context())).status).toBe('rejected');
   expect(state.command.mock.calls[0][0]).toEqual({ mode: 'cancel', reference: durableReference });
+  const observed=localStorage.getItem(key)!;
+  expect(observed).not.toBeNull();
+  state.command.mockResolvedValueOnce({ version: 1, reference: durableReference, actorUid: 'A', status: 'cancelled', requestHash: null, message: '요청을 중단했습니다.' });
+  expect((await discardAccountOperationCopy(durableReference,observed,context())).status).toBe('saved');
+  expect(localStorage.getItem(key)).toBeNull();
 });
 it('local missing은 미처리 확정이 아니며 서버 unknown 원인을 보존한다', async () => {
   expect((await retryAccountOperation(durableReference, context())).status).toBe('unknown');
@@ -202,4 +209,19 @@ it('명시 사본 정리의 서버 확인 중 다른 사본으로 교체되면 �
   });
   expect((await discardAccountOperationCopy(durableReference, observed, context())).status).toBe('rejected');
   expect(localStorage.getItem(key)).toBe('직전 교체된 새 사본');
+});
+it('편집 열기는 선택 원문을 읽기 전용 대조하고 native version을 고정한다',async()=>{
+ const row:AccountGroup&{companyId:'taebaek'}={id:'g',name:'선택',type:'비용',companyId:'taebaek' as const};const fixed={...context(),planId:'opened'};
+ const opening=await captureAccountEditOpening('group',row,fixed);expect(opening.expectedVersion).toBe('1:000002000');expect(state.command.mock.calls[0][0]).toEqual({mode:'open',reference:opening.reference,opening:accountManagementOpening(row,'group')});expect(localStorage.length).toBe(0);
+ row.name='부모 최신 값';await saveAccountGroupEdit('g',{name:'수정'},{...fixed,opening});expect(state.command.mock.calls[1][0]).toMatchObject({request:{expectedVersion:'1:000002000',patch:{name:'수정'}}});expect(state.command.mock.calls.filter(call=>call[0].mode==='open')).toHaveLength(1);
+});
+it('편집 ACK 뒤 사본 정리 실패에는 종결 태그가 없고 같은 원문 확인 정리 성공에만 붙는다',async()=>{
+ const original=localStorage.removeItem;localStorage.removeItem=()=>{throw Error('보관 잠금');};const fixed=editContext('g','group');
+ const outcome=await saveAccountGroupEdit('g',{name:'수정'},fixed);expect(outcome).toMatchObject({status:'partial',committedIds:['g']});expect(outcome).not.toHaveProperty('requestFinalized');const raw=localStorage.getItem(localStorage.key(0)!)!,plan=JSON.parse(raw);
+ localStorage.removeItem=original;state.command.mockResolvedValueOnce({version:1,reference:fixed.opening.reference,actorUid:'A',status:'applied',requestHash:plan.requestHash,message:'수정 완료'});
+ expect(await inspectAccountOperation(fixed.opening.reference,context())).toMatchObject({status:'saved',requestFinalized:true});expect(localStorage.length).toBe(0);
+});
+it('unknown 편집은 action과 동일 원문을 보관하고 retry는 open 없이 그 원문만 전송한다',async()=>{
+ state.command.mockRejectedValueOnce(Error('ACK 유실'));const fixed=editContext('c','code');expect((await saveAccountCodeEdit('c',{groupId:'g'},fixed)).status).toBe('unknown');const entry=(await readAccountOperationReferences(context()))[0];expect(entry.action).toBe('update');const plan=JSON.parse(entry.observedLocalText!);
+ expect(await retryAccountOperation(fixed.opening.reference,context())).toMatchObject({status:'saved',requestFinalized:true});expect(state.command.mock.calls[1][0]).toEqual({mode:'apply',request:plan.request});expect(state.command.mock.calls.some(call=>call[0].mode==='open')).toBe(false);
 });

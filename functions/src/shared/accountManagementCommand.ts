@@ -18,12 +18,20 @@ export interface AccountManagementCreateData {
   type?: string;
   plLine?: string;
 }
+export interface AccountManagementUpdatePatch {
+  name?: string;
+  code?: string;
+  groupId?: string;
+  type?: string;
+  plLine?: string | null;
+}
 export interface AccountManagementRequest {
   version: 1;
   reference: AccountManagementReference;
-  action: 'create' | 'delete';
+  action: 'create' | 'delete' | 'update';
   expectedVersion: string | null;
   data?: AccountManagementCreateData;
+  patch?: AccountManagementUpdatePatch;
 }
 export interface AccountManagementOpenRequest {
   mode: 'open';
@@ -78,14 +86,27 @@ function versionOf(value: unknown): string {
   return value;
 }
 export function normalizeAccountManagementRequest(value: unknown): AccountManagementRequest {
-  exact(value, ['version', 'reference', 'action', 'expectedVersion', 'data']);
+  exact(value, ['version', 'reference', 'action', 'expectedVersion', 'data', 'patch']);
   const reference = normalizeAccountManagementReference(value.reference);
-  if (value.version !== 1 || !['create', 'delete'].includes(String(value.action))) throw Error('계정 처리 종류를 확인해 주세요.');
+  if (value.version !== 1 || !['create', 'delete', 'update'].includes(String(value.action))) throw Error('계정 처리 종류를 확인해 주세요.');
   const result: AccountManagementRequest = { version: 1, reference, action: value.action as AccountManagementRequest['action'], expectedVersion: null };
-  if (value.action === 'delete') {
+  if (value.action === 'update') {
+    if (Object.prototype.hasOwnProperty.call(value, 'data')) throw Error('수정 요청에는 신규 원문을 넣을 수 없습니다.');
+    result.expectedVersion = versionOf(value.expectedVersion);
+    const fields = reference.kind === 'code' ? ['code', 'name', 'groupId'] : ['name', 'type', 'plLine'];
+    exact(value.patch, fields);
+    const patch = Object.fromEntries(fields.filter(key => value.patch && (value.patch as Record<string, unknown>)[key] !== undefined)
+      .map(key => [key, (value.patch as Record<string, unknown>)[key]]));
+    if (!Object.keys(patch).length || Object.entries(patch).some(([key, field]) => typeof field !== 'string' && !(key === 'plLine' && field === null)))
+      throw Error('수정할 계정 항목과 입력 원문을 확인해 주세요.');
+    if (typeof patch.name === 'string' && !patch.name.trim()) throw Error('이름을 입력해 주세요.');
+    result.patch = patch as AccountManagementUpdatePatch;
+  } else if (value.action === 'delete') {
+    if (Object.prototype.hasOwnProperty.call(value, 'patch')) throw Error('삭제 요청에는 수정 항목을 넣을 수 없습니다.');
     if (Object.prototype.hasOwnProperty.call(value, 'data')) throw Error('삭제 요청에는 신규 원문을 넣을 수 없습니다.');
     result.expectedVersion = versionOf(value.expectedVersion);
   } else {
+    if (Object.prototype.hasOwnProperty.call(value, 'patch')) throw Error('신규 요청에는 수정 항목을 넣을 수 없습니다.');
     if (value.expectedVersion !== null) throw Error('신규 계정은 기존 버전 없이 등록해 주세요.');
     const fields = reference.kind === 'code' ? ['id', 'code', 'name', 'groupId'] : ['id', 'name', 'type', 'plLine'];
     exact(value.data, fields);

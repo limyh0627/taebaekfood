@@ -18,11 +18,11 @@ function actualCallbacks() {
     ts.forEachChild(node, visit);
   }
   visit(file);
-  const names = ['saveProfitAccountChange', ports.get('onUpdateAccountCode'), ports.get('onUpdateAccountGroup'), ports.get('onAddAccountCode'), ports.get('onAddAccountGroup'), ports.get('onDeleteAccountCode'), ports.get('onDeleteAccountGroup'), ports.get('onReadAccountOperations'), ports.get('onInspectAccountOperation'), ports.get('onRetryAccountOperation'), ports.get('onCancelAccountOperation'), ports.get('onDiscardAccountOperationCopy')];
+  const names = ['saveProfitAccountChange', ports.get('onUpdateAccountCode'), ports.get('onUpdateAccountGroup'), ports.get('onAddAccountCode'), ports.get('onAddAccountGroup'), ports.get('onDeleteAccountCode'), ports.get('onDeleteAccountGroup'), ports.get('onReadAccountOperations'), ports.get('onInspectAccountOperation'), ports.get('onRetryAccountOperation'), ports.get('onCancelAccountOperation'), ports.get('onDiscardAccountOperationCopy'),ports.get('onOpenAccountEdit')];
   const body = names.map(name => {
     if (!name || !declarations.has(name)) throw Error('실제 손익 계정 편집 연결이 없습니다.');
     return `const ${name} = ${declarations.get(name)!.getText(file)};`;
-  }).join('\n') + `\nreturn {code:${names[1]},group:${names[2]},createCode:${names[3]},createGroup:${names[4]},deleteCode:${names[5]},deleteGroup:${names[6]},readOperations:${names[7]},inspectOperation:${names[8]},retryOperation:${names[9]},cancelOperation:${names[10]},discardCopy:${names[11]}};`;
+  }).join('\n') + `\nreturn {code:${names[1]},group:${names[2]},createCode:${names[3]},createGroup:${names[4]},deleteCode:${names[5]},deleteGroup:${names[6]},readOperations:${names[7]},inspectOperation:${names[8]},retryOperation:${names[9]},cancelOperation:${names[10]},discardCopy:${names[11]},openEdit:${names[12]}};`;
   return ts.transpileModule(body, {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 }
 function harness() {
@@ -38,11 +38,12 @@ function harness() {
   const retry = vi.fn(async (..._args: unknown[]): Promise<SaveOutcome> => ({status:'saved'}));
   const cancel = vi.fn(async (..._args: unknown[]): Promise<SaveOutcome> => ({status:'cancelled',message:'적용 전 중단'}));
   const discardWriter = vi.fn(async (..._args: unknown[]): Promise<SaveOutcome> => ({status:'saved'}));
+  const openWriter = vi.fn(async (..._args: unknown[]): Promise<unknown> => ({reference:{companyId:'taebaek',planId:'fixed',kind:'code',targetId:'code-1'},actorUid:'actor',expectedVersion:'1:000000001',opening:['map',[]]}));
   const refresh = vi.fn();
-  const deps = {companyId:'taebaek', auth:{currentUser:{uid:'actor'}}, primaryCommitted, saveAccountCodeEdit:codeWriter, saveAccountGroupEdit:groupWriter, saveAccountCodeCreate:createCodeWriter, saveAccountGroupCreate:createGroupWriter, deleteAccountCode:deleteCodeWriter, deleteAccountGroup:deleteGroupWriter, readAccountOperationReferences:readReferences, inspectAccountOperation:inspect, retryAccountOperation:retry, cancelAccountOperation:cancel, discardAccountOperationCopy:discardWriter, refreshStaticData:refresh};
+  const deps = {captureAccountEditOpening:openWriter,companyId:'taebaek', auth:{currentUser:{uid:'actor'}}, primaryCommitted, saveAccountCodeEdit:codeWriter, saveAccountGroupEdit:groupWriter, saveAccountCodeCreate:createCodeWriter, saveAccountGroupCreate:createGroupWriter, deleteAccountCode:deleteCodeWriter, deleteAccountGroup:deleteGroupWriter, readAccountOperationReferences:readReferences, inspectAccountOperation:inspect, retryAccountOperation:retry, cancelAccountOperation:cancel, discardAccountOperationCopy:discardWriter, refreshStaticData:refresh};
   const callbacks = new Function(...Object.keys(deps), actualCallbacks())(...Object.values(deps));
   const context = {companyId:'taebaek',actorUid:'actor',planId:'plan-fixed',isCurrent:()=>current};
-  return {...callbacks,codeWriter,groupWriter,createCodeWriter,createGroupWriter,deleteCodeWriter,deleteGroupWriter,readReferences,inspect,retry,cancel,discardWriter,refresh,context,setCurrent:(value:boolean)=>{current=value;}};
+  return {...callbacks,openWriter,codeWriter,groupWriter,createCodeWriter,createGroupWriter,deleteCodeWriter,deleteGroupWriter,readReferences,inspect,retry,cancel,discardWriter,refresh,context,setCurrent:(value:boolean)=>{current=value;}};
 }
 function deferred<T>() { let resolve!: (value:T)=>void; const promise = new Promise<T>(r=>{resolve=r;}); return {promise,resolve}; }
 describe('손익 계정 편집 실제 부모 연결',()=>{
@@ -181,4 +182,25 @@ describe('기기 사본 정리와 업무 처리의 실제 부모 경계',()=>{
     expect(await h.discardCopy(reference,'관측 원문',h.context)).toMatchObject({status:'rejected'});
     expect(h.discardWriter).not.toHaveBeenCalled();
   });
+});
+
+it('편집 열기는 선택 원문과 고정plan을 서버open에 보내며 업무 목록갱신은 하지 않는다',async()=>{
+ const h=harness(),opening={id:'code-1',code:'legacy',name:'최초 선택',note:'미지 원문'},context={...h.context,planId:'opening-plan'};
+ const result=await h.openEdit('code',opening,context);
+ expect(h.openWriter).toHaveBeenCalledWith('code',opening,context);expect(result.expectedVersion).toBe('1:000000001');expect(h.refresh).not.toHaveBeenCalled();
+ const fixed={...context,opening:result};await h.code('code-1',{name:'새 이름'},fixed);
+ expect(h.codeWriter).toHaveBeenCalledWith('code-1',{name:'새 이름'},fixed);
+});
+it('서버open 대기중 회사·UID수명 변경은 편집 준비 결과를 반환하지 않는다',async()=>{
+ const h=harness(),pending=deferred<unknown>();h.openWriter.mockReturnValue(pending.promise);
+ const result=h.openEdit('group',{id:'g',name:'원본'},h.context);h.setCurrent(false);pending.resolve({expectedVersion:'1:000000001'});
+ await expect(result).rejects.toThrow(/회사|로그인/);expect(h.refresh).not.toHaveBeenCalled();
+});
+
+it('실제 요청 종결 태그는 갱신실패 partial에도 보존하고 미정리 결과에는 만들지 않는다',async()=>{
+ const h=harness();h.refresh.mockImplementation(()=>{throw Error('목록 갱신 실패');});
+ h.codeWriter.mockResolvedValue({status:'saved',requestFinalized:true} as SaveOutcome&{requestFinalized:true});
+ expect(await h.code('code-1',{name:'수정'},h.context)).toMatchObject({status:'partial',requestFinalized:true,committedIds:['code-1']});
+ h.codeWriter.mockResolvedValue({status:'partial',reason:'followup-unconfirmed',committedIds:['code-1'],unconfirmedIds:[],message:'사본 정리 미확인',nextAction:'같은 요청 결과 확인'});
+ const result=await h.code('code-1',{name:'수정'},h.context);expect(result).toMatchObject({status:'partial'});expect(result.requestFinalized).toBeUndefined();expect(result.message).toContain('사본 정리 미확인');expect(result.nextAction).toBe('같은 요청 결과 확인');
 });

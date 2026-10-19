@@ -238,7 +238,7 @@ export function useAccountManagementLifecycle(options: AccountManagementLifecycl
         try {
             const entries = await options.onReadAccountOperations(context);
             if (context.isCurrent()) {
-                captured.references = entries;
+                captured.references = entries.filter(entry=>entry.action!=='update');
                 captured.readError = '';
                 refresh();
             }
@@ -261,6 +261,11 @@ export function useAccountManagementLifecycle(options: AccountManagementLifecycl
             refresh();
             return false;
         }
+        const entry = captured.references.find(item => item.reference?.companyId === reference.companyId
+            && item.reference?.kind === reference.kind && item.reference?.targetId === reference.targetId
+            && item.reference?.planId === reference.planId);
+        const neutralOnly = !!entry && (entry.status !== 'valid' || !entry.action);
+        if (entry?.action === 'update' || mode === 'retry' && neutralOnly) return false;
         const task = {};
         captured.task = task;
         captured.error = '';
@@ -278,7 +283,7 @@ export function useAccountManagementLifecycle(options: AccountManagementLifecycl
                     captured.error = saveOutcomeMessage(outcome);
                 return outcome.status === 'saved';
             }
-            if (primaryCommitted(outcome, reference.targetId) || outcome.status === 'cancelled') {
+            if (!neutralOnly && (primaryCommitted(outcome, reference.targetId) || outcome.status === 'cancelled')) {
                 const same = (session: DraftSession | DeleteSession | null) => session?.kind === reference.kind
                     && session.id === reference.targetId && session.planId === reference.planId;
                 if (same(captured.draft)) captured.draft = null;

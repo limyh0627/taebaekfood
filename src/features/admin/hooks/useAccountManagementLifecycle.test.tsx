@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { useAccountManagementLifecycle, type AccountManagementLifecycleOptions } from './useAccountManagementLifecycle';
+import {accountManagementOpening} from '../../../shared/accountManagementCommand';
 import { useAccountManagementEditor } from './useAccountManagementEditor';
 import type { SaveOutcome } from '../../../shared/saveOutcome';
 import type { AccountCode } from '../../../shared/types';
@@ -38,8 +39,8 @@ it('명시 닫고 새 작성 뒤 old ACK는 새 초안을 지우지 않는다',a
 });
 it.each(['edit-first','create-first'] as const)('16편집과 등록은 같은 tick 양방향 busy로 차단한다: %s',async direction=>{
  let lifecycleBusy=()=>false;const editGate=deferred<SaveOutcome>(),createGate=deferred<SaveOutcome>();const editWrite=vi.fn(async()=>editGate.promise),createWrite=vi.fn<AddCode>(()=>createGate.promise);
- const {result}=renderHook(()=>{const editor=useAccountManagementEditor({companyId:'taebaek',actorUid:'A',onUpdateCode:editWrite,isOtherBusy:()=>lifecycleBusy()});const lifecycle=useAccountManagementLifecycle({companyId:'taebaek',actorUid:'A',onAddCode:createWrite,isOtherBusy:editor.isBusy});lifecycleBusy=lifecycle.isBusy;return{editor,lifecycle};});
- act(()=>{result.current.editor.openCode(code);result.current.editor.changeCode({name:'편집'});fill(result.current.lifecycle);});let run!:Promise<boolean>;
+ const {result}=renderHook(()=>{const editor=useAccountManagementEditor({companyId:'taebaek',actorUid:'A',onOpenAccountEdit:async(kind,row,ctx)=>({reference:{companyId:ctx.companyId,planId:ctx.planId,kind,targetId:row.id},actorUid:ctx.actorUid,opening:accountManagementOpening(row,kind),expectedVersion:'1:000000001'}),onUpdateCode:editWrite,isOtherBusy:()=>lifecycleBusy()});const lifecycle=useAccountManagementLifecycle({companyId:'taebaek',actorUid:'A',onAddCode:createWrite,isOtherBusy:editor.isBusy});lifecycleBusy=lifecycle.isBusy;return{editor,lifecycle};});
+ await act(()=>result.current.editor.openCode(code));act(()=>{result.current.editor.changeCode({name:'편집'});fill(result.current.lifecycle);});let run!:Promise<boolean>;
  act(()=>{if(direction==='edit-first'){run=result.current.editor.save();void result.current.lifecycle.save();}else{run=result.current.lifecycle.save();void result.current.editor.save();}});
  expect(editWrite).toHaveBeenCalledTimes(direction==='edit-first'?1:0);expect(createWrite).toHaveBeenCalledTimes(direction==='create-first'?1:0);
  await act(async()=>{editGate.resolve({status:'saved'});createGate.resolve({status:'saved'});await run;});
@@ -90,4 +91,16 @@ it('같은 삭제 plan의 중단 ACK는 대상 잠금만 끝내고 다른 신규
  await act(()=>result.current.deleteCode(code));const original=result.current.deleteSession!;act(()=>fill(result.current));
  await act(()=>result.current.cancelOperation({companyId:'taebaek',kind:'code',targetId:original.id,planId:original.planId}));
  expect(result.current.deleteSession).toBeNull();expect(result.current.codeSession?.draft.name).toBe('원문');
+});
+
+it('공유prefix의 update는 editor전용이고 action불명은 중립복구만 허용해 현재 등록초안을 닫지 않는다',async()=>{
+ const reference={...pendingRef};const inspect=vi.fn().mockResolvedValue({status:'saved'}),retry=vi.fn().mockResolvedValue({status:'saved'});
+ const {result}=renderHook(()=>useAccountManagementLifecycle({companyId:'taebaek',actorUid:'A',onAddCode:vi.fn(),onReadAccountOperations:async()=>[
+ {key:'update',reference,status:'valid',action:'update',description:'편집 원문'},
+ {key:'unknown',reference:{...reference,planId:'unknown-plan'},status:'corrupt',observedLocalText:'관측 원문',description:'손상 원문'}
+ ],onInspectAccountOperation:inspect,onRetryAccountOperation:retry}));
+ await act(()=>result.current.refreshOperations());expect(result.current.operationReferences.map(row=>row.key)).toEqual(['unknown']);
+ act(()=>fill(result.current));const before=result.current.codeSession;
+ await act(()=>result.current.retryOperation({...reference,planId:'unknown-plan'}));expect(retry).not.toHaveBeenCalled();
+ await act(()=>result.current.inspectOperation({...reference,planId:'unknown-plan'}));expect(inspect).toHaveBeenCalledOnce();expect(result.current.codeSession?.planId).toBe(before?.planId);
 });
