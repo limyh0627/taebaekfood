@@ -182,7 +182,7 @@ interface TradeStatementProps extends PartnerItemTermsBindings {
   onRemoveOrderRequest?: (id: string) => void;
   // 매입전표 발행 시: 발주카드 없으면 새로 생성(입고대기, 같은 거래처 품목 묶음), 있으면 발주카드에 전표 id 연결 + 입고대기 전환
   companyInfo?: CompanyInfo | null;
-  onSaveCompanyInfo?: (info: CompanyInfo) => void;
+  onSaveCompanyInfo?: (info: Partial<CompanyInfo>) => unknown | Promise<unknown>;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
   onUpdateOrder?: (id: string, data: Partial<Order>) => void | Promise<void>;
   currentUserId?: string;
@@ -811,6 +811,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 계좌 관리 모달 (장부에서 흡수)
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  useEffect(() => { setShowCompanyModal(false); }, [companyId, issueActor]);
 
   // ── 세금계산서 탭 ──
   const taxPrintRef = useRef<HTMLDivElement>(null);
@@ -2422,7 +2423,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
            꺼진 코드를 남겨 두면 **살아 있는 줄 알고 고치게 된다** (실제로 그랬다). */}
 
       {/* ── 회사 정보 설정 모달 ── */}
-      {showCompanyModal && <StatementCompanyDialog initial={companyInfo}
+      {showCompanyModal && <StatementCompanyDialog key={companyId+':'+(issueActor??'')} companyId={companyId} actorUid={issueActor} initial={companyInfo}
         onClose={() => setShowCompanyModal(false)} onSave={onSaveCompanyInfo}/>}
 
       {mainTab === 'history' && <>

@@ -1102,3 +1102,15 @@ it('전표 ACK 뒤 원가 후속 실패는 단가 저장완료를 보존하고 �
  expect(save).toHaveBeenCalledOnce();expect(onAddIssuedStatement).toHaveBeenCalledOnce();
  expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('거래조건은 저장됐지만 품목 loose 원가 반영을 확인하지 못했습니다'));
 });
+
+it('회사 정보 설정은 async ACK 전 유지하고 표시 변경 항목만 저장한다',async()=>{
+ let finish!:(value:void)=>void;const gate=new Promise<void>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate);
+ setup(undefined,undefined,{pendingInvoice:null,onSaveCompanyInfo:save,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소',adminPassword:'비표시'}});
+ fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 주소'}});const modal=screen.getByRole('dialog',{name:'회사 정보 설정'});fireEvent.click(within(modal).getByRole('button',{name:'저장'}));
+ expect(save).toHaveBeenCalledWith({address:'새 주소'});expect(modal).toBeInTheDocument();expect(within(modal).getByRole('button',{name:'저장 중…'})).toBeDisabled();await act(async()=>finish());expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();
+});
+it('회사 정보 설정은 같은 회사 UID 교체 때 닫히고 옛 ACK로 새 창 초안을 닫지 않는다',async()=>{
+ let finish!:(value:void)=>void;const gate=new Promise<void>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate),base={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],companyId:'taebaek' as const,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소'},onSaveCompanyInfo:save};
+ const view=render(<TradeStatement {...base}/>);fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'옛 계정 수정'}});fireEvent.click(within(screen.getByRole('dialog',{name:'회사 정보 설정'})).getByRole('button',{name:'저장'}));
+ (auth.currentUser as {uid:string}).uid='new-company-actor';view.rerender(<TradeStatement {...base}/>);expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();fireEvent.click(screen.getByTitle('회사 정보 설정'));fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 계정 초안'}});await act(async()=>finish());expect(screen.getByRole('dialog',{name:'회사 정보 설정'})).toBeInTheDocument();expect(screen.getByLabelText('사업장 주소')).toHaveValue('새 계정 초안');
+});
