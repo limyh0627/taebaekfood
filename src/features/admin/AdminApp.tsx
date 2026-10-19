@@ -190,7 +190,7 @@ import {
   submitOrderCreation,
 } from './orderCreation';
 import { createOemEngine } from './oemEngine';
-import { issueOemBatchJob, recoverableOemDrafts } from './oemIssueJob';
+import { issueOemBatchJob, inspectOemIssueJob, recoverableOemDrafts } from './oemIssueJob';
 import {beginOemIssueAttempt,assertOemIssueAttempt,type OemIssueRetained} from '../../shared/oemIssuePending';
 import { applyOemFeeStatement } from './oemFeeStatement';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
@@ -2992,6 +2992,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
               oemEnabled
               oemIssueDrafts={recoverableOemOrders}
               rawStockKg={rawStockKg}
+              onOemInspectIssue={async (retained, expectedActorUid) => {
+                const owner = rawCancelScopeRef.current;
+                const isCurrent = () => rawCancelAlive.current
+                  && rawCancelScopeRef.current === owner
+                  && owner.companyId === companyId
+                  && auth.currentUser?.uid === expectedActorUid;
+                if (!expectedActorUid || !isCurrent()) throw Error('외주 송출 로그인 계정이 변경되었습니다.');
+                if (retained.request.companyId !== companyId || retained.request.actorUid !== expectedActorUid) {
+                  throw Error('최초 외주 송출 요청의 회사와 계정을 확인해 주세요.');
+                }
+                assertOemIssueAttempt(retained);
+                const result = await inspectOemIssueJob(db, retained.request.input, {
+                  actorUid: expectedActorUid, isCurrent, retained,
+                });
+                if (!isCurrent()) throw Error('외주 송출 로그인 계정이 변경되었습니다.');
+                assertOemIssueAttempt(retained);
+                return result;
+              }}
               onOemIssue={async (v,intent?:'new'|'resume',expectedActorUid?:string,retained?:OemIssueRetained) => {
                 const uid=expectedActorUid??auth.currentUser?.uid;
                 const owner=rawCancelScopeRef.current;

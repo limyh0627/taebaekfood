@@ -1,12 +1,16 @@
 import { describe, expect, it,vi } from 'vitest';
-const dbMemory=vi.hoisted(()=>({rows:new Map<string,any>(),afterRead:undefined as undefined|((path:string)=>void)}));
+const dbMemory=vi.hoisted(()=>({rows:new Map<string,any>(),serverReadFailed:false,metadata:{fromCache:false,hasPendingWrites:false},afterRead:undefined as undefined|((path:string)=>void)}));
 vi.mock('firebase/firestore',()=>{
- const snapshot=(ref:any)=>{const row=dbMemory.rows.get(ref.path);return {id:ref.id,ref,exists:()=>row!==undefined,data:()=>row};};
- return {doc:(_db:any,...parts:string[])=>({path:parts.join('/'),id:parts.at(-1)}),getDoc:async(ref:any)=>snapshot(ref),
+ const snapshot=(ref:any)=>{const row=dbMemory.rows.get(ref.path);return {id:ref.id,ref,exists:()=>row!==undefined,data:()=>row,metadata:{...dbMemory.metadata}};};
+ return {doc:(_db:any,...parts:string[])=>({path:parts.join('/'),id:parts.at(-1)}),getDoc:async(ref:any)=>snapshot(ref),getDocFromServer:async(ref:any)=>{if(dbMemory.serverReadFailed)throw Error('서버 조회 실패');return snapshot(ref);},
  runTransaction:async(_db:any,callback:any)=>{const writes:any[]=[];const tx={get:async(ref:any)=>{const snap=snapshot(ref);dbMemory.afterRead?.(ref.path);return snap;},set:(ref:any,row:any)=>writes.push([ref.path,row]),update:(ref:any,row:any)=>writes.push([ref.path,{...dbMemory.rows.get(ref.path),...row}])};const result=await callback(tx);for(const [path,row]of writes)dbMemory.rows.set(path,row);return result;}};
 });
 import { oemIssueFingerprint, recoverableOemDrafts, runOemIssueJob,firestoreOemIssuePorts, type OemIssueDraft, type OemIssueInput, type OemIssuePorts } from './oemIssueJob';
 import {executeRawInventoryCommand} from '../../shared/services/rawInventoryService';
+import { commandHash, operationDocId } from '../../shared/rawInventoryCore';
+import { inspectOemIssueJob } from './oemIssueJob';
+import { oemIssueAttemptKey, type OemIssueRequest } from '../../shared/oemIssuePending';
+vi.mock('../../shared/firebase',()=>({auth:{currentUser:{uid:'actor',getIdTokenResult:async()=>({claims:{companyId:'taebaek'}})}},authReady:Promise.resolve()}));
 
 const input = (jobId = 'oem-click-1'): OemIssueInput => ({
   jobId, companyId: 'taebaek', partnerId: 'p-oem', partnerName: '외주공장', date: '2026-09-24',
@@ -45,7 +49,12 @@ function harness() {
         applied.add(operationId);
       }
     },
-    missingRawSteps: async draft => draft.oemSent.filter(row => !applied.has(`${draft.id}:${row.rawItemId}`)).map(row => row.rawItemId ?? ''),
+    inspectEvidence: async command => {
+      const draft = drafts.get(command.jobId), verified = command.sent.filter(row => applied.has(command.jobId + ':' + row.rawItemId)).map(row => row.rawItemId), missing = command.sent.filter(row => !applied.has(command.jobId + ':' + row.rawItemId)).map(row => row.rawItemId);
+      const status = missing.length ? verified.length ? 'partial' as const : 'absent' as const : 'verified' as const;
+      const cardStatus = !draft ? 'missing' as const : draft.status === 'invoiced' ? 'complete' as const : 'pending' as const;
+      return { status, poId: command.jobId, cardStatus, verifiedOperationIds: verified, missingOperationIds: missing, unknownOperationIds: [], conflictingOperationIds: [], message: '실원료 확인', nextAction: '같은 작업 재개', canResume: cardStatus !== 'complete' || status === 'verified' };
+    },
     finalizeDraft: async draft => {
       if (failFinalize) throw new Error('카드 확정 실패');
       drafts.set(draft.id, { ...draft, status: 'invoiced', oemIssueStatus: 'complete' });
@@ -133,4 +142,144 @@ describe('OEM 외주발주 재개 계약', () => {
     await runOemIssueJob(input(recoverable[0]!.id), h.ports);
     expect(recoverableOemDrafts([...h.drafts.values()], 'taebaek')).toEqual([]);
   });
+});
+
+const expectedCommands = (command: OemIssueInput) => command.sent.map(row => ({
+    operationId: 'oem-issue:' + command.jobId + ':' + row.rawItemId, companyId: command.companyId, rawItemId: row.rawItemId, materialSnapshot: row.material, effectiveAt: command.date + 'T12:00:00+09:00', source: {
+        type: 'oem' as const, id: command.jobId
+    }, kind: 'consume' as const, kg: row.kg
+}));
+function putEvidence(command: OemIssueInput) {
+    for (const row of expectedCommands(command))
+        dbMemory.rows.set('rawMaterialLedger/' + operationDocId(row.operationId), {
+            ...row, commandHash: commandHash(row)
+        });
+}
+describe('OEM 최초원문 기반 완료 증거와 재개', () => {
+    it('완료카드만있고job·원료이력이없으면성공이나재차감으로넘어가지않는다', async () => {
+        dbMemory.rows.clear();
+        const command = input(), ports = firestoreOemIssuePorts({} as import('firebase/firestore').Firestore);
+        await ports.prepareDraft(command);
+        Object.assign(dbMemory.rows.get('purchaseOrders/' + command.jobId), {
+            status: 'invoiced', oemIssueStatus: 'complete'
+        });
+        const before = structuredClone([...dbMemory.rows]);
+        expect(await ports.inspectEvidence(command)).toMatchObject({
+            status: 'absent', cardStatus: 'complete', canResume: false
+        });
+        await expect(runOemIssueJob(command, ports)).rejects.toThrow('완료 카드');
+        expect([...dbMemory.rows]).toEqual(before);
+    });
+    it.each(['unknown', 'conflict'] as const)('pending이라도%s증거는진행표·원료·카드쓰기전에멈춘다', async (status) => {
+        dbMemory.rows.clear();
+        const command = input(), ports = firestoreOemIssuePorts({} as import('firebase/firestore').Firestore);
+        await ports.prepareDraft(command);
+        putEvidence(command);
+        const row = dbMemory.rows.get('rawMaterialLedger/' + operationDocId(expectedCommands(command)[0].operationId));
+        if (status === 'unknown')
+            delete row.commandHash;
+        else
+            row.companyId = 'punghoe';
+        const before = structuredClone([...dbMemory.rows]);
+        expect((await ports.inspectEvidence(command)).status).toBe(status);
+        await expect(runOemIssueJob(command, ports)).rejects.toThrow();
+        expect([...dbMemory.rows]).toEqual(before);
+    });
+    it('첫조회pending뒤준비응답이complete로바뀌면새증거없이원료를재실행하지않는다', async () => {
+        const h = harness(), prepare = h.ports.prepareDraft;
+        let reads = 0;
+        const inspect = h.ports.inspectEvidence;
+        h.ports.inspectEvidence = async (command) => { reads++; const evidence = await inspect(command); return reads === 1 ? evidence : {
+            ...evidence, cardStatus: 'complete', canResume: false
+        }; };
+        h.ports.prepareDraft = async (command) => ({
+            ...await prepare(command), status: 'invoiced', oemIssueStatus: 'complete'
+        });
+        const raw = vi.spyOn(h.ports, 'runRawSteps');
+        await expect(runOemIssueJob(input(), h.ports)).rejects.toThrow();
+        expect(raw).not.toHaveBeenCalled();
+        expect(reads).toBe(2);
+    });
+    it('완료PO와모든정확이력이있으면사라진job만같은op중복경로로복원하고재고는그대로다', async () => {
+        dbMemory.rows.clear();
+        const command = input(), db = {} as import('firebase/firestore').Firestore;
+        for (const row of command.sent) {
+            dbMemory.rows.set('items/' + row.rawItemId, {
+                companyId: 'taebaek', name: row.material, stock: 0, lots: []
+            });
+            await executeRawInventoryCommand({
+                kind: 'receive', companyId: 'taebaek', rawItemId: row.rawItemId, materialSnapshot: row.material, operationId: 'evidence-seed-' + row.rawItemId, effectiveAt: '2026-09-01T00:00:00Z', source: {
+                    type: 'manual', id: 'seed'
+                }, kg: 200, lot: {
+                    supplierName: '공급'
+                }
+            }, {
+                db
+            });
+        }
+        const ports = firestoreOemIssuePorts(db);
+        await runOemIssueJob(command, ports);
+        dbMemory.rows.delete('rawInventoryJobs/oem-issue:' + command.jobId);
+        const stocks = command.sent.map(row => dbMemory.rows.get('items/' + row.rawItemId).stock);
+        expect(await ports.inspectEvidence(command)).toMatchObject({
+            status: 'verified', cardStatus: 'complete', canResume: true
+        });
+        await runOemIssueJob(command, ports);
+        expect(command.sent.map(row => dbMemory.rows.get('items/' + row.rawItemId).stock)).toEqual(stocks);
+        expect(dbMemory.rows.get('rawInventoryJobs/oem-issue:' + command.jobId).status).toBe('complete');
+    });
+    it('공개readonly조회는계정과최초원문을검증하고ACK·사본정리·DB쓰기를하지않는다', async () => {
+        dbMemory.rows.clear();
+        const command = input(), request: OemIssueRequest = {
+            version: 1, companyId: 'taebaek', actorUid: 'actor', input: command
+        }, retained = {
+            request, key: oemIssueAttemptKey(request), encoded: JSON.stringify(request)
+        };
+        const copies = new Map([[retained.key, retained.encoded]]);
+        vi.stubGlobal('localStorage', {
+            getItem: (key: string) => copies.get(key) ?? null
+        });
+        try {
+            const before = structuredClone([...dbMemory.rows]);
+            expect(await inspectOemIssueJob({} as import('firebase/firestore').Firestore, command, {
+                actorUid: 'actor', isCurrent: () => true, retained
+            })).toMatchObject({
+                status: 'absent', canResume: true
+            });
+            expect([...dbMemory.rows]).toEqual(before);
+            expect(copies.get(retained.key)).toBe(retained.encoded);
+            await expect(inspectOemIssueJob({} as import('firebase/firestore').Firestore, command, {
+                actorUid: 'different', isCurrent: () => true, retained
+            })).rejects.toThrow('계정');
+            copies.set(retained.key, '바뀐 원문');
+            await expect(inspectOemIssueJob({} as import('firebase/firestore').Firestore, command, {
+                actorUid: 'actor', isCurrent: () => true, retained
+            })).rejects.toThrow('원문');
+        }
+        finally {
+            vi.unstubAllGlobals();
+        }
+    });
+});
+it('완료카드의일부이력만있는경우에도재고재개와완료ACK로넘어가지않는다', async () => {
+    const h = harness();
+    h.failRawAt(1);
+    await expect(runOemIssueJob(input(), h.ports)).rejects.toThrow();
+    const existing = h.drafts.get(input().jobId)!;
+    h.drafts.set(existing.id, {
+        ...existing, status: 'invoiced', oemIssueStatus: 'complete'
+    });
+    h.failRawAt(-1);
+    const raw = vi.spyOn(h.ports, 'runRawSteps');
+    await expect(runOemIssueJob(input(), h.ports)).rejects.toThrow();
+    expect(raw).not.toHaveBeenCalled();
+    expect(h.applied.size).toBe(1);
+});
+
+it('정확한완료카드와원장이캐시에있어도PO서버조회실패는재개를허용하지않는다',async()=>{
+ dbMemory.rows.clear();const command=input(),ports=firestoreOemIssuePorts({} as import('firebase/firestore').Firestore);await ports.prepareDraft(command);Object.assign(dbMemory.rows.get('purchaseOrders/'+command.jobId),{status:'invoiced',oemIssueStatus:'complete'});putEvidence(command);dbMemory.serverReadFailed=true;const before=structuredClone([...dbMemory.rows]);try{expect(await ports.inspectEvidence(command)).toMatchObject({status:'unknown',cardStatus:'unknown',canResume:false});await expect(runOemIssueJob(command,ports)).rejects.toThrow('서버 조회 실패');expect([...dbMemory.rows]).toEqual(before);}finally{dbMemory.serverReadFailed=false;}
+});
+
+it('서버조회응답의미승인카드overlay는완료근거와재개로승격하지않는다',async()=>{
+ dbMemory.rows.clear();const command=input(),ports=firestoreOemIssuePorts({} as import('firebase/firestore').Firestore);await ports.prepareDraft(command);Object.assign(dbMemory.rows.get('purchaseOrders/'+command.jobId),{status:'invoiced',oemIssueStatus:'complete'});putEvidence(command);dbMemory.metadata.hasPendingWrites=true;try{expect(await ports.inspectEvidence(command)).toMatchObject({status:'unknown',cardStatus:'unknown',canResume:false});}finally{dbMemory.metadata.hasPendingWrites=false;}
 });

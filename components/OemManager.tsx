@@ -1,4 +1,5 @@
 import type { Props, IssueInput, ReceiveInput } from '../src/features/oem/domain/oemManager';
+import type {OemIssueInspection} from '../src/features/admin/oemIssueJob';
 import { formatNumberKo as fmt } from '../src/shared/numberDisplay';
 import { IssueModal } from '../src/features/oem/ui/OemIssueModal';
 import { ReceiveModal } from '../src/features/oem/ui/OemReceiveModal';
@@ -18,13 +19,16 @@ export default function OemManager(props: Props) {
   return <OemSession key={sessionKey} {...props} />;
 }
 function OemSession({
-  companyId, actorUid='', isCurrentActor, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
+  companyId, actorUid='', isCurrentActor, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onInspectIssue, onReceive, onIssueFee, orderUnitInputs,
 }: Props) {
   const [,setReceiptRevision]=useState(0);
   const [recoveryOpen,setRecoveryOpen]=useState(false);
   const [selectedReceipt,setSelectedReceipt]=useState<OemReceiptEntry|null>(null);
   const [selectedIssueEntry,setSelectedIssueEntry]=useState<OemIssueEntry|null>(null);
+  const [issueInspection,setIssueInspection]=useState<{key:string;encoded:string;result:OemIssueInspection}|null>(null);
   const selectedIssue=selectedIssueEntry?.retained??null;
+  const selectedIssueRef=useRef(selectedIssue);
+  selectedIssueRef.current=selectedIssue;
   const legacyIssueSelected=!!selectedIssueEntry&&!selectedIssue;
   const issues=actorUid?listOemIssueAttempts(companyId,actorUid):[];
   const receipts=actorUid?listOemReceiptEntries(companyId,actorUid):[];
@@ -93,11 +97,26 @@ function OemSession({
     finally{if(current()){busyRef.current=false;setBusy(false);}}
   };
   const issueDisplay=(retained:OemIssueRetained):IssueInput=>({jobId:retained.request.input.jobId,oemPartnerId:retained.request.input.partnerId,partnerName:retained.request.input.partnerName,sent:retained.request.input.sent.map(row=>({material:row.material,kg:row.kg})),date:retained.request.input.date,...(retained.request.input.note?{note:retained.request.input.note}:{}),...(retained.request.input.oemCostEvidence?{oemCostEvidence:retained.request.input.oemCostEvidence}:{})});
+  const inspectIssue=async(retained:OemIssueRetained)=>{
+    if(busyRef.current||!current())return;
+    busyRef.current=true;setBusy(true);setIssueInspection(null);
+    try{
+      if(!onInspectIssue)throw Error('OEM 결과 확인 기능이 연결되지 않았습니다. 저장을 다시 보내지 말고 관리자에게 확인해 주세요.');
+      assertOemIssueAttempt(retained);
+      const result=await onInspectIssue(retained,actorUid);
+      if(!current()||selectedIssueRef.current?.key!==retained.key||selectedIssueRef.current.encoded!==retained.encoded)return;
+      assertOemIssueAttempt(retained);
+      if(result.poId!==retained.request.input.jobId)throw Error('다른 OEM 작업의 조회 결과입니다. 원문을 보존했습니다.');
+      setIssueInspection({key:retained.key,encoded:retained.encoded,result});
+    }catch(error){if(current()&&selectedIssueRef.current?.key===retained.key&&selectedIssueRef.current.encoded===retained.encoded)setStorageNotice({message:error instanceof Error?error.message:String(error),blocked:false});}
+    finally{if(current()){busyRef.current=false;setBusy(false);}}
+  };
   const submitIssue=async(input:IssueInput,intent:'new'|'resume',retained?:OemIssueRetained)=>{
     if(busyRef.current||!current())return;busyRef.current=true;setBusy(true);
     try{
-      if(retained)assertOemIssueAttempt(retained);
+      if(retained){assertOemIssueAttempt(retained);if(intent==='resume'&&(!issueInspection||issueInspection.key!==retained.key||issueInspection.encoded!==retained.encoded||!issueInspection.result.canResume))throw Error('먼저 이 요청의 실제 처리 결과를 확인한 뒤 남은 처리를 재개해 주세요.');}
       else {const unsafe=listOemIssueAttempts(companyId,actorUid).find(entry=>!entry.retained);if(unsafe)throw Error(unsafe.error); }
+      setIssueInspection(null);
       await onIssue(input,intent,actorUid,retained);
       if(current()){setSelectedIssueEntry(null);setReceiptRevision(v=>v+1);setStorageNotice({message:'처리 결과를 확인했습니다.',blocked:false});if(intent==='new')onClose();}
     }catch(error){if(current()){
@@ -117,18 +136,23 @@ function OemSession({
     finally{if(current()){busyRef.current=false;setBusy(false);}}
   };
   const recoveryButton='rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold disabled:opacity-50';
+  const inspectionStatus={verified:'원료 출고 근거 전체 확인',partial:'일부 원료 처리 남음',absent:'현재 출고 근거 없음',conflict:'원문 불일치',unknown:'확인하지 못한 근거 있음'};
+  const cardStatus={unknown:'카드 상태 미확인',missing:'현재 카드 없음',pending:'처리 대기',complete:'완료 표시'};
   return (
     <>
-      <button type="button" className={recoveryButton} onClick={()=>{setReceiptRevision(value=>value+1);setSelectedReceipt(null);setSelectedIssueEntry(null);setRecoveryOpen(true);}}>OEM 실패 작업 {receipts.filter(entry=>!entry.deleted).length+issues.filter(entry=>!entry.deleted).length}</button>
+      <button type="button" className={recoveryButton} disabled={busy} onClick={()=>{setReceiptRevision(value=>value+1);setSelectedReceipt(null);setSelectedIssueEntry(null);setIssueInspection(null);setRecoveryOpen(true);}}>OEM 실패 작업 {receipts.filter(entry=>!entry.deleted).length+issues.filter(entry=>!entry.deleted).length}</button>
       {recoveryOpen&&<ModalShell title={selectedReceipt||selectedIssue||legacyIssueSelected?'OEM 실패 작업 상세':'OEM 실패 작업 목록'} layer={1300} onClose={()=>{if(!busyRef.current){if(selectedReceipt||selectedIssue||legacyIssueSelected){setSelectedReceipt(null);setSelectedIssueEntry(null);}else setRecoveryOpen(false);}}}>
         {selectedIssue?<div className="space-y-4"><p className="font-bold">{selectedIssue.request.input.partnerName} · {selectedIssue.request.input.date}</p>
-          <p>{storageNotice.message||'외주 원료 출고 결과를 아직 확인하지 못했습니다.'}</p><p>확인할 내용: 최초 원료·수량·날짜와 외주 출고 이력, 각 원료의 실제 재고를 확인해주세요.</p>
+          <p>{storageNotice.message||'외주 원료 출고 결과를 아직 확인하지 못했습니다.'}</p>
+          {issueInspection?.key===selectedIssue.key&&issueInspection.encoded===selectedIssue.encoded?<div role="status" className="space-y-2"><p>{issueInspection.result.message}</p><p>원료 상태: {inspectionStatus[issueInspection.result.status]} · 발주 카드: {cardStatus[issueInspection.result.cardStatus]}</p><p>{issueInspection.result.nextAction}</p><p>확인된 원료 작업 {issueInspection.result.verifiedOperationIds.length}건 · 남은 작업 {issueInspection.result.missingOperationIds.length}건 · 확인 필요 {issueInspection.result.unknownOperationIds.length}건 · 원문 불일치 {issueInspection.result.conflictingOperationIds.length}건</p></div>:<p role="status">실제 처리 결과를 아직 확인하지 않았습니다. 결과 확인은 출고·재고를 변경하거나 이 기기 요청을 삭제하지 않습니다.</p>}
+          <p>확인할 내용: 최초 원료·수량·날짜와 외주 출고 이력, 각 원료의 실제 재고를 확인해주세요.</p>
           <ul>{selectedIssue.request.input.sent.map(row=><li key={row.rawItemId}>{row.material} · {row.kg}kg</li>)}</ul>
-          <div className="flex gap-2"><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void submitIssue(issueDisplay(selectedIssue),'resume',selectedIssue)}>같은 내용 다시 시도</button><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void removeIssue(selectedIssueEntry!)}>실패 요청 삭제</button></div>
+          <div className="flex flex-wrap gap-2"><button type="button" className={recoveryButton} disabled={busy||!onInspectIssue} onClick={()=>void inspectIssue(selectedIssue)}>실제 처리 결과 확인</button><button type="button" className={recoveryButton} disabled={busy||issueInspection?.key!==selectedIssue.key||issueInspection.encoded!==selectedIssue.encoded||!issueInspection.result.canResume} onClick={()=>void submitIssue(issueDisplay(selectedIssue),'resume',selectedIssue)}>남은 처리 재개</button><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void removeIssue(selectedIssueEntry!)}>실패 요청 삭제</button></div>
+          {!onInspectIssue&&<p role="alert">OEM 결과 확인 기능이 연결되지 않아 처리를 재개할 수 없습니다.</p>}
           <p>실패 목록에서 요청을 삭제합니다. 실제 외주 출고·발주·재고는 바뀌지 않습니다. 관련 원료는 이전 처리 결과를 확인해야 합니다.</p>
         </div>:legacyIssueSelected?<div className="space-y-3"><p>{selectedIssueEntry?.error||'과거 외주 요청의 최초 계정과 원료 송신 원문을 확인할 수 없습니다. 자동으로 다시 출고하지 않습니다.'}</p><p>외주 출고 이력과 원료 재고를 확인해주세요.</p><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void removeIssue(selectedIssueEntry!)}>실패 요청 삭제</button></div>:!selectedReceipt?<><p>최초 출고·입고 요청을 선택해 처리 결과와 확인할 내용을 살펴보세요.</p>{storageNotice.message&&<p>{storageNotice.message}</p>}
           {!receipts.some(entry=>!entry.deleted)&&!issues.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
-          {issues.filter(e=>!e.deleted).map(e=><button type="button" key={e.key} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setSelectedIssueEntry(e);setStorageNotice({message:e.error,blocked:false});}}>{e.retained?`${e.retained.request.input.partnerName} · ${e.retained.request.input.date} · 외주 출고 처리 결과 미확인`:e.error}</button>)}
+          {issues.filter(e=>!e.deleted).map(e=><button type="button" key={e.key} disabled={busy} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setSelectedIssueEntry(e);setIssueInspection(null);setStorageNotice({message:e.error,blocked:false});}}>{e.retained?`${e.retained.request.input.partnerName} · ${e.retained.request.input.date} · 외주 출고 처리 결과 미확인`:e.error}</button>)}
           {receipts.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.scope.poId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>setSelectedReceipt(entry)}>{entry.draft?.input.po.partnerName??purchaseOrders?.find(po=>po.id===entry.scope.poId)?.partnerName??'OEM 배치'} · 가공 입고 · {entry.scope.poId} · {entry.draft?.input.date??entry.packet?.request.date??'일자 확인 필요'} · {entry.legacy?'과거 요청 확인 필요':'처리 결과 미확인'}</button>)}
         </>: (()=>{let matches=false;try{const fresh=readOemReceiptEntry(selectedReceipt.scope);matches=fresh.draftText===selectedReceipt.draftText&&fresh.packetText===selectedReceipt.packetText&&fresh.legacy===selectedReceipt.legacy;}catch{/* 판독 불가 원문은 임의 선택하지 않는다. */}
           const input=selectedReceipt.draft?.input,packet=selectedReceipt.packet?.request;

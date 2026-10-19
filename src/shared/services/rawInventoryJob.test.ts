@@ -14,13 +14,17 @@ vi.mock('../../constants/formula', () => ({
 }));
 
 const store = new Map<string, Record<string, unknown>>();
+const readFailures = new Set<string>();
+const serverReadFailures = new Set<string>();
+const snapshotMetadata = {fromCache:false,hasPendingWrites:false};
 type DocRef = { path: string };
 
 vi.mock('firebase/firestore', () => {
   const doc = (_db: unknown, ...segments: string[]) => ({ path: segments.join('/') });
   const getDoc = async (ref: DocRef) => {
+    if (readFailures.has(ref.path)) throw Error('원료 조회 응답 실패');
     const d = store.get(ref.path);
-    return { exists: () => !!d, data: () => d };
+    return { exists: () => !!d, data: () => d, metadata:{...snapshotMetadata} };
   };
   const runTransaction = async (_db: unknown, cb: (tx: unknown) => Promise<unknown>) => {
     const tx = {
@@ -33,7 +37,7 @@ vi.mock('firebase/firestore', () => {
     };
     return cb(tx);
   };
-  return { doc, getDoc, runTransaction };
+  return { doc, getDoc, getDocFromServer: async (ref: DocRef) => { if (serverReadFailures.has(ref.path)) throw Error('서버에 연결할 수 없습니다. 캐시를 완료 근거로 사용하지 않습니다.'); return getDoc(ref); }, runTransaction };
 });
 
 const { runRawInventoryJob, verifyRawInventoryJobComplete } = await import('./rawInventoryJob');
@@ -52,6 +56,9 @@ const 명령 = (op: string, o: Partial<RawInventoryCommand> = {}): RawInventoryC
 
 beforeEach(() => {
   store.clear();
+  readFailures.clear();
+  serverReadFailures.clear();
+  snapshotMetadata.fromCache=false; snapshotMetadata.hasPendingWrites=false;
   store.set('items/raw-x', { id: 'raw-x', name: 'x', subtype: '벌크', unit: 'kg', stock: 100, lots: [] });
   //  이관된 상태 문서를 미리 심어 둔다
   store.set(`rawInventories/${inventoryDocId('taebaek', 'raw-x')}`, {
@@ -158,4 +165,99 @@ describe('RawInventoryJob 러너', () => {
     const result = await verifyRawInventoryJobComplete(jobId);
     expect(result.missing).toEqual([]);
   });
+});
+
+const { inspectRawInventoryJobEvidence } = await import('./rawInventoryJob');
+const { commandHash } = await import('../rawInventoryCore');
+const evidenceInput = (commands = [명령('OEM/작업:raw-x')]) => ({
+    jobId: 'evidence-job', companyId: 'taebaek' as const, source: {
+        type: 'production' as const, id: 'ORD-1'
+    }, commands, db: {} as import('firebase/firestore').Firestore
+});
+function ledger(command: RawInventoryCommand) { return {
+    operationId: command.operationId, companyId: command.companyId, rawItemId: command.rawItemId, source: command.source, commandHash: commandHash(command), effectiveAt: command.effectiveAt
+}; }
+describe('원문 명령 기반 원료 완료 증거', () => {
+    it('job과이력부재는완료가아니며읽기중진행표나재고를쓰지않는다', async () => {
+        const before = structuredClone([...store]);
+        const result = await inspectRawInventoryJobEvidence(evidenceInput());
+        expect(result.status).toBe('absent');
+        expect(result.missingOperationIds).toEqual(['OEM/작업:raw-x']);
+        expect([...store]).toEqual(before);
+    });
+    it.each(['modern', 'legacy', 'both'] as const)('job이없어도%s의정확이력은완료증거가된다', async (kind) => {
+        const input = evidenceInput(), command = input.commands[0];
+        if (kind !== 'legacy')
+            store.set('rawMaterialLedger/' + operationDocId(command.operationId), ledger(command));
+        if (kind !== 'modern')
+            store.set('rawMaterialLedger/' + legacyOperationDocId(command.operationId), ledger(command));
+        expect((await inspectRawInventoryJobEvidence(input)).status).toBe('verified');
+        expect(store.has('rawInventoryJobs/evidence-job')).toBe(false);
+    });
+    it.each(['company', 'source', 'empty', 'different'] as const)('기존job의%s불일치는이력이있어도충돌이다', async (kind) => {
+        const input = evidenceInput(), command = input.commands[0];
+        store.set('rawMaterialLedger/' + operationDocId(command.operationId), ledger(command));
+        store.set('rawInventoryJobs/evidence-job', {
+            companyId: kind === 'company' ? 'punghoe' : 'taebaek', source: kind === 'source' ? {
+                type: 'oem', id: 'other'
+            } : input.source, expectedOperationIds: kind === 'empty' ? [] : kind === 'different' ? ['another'] : [command.operationId]
+        });
+        expect((await inspectRawInventoryJobEvidence(input)).status).toBe('conflict');
+    });
+    it.each(['operationId', 'companyId', 'rawItemId', 'source', 'commandHash'] as const)('실이력%s가다르면같은문서번호라도완료로보지않는다', async (field) => {
+        const input = evidenceInput(), command = input.commands[0], row: Record<string, unknown> = ledger(command);
+        row[field] = field === 'source' ? {
+            type: 'oem', id: 'other'
+        } : 'different';
+        store.set('rawMaterialLedger/' + operationDocId(command.operationId), row);
+        expect((await inspectRawInventoryJobEvidence(input)).status).toBe('conflict');
+    });
+    it('modern정상이더라도legacy의모순이나hash없는원문을숨기지않는다', async () => {
+        const input = evidenceInput(), command = input.commands[0];
+        store.set('rawMaterialLedger/' + operationDocId(command.operationId), ledger(command));
+        store.set('rawMaterialLedger/' + legacyOperationDocId(command.operationId), {
+            ...ledger(command), commandHash: 'different'
+        });
+        expect((await inspectRawInventoryJobEvidence(input)).status).toBe('conflict');
+        const old = ledger(command);
+        delete (old as Partial<typeof old>).commandHash;
+        store.set('rawMaterialLedger/' + legacyOperationDocId(command.operationId), old);
+        expect((await inspectRawInventoryJobEvidence(input)).status).toBe('unknown');
+    });
+    it('일부정확이력과없는이력을구분하며jobstatuscomplete를완료근거로쓰지않는다', async () => {
+        const input = evidenceInput([명령('one'), 명령('two')]);
+        store.set('rawMaterialLedger/' + operationDocId('one'), ledger(input.commands[0]));
+        store.set('rawInventoryJobs/evidence-job', {
+            companyId: 'taebaek', source: input.source, status: 'complete', expectedOperationIds: ['two', 'one']
+        });
+        const result = await inspectRawInventoryJobEvidence(input);
+        expect(result.status).toBe('partial');
+        expect(result.verifiedOperationIds).toEqual(['one']);
+        expect(result.missingOperationIds).toEqual(['two']);
+    });
+    it('실조회중scope가바뀌면확인결과도새계정으로반환하지않는다', async () => {
+        let checks = 0;
+        await expect(inspectRawInventoryJobEvidence({
+            ...evidenceInput(), assertScope: async () => { if (++checks >= 2)
+                throw Error('계정 변경'); }
+        })).rejects.toThrow('계정 변경');
+        expect(store.has('rawInventoryJobs/evidence-job')).toBe(false);
+    });
+});
+it('원료이력조회실패는없는이력으로바꾸지않고unknown으로보존한다', async () => {
+    const input = evidenceInput();
+    readFailures.add('rawMaterialLedger/' + operationDocId(input.commands[0].operationId));
+    const before = structuredClone([...store]);
+    expect(await inspectRawInventoryJobEvidence(input)).toMatchObject({
+        status: 'unknown', message: '원료 조회 응답 실패'
+    });
+    expect([...store]).toEqual(before);
+});
+
+it('정확한캐시이력이있어도서버읽기실패는verified가아니라unknown이다',async()=>{
+ const input=evidenceInput(),command=input.commands[0];store.set('rawMaterialLedger/'+operationDocId(command.operationId),ledger(command));serverReadFailures.add('rawMaterialLedger/'+operationDocId(command.operationId));const result=await inspectRawInventoryJobEvidence(input);expect(result.status).toBe('unknown');expect(result.message).toContain('서버에 연결');
+});
+
+it.each(['fromCache','hasPendingWrites'] as const)('서버조회라도%s가true인미확정스냅샷은완료가아니다',async field=>{
+ const input=evidenceInput(),command=input.commands[0];store.set('rawMaterialLedger/'+operationDocId(command.operationId),ledger(command));snapshotMetadata[field]=true;expect(await inspectRawInventoryJobEvidence(input)).toMatchObject({status:'unknown'});
 });

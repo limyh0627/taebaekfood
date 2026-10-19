@@ -51,6 +51,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
+import type {Props as OemManagerProps} from '../src/features/oem/domain/oemManager';
 import { PurchaseOrder, ReturnRequest, companyOf, poLines } from '../src/shared/types';
 import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
@@ -212,6 +213,7 @@ interface ItemListProps {
   rawStockKg?: (material: string) => number;
   rawYieldRules?: Record<string,{product:string;rate:number}>;
   onOemIssue?: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
+  onOemInspectIssue?: OemManagerProps['onInspectIssue'];
   onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onOemCancel?: (po: PurchaseOrder) => Promise<unknown>;
   onOemIssueFee?: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
@@ -341,6 +343,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   oemIssueDrafts = [],
   rawStockKg,
   onOemIssue,
+  onOemInspectIssue,
   onOemReceive,
   onOemIssueFee,
   onOemCancel,
@@ -1494,6 +1497,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           feeTarget={!oemFeeTarget?.oemCancelledAt && oemFeeTarget && companyOf(oemFeeTarget) === companyId ? oemFeeTarget : null}
           onClose={closeOem}
           onIssue={onOemIssue}
+          onInspectIssue={onOemInspectIssue}
           onReceive={onOemReceive}
           onIssueFee={onOemIssueFee}
         />
