@@ -19,7 +19,25 @@ service firebase.storage {
     }
 
     match /companies/{companyId}/file-cabinet/{allPaths=**} {
-      allow read, write: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
+      allow read: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
+      allow write: if false;
+    }
+    match /companies/{companyId}/file-cabinet/uploads/{uploadId}/{fileName} {
+      function reserved() {
+        let r = firestore.get(/databases/(default)/documents/documentUploadReservations/$(uploadId)).data;
+        return r.companyId == companyId && r.actorUid == request.auth.uid
+          && r.employeeId == request.auth.token.employeeId && r.closed == false
+          && r.upload.uploadId == uploadId
+          && r.upload.path == 'companies/' + companyId + '/file-cabinet/uploads/' + uploadId + '/' + fileName
+          && request.resource.size == r.upload.size && request.resource.size <= 30 * 1024 * 1024
+          && request.resource.contentType == r.upload.contentType
+          && request.resource.metadata.uploadId == uploadId
+          && request.resource.metadata.sha256 == r.upload.sha256
+          && request.resource.metadata.actorUid == request.auth.uid
+          && request.resource.metadata.employeeId == request.auth.token.employeeId;
+      }
+      allow create: if isOwnCompany(companyId) && request.auth.token.isAdmin == true && resource == null && reserved();
+      allow update, delete: if false;
     }
 
     match /companies/{companyId}/notices/{postId}/{fileName} {

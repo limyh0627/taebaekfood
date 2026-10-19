@@ -1,6 +1,5 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, authReady, storage } from '../../../shared/firebase';
-import { addItem, deleteItem } from '../../../shared/services/firebaseService';
 import { cabinetStoragePath } from '../../../shared/companyStoragePath';
 import type { CabinetDoc, CompanyId } from '../../../shared/types';
 /** 이 오류만 해당 단계의 업무 I/O가 시작되지 않았다는 근거다. SDK 실패 코드는 추정하지 않는다. */
@@ -38,6 +37,23 @@ export interface DocumentTransferPlanOptions {
     id?: () => string;
     now?: () => Date;
 }
+export interface DocumentUploadIdentity {
+    uploadId: string;
+    path: string;
+    sha256: string;
+    size: number;
+    contentType: string;
+}
+/** 새로 고른 File은 이름이 아니라 최초 요청의 바이트 증거와 대조한다. */
+export async function documentFileSha256(file: File): Promise<string> {
+    return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer())))
+        .map(value => value.toString(16).padStart(2, '0')).join('');
+}
+export async function assertDocumentFileIdentity(file: File, identity: DocumentUploadIdentity): Promise<void> {
+    if (file.size !== identity.size || (file.type || 'application/octet-stream') !== identity.contentType
+        || await documentFileSha256(file) !== identity.sha256)
+        throw new DocumentTransferNotStartedError('처음 선택한 파일과 내용·크기·형식이 다릅니다. 같은 원본 파일을 선택해 주세요.');
+}
 /** File과 분류·ID·경로·날짜는 첫 단계 전에 고정한다. 재개에서 새 자료로 바꾸지 않는다. */
 export function createDocumentTransferPlan(scope: DocumentTransferScope, file: File, category: string, subCategory: string, uploadedBy: string, options: DocumentTransferPlanOptions = {}): DocumentTransferPlan {
     if (!category || !subCategory)
@@ -71,8 +87,10 @@ export function createDocumentTransferPort() {
             assertVisible(context);
             if (claims.companyId !== context.scope.companyId || claims.isAdmin !== true || typeof claims.employeeId !== 'string' || !claims.employeeId.trim() || claims.employeeId !== context.scope.employeeId)
                 throw new DocumentTransferNotStartedError('현재 회사의 관리자 직원 로그인 정보를 확인해 주세요.');
-        } catch (error) {
-            if (isDocumentTransferNotStarted(error)) throw error;
+        }
+        catch (error) {
+            if (isDocumentTransferNotStarted(error))
+                throw error;
             throw new DocumentTransferNotStartedError('로그인 권한을 확인하지 못해 작업을 시작하지 않았습니다. 다시 로그인한 뒤 시도해 주세요.');
         }
     };
@@ -83,11 +101,15 @@ export function createDocumentTransferPort() {
     };
     return {
         assertCurrent,
-        async uploadFile(plan: DocumentTransferPlan, context: DocumentTransferContext): Promise<void> {
-            assertPlan(plan, context);
+        async uploadReservedFile(file: File, identity: DocumentUploadIdentity, context: DocumentTransferContext): Promise<void> {
+            assertPath(identity.path, context.scope.companyId);
+            await assertDocumentFileIdentity(file, identity);
             await assertCurrent(context);
             assertVisible(context);
-            await uploadBytes(ref(storage, plan.path), plan.file);
+            await uploadBytes(ref(storage, identity.path), file, {
+                contentType: identity.contentType,
+                customMetadata: { uploadId: identity.uploadId, sha256: identity.sha256, actorUid: context.scope.actorUid, employeeId: context.scope.employeeId }
+            });
         },
         async getFileUrl(plan: DocumentTransferPlan, context: DocumentTransferContext): Promise<string> {
             assertPlan(plan, context);
@@ -95,34 +117,5 @@ export function createDocumentTransferPort() {
             assertVisible(context);
             return getDownloadURL(ref(storage, plan.path));
         },
-        async createMetadata(plan: DocumentTransferPlan, url: string, context: DocumentTransferContext): Promise<void> {
-            assertPlan(plan, context);
-            await assertCurrent(context);
-            assertVisible(context);
-            // 이 일반 writer의 응답 유실은 서버 영수증으로 확정할 수 없다. 호출자가 자동 재송신하지 않는다.
-            await addItem('fileCabinetDocs', { id: plan.documentId, companyId: plan.companyId, category: plan.category, subCategory: plan.subCategory, fileName: plan.fileName, storagePath: plan.path, downloadUrl: url, size: plan.size, contentType: plan.contentType, note: plan.note, uploadedBy: plan.uploadedBy, uploadedAt: plan.uploadedAt });
-        },
-        async deleteMetadata(document: DocumentTransferDocument, context: DocumentTransferContext): Promise<void> {
-            if (document.companyId !== context.scope.companyId)
-                throw new DocumentTransferNotStartedError('현재 회사의 서류 정보만 삭제할 수 있습니다.');
-            assertPath(document.storagePath, context.scope.companyId);
-            await assertCurrent(context);
-            assertVisible(context);
-            await deleteItem('fileCabinetDocs', document.id);
-        },
-        async cleanupStorage(path: string, context: DocumentTransferContext): Promise<void> {
-            assertPath(path, context.scope.companyId);
-            await assertCurrent(context);
-            assertVisible(context);
-            try {
-                await deleteObject(ref(storage, path));
-            }
-            catch (error) {
-                if ((error as {
-                    code?: string;
-                })?.code !== 'storage/object-not-found')
-                    throw error;
-            }
-        }
     };
 }

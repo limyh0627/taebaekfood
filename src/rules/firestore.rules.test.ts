@@ -36,9 +36,10 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, 
  * 안 켜져 있으면 이 파일은 통째로 건너뛴다(`describe.skipIf`) — 다른 시험까지 막지 않는다.
  */
 
+const documentRulesPort = Number((process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8082').split(':')[1]);
 const 에뮬있나 = async () => {
   try {
-    const r = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`http://127.0.0.1:${documentRulesPort}/`, { signal: AbortSignal.timeout(1500) });
     return r.status < 500;
   } catch { return false; }
 };
@@ -279,7 +280,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   beforeAll(async () => {
     env = await initializeTestEnvironment({
       projectId: ownRulesProject,
-      firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: 8082 },
+      firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: documentRulesPort },
     });
   });
   afterAll(async () => { await clearOwnRulesFixtures(); await env?.cleanup(); if(ownRulesAdmin) await deleteAdmin(ownRulesAdmin); });
@@ -710,9 +711,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(getDoc(doc(태백직원(), 'fileCabinetSubCategories', 'fcs-1')));
     });
 
-    it('관리자는 문서함을 읽고 쓴다', async () => {
+    it('관리자는 문서함을 읽되 메타데이터 직접 쓰기는 서버 명령으로 제한한다', async () => {
       await assertSucceeds(getDoc(doc(관리자(), 'fileCabinetDocs', 'fc-1')));
-      await assertSucceeds(setDoc(doc(관리자(), 'fileCabinetDocs', 'fc-2'), { companyId: 'taebaek', fileName: 'x.xlsx' }));
+      await assertFails(setDoc(doc(관리자(), 'fileCabinetDocs', 'fc-2'), { companyId: 'taebaek', fileName: 'x.xlsx' }));
+      await assertFails(updateDoc(doc(관리자(), 'fileCabinetDocs', 'fc-1'), {note:'직접 변경'}));
+      await assertFails(deleteDoc(doc(관리자(), 'fileCabinetDocs', 'fc-1')));
+      for(const name of ['documentMetadataOperations','documentUploadReservations','documentStoragePaths']) {
+        await assertFails(setDoc(doc(관리자(),name,'client'),{companyId:'taebaek'}));
+        await assertFails(getDoc(doc(관리자(),name,'client')));
+      }
     });
   });
 

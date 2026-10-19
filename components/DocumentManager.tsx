@@ -1,11 +1,12 @@
 import { useDocumentTransfers } from '../src/features/documents/hooks/useDocumentTransfers';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
-import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { where } from 'firebase/firestore';
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash2, Plus, Upload, Search, X, FolderPlus } from 'lucide-react';
-import { auth } from '../src/shared/firebase';
-import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection } from '../src/shared/services/firebaseService';
+import { auth, authReady } from '../src/shared/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { subscribeToCollection, addItem, deleteItem, fetchCollection } from '../src/shared/services/firebaseService';
 import { CabinetCategory, CabinetSubCategory, CabinetDoc, companyOf, type CompanyId } from '../src/shared/types';
 import { dateOfLocal } from '../src/shared/day';
 
@@ -45,8 +46,17 @@ const fileIconFor = (name: string, contentType: string) => {
   return <FileIcon className="w-5 h-5 text-slate-400" />;
 };
 
+const metadataStates:Record<string,string>={active:'진행 중',applied:'반영 확인',rejected:'거절 확인',cancelled:'미처리 중단 확인',unknown:'결과 미확인'};
+const metadataStateLabel=(status?:string)=>metadataStates[status??'']??'확인 전';
+const uploadStates:Record<string,string>={'not-required':'필요 없음',reserved:'파일 전송 준비 확인',absent:'현재 파일 없음',unverified:'파일 확인 필요',verified:'파일 확인 완료'};
+const uploadStateLabel=(status?:string)=>uploadStates[status??'']??'확인 전';
+const cleanupStates:Record<string,string>={'not-required':'필요 없음',pending:'정리 대기',deleted:'정리 완료',absent:'현재 파일 없음','retained-shared':'다른 문서 참조로 보존','retained-replaced':'다른 파일로 바뀌어 보존'};
+const cleanupStateLabel=(status?:string)=>cleanupStates[status??'']??'확인 전';
+
 const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [], onSelect, hideDocs }) => {
   const companyId = companyOf(currentUser);
+  const [actorUid,setActorUid]=useState(()=>auth.currentUser?.uid??'');
+  useEffect(()=>{let live=true,stop=()=>{};void Promise.resolve(authReady).then(()=>{if(live)stop=onAuthStateChanged(auth,user=>{if(live)setActorUid(user?.uid??'');});});return()=>{live=false;stop();};},[]);
   const confirmationScope = useRef({ companyId, token: {} });
   if (confirmationScope.current.companyId !== companyId) confirmationScope.current = { companyId, token: {} };
   useEffect(() => () => { confirmationScope.current = { companyId: confirmationScope.current.companyId, token: {} }; }, []);
@@ -56,7 +66,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const [activeCat, setActiveCat] = useState<string>('');
   const [activeSub, setActiveSub] = useState<string>(''); // '' = 전체
   const [search, setSearch] = useState('');
-  const transfers = useDocumentTransfers({companyId, actorUid: auth.currentUser?.uid, employeeId: currentUser.id, uploadedBy: currentUser.name});
+  const transfers = useDocumentTransfers({companyId, actorUid, employeeId: currentUser.id, uploadedBy: currentUser.name});
   const [addingCat, setAddingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [addingSub, setAddingSub] = useState(false);
@@ -186,6 +196,8 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const selectCat = (name: string) => { setActiveCat(name); setActiveSub(''); setAddingSub(false); };
 
   const handleFiles = async (files: FileList | File[]) => {
+    if(transfers.readLoading){alert('보관된 문서 요청을 먼저 읽고 있습니다. 잠시 후 다시 선택해 주세요.');return;}
+    if(transfers.readError){alert(transfers.readError);return;}
     if (!activeCat) { alert('먼저 대분류를 선택하세요.'); return; }
     if (!activeSub) { alert('먼저 중분류를 선택하세요. (전체 상태에서는 업로드할 수 없습니다)'); return; }
     const list = Array.from(files);
@@ -199,12 +211,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     await task;
   };
 
-  const handleEditNote = async (d: CabinetDoc) => {
-    const scope = confirmationScope.current.token;
-    const next = await appPrompt('메모', d.note ?? '');
-    if (next === null || confirmationScope.current.token !== scope) return;
-    await updateItem('fileCabinetDocs', d.id, { note: next });
-  };
+  const handleEditNote = (document: CabinetDoc) => transfers.editNote(document);
 
   const handleAddCategory = async () => {
     const scope = confirmationScope.current.token;
@@ -357,10 +364,10 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
         className={`rounded-2xl border-2 border-dashed p-5 text-center transition-colors ${dragOver ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white'}`}
       >
-        <input aria-label="문서 파일 첨부" ref={fileInputRef} type="file" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
+        <input aria-label="문서 파일 첨부" disabled={transfers.readLoading || !!transfers.readError || transfers.confirmationBusy} ref={fileInputRef} type="file" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
         <Upload className={`w-6 h-6 mx-auto mb-2 text-slate-400`} />
         <p className="text-xs font-bold text-slate-600">
-          여기로 파일을 끌어놓거나 <button onClick={() => fileInputRef.current?.click()} className="text-indigo-600 underline">파일 선택</button>
+          여기로 파일을 끌어놓거나 <button disabled={transfers.readLoading || !!transfers.readError || transfers.confirmationBusy} onClick={() => fileInputRef.current?.click()} className="text-indigo-600 underline">파일 선택</button>
         </p>
         <p className="text-[10px] text-slate-400 mt-1">
           {!activeCat ? '먼저 대분류를 선택하세요'
@@ -369,18 +376,36 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         </p>
       </div>
 
-      {transfers.jobs.length > 0 && <section aria-label="처리 중이거나 확인이 필요한 문서" className="space-y-3 rounded-lg border border-slate-200 p-3">
+      {transfers.readLoading && <p role="status" className="text-xs text-slate-600">보관된 문서 요청의 처리 상태를 읽고 있습니다.</p>}
+      {transfers.message && <p role="status" className="whitespace-pre-line text-xs text-slate-600">{transfers.message}</p>}
+      {transfers.readError && <div className="space-y-2 text-xs"><p role="alert">{transfers.readError}</p><button type="button" disabled={transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">보관 요청 다시 읽기</button></div>}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" disabled={transfers.historyLoading || transfers.readLoading} onClick={()=>void transfers.refresh()} className="rounded border border-slate-200 px-3 py-2">서버 미완료 요청 새로 조회</button>
+        {transfers.historyLoading && <p role="status">서버에 남은 문서 요청을 확인하고 있습니다.</p>}
+        {transfers.historyMore && <><p>더 확인할 요청이 있습니다.</p><button type="button" disabled={transfers.historyLoading} onClick={()=>void transfers.nextPage()} className="rounded border border-slate-200 px-3 py-2">다음 요청 확인</button></>}
+        {transfers.historyError && <p role="alert" className="whitespace-pre-line">{transfers.historyError}</p>}
+      </div>
+      {transfers.jobs.length > 0 && <section aria-label="처리 중이거나 확인이 필요한 문서" className="max-h-[60vh] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
         <h3 className="text-sm font-bold text-slate-700">처리 중이거나 확인이 필요한 문서</h3>
-        {transfers.jobs.map(job => <div key={job.jobId} className="flex flex-wrap items-center gap-2 text-xs">
-          <div className="min-w-0">
-            <p className="font-bold text-slate-700">{job.fileName}</p>
+        {transfers.jobs.map(job => <div key={job.jobId} className="space-y-2 border-t border-slate-200 pt-3 text-xs first:border-t-0 first:pt-0">
+          <div className="min-w-0 break-words">
+            <p className="font-bold text-slate-700">{job.fileName || '문서 원문 확인 필요'}</p>
             <p className="text-slate-500">문서 번호: {job.documentId}</p>
+            <p>문서 정보: {metadataStateLabel(job.metadataStatus)}</p>
+            <p>파일 업로드: {uploadStateLabel(job.uploadStatus)} · 파일 정리: {cleanupStateLabel(job.cleanupStatus)}</p>
             <p role="status" className="whitespace-pre-line text-slate-600">{job.message}</p>
           </div>
-          {job.kind === 'upload' && (job.stage === 'upload' || job.stage === 'url') && <button type="button" disabled={job.busy || !job.canRetry} aria-label={job.fileName+' · '+job.documentId+' · '+(job.stage === 'url' ? '주소 받기 다시 시도' : '업로드 다시 시도')} onClick={() => void transfers.retryUpload(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.busy ? '처리 중…' : job.stage === 'url' ? '주소 받기 다시 시도' : '업로드 다시 시도'}</button>}
-          {job.stage === 'metadata' && job.canRetry && !job.busy && <button type="button" aria-label={job.fileName+' · '+job.documentId+' · '+(job.kind === 'upload' ? '목록 등록 이어하기' : '목록 삭제 이어하기')} onClick={() => void transfers.retry(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.kind === 'upload' ? '목록 등록 이어하기' : '목록 삭제 이어하기'}</button>}
-          {job.kind === 'delete' && job.stage === 'cleanup' && <button type="button" disabled={job.busy || !job.canRetry} aria-label={job.fileName+' · '+job.documentId+' · 파일 정리 다시 시도'} onClick={() => void transfers.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2">{job.busy ? '파일 정리 중…' : '파일 정리 다시 시도'}</button>}
+          <div className="flex flex-wrap items-center gap-2">
+            {job.canInspect&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 결과 확인'} onClick={()=>void transfers.inspect(job.jobId)} className="rounded border border-slate-200 px-3 py-2">결과 확인</button>}
+            {job.canRetry&&!job.requiresFile&&job.stage!=='cleanup'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 요청 이어하기'} onClick={()=>void transfers.resume(job.jobId)} className="rounded border border-slate-200 px-3 py-2">같은 요청 이어하기</button>}
+            {job.canCancel&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 미처리 요청 중단'} onClick={()=>void transfers.cancel(job.jobId)} className="rounded border border-slate-200 px-3 py-2">미처리 요청 중단</button>}
+            {job.stage==='cleanup'&&job.canRetry&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 남은 파일 정리'} onClick={()=>void transfers.retryCleanup(job.jobId)} className="rounded border border-slate-200 px-3 py-2">남은 파일 정리</button>}
+            {job.requiresFile&&<label className="rounded border border-slate-200 px-3 py-2">같은 파일 다시 선택<input type="file" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 같은 SHA 파일 다시 선택'} className="mt-1 block max-w-full" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file){if(file.size>MAX_SIZE_MB*1024*1024){alert('파일이 '+MAX_SIZE_MB+'MB를 초과합니다.');return;}void transfers.resume(job.jobId,file);}}}/></label>}
+            {job.canDiscard&&typeof job.observedLocalText==='string'&&<button type="button" disabled={job.busy || transfers.confirmationBusy} aria-label={job.fileName+' · '+job.documentId+' · 이 기기 사본 정리'} onClick={()=>void transfers.discardCopy(job.jobId,job.observedLocalText!)} className="rounded border border-slate-200 px-3 py-2">이 기기 사본 정리</button>}
+          </div>
+          {job.requiresFile&&<p className="text-slate-500">처음 요청한 파일과 SHA가 같은 파일만 이어갈 수 있습니다. 현재 분류나 새 파일로 원래 요청을 바꾸지 않습니다.</p>}
         </div>)}
+        <p className="text-xs text-slate-500">요청 중단은 아직 처리되지 않은 실행을 막습니다. 파일 정리와 기기 사본 정리는 이미 반영된 문서 정보를 되돌리지 않습니다.</p>
       </section>}
 
       {/* 파일 목록 */}
@@ -400,9 +425,9 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
                     {d.note ? <span className="text-slate-500"> · {d.note}</span> : null}
                   </p>
                 </div>
-                <button onClick={() => handleEditNote(d)} className="shrink-0 px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-600">메모</button>
+                <button disabled={transfers.readLoading || !!transfers.readError || transfers.confirmationBusy || transfers.jobs.some(job=>job.documentId===d.id)} onClick={() => void handleEditNote(d)} className="shrink-0 px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-600">메모</button>
                 <a href={d.downloadUrl} target="_blank" rel="noopener noreferrer" download={d.fileName} className="shrink-0 p-2 rounded-lg text-indigo-600 hover:bg-indigo-50" title="다운로드"><Download className="w-4 h-4" /></a>
-                {!transfers.jobs.some(job => job.documentId === d.id) && <button onClick={() => void transfers.deleteDocument(d)} className="shrink-0 p-2 rounded-lg text-red-500 hover:bg-red-50" title="삭제"><Trash2 className="w-4 h-4" /></button>}
+                {!transfers.jobs.some(job => job.documentId === d.id) && <button disabled={transfers.readLoading || !!transfers.readError || transfers.confirmationBusy} onClick={() => void transfers.deleteDocument(d)} className="shrink-0 p-2 rounded-lg text-red-500 hover:bg-red-50" title="삭제"><Trash2 className="w-4 h-4" /></button>}
               </li>
             ))}
           </ul>

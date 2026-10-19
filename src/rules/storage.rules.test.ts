@@ -1,73 +1,141 @@
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { ref, uploadBytes } from 'firebase/storage';
+import { ref, uploadBytes, deleteObject, getBytes } from 'firebase/storage';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
-
-const 에뮬레이터실행중 = async () => {
-  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) return true;
-  try {
-    const response = await fetch('http://127.0.0.1:9199/', { signal: AbortSignal.timeout(1500) });
-    return response.status < 500;
-  } catch {
-    return false;
-  }
+import { randomUUID } from 'node:crypto';
+const running = async () => {
+    try {
+        return (await fetch('http://127.0.0.1:9199/', {
+            signal: AbortSignal.timeout(1500)
+        })).status < 500;
+    }
+    catch {
+        return false;
+    }
 };
-
-const 준비됨 = await 에뮬레이터실행중();
+const ready = process.env.FIREBASE_STORAGE_EMULATOR_HOST === '127.0.0.1:9199' || await running();
 let env: RulesTestEnvironment;
+const paths = new Set<string>(), run = randomUUID();
 const bytes = new Uint8Array([1, 2, 3]);
-
-describe.skipIf(!준비됨)('회사별 권한 (Storage 규칙)', () => {
-  beforeAll(async () => {
-    env = await initializeTestEnvironment({
-      projectId: 'demo-storage-rules-test',
-      storage: { rules: readFileSync('storage.rules', 'utf8'), host: '127.0.0.1', port: 9199 },
+describe.skipIf(!ready)('회사별 권한 (Storage 규칙)', () => {
+    beforeAll(async () => {
+        env = await initializeTestEnvironment({
+            projectId: process.env.DOCUMENT_RULES_PROJECT || 'demo-document-recovery', storage: {
+                rules: readFileSync('storage.rules', 'utf8'), host: '127.0.0.1', port: 9199
+            }, firestore: {
+                host: '127.0.0.1', port: 8182
+            }
+        });
     });
-  });
-  afterAll(async () => { await env?.cleanup(); });
-
-  const 직원 = (companyId: string) => env.authenticatedContext(`staff-${companyId}`, {
-    employeeId: `staff-${companyId}`, companyId, isAdmin: false,
-  }).storage();
-  const 관리자 = (companyId: string) => env.authenticatedContext(`admin-${companyId}`, {
-    employeeId: `admin-${companyId}`, companyId, isAdmin: true,
-  }).storage();
-
-  it('공지 사진은 같은 회사 관리자만 작성한다', async () => {
-    const path = 'companies/taebaek/notices/post-1/image';
-    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/png' }));
-    await assertFails(uploadBytes(ref(직원('taebaek'), path), bytes, { contentType: 'image/png' }));
-    await assertFails(uploadBytes(ref(관리자('punghoe'), path), bytes, { contentType: 'image/png' }));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/svg+xml' }));
-  });
-
-  it('직원은 자기 회사 오피스톡에만 올린다', async () => {
-    await assertSucceeds(uploadBytes(ref(직원('taebaek'), 'companies/taebaek/officetalk/ROOM-1/a.jpg'), bytes));
-    await assertFails(uploadBytes(ref(직원('taebaek'), 'companies/punghoe/officetalk/ROOM-1/a.jpg'), bytes));
-  });
-
-  it('문서함은 같은 회사 관리자만 올린다', async () => {
-    await assertSucceeds(uploadBytes(ref(관리자('punghoe'), 'companies/punghoe/file-cabinet/업무/일반/a.pdf'), bytes));
-    await assertFails(uploadBytes(ref(직원('punghoe'), 'companies/punghoe/file-cabinet/업무/일반/b.pdf'), bytes));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/punghoe/file-cabinet/업무/일반/c.pdf'), bytes));
-  });
-
-  it('미인증·claim 없는 계정과 옛 경로를 거절한다', async () => {
-    await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(), 'companies/taebaek/officetalk/R/a.jpg'), bytes));
-    await assertFails(uploadBytes(ref(env.authenticatedContext('old-anon', {}).storage(), 'companies/taebaek/officetalk/R/b.jpg'), bytes));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), 'file-cabinet/업무/일반/old.pdf'), bytes));
-    await assertFails(uploadBytes(ref(직원('taebaek'), 'officetalk/ROOM-1/old.jpg'), bytes));
-  });
-
-  it('품목 사진은 자기 회사 관리자만 JPEG/PNG/WebP 5MB 이하로 올린다', async () => {
-    const path = 'companies/taebaek/items/item-1/photo-abc.jpg';
-    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/jpeg' }));
-    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-ok.png'), bytes, { contentType: 'image/png' }));
-    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-ok.webp'), bytes, { contentType: 'image/webp' }));
-    await assertFails(uploadBytes(ref(직원('taebaek'), 'companies/taebaek/items/item-1/photo-staff.jpg'), bytes, { contentType: 'image/jpeg' }));
-    await assertFails(uploadBytes(ref(관리자('punghoe'), 'companies/taebaek/items/item-1/photo-other.jpg'), bytes, { contentType: 'image/jpeg' }));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-bad.svg'), bytes, { contentType: 'image/svg+xml' }));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-fake.jpg'), bytes, { contentType: 'image/svg+xml' }));
-    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-large.webp'), new Uint8Array(5 * 1024 * 1024 + 1), { contentType: 'image/webp' }));
-  });
+    afterAll(async () => {
+        await env.withSecurityRulesDisabled(async (c) => {
+            for (const p of paths)
+                try {
+                    await deleteObject(ref(c.storage(), p));
+                }
+                catch {
+                }
+            await deleteDoc(doc(c.firestore(), 'documentUploadReservations', 'up-' + run));
+        });
+        await env.cleanup();
+    });
+    const storage = (companyId: string, admin = true) => env.authenticatedContext((admin ? 'admin-' : 'staff-') + companyId, {
+        employeeId: (admin ? 'admin-' : 'staff-') + companyId, companyId, isAdmin: admin
+    }).storage();
+    const path = (p: string) => {
+        paths.add(p);
+        return p;
+    };
+    it('공지 사진은 같은 회사 관리자만 작성한다', async () => {
+        const p = path(`companies/taebaek/notices/post-${run}/image`);
+        await assertSucceeds(uploadBytes(ref(storage('taebaek'), p), bytes, {
+            contentType: 'image/png'
+        }));
+        await assertFails(uploadBytes(ref(storage('taebaek', false), p), bytes, {
+            contentType: 'image/png'
+        }));
+        await assertFails(uploadBytes(ref(storage('punghoe'), p), bytes, {
+            contentType: 'image/png'
+        }));
+        await assertFails(uploadBytes(ref(storage('taebaek'), p), bytes, {
+            contentType: 'image/svg+xml'
+        }));
+    });
+    it('직원은 자기 회사 오피스톡에만 올린다', async () => {
+        await assertSucceeds(uploadBytes(ref(storage('taebaek', false), path(`companies/taebaek/officetalk/R-${run}/a.jpg`)), bytes));
+        await assertFails(uploadBytes(ref(storage('taebaek', false), `companies/punghoe/officetalk/R-${run}/a.jpg`), bytes));
+    });
+    it('문서함 예약된 같은회사관리자 create만·overwrite/delete/닫힌예약/다른UID 거절', async () => {
+        const uploadId = 'up-' + run, p = path(`companies/punghoe/file-cabinet/uploads/${uploadId}/a.pdf`), metadata = {
+            contentType: 'application/pdf', customMetadata: {
+                uploadId, sha256: 'a'.repeat(64), actorUid: 'admin-punghoe', employeeId: 'admin-punghoe'
+            }
+        };
+        await env.withSecurityRulesDisabled(async (c) => {
+            await setDoc(doc(c.firestore(), 'documentUploadReservations', uploadId), {
+                companyId: 'punghoe', actorUid: 'admin-punghoe', employeeId: 'admin-punghoe', closed: false, upload: {
+                    uploadId, path: p, sha256: 'a'.repeat(64), size: 3, contentType: 'application/pdf'
+                }
+            });
+        });
+        await assertFails(uploadBytes(ref(storage('punghoe', false), p), bytes, metadata));
+        await assertFails(uploadBytes(ref(storage('taebaek'), p), bytes, metadata));
+        await assertFails(uploadBytes(ref(env.authenticatedContext('other-uid', {
+            employeeId: 'admin-punghoe', companyId: 'punghoe', isAdmin: true
+        }).storage(), p), bytes, metadata));
+        await assertSucceeds(uploadBytes(ref(storage('punghoe'), p), bytes, metadata));
+        await assertFails(uploadBytes(ref(storage('punghoe'), p), bytes, metadata));
+        await assertFails(deleteObject(ref(storage('punghoe'), p)));
+        await assertSucceeds(getBytes(ref(storage('punghoe'), p)));
+        await assertFails(getBytes(ref(storage('punghoe', false), p)));
+        await env.withSecurityRulesDisabled(async (c) => {
+            await deleteObject(ref(c.storage(), p));
+            await setDoc(doc(c.firestore(), 'documentUploadReservations', uploadId), {
+                companyId: 'punghoe', actorUid: 'admin-punghoe', employeeId: 'admin-punghoe', closed: true, upload: {
+                    uploadId, path: p, sha256: 'a'.repeat(64), size: 3, contentType: 'application/pdf'
+                }
+            });
+        });
+        await assertFails(uploadBytes(ref(storage('punghoe'), p), bytes, metadata));
+    });
+    it('legacy문서함파일관리자읽기는보존·새직접업로드는거절', async () => {
+        const p = path(`companies/taebaek/file-cabinet/업무/일반/${run}.pdf`);
+        await env.withSecurityRulesDisabled(async (c) => {
+            await uploadBytes(ref(c.storage(), p), bytes);
+        });
+        await assertSucceeds(getBytes(ref(storage('taebaek'), p)));
+        await assertFails(getBytes(ref(storage('punghoe'), p)));
+        await assertFails(uploadBytes(ref(storage('taebaek'), p + 'new'), bytes));
+        await assertFails(deleteObject(ref(storage('taebaek'), p)));
+    });
+    it('미인증·claim없는계정과옛회사없는경로거절', async () => {
+        await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(), `companies/taebaek/officetalk/R-${run}/a.jpg`), bytes));
+        await assertFails(uploadBytes(ref(env.authenticatedContext('old', {}).storage(), `companies/taebaek/officetalk/R-${run}/b.jpg`), bytes));
+        await assertFails(uploadBytes(ref(storage('taebaek'), `file-cabinet/업무/일반/${run}.pdf`), bytes));
+        await assertFails(uploadBytes(ref(storage('taebaek', false), `officetalk/R-${run}/old.jpg`), bytes));
+    });
+    it('품목사진회사관리자JPEGPNGWebP5MB규칙보존', async () => {
+        const p = path(`companies/taebaek/items/item-${run}/photo-abc.jpg`);
+        await assertSucceeds(uploadBytes(ref(storage('taebaek'), p), bytes, {
+            contentType: 'image/jpeg'
+        }));
+        for (const ext of ['png', 'webp'])
+            await assertSucceeds(uploadBytes(ref(storage('taebaek'), path(`companies/taebaek/items/item-${run}/photo-ok.${ext}`)), bytes, {
+                contentType: 'image/' + ext
+            }));
+        await assertFails(uploadBytes(ref(storage('taebaek', false), p), bytes, {
+            contentType: 'image/jpeg'
+        }));
+        await assertFails(uploadBytes(ref(storage('punghoe'), p), bytes, {
+            contentType: 'image/jpeg'
+        }));
+        for (const type of ['image/svg+xml', 'text/plain'])
+            await assertFails(uploadBytes(ref(storage('taebaek'), p), bytes, {
+                contentType: type
+            }));
+        await assertFails(uploadBytes(ref(storage('taebaek'), p), new Uint8Array(5 * 1024 * 1024 + 1), {
+            contentType: 'image/webp'
+        }));
+    });
 });

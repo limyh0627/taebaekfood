@@ -366,3 +366,5 @@ export {directoryDeleteCommand} from './directoryDeleteCommand';
 export {quotationCommand} from './quotationCommand';
 
 export {accountManagementCommand} from './accountManagementCommand';
+
+export {documentMetadataCommand,cleanupLateDocumentUpload} from './documentMetadataCommand';
