@@ -1,3 +1,5 @@
+import StatementEditRecoveryPanel from '../src/features/statements/ui/StatementEditRecoveryPanel';
+import type {StatementEditBindings,StatementEditFollowupPlan,StatementEditProgress} from '../src/shared/services/statementEditWrites';
 import {buildStatementEditPatch} from '../src/features/statements/application/statementEditor';
 import {useStatementEditor} from '../src/features/statements/hooks/useStatementEditor';
 import {termsFromOpening} from '../src/shared/partnerItemTermsCommand';
@@ -164,6 +166,7 @@ interface TradeStatementProps extends PartnerItemTermsBindings {
   }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
+  statementEditBindings?: StatementEditBindings;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>, original?: IssuedStatement, expectedActorUid?: string, isCurrent?: () => boolean) => Promise<unknown>;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
@@ -260,7 +263,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   issuedStatements, onUpdateStatus, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,onDiscardPartnerItemTermsCopy,
   onAddIssuedStatement,
   onApplyStatement,
-  onUpdateIssuedStatement,
+  onUpdateIssuedStatement,statementEditBindings,
   onProposeEdit,
   focusDocNo,
   onFocusHandled,
@@ -441,6 +444,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [issueAcknowledged,setIssueAcknowledged]=useState<Record<string,string>>({});
   const [issueFailureReasons,setIssueFailureReasons]=useState<Record<string,string>>({});
   const [recoveryOpen,setRecoveryOpen]=useState(false);
+  const [editTermsOpen,setEditTermsOpen]=useState(false);
+  const [editRecoveryView,setEditRecoveryView]=useState<'failure'|'history'>('failure');
   const [sendingPending,setSendingPending]=useState<TradeStatementPending|null>(null);
   // 진행 중인 정확한 사본만 구분하고 다른 요청과 충돌·손상 사본은 보존한다.
   const visibleIssuePendings=issuePendings.filter(entry=>!sendingPending||entry.invalid||entry.kind==='conflict'||!entry.pending||JSON.stringify(entry.pending)!==JSON.stringify(sendingPending));
@@ -1501,35 +1506,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
-  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false, isCurrent: () => boolean = () => true) => {
-    if (!onSavePartnerItemTerms) throw Error('거래조건 저장 기능이 연결되지 않았습니다.');
-    /*
-     * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
-     * 거래처 단가는 "지금 파는 값"이라, 6월 전표의 오타를 고쳤다고 오늘 값이 6월로
-     * 돌아가면 안 된다. 지금 고치는 게 그 거래처의 마지막 거래일 때만 되민다.
-     */
+  const planPriceSync = useCallback((type: string, skipLinkIds = noLinkIds, newIssue = false):StatementEditFollowupPlan => {
     const 이번전표 = { id: editingStmt?.id, partnerId: selectedClientId, type, tradeDate };
-    const { upserts, costUpdates } = partnerPriceWrites({
-      type, newIssue, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
-      partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
-      isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
-    });
+    const isLatest=isLatestForPartner({ this: 이번전표, all: mergedStatements });
+    const {upserts,costUpdates}=partnerPriceWrites({type,newIssue,partnerId:이번전표.partnerId,lines:lineItems,items:allItems,partnerItems:[...partnerOut,...partnerIn],noLinkIds:skipLinkIds,isLatest});
+    return {upserts,openings:upserts.map(row=>[...partnerOut,...partnerIn].find(value=>value.id===row.id)??null),costUpdates,skipIds:[...skipLinkIds],isLatest};
+  },[selectedClientId,lineItems,allItems,partnerOut,partnerIn,noLinkIds,editingStmt,tradeDate,mergedStatements]);
+  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false, isCurrent: () => boolean = () => true, fixedPlan?:StatementEditFollowupPlan, report?:(progress:StatementEditProgress)=>Promise<void>) => {
+    if (!onSavePartnerItemTerms) throw Error('거래조건 저장 기능이 연결되지 않았습니다.');
+    const plan=fixedPlan??planPriceSync(type,skipLinkIds,newIssue);
+    const {upserts,costUpdates}=plan;
     const completed:string[]=[];
-    for(const u of upserts){
+    for(const [index,u] of upserts.entries()){
+      await report?.({stage:'terms',index,status:'running'});
       if(!isCurrent()) throw Error('편집 입력이 바뀌어 거래조건 후속 저장을 중단했습니다.');
-      const opening=[...partnerOut,...partnerIn].find(row=>row.id===u.id)??null;
+      const opening=plan.openings[index];
       const result=await savePartnerTermsRow(u,{...(u.price!==undefined?{price:u.price}:{}),...(u.taxType!==undefined?{taxType:u.taxType}:{}),...(u.Account_Code!==undefined?{Account_Code:u.Account_Code}:{})},opening);
       if(!isCurrent()) throw Error('편집 입력이 바뀌어 거래조건 후속 저장을 중단했습니다.');
       if(result.status!=='saved')throw Error((completed.length?'저장이 확인된 품목: '+completed.join(', ')+'\n':'')+saveOutcomeMessage(result));
+      await report?.({stage:'terms',index,status:'acknowledged'});
+      if(!isCurrent()) throw Error('편집 입력이 바뀌어 거래조건 후속 저장을 중단했습니다.');
       if(u.itemId)completed.push(u.itemId);
     }
-    for(const c of costUpdates){
+    for(const [index,c] of costUpdates.entries()){
+      await report?.({stage:'cost',index,status:'running'});
       if(!isCurrent()) throw Error('편집 입력이 바뀌어 원가 후속 저장을 중단했습니다.');
       if(auth.currentUser?.uid!==issueActor||cashEditScope.current.companyId!==companyId)throw Error('회사 또는 계정이 바뀌어 원가 후속 저장을 중단했습니다.');
       if(!onUpdateItemCost)throw Error('거래조건은 저장됐지만 원가 저장 기능이 연결되지 않았습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');
       try{await onUpdateItemCost(c.itemId,c.price);}catch{throw Error('거래조건은 저장됐지만 품목 '+c.itemId+' 원가 반영을 확인하지 못했습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');}
+      await report?.({stage:'cost',index,status:'acknowledged'});
+      if(!isCurrent()) throw Error('편집 입력이 바뀌어 원가 후속 저장을 중단했습니다.');
     }
-  }, [onSavePartnerItemTerms, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
+  }, [planPriceSync,onSavePartnerItemTerms, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
@@ -1882,14 +1890,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const editDraft = {tradeDate,memo:stmtMemo,partnerId:selectedClientId,partnerName:selectedClient?.name||'',totalSupply,totalTax,totalAmount,partySnapshot,lines:lineItems,type:stmtType};
   const statementEditor = useStatementEditor({companyId,actorUid:issueActor,original:editingStmt,
     draftFingerprint:JSON.stringify([createMode,isEditMode,editDraft,[...noLinkIds]]),
-    save:onUpdateIssuedStatement,onCommitted:()=>{closeCreate();}});
+    bindings:statementEditBindings,save:onUpdateIssuedStatement,onCommitted:()=>{closeCreate();}});
   const handleSaveEdit = async () => {
     if (saveBusyRef.current || statementEditor.isBusy() || !editingStmt || lineItems.length === 0) return;
     if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return; }
     if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return; }
     let skipLinkIds: Set<string> | null = null;
+    let followupPlan:StatementEditFollowupPlan;
     await statementEditor.saveEdit({patch:buildStatementEditPatch(editDraft),confirm:async()=>{skipLinkIds=await confirmUnlinkedLines();return !!skipLinkIds;},
-      afterSave:async(isCurrent)=>{await applyPriceSync(editingStmt.type,skipLinkIds!,false,isCurrent);}});
+      getFollowupPlan:()=>{followupPlan=planPriceSync(editingStmt.type,skipLinkIds!);return followupPlan;},
+      afterSave:async(isCurrent,report)=>{await applyPriceSync(editingStmt.type,skipLinkIds!,false,isCurrent,followupPlan,report);}});
   };
 
   const printBalance = (type: StatementType, partnerId: string, amount: number, statement?: IssuedStatement) => {
@@ -2258,11 +2268,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     try{const payment=JSON.parse(entry.paymentRequestText??'null');return `수금·지불 확인 · ${entry.metadata.partnerName??'거래처 확인 필요'} · ${typeof payment?.tradeDate==='string'?payment.tradeDate:'날짜 확인 필요'} · ${Number.isSafeInteger(payment?.amount)&&payment.amount>0?payment.amount.toLocaleString()+'원':'금액 확인 필요'}`;}
     catch{return '수금·지불 확인 · 원결제 내용 확인 필요';}
   };
+  const recoveryFailureCount=visibleIssuePendings.filter(entry=>!entry.deleted).length+statementEditor.failureCount;
+  const openRecovery=(view:'failure'|'history')=>{refreshIssuePendings();setRecoverySelection(null);setEditRecoveryView(view);setEditTermsOpen(false);setRecoveryOpen(true);if(view==='history')void statementEditor.loadHistory();};
+  const recoveryEntryButtons=<><ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('history')}>처리 기록</ActionButton>{recoveryFailureCount>0&&<ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('failure')}>실패 {recoveryFailureCount}</ActionButton>}</>;
   const recoveryDialogs=()=> <>
     {recoveryOpen&&!recoverySelection&&<LargeModalShell title="실패 작업 목록" onClose={()=>{if(!isSaving)setRecoveryOpen(false);}}>
-      <p className="mb-4 text-sm text-slate-600">처리 결과 확인이 필요한 요청입니다. 목록에 있다는 이유만으로 전표 발행 실패가 확정된 것은 아닙니다. 항목을 선택한 뒤 처리결과 확인을 눌러 주세요. 이미 발행된 전표는 다시 발행하지 않습니다. 작성 중인 다른 전표의 입력은 유지됩니다.</p>
+      <StatementEditRecoveryPanel key={statementEditor.recoveryScopeKey+editRecoveryView} initialView={editRecoveryView} recoveryMessage={statementEditor.recoveryMessage} discardLabel={entry=>entry.reference?'이 기기 수정 사본 정리':'이 기기의 손상된 복구 정보만 정리'} failureRows={statementEditor.failureRows} historyRows={statementEditor.historyRows} busy={statementEditor.busy} readLoading={statementEditor.readLoading} readError={statementEditor.readError} historyLoading={statementEditor.historyLoading} historyError={statementEditor.historyError} historyMore={statementEditor.historyMore} refresh={statementEditor.refresh} loadHistory={statementEditor.loadHistory} nextHistory={statementEditor.nextHistory} inspect={statementEditor.inspect} retry={statementEditor.retry} stop={statementEditor.stop} discardCopy={statementEditor.discardCopy} canInspect={statementEditor.canInspect} canRetry={statementEditor.canRetry} canStop={statementEditor.canStop} canDiscard={statementEditor.canDiscard} describe={entry=>entry.description} onOpenTerms={()=>{termsEditor.refresh();setEditTermsOpen(true);}}/>
+      {editTermsOpen&&<section aria-label="거래조건 후속 확인"><h3 className="font-bold">거래조건 후속 확인</h3><PartnerItemTermsRecovery editor={termsEditor}/><p className="text-sm">표시할 거래조건 요청이 없다면 현재 거래조건과 품목 원가를 직접 확인해 주세요. 전표를 다시 저장하지 않습니다.</p></section>}
+      <h3 className="mt-4 font-bold text-slate-800">전표 발행·수금·지불 처리 확인</h3>
+      <p className="mb-4 text-sm text-slate-600">다음은 전표 발행 또는 함께 요청한 수금·지불 기록입니다. 목록에 있다는 이유만으로 전표 발행 실패가 확정된 것은 아닙니다. 항목을 선택한 뒤 처리결과 확인을 눌러 주세요. 이미 발행된 전표는 다시 발행하지 않습니다. 작성 중인 다른 전표의 입력은 유지됩니다.</p>
       {issuePendingError&&<p>{issuePendingError}</p>}
-      {!visibleIssuePendings.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+      {!visibleIssuePendings.some(entry=>!entry.deleted)&&<p>확인할 전표 발행·수금·지불 요청이 없습니다.</p>}
       {visibleIssuePendings.filter(entry=>!entry.deleted).map(entry=><button key={entry.key} type="button" className="flex w-full flex-wrap justify-between gap-2 border-b border-slate-200 px-2 py-4 text-left" onClick={()=>setRecoverySelection({key:entry.key,text:entry.text})}>
         <span>{entry.paymentOnly?recoveryPaymentLabel(entry):entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:entry.metadata.partnerName?`${entry.metadata.partnerName} · ${entry.metadata.tradeDate??''} · ${entry.metadata.totalAmount?.toLocaleString()??'금액 확인 필요'}원`:'원문 확인이 필요한 요청'}</span><span>{entry.paymentOnly?'수금·지불 결과 확인 필요':entry.invalid?'원문 확인 필요':entry.recoveryReason==='zero-total'?'지난 시도 0원 · 재시도 불가':entry.deleted?'이전 처리 확인 필요':'저장 결과 확인 필요'}</span>
       </button>)}
@@ -2331,7 +2347,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {recoveryDialogs()}
       <PartnerItemTermsRecovery editor={termsEditor}/>
       {(linkSaveSummary.confirmed.length>0||linkSaveSummary.unconfirmed)&&<p role="status" className="text-xs text-slate-600">{linkSaveSummary.confirmed.length>0&&`연결 저장 확인: ${linkSaveSummary.confirmed.join(', ')}. `}{linkSaveSummary.unconfirmed&&`저장 확인이 필요한 품목: ${linkSaveSummary.unconfirmed}. 위에서 결과를 확인하거나 요청을 중단한 뒤 현재 내용을 다시 열어 주세요.`}</p>}
-      {composerOnly&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2"><ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton></div>}
+      {composerOnly&&!createMode&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2">{recoveryEntryButtons}</div>}
       {!composerOnly && <>
       <PageHeader
         actions={mainTab === 'history' ? (
@@ -2372,7 +2388,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         ) : undefined}
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
-        recovery={<ActionButton tone="recovery" disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoverySelection(null);setRecoveryOpen(true);}}>실패 {visibleIssuePendings.filter(entry=>!entry.deleted).length}</ActionButton>}
+        recovery={!createMode?recoveryEntryButtons:undefined}
         tabs={
           <div className="flex min-w-0 flex-wrap gap-2">
             {([
@@ -2555,10 +2571,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 return <StatementTradeTableRow key={view.key} statement={stmt} view={view}
                   shownAmount={partial ? portion! : view.amount} partial={partial} settle={settle} canSettle={canSettle(stmt)}
                   evidenceChoices={choices} evidence={evidenceOf(stmt)}
-                  dateCell={전표일자칸(stmt.tradeDate, (날짜,confirm) => statementEditor.updateDate(stmt,날짜,confirm), !!onUpdateIssuedStatement, stmt.issuedAt,true)}
+                  dateCell={전표일자칸(stmt.tradeDate, (날짜,confirm) => statementEditor.updateDate(stmt,날짜,confirm), !!(statementEditBindings||onUpdateIssuedStatement), stmt.issuedAt,true)}
                   journalToggle={journalToggle(view.key)} onOpen={() => openEdit(stmt)} onSettle={() => openPayModal(stmt)}
                   editScopeKey={JSON.stringify([companyId,issueActor])}
-                  onEvidence={onUpdateIssuedStatement ? evidence => statementEditor.updateEvidence(stmt,evidence) : undefined}
+                  onEvidence={statementEditBindings||onUpdateIssuedStatement ? evidence => statementEditor.updateEvidence(stmt,evidence) : undefined}
                   journalPreview={expandedJournal.has(view.key)
                     ? journalTr(`je__${view.key}`, journalOfStmt(stmt), { kind: stmt.type === '비용' ? '대체' : stmt.type, docNo: stmt.docNo, date: stmt.tradeDate, headPartner: stmt.partnerName })
                     : undefined}/>;
@@ -2801,6 +2817,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
 
+          <div className="flex flex-wrap gap-2 px-4 py-2">{recoveryEntryButtons}</div>
           {statementEditor.notice && <p role="status" className="px-4 py-2 text-sm">{statementEditor.notice}</p>}
           {statementEditor.error && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{statementEditor.error}</p>}
           {statementEditor.message && !statementEditor.error && <p role="status" className="px-4 py-2">{statementEditor.message}</p>}

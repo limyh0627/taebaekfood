@@ -1,3 +1,4 @@
+import { recoverStatementEdit, statementEditReceiptResult, statementEditDiscoveryScopeKey } from './statementEditRecovery';
 import { readOemCostInvalidation, writeOemCostInvalidation } from './oemBatchCostInvalidation';
 import { readPurchaseUnitSnapshot, isManualPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
 import { isRawPurchaseItem } from './shared/purchaseCost';
@@ -23,8 +24,9 @@ const companyOf = (value: unknown) => value === 'punghoe' ? 'punghoe' : 'taebaek
 
 /** 운영 전표의 수정은 클라이언트 직접 쓰기 대신 회사·정산·버전을 확인한 뒤 서버에서 확정한다. */
 export async function editIssuedStatement(db: admin.firestore.Firestore, request: { auth?: { uid: string; token: Record<string, any> }; data?: any }) {
+  if (request.data?.mode !== undefined) return recoverStatementEdit(db, request);
   const claims = request.auth?.token;
-  if (claims?.isAdmin !== true || typeof claims.employeeId !== 'string' || !['taebaek', 'punghoe'].includes(String(claims.companyId))) {
+  if (!request.auth?.uid || claims?.isAdmin !== true || typeof claims.employeeId !== 'string' || !['taebaek', 'punghoe'].includes(String(claims.companyId))) {
     throw new HttpsError('permission-denied', '이 회사의 전표 수정 권한이 없습니다.');
   }
   const { statementId, releaseId, expectedRevision, operationId, patch, pendingEditRequestId, pendingEditRequestHash } = request.data ?? {};
@@ -67,10 +69,10 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     ]);
     const editRef = approval ? db.collection('pendingStatementEdits').doc(approval.pendingEditRequestId) : null;
     const editSnap = editRef ? await tx.get(editRef) : null;
-    if (gate.get('status') !== 'active' || gate.get('releaseId') !== releaseId) {
-      throw new HttpsError('failed-precondition', '전표 수정 서버의 배포 상태가 변경됐습니다. 화면을 새로고침해 주세요.');
-    }
+    const reference = { companyId: claims.companyId as 'taebaek' | 'punghoe', operationId, statementId };
     if (operation.exists) {
+      const prior = statementEditReceiptResult(operation.data()!, reference, request.auth!.uid);
+      if (prior.status === 'cancelled') return prior;
       if (operation.get('statementId') !== statementId || operation.get('uid') !== request.auth?.uid || operation.get('requestHash') !== requestHash) {
         throw new HttpsError('already-exists', '다른 전표 수정 요청과 번호가 겹쳤습니다.');
       }
@@ -82,8 +84,9 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
         || operation.get('pendingEditRequestHash') !== approval.pendingEditRequestHash
         || operation.get('companyId') !== claims.companyId))
         throw new HttpsError('failed-precondition', '기존 전표 승인 근거와 요청이 다릅니다.');
-      return { status: 'duplicate', revision: operation.get('revision') as number };
+      return { ...prior, status: 'duplicate' as const, revision: operation.get('revision') as number };
     }
+    if (gate.get('status') !== 'active' || gate.get('releaseId') !== releaseId) throw new HttpsError('failed-precondition', '전표 수정 서버의 배포 상태가 변경됐습니다. 화면을 새로고침해 주세요.');
     if (!original.exists) throw new HttpsError('not-found', '전표를 찾을 수 없습니다.');
     const old = original.data()!;
     if (companyOf(old.companyId) !== claims.companyId) throw new HttpsError('permission-denied', '다른 회사 전표는 수정할 수 없습니다.');
@@ -236,8 +239,8 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     if (approval && editRef) tx.update(editRef, { status: 'approved', approvalOperationId: operationId,
       approvedRequestHash: approval.pendingEditRequestHash, approvedAt: new Date().toISOString(), approvedBy: claims.employeeId });
     tx.create(operationRef, { ...(approval ?? {}), statementId, uid: request.auth!.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement',
-      kind: 'issuedStatements', status: 'applied', expectedRevision, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), purchaseOrderUpdates: purchaseOrderUpdates.map(row=>({id:row.ref.id,beforeItems:row.beforeItems,items:row.items})), createdAt: admin.firestore.FieldValue.serverTimestamp() });
-    return { status: 'applied', revision: revision + 1 };
+      kind: 'issuedStatements', status: 'applied', discoveryScopeKey: statementEditDiscoveryScopeKey(claims.companyId, request.auth!.uid), expectedRevision, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), purchaseOrderUpdates: purchaseOrderUpdates.map(row=>({id:row.ref.id,beforeItems:row.beforeItems,items:row.items})), createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { version: 1 as const, reference, actorUid: request.auth!.uid, status: 'applied' as const, requestHash, revision: revision + 1, message: '이 전표 수정 요청을 적용했습니다.' };
   });
 }
 export const editIssuedStatementCommand = onCall({ region: 'asia-northeast3' }, async request =>

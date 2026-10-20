@@ -1,4 +1,4 @@
-import {captureStatementEdit} from '../statements/application/statementEditor';
+import {statementEditWrites} from '../../shared/services/statementEditWrites';
 import {partnerEditWrites} from '../../shared/services/partnerEditWrites';
 import {productionRecordWrites} from '../../shared/services/productionRecordWrites';
 import {workOrderWrites} from '../../shared/services/workOrderWrites';
@@ -395,21 +395,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // items 컬렉션 카테고리별 분리
   const products     = useMemo(() => items.filter(i => i.type === 'product'), [items]);
   const submaterials = useMemo(() => items.filter(i => i.type !== 'product'), [items]);
-
-  /**
-   * 전표 편집·날짜·증빙은 처음 선택한 원문 버전으로만 저장한다.
-   * 예전엔 화면마다 `updateItem('issuedStatements', ...)` 을 인라인으로 부르고 있어서,
-   * 거래일이 바뀌어도 시각 도장이 안 따라갔다(`shared/statementEdit` 참고).
-   */
-  const updateStatement = useCallback(
-    (id: string, data: Partial<IssuedStatement>, original?: IssuedStatement, expectedActorUid?: string, isCurrent?: () => boolean) => {
-      if (!original || !expectedActorUid || !isCurrent?.() || auth.currentUser?.uid !== expectedActorUid)
-        throw new Error('처음 선택한 전표 원문과 로그인 정보를 확인해 주세요.');
-      const captured = captureStatementEdit(original, id, companyId);
-      return editIssuedStatementCommand(id, statementEditPatch(data, captured.original), captured.expectedRevision, crypto.randomUUID(), undefined, expectedActorUid, isCurrent);
-    },
-    [companyId],
-  );
 
   /** 화면에서 읽은 원문과 특수 입력을 함께 서버 원자 명령으로 보낸다. */
   const updateCash = useCallback(
@@ -4434,7 +4419,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 return 결과;
               }}
-              onUpdateIssuedStatement={updateStatement}
+              statementEditBindings={statementEditWrites}
               focusDocNo={focusDocNo}
               onFocusHandled={() => setFocusDocNo('')}
               onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
@@ -4510,7 +4495,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 partners={partners}
                 items={allItems}
                 costOf={inventoryCostOf}
-                onUpdateIssuedStatement={updateStatement}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
                 onUpdateAccountCode={updateProfitAccountCode}
@@ -4547,8 +4531,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
-                  onUpdateIssuedStatement={updateStatement}
-                  accountGroups={appData.accountGroups}
+                    accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}
@@ -4658,8 +4641,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
-                  onUpdateIssuedStatement={updateStatement}
-                  accountGroups={appData.accountGroups}
+                    accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}

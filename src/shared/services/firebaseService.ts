@@ -426,7 +426,7 @@ export const fetchDateRange = async <T extends { id: string }>(
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
 };
 
-const stripUndefined = (obj: any): any => {
+export const stripUndefined = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(v => stripUndefined(v));
   if (obj !== null && typeof obj === 'object') {
     // SDK 값은 내부 참조를 순회하면 손상되거나 순환한다. 공식 공개 클래스만 원문으로 전달한다.
