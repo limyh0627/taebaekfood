@@ -5,6 +5,7 @@ import { withDocNames } from '../../../shared/docName';
 import { 서류당사자스냅샷우선 } from '../../../shared/docParty';
 import { bankAccountOf } from '../../../shared/companyInfo';
 import { displaySpec } from '../../../shared/boxSpec';
+import { prepareStatementPrintDocument } from './statementPrintPagination';
 
 interface StatementPrintDeps {
   companyInfo?: CompanyInfo | null;
@@ -73,7 +74,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:0.5mm;">
   <span>전표일자 : <strong>${dateLabel}</strong>&nbsp;&nbsp;&nbsp;발행일시 : <strong>${issuedAt}</strong></span>
-  <span style="color:${BC};font-weight:bold;font-size:12px;">${pageLabel}</span>
+  <span style="color:${BC};font-weight:bold;font-size:12px;">${pageLabel}<span data-statement-page-number></span></span>
   <span>전표NO. : <strong>${docNoStr}</strong></span>
 </div>`;
 
@@ -86,7 +87,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         `전화 ${esc(String(party.tel ?? ''))}${separator}팩스 ${esc(String(party.fax ?? ''))}`;
 
       const infoHtml = `
-<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+<table data-statement-info style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup>
     <col style="width:6mm;"/><col style="width:18mm;"/><col/>
     <col style="width:6mm;"/><col style="width:18mm;"/><col/>
@@ -123,7 +124,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 
       const iRows = itemList.map((item:any, idx:number) => {
         const bg = idx%2===0 ? '#ffffff' : SC;
-        return `<tr style="height:${itemRowHeight}mm;background:${bg};">
+        return `<tr data-statement-item data-statement-index="${idx}" style="height:${itemRowHeight}mm;background:${bg};">
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
           <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${esc(displaySpec(item.spec))}${item.purchaseUnitId ? '<br/><span style="font-size:8px">단위당 ' + fmt(item.unitKg) + 'kg · 입고 ' + fmt(item.inventoryQty) + 'kg</span>' : ''}</td>
@@ -136,7 +137,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 
       // **** 이하여백 **** — 마지막 아이템 바로 다음
       const blankBg0 = itemList.length%2===0 ? '#ffffff' : SC;
-      const blankRow = `<tr style="height:${itemRowHeight}mm;background:${blankBg0};">
+      const blankRow = `<tr data-statement-decoration style="height:${itemRowHeight}mm;background:${blankBg0};">
         <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0;"></td>
         <td colspan="6" style="border:1px solid ${BC};font-size:10px;padding:0 3px;color:${BC};">*&nbsp;*&nbsp;*&nbsp;*&nbsp;&nbsp;이&nbsp;하&nbsp;여&nbsp;백&nbsp;&nbsp;*&nbsp;*&nbsp;*&nbsp;*</td>
       </tr>`;
@@ -146,7 +147,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 4);
       const eRows = Array.from({length:emptyCount}).map((_,idx)=>{
         const bg = (itemList.length+1+idx)%2===0 ? '#ffffff' : SC;
-        return `<tr style="height:5.5mm;background:${bg};">
+        return `<tr data-statement-decoration style="height:5.5mm;background:${bg};">
           <td style="border:1px solid ${BC};"></td><td style="border:1px solid ${BC};"></td>
           <td style="border:1px solid ${BC};"></td><td style="border:1px solid ${BC};"></td>
           <td style="border:1px solid ${BC};"></td><td style="border:1px solid ${BC};"></td>
@@ -155,7 +156,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       }).join('');
 
       const itemsHtml = `
-<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+<table data-statement-items style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup>
     <col style="width:7mm;"/><col/><col style="width:19mm;"/>
     <col style="width:11mm;"/><col style="width:14mm;"/>
@@ -169,7 +170,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 
       // ── 합계 (합계 1행) ──
       const totalsHtml = `
-<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+<table data-statement-final style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup>
     <col style="width:14mm;"/><col style="width:12mm;"/>
     <col style="width:14mm;"/><col style="width:14mm;"/>
@@ -198,7 +199,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       const received = balance?.received ?? 0;
       const closing = balance?.closing ?? previous + currentTrade - received;
       const bottomHtml = `
-<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+<table data-statement-final style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup><col/><col style="width:28mm;"/></colgroup>
   <tr>
     <td style="border:1px solid ${BC};padding:0;vertical-align:top;">
@@ -219,15 +220,15 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 </table>`;
 
       return `
-<div style="font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;color:#172033;box-sizing:border-box;">
+<div data-statement-content style="font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;color:#172033;box-sizing:border-box;">
   ${headerHtml}
-  <div style="border:1.5px solid ${BC};">${infoHtml}${itemsHtml}${totalsHtml}${bottomHtml}</div>
+  <div data-statement-frame style="border:1.5px solid ${BC};">${infoHtml}${itemsHtml}${totalsHtml}${bottomHtml}</div>
 </div>`;
     };
 
     return `
-<div style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;padding:5mm 6mm;display:flex;flex-direction:column;font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;">
-  <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
+<div data-statement-sheet style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;padding:5mm 6mm;display:flex;flex-direction:column;font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;">
+  <div data-statement-copy style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
     ${makePage('#b96363','(공급자용)','#fbf1ed')}
   </div>
   <div style="flex:0 0 auto;display:flex;align-items:center;gap:2mm;padding:1mm 0;color:#666;">
@@ -235,7 +236,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     <span style="font-size:8px;white-space:nowrap;letter-spacing:2px;">✂&nbsp;&nbsp;절&nbsp;취&nbsp;선</span>
     <span style="flex:1;border-top:1.2px dashed #999;"></span>
   </div>
-  <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
+  <div data-statement-copy style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
     ${makePage('#5577a5','(공급받는자용)','#eef3f9')}
   </div>
 </div>`;
@@ -248,7 +249,7 @@ export const buildStatementPrintDocument = (html: string, title: string) => `<ht
         body{font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;font-size:8px;color:#172033;}
         table{border-collapse:collapse;}
       </style></head><body>${html}</body></html>`;
-export const printStatementViaIframe = (html: string, title: string, signal: AbortSignal) => previewHtmlPrint({ html: buildStatementPrintDocument(html, title), title, signal });
+export const printStatementViaIframe = (html: string, title: string, signal: AbortSignal) => previewHtmlPrint({ html: buildStatementPrintDocument(html, title), title, signal, ...(html.includes('data-statement-sheet') ? { prepareDocument: prepareStatementPrintDocument } : {}) });
 
 export function buildReceiptHtml(input: {
   companyInfo?: CompanyInfo | null;

@@ -2,6 +2,7 @@ import { previewHtmlPrint } from '../../../shared/htmlPrintOutput';
 vi.mock('../../../shared/htmlPrintOutput',()=>({previewHtmlPrint:vi.fn().mockResolvedValue(undefined)}));
 import { describe, expect, it, vi } from 'vitest';
 import { buildStatementPrintHtml, buildReceiptHtml, printStatementViaIframe, buildStatementPrintDocument } from './statementPrint';
+import { prepareStatementPrintDocument } from './statementPrintPagination';
 import type { CompanyInfo, Partner, StatementPartySnapshot } from '../../../../types';
 
 const company: CompanyInfo = { name: '회사', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '02-회사', fax: '02-회사팩스' };
@@ -53,7 +54,7 @@ it('전화·팩스의 HTML 문자를 escape하고 번호가 없으면 라벨 옆
 
 it('연락처 한 행 높이는 빈 품목 한 줄에서만 보상하고 실제 11개 품목과 합계·이하여백은 보존한다', () => {
   const empty = contactHtml('매출');
-  const emptyRows = /<tr style="height:5.5mm;background:[^"]*;">\s*(?:<td style="border:1px solid #[^"]*;"><\/td>\s*){7}<\/tr>/g;
+  const emptyRows = /<tr data-statement-decoration style="height:5.5mm;background:[^"]*;">\s*(?:<td style="border:1px solid #[^"]*;"><\/td>\s*){7}<\/tr>/g;
   expect(empty.match(emptyRows)).toHaveLength(14); // 각 용지 빈 줄 7개: 기존8개에서 한 줄만 줄인다.
   const items = Array.from({ length: 11 }, (_, i) => ({ key: 'k' + i, no: i + 1, name: '실품목' + i, spec: '', qty: 1, price: 100, supply: 100, tax: 0, total: 100, isTaxExempt: false, accountCode: '' }));
   const html = buildStatementPrintHtml(items, 1100, 0, 1100, '매출', '거래처', '번호', '2026년 10월 20일', '', '', undefined, { partners: [], allItems: [] });
@@ -68,7 +69,7 @@ it.each([8, 9, 11])('%i개 품목은 실제 행·금액을 보존하며 9개부�
   const before = JSON.stringify(items);
   const html = buildStatementPrintHtml(items, count * 100, count, count * 101, '매출', '거래처', '번호', '2026년 10월 20일', '', '', undefined, { partners: [], allItems: [] });
   const expectedHeight = count >= 9 ? '4' : '5\\.5';
-  expect(html.match(new RegExp(`<tr style="height:${expectedHeight}mm;background:`, 'g'))).toHaveLength((count + 1) * 2);
+  expect(html.match(new RegExp(`<tr (?:data-statement-item data-statement-index="\\d+"|data-statement-decoration) style="height:${expectedHeight}mm;background:`, 'g'))).toHaveLength((count + 1) * 2);
   for (const item of items) expect(html.split('>' + item.name + '</td>')).toHaveLength(3);
   expect(html.match(/>101<\/td>/g)).toHaveLength(count * 2);
   expect(html).toContain(`font-size:11px;font-weight:bold;padding:0 3px;">${(count * 101).toLocaleString('ko-KR')}</td>`);
@@ -141,3 +142,9 @@ it('저장된 kgml 규격은 명세서·영수증에 kg로만 표시하고 원�
 });
 
 it('명세서와영수증HTML은기존A4CSS를포함한한원문으로미리보기에위임하며signal을전달한다',async()=>{const html='<div>원문299원</div>',signal=new AbortController().signal;await printStatementViaIframe(html,'매입<전표>',signal);expect(previewHtmlPrint).toHaveBeenCalledWith({html:buildStatementPrintDocument(html,'매입<전표>'),title:'매입<전표>',signal});const output=vi.mocked(previewHtmlPrint).mock.calls.at(-1)![0].html;expect(output).toContain('@page{size:A4 portrait;margin:0;}');expect(output).toContain('print-color-adjust:exact');expect(output).toContain('<title>매입&lt;전표&gt;</title>');expect(output).toContain('<body>'+html+'</body>');});
+
+it('명세서 표식이 있는 원문에만 실측 준비 함수를 전달한다', async () => {
+  const html = '<div data-statement-sheet></div>', signal = new AbortController().signal;
+  await printStatementViaIframe(html, '명세서', signal);
+  expect(previewHtmlPrint).toHaveBeenLastCalledWith({ html: buildStatementPrintDocument(html, '명세서'), title: '명세서', signal, prepareDocument: prepareStatementPrintDocument });
+});
