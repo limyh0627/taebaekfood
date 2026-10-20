@@ -1574,11 +1574,10 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         </div>
       )}
 
-      {/*  사진 크게 보기 — 아무 데나 누르면 닫힌다. 여러 장이면 옆으로 넘긴다. */}
+      {/*  사진 크게 보기 — 닫기 버튼으로 닫고, 여러 장이면 옆으로 넘긴다. */}
       {viewer && viewImage && (
         <div
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setViewer(null)}
         >
           <img src={viewImage} alt="" className="max-w-full max-h-full object-contain" referrerPolicy="no-referrer" />
           {viewer.urls.length > 1 && (

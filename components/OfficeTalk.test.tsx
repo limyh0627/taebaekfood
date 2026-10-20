@@ -17,6 +17,8 @@ vi.mock('firebase/firestore', async importOriginal => ({
   }),
 }));
 
+vi.mock('../src/shared/chatUpload', async importOriginal => ({...(await importOriginal<typeof import('../src/shared/chatUpload')>()),saveImage:vi.fn()}));
+import {saveImage} from '../src/shared/chatUpload';
 import OfficeTalk from './OfficeTalk';
 
 const me = { id: 'me', name: '관리자', companyId: 'taebaek', position: '관리자', department: '사무', joinDate: '2026-01-01', status: 'working', phone: '' } as Employee;
@@ -55,4 +57,20 @@ describe('오피스톡 메시지 날짜와 주문 출처', () => {
     await waitFor(() => expect(screen.getByLabelText('주문 생성 완료')).toBeInTheDocument());
     expect(within(screen.getByLabelText('주문 생성 완료')).getByText('주문 생성')).toBeInTheDocument();
   });
+});
+it('사진과 배경 클릭은 보기·작성초안을 유지하고 이전다음·저장·명시닫기를 보존한다',async()=>{
+ const original={...messages[0]};Object.assign(messages[0],{images:['https://example.test/photo-1.png','https://example.test/photo-2.png']});
+ try{
+  render(<OfficeTalk {...props}/>);
+  await screen.findByText('자정 뒤');
+  const input=screen.getByPlaceholderText(/메시지/);fireEvent.change(input,{target:{value:'작성중인 메시지'}});
+  const thumb=document.querySelector('img[src="https://example.test/photo-1.png"]')!;fireEvent.click(thumb);
+  const viewer=screen.getByRole('button',{name:'다음 사진'}).parentElement!;
+  fireEvent.click(viewer);fireEvent.click(viewer.querySelector('img')!);
+  expect(viewer.isConnected).toBe(true);expect(input).toHaveValue('작성중인 메시지');
+  fireEvent.click(screen.getByRole('button',{name:'다음 사진'}));expect(viewer.querySelector('img')).toHaveAttribute('src','https://example.test/photo-2.png');
+  fireEvent.click(screen.getByRole('button',{name:'이전 사진'}));expect(viewer.querySelector('img')).toHaveAttribute('src','https://example.test/photo-1.png');
+  fireEvent.click(within(viewer).getByRole('button',{name:/저장/}));expect(saveImage).toHaveBeenCalledWith('https://example.test/photo-1.png');expect(viewer.isConnected).toBe(true);
+  fireEvent.click(within(viewer).getByRole('button',{name:'닫기'}));expect(viewer.isConnected).toBe(false);expect(input).toHaveValue('작성중인 메시지');expect(props.onSendMessage).not.toHaveBeenCalled();
+ }finally{Object.keys(messages[0]).forEach(key=>Reflect.deleteProperty(messages[0],key));Object.assign(messages[0],original);}
 });

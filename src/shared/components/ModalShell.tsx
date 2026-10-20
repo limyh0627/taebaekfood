@@ -39,7 +39,6 @@ const ModalShell: React.FC<ModalShellProps> = ({
   <div
     className="fixed inset-0 z-[1090] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm md:p-4"
     style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))', ...(layer ? { zIndex: layer } : {}) }}
-    onClick={onClose}
   >
     <div
       ref={dialogRef}

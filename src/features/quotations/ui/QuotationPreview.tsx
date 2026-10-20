@@ -12,8 +12,7 @@ export function QuotationPreview({ viewing, printCompany, companyName, onClose, 
   onClose: () => void; onPrint: () => void;
 }) {
   return (
-<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0"
-          onClick={onClose}>
+<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0">
           <div id="quotation-print-area" className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 print:hidden">

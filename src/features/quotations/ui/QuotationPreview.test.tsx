@@ -31,10 +31,10 @@ it('회사명 폴백과 연락처·계좌·유효기간의 기존 빈값 안내�
  expect(screen.getAllByText('별도 협의')).toHaveLength(4);expect(screen.getAllByText('—')).toHaveLength(3);
  expect(screen.queryByText(/FAX/)).toBeNull();
 });
-it('안쪽 클릭은 닫지 않고 인쇄·닫기·배경은 각각 원콜백만 호출한다',()=>{
+it('배경과 안쪽 클릭은 현재 견적을 유지하고 인쇄·명시닫기만 원콜백을 호출한다',()=>{
  const close=vi.fn(),print=vi.fn();const view=render(<QuotationPreview {...props} onClose={close} onPrint={print}/>);
  fireEvent.click(screen.getByText('참기름'));expect(close).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'인쇄'}));expect(print).toHaveBeenCalledOnce();expect(close).not.toHaveBeenCalled();
- const area=view.container.querySelector('#quotation-print-area')!;fireEvent.click(within(area as HTMLElement).getAllByRole('button')[1]);expect(close).toHaveBeenCalledOnce();
- fireEvent.click(area.parentElement!);expect(close).toHaveBeenCalledTimes(2);expect(print).toHaveBeenCalledOnce();
+ const area=view.container.querySelector('#quotation-print-area')!;fireEvent.click(area.parentElement!);expect(close).not.toHaveBeenCalled();expect(area.querySelector('.whitespace-pre-wrap')?.textContent).toBe('첫줄\n둘째줄');
+ fireEvent.click(within(area as HTMLElement).getAllByRole('button')[1]);expect(close).toHaveBeenCalledOnce();expect(print).toHaveBeenCalledOnce();
 });

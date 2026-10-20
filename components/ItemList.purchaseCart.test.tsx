@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import ItemList from './ItemList';
 import type {Item,Partner,PartnerItem} from '../src/shared/types';
@@ -27,6 +27,16 @@ it('담긴 품목의 매입 거래처를 바꾸면 선택한 거래처로 발주
  fireEvent.click(screen.getByRole('button',{name:'담기'}));
  fireEvent.click(screen.getByRole('button',{name:'담은 발주 품목 보기'}));
  fireEvent.change(screen.getByLabelText('복수 매입 품목 매입 거래처'),{target:{value:'s2'}});
+ const panel=screen.getByText('발주 내역').closest('.fixed') as HTMLElement;
+ fireEvent.change(within(panel).getByRole('spinbutton'),{target:{value:'3'}});
+ fireEvent.click(document.querySelector('.fixed.inset-0.z-40')!);
+ expect(screen.getByText('발주 내역')).toBeInTheDocument();
+ expect(screen.getByLabelText('복수 매입 품목 매입 거래처')).toHaveValue('s2');
+ expect(within(panel).getByRole('spinbutton')).toHaveValue(3);expect(issue).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'발주 내역 닫기'}));expect(screen.queryByText('발주 내역')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'담은 발주 품목 보기'}));
+ expect(screen.getByLabelText('복수 매입 품목 매입 거래처')).toHaveValue('s2');
+ expect(within(screen.getByText('발주 내역').closest('.fixed') as HTMLElement).getByRole('spinbutton')).toHaveValue(3);
  fireEvent.click(screen.getByRole('button',{name:'확정 (1건)'}));
  await waitFor(()=>expect(issue).toHaveBeenCalledWith([expect.objectContaining({id:'p1',partnerId:'s2'})]));
 });

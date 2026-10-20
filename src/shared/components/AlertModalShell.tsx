@@ -53,7 +53,7 @@ const AlertModalShell: React.FC<Props> = ({ title, tone, icon: Icon, onClose, wi
   useDialogFocus(dialogRef);
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
       <div
         ref={dialogRef}
         tabIndex={-1}

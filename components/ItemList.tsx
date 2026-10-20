@@ -2966,7 +2966,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* ── 발주 장바구니 패널 ── */}
       {showCartPanel && (
         <>
-          <div className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm" onClick={() => setShowCartPanel(false)} />
+          <div className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm" />
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm flex flex-col bg-white shadow-2xl animate-in slide-in-from-right-4 duration-300">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -2976,7 +2976,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   <p className="text-[11px] text-slate-400 font-medium">{cart.length}개 품목</p>
                 </div>
               </div>
-              <button onClick={() => setShowCartPanel(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
+              <button aria-label="발주 내역 닫기" onClick={() => setShowCartPanel(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
                 <X size={18} />
               </button>
             </div>
