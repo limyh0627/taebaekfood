@@ -1,3 +1,5 @@
+import {buildStatementEditPatch} from '../src/features/statements/application/statementEditor';
+import {useStatementEditor} from '../src/features/statements/hooks/useStatementEditor';
 import {termsFromOpening} from '../src/shared/partnerItemTermsCommand';
 import {usePartnerItemTermsEditor} from '../src/features/items/hooks/usePartnerItemTermsEditor';
 import {PartnerItemTermsRecovery} from '../src/features/items/ui/ServiceTerms';
@@ -162,7 +164,7 @@ interface TradeStatementProps extends PartnerItemTermsBindings {
   }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
-  onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void | Promise<unknown>;
+  onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>, original?: IssuedStatement, expectedActorUid?: string, isCurrent?: () => boolean) => Promise<unknown>;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
   focusDocNo?: string;
@@ -573,9 +575,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const 전표일자칸 = (
     날짜: string,
-    바꾸기: (다음: string) => unknown,
+    바꾸기: (다음: string, confirm?: () => Promise<boolean>) => unknown,
     고칠수있나: boolean,
     찍힌시각?: string,
+    수명확인 = false,
   ) => {
     const 날 = String(날짜 ?? '').slice(0, 10);
     const 시각 = 찍힌시각 ? String(찍힌시각).slice(11, 16) : '';
@@ -584,6 +587,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return (
       <span className="inline-block">
         <VoucherDateChip
+          key={companyId+':'+issueActor}
           value={날}
           onApply={async 다음 => {
             if (!다음 || 다음 === 날) return;
@@ -595,6 +599,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             const 물음 = `전표일자를 ${날} → ${다음} 로 바꿉니다.`
               + (달바뀜 ? '\n\n달이 바뀌어 부가세 신고 달과 월 마감이 함께 달라집니다.' : '')
               + '\n\n바꿀까요?';
+            if (수명확인) { await 바꾸기(다음, () => appConfirm(물음)); return; }
             if (!await appConfirm(물음)) return;
             await 바꾸기(다음);
           }}
@@ -1165,7 +1170,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; if (detailStatementId && editingStmt?.id === detailStatementId) onDetailClose?.(); onComposerClose?.(); };
+  const closeCreate = () => { if (saveBusyRef.current || statementEditor.isBusy()) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; if (detailStatementId && editingStmt?.id === detailStatementId) onDetailClose?.(); onComposerClose?.(); };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1496,7 +1501,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
-  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false) => {
+  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false, isCurrent: () => boolean = () => true) => {
     if (!onSavePartnerItemTerms) throw Error('거래조건 저장 기능이 연결되지 않았습니다.');
     /*
      * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
@@ -1511,12 +1516,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
     const completed:string[]=[];
     for(const u of upserts){
+      if(!isCurrent()) throw Error('편집 입력이 바뀌어 거래조건 후속 저장을 중단했습니다.');
       const opening=[...partnerOut,...partnerIn].find(row=>row.id===u.id)??null;
       const result=await savePartnerTermsRow(u,{...(u.price!==undefined?{price:u.price}:{}),...(u.taxType!==undefined?{taxType:u.taxType}:{}),...(u.Account_Code!==undefined?{Account_Code:u.Account_Code}:{})},opening);
+      if(!isCurrent()) throw Error('편집 입력이 바뀌어 거래조건 후속 저장을 중단했습니다.');
       if(result.status!=='saved')throw Error((completed.length?'저장이 확인된 품목: '+completed.join(', ')+'\n':'')+saveOutcomeMessage(result));
       if(u.itemId)completed.push(u.itemId);
     }
     for(const c of costUpdates){
+      if(!isCurrent()) throw Error('편집 입력이 바뀌어 원가 후속 저장을 중단했습니다.');
       if(auth.currentUser?.uid!==issueActor||cashEditScope.current.companyId!==companyId)throw Error('회사 또는 계정이 바뀌어 원가 후속 저장을 중단했습니다.');
       if(!onUpdateItemCost)throw Error('거래조건은 저장됐지만 원가 저장 기능이 연결되지 않았습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');
       try{await onUpdateItemCost(c.itemId,c.price);}catch{throw Error('거래조건은 저장됐지만 품목 '+c.itemId+' 원가 반영을 확인하지 못했습니다. 거래조건을 다시 저장하지 말고 원가를 확인해 주세요.');}
@@ -1871,56 +1879,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
   };
 
+  const editDraft = {tradeDate,memo:stmtMemo,partnerId:selectedClientId,partnerName:selectedClient?.name||'',totalSupply,totalTax,totalAmount,partySnapshot,lines:lineItems,type:stmtType};
+  const statementEditor = useStatementEditor({companyId,actorUid:issueActor,original:editingStmt,
+    draftFingerprint:JSON.stringify([createMode,isEditMode,editDraft,[...noLinkIds]]),
+    save:onUpdateIssuedStatement,onCommitted:()=>{closeCreate();}});
   const handleSaveEdit = async () => {
-    if (saveBusyRef.current) return;
-    if (!editingStmt || lineItems.length === 0) return;
+    if (saveBusyRef.current || statementEditor.isBusy() || !editingStmt || lineItems.length === 0) return;
     if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return; }
     if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return; }
-    const skipLinkIds = await confirmUnlinkedLines();
-    if (!skipLinkIds) return;
-    const proposed: Partial<IssuedStatement> = {
-      tradeDate,
-      memo: stmtMemo.trim(),
-      partnerId: selectedClientId,
-      partnerName: selectedClient?.name || '',
-      totalSupply,
-      totalTax,
-      totalAmount,
-      partySnapshot,
-      items: lineItems.map((i, index) => ({
-        ...(i.itemId ? { itemId: i.itemId } : {}),
-        ...(i.lineKind ? { lineKind: i.lineKind } : {}),
-        name: i.name, spec: i.spec, qty: i.qty, price: i.price,
-        supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
-        accountCode: i.accountCode || undefined,
-        ...(i.side ? { side: i.side } : {}),
-        ...(stmtType === '매입' ? readPurchaseUnitSnapshot(i) ?? {} : {}),
-        ...(stmtType === '매입' && i.purchaseUnitId ? {sourceLineIndex: i.sourceLineIndex ?? index} : {}),
-        ...(stmtType === '매입' && i.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: i.purchaseQuantityKg } : {}),   // 양변 전표 — 없으면 분개가 안 선다
-      })),
-    };
-    // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
-    // ※ 입고대기 발주카드 수정 → 연결된 전표 수정요청은 AdminApp.handleRequestPoEdit 경로(별도)
-    saveBusyRef.current = true;
-    setIsSaving(true);
-    try {
-      if (!onUpdateIssuedStatement) throw new Error('전표 수정 기능이 연결되지 않았습니다.');
-      await onUpdateIssuedStatement(editingStmt.id, proposed);
-      try {
-        await applyPriceSync(editingStmt.type, skipLinkIds);
-      } catch (error) {
-        console.error('전표 수정 후 거래처 단가 동기화 실패', error);
-        alert(`전표 ${editingStmt.docNo} 수정은 완료됐지만 거래조건 후속 처리를 확인하지 못했습니다. ${error instanceof Error?error.message:String(error)} 전표를 다시 수정하지 말고 거래조건 결과를 확인해 주세요.`);
-      }
-      saveBusyRef.current = false;
-      closeCreate();
-      alert('전표가 수정되었습니다.');
-    } catch (e: any) {
-      alert(저장실패문구(e));
-    } finally {
-      saveBusyRef.current = false;
-      setIsSaving(false);
-    }
+    let skipLinkIds: Set<string> | null = null;
+    await statementEditor.saveEdit({patch:buildStatementEditPatch(editDraft),confirm:async()=>{skipLinkIds=await confirmUnlinkedLines();return !!skipLinkIds;},
+      afterSave:async(isCurrent)=>{await applyPriceSync(editingStmt.type,skipLinkIds!,false,isCurrent);}});
   };
 
   const printBalance = (type: StatementType, partnerId: string, amount: number, statement?: IssuedStatement) => {
@@ -2586,9 +2555,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 return <StatementTradeTableRow key={view.key} statement={stmt} view={view}
                   shownAmount={partial ? portion! : view.amount} partial={partial} settle={settle} canSettle={canSettle(stmt)}
                   evidenceChoices={choices} evidence={evidenceOf(stmt)}
-                  dateCell={전표일자칸(stmt.tradeDate, 날짜 => onUpdateIssuedStatement?.(stmt.id, { tradeDate: 날짜 }), !!onUpdateIssuedStatement, stmt.issuedAt)}
+                  dateCell={전표일자칸(stmt.tradeDate, (날짜,confirm) => statementEditor.updateDate(stmt,날짜,confirm), !!onUpdateIssuedStatement, stmt.issuedAt,true)}
                   journalToggle={journalToggle(view.key)} onOpen={() => openEdit(stmt)} onSettle={() => openPayModal(stmt)}
-                  onEvidence={onUpdateIssuedStatement ? evidence => onUpdateIssuedStatement(stmt.id, { evidence }) : undefined}
+                  editScopeKey={JSON.stringify([companyId,issueActor])}
+                  onEvidence={onUpdateIssuedStatement ? evidence => statementEditor.updateEvidence(stmt,evidence) : undefined}
                   journalPreview={expandedJournal.has(view.key)
                     ? journalTr(`je__${view.key}`, journalOfStmt(stmt), { kind: stmt.type === '비용' ? '대체' : stmt.type, docNo: stmt.docNo, date: stmt.tradeDate, headPartner: stmt.partnerName })
                     : undefined}/>;
@@ -2825,11 +2795,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )}
 
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
+      {!createMode && statementEditor.error && <p role="alert" className="text-sm text-rose-700">{statementEditor.error}</p>}
+      {!createMode && statementEditor.message && !statementEditor.error && <p role="status">{statementEditor.message}</p>}
       {createMode && !recoveryOpen && !detailStmt && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
 
-          <fieldset disabled={isSaving || !editingStmt && !!issueIdentityRef.current?.id && issuePendings.some(entry=>!entry.archived&&entry.pending?.input.statement.id===issueIdentityRef.current?.id)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
+          {statementEditor.notice && <p role="status" className="px-4 py-2 text-sm">{statementEditor.notice}</p>}
+          {statementEditor.error && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{statementEditor.error}</p>}
+          {statementEditor.message && !statementEditor.error && <p role="status" className="px-4 py-2">{statementEditor.message}</p>}
+          <fieldset disabled={isSaving || statementEditor.busy || statementEditor.locked || !editingStmt && !!issueIdentityRef.current?.id && issuePendings.some(entry=>!entry.archived&&entry.pending?.input.statement.id===issueIdentityRef.current?.id)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
 
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
               editingDocNo={editingStmt?.docNo} editMode={isEditMode}
@@ -3141,7 +3116,7 @@ ${names}
             })()}
             {/* ── 하단 액션 바 ── */}
             {(manualMode || editingStmt) && <StatementActionBar editing={!!editingStmt} editMode={isEditMode}
-              canIssue={canIssue} saving={isSaving} mode={createMode} issuePay={issuePay}
+              canIssue={canIssue} saving={isSaving || statementEditor.busy} mode={createMode} issuePay={issuePay}
               issuePayAmount={issuePayAmount} totalAmount={totalAmount}
               onIssuePayChange={checked=>{setIssuePay(checked);if(checked)setIssuePayAmount(String(Math.round(totalAmount)));}}
               onIssuePayAmountChange={setIssuePayAmount} onSaveEdit={handleSaveEdit}

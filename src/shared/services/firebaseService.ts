@@ -174,10 +174,15 @@ export async function activeReleaseId(): Promise<string> {
   return requireActiveReleaseId((await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data());
 }
 
-export async function editIssuedStatementCommand(id: string, patch: Partial<IssuedStatement>, expectedRevision: number, operationId: string, pendingEdit?: PendingStatementEdit): Promise<void> {
+export async function editIssuedStatementCommand(id: string, patch: Partial<IssuedStatement>, expectedRevision: number, operationId: string, pendingEdit?: PendingStatementEdit, expectedActorUid?: string, isCurrent?: () => boolean): Promise<void> {
+  const actorUid = expectedActorUid ?? auth.currentUser?.uid;
+  const assertCurrent = () => {
+    if (!actorUid || auth.currentUser?.uid !== actorUid || (isCurrent && !isCurrent())) throw new Error('회사 또는 로그인 정보가 바뀌어 전표 수정을 전송하지 않았습니다.');
+  };
   await authReady;
-  if (!auth.currentUser) throw new Error('로그인이 만료됐습니다. 다시 로그인해 주세요.');
+  assertCurrent();
   const releaseId = await activeReleaseId();
+  assertCurrent();
   const call = httpsCallable(functions, 'editIssuedStatementCommand');
   let approval: { pendingEditRequestId: string; pendingEditRequestHash: string } | undefined;
   if (pendingEdit) {
@@ -187,6 +192,7 @@ export async function editIssuedStatementCommand(id: string, patch: Partial<Issu
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(canonical(snapshot))));
     approval = { pendingEditRequestId: pendingEdit.id, pendingEditRequestHash: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join('') };
   }
+  assertCurrent();
   await call({ statementId: id, patch: stripUndefined(patch), expectedRevision, operationId, releaseId, ...(approval ?? {}) });
 }
 

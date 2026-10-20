@@ -1,5 +1,5 @@
 import { statementHistoryRowStyles as rowStyle } from './statementHistoryRowStyles';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { IssuedStatement } from '../../../shared/types';
 import type { SettleStatus } from '../../admin/voucherMerge';
 import type { StatementHistoryRowView } from '../domain/statementHistoryRowView';
@@ -7,6 +7,31 @@ import { settlementTypeOf } from '../../admin/voucherMerge';
 
 const fmt = (amount: number) => amount.toLocaleString('ko-KR');
 const overLabel = (type: string) => type === '매출' ? '선수금' : '선급금';
+
+function EvidenceField({ choices, value, label, save }: { choices: readonly string[]; value: string; label: string; save?: (value: string) => void | Promise<unknown> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const locked = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  async function change(next: string) {
+    if (!save || locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await save(next);
+      if (alive.current && result && typeof result === 'object' && 'status' in result && ['unknown', 'partial', 'not-started'].includes(String(result.status))) {
+        setError('message' in result ? String(result.message) : '증빙 변경 결과를 확인하지 못했습니다.');
+      }
+    } catch (reason) {
+      if (alive.current) setError(reason instanceof Error ? reason.message : '증빙 변경 결과를 확인하지 못했습니다.');
+    } finally {
+      if (alive.current) { locked.current = false; setBusy(false); }
+    }
+  }
+  return <><select value={value} disabled={!save || busy} onChange={event => void change(event.target.value)} aria-label={label} className={`h-6 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 ${rowStyle.action} font-black text-slate-700 outline-none focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60`}>{choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select>{busy && <span role="status">저장 중</span>}{error && <p role="alert" className="whitespace-normal text-xs text-rose-600">{error}</p>}</>;
+}
 
 function Balance({ view, type, mobile }: { view: StatementHistoryRowView; type: string; mobile?: boolean }) {
   const amount = view.cumulative;
@@ -18,6 +43,7 @@ function Balance({ view, type, mobile }: { view: StatementHistoryRowView; type: 
 
 export function StatementTradeTableRow(props: {
   statement: IssuedStatement;
+  editScopeKey?: string;
   view: StatementHistoryRowView;
   shownAmount: number;
   partial: boolean;
@@ -32,7 +58,7 @@ export function StatementTradeTableRow(props: {
   journalPreview?: ReactNode;
   onOpen: () => void;
   onSettle: () => void;
-  onEvidence?: (evidence: string) => void;
+  onEvidence?: (evidence: string) => void | Promise<unknown>;
 }) {
   const { statement, view } = props;
   const settleColor = props.settle.state === 'done' ? 'text-emerald-600' : props.settle.state === 'partial' ? 'text-amber-600' : props.settle.state === 'open' ? 'text-slate-600' : 'text-slate-300';
@@ -52,7 +78,7 @@ export function StatementTradeTableRow(props: {
       <td className={`px-4 py-2 text-right ${rowStyle.amount} font-black ${view.isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(props.shownAmount)}{props.partial && <span className={`block ${rowStyle.meta} font-bold text-slate-400`}>전표 {fmt(view.amount)}</span>}</td>
       <td className="px-4 py-2 text-right"><Balance view={view} type={statement.type}/></td>
       <td className="whitespace-nowrap px-3 py-2"><span className="flex items-center gap-1.5"><span className={`font-black ${settleColor}`}>{props.settle.label}</span>{props.canSettle && <button onClick={event => { event.stopPropagation(); props.onSettle(); }} className={`shrink-0 whitespace-nowrap ${rowStyle.action} font-black underline decoration-dotted underline-offset-2 ${settlementTypeOf(statement) === '매입' ? 'text-rose-600 hover:text-rose-700' : 'text-blue-600 hover:text-blue-700'}`}>{settlementTypeOf(statement) === '매입' ? '지불처리' : '수금처리'}</button>}</span></td>
-      {!props.evidenceChoices.length ? <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td> : <td className="whitespace-nowrap px-3 py-2" onClick={event => event.stopPropagation()}><select value={props.evidence} disabled={!props.onEvidence} onChange={event => props.onEvidence?.(event.target.value)} aria-label={`${view.partner} 증빙`} className={`h-6 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 ${rowStyle.action} font-black text-slate-700 outline-none focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60`}>{props.evidenceChoices.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select></td>}
+      {!props.evidenceChoices.length ? <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td> : <td className="whitespace-nowrap px-3 py-2" onClick={event => event.stopPropagation()}><EvidenceField key={`${props.editScopeKey ?? statement.companyId}:${statement.id}`} value={props.evidence} choices={props.evidenceChoices} label={`${view.partner} 증빙`} save={props.onEvidence}/></td>}
       <td className="px-3 py-2 text-slate-300">—</td>
     </tr>
     {props.journalPreview}

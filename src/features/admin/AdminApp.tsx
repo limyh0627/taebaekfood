@@ -1,3 +1,4 @@
+import {captureStatementEdit} from '../statements/application/statementEditor';
 import {partnerEditWrites} from '../../shared/services/partnerEditWrites';
 import {productionRecordWrites} from '../../shared/services/productionRecordWrites';
 import {workOrderWrites} from '../../shared/services/workOrderWrites';
@@ -396,17 +397,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const submaterials = useMemo(() => items.filter(i => i.type !== 'product'), [items]);
 
   /**
-   * 전표 한 장 고치기 — **다섯 화면이 다 이걸 쓴다.**
+   * 전표 편집·날짜·증빙은 처음 선택한 원문 버전으로만 저장한다.
    * 예전엔 화면마다 `updateItem('issuedStatements', ...)` 을 인라인으로 부르고 있어서,
    * 거래일이 바뀌어도 시각 도장이 안 따라갔다(`shared/statementEdit` 참고).
    */
   const updateStatement = useCallback(
-    (id: string, data: Partial<IssuedStatement>) => {
-      const current = issuedStatements.find(s => s.id === id);
-      if (!current) throw new Error('수정할 전표를 찾지 못했습니다. 화면을 새로고침해 주세요.');
-      return editIssuedStatementCommand(id, statementEditPatch(data, current), Number((current as IssuedStatement & { mutationRevision?: number }).mutationRevision ?? 0), crypto.randomUUID());
+    (id: string, data: Partial<IssuedStatement>, original?: IssuedStatement, expectedActorUid?: string, isCurrent?: () => boolean) => {
+      if (!original || !expectedActorUid || !isCurrent?.() || auth.currentUser?.uid !== expectedActorUid)
+        throw new Error('처음 선택한 전표 원문과 로그인 정보를 확인해 주세요.');
+      const captured = captureStatementEdit(original, id, companyId);
+      return editIssuedStatementCommand(id, statementEditPatch(data, captured.original), captured.expectedRevision, crypto.randomUUID(), undefined, expectedActorUid, isCurrent);
     },
-    [issuedStatements],
+    [companyId],
   );
 
   /** 화면에서 읽은 원문과 특수 입력을 함께 서버 원자 명령으로 보낸다. */
