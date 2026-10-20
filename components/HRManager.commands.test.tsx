@@ -225,3 +225,35 @@ it('직원 partial은 실제 저장 ACK를 안내하고 모달·초안을 유지
  expect(dialog).toBeInTheDocument();expect(save).toHaveBeenCalledOnce();expect(dialog.querySelector('input[type="text"]')).toHaveValue('partial 이름');
  fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));expect(screen.queryByRole('dialog',{name:'정보 수정'})).toBeNull();
 });
+
+it('휴가 상세는 회사·UID 세대 변경에 즉시 닫히고 같은 직원 ID의 새 회사 내역과 섞이지 않는다',()=>{
+ const month=new Date().toISOString().slice(0,7);
+ const leave=(reason:string):LeaveRequest=>({id:reason,employeeId:employee.id,employeeName:reason,type:'연차',startDate:month+'-19',endDate:month+'-19',reason,status:'approved',requestedAt:month+'-01',daysUsed:1});
+ const a=leave('태백 원내역'),b=leave('풍회 새내역'),other={...employee,companyId:'punghoe' as const,name:'풍회 사원'};
+ const view=render(<HRManager {...props} companyId="taebaek" requestScopeKey="uid-a" leaveRequests={[a]}/>);
+ fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));fireEvent.click(screen.getByTitle('올해 연차 신청·사용 내역 보기'));
+ const title=employee.name+' 연차 상세';let detail=screen.getByRole('dialog',{name:title});
+ fireEvent.click(within(detail).getByRole('button',{name:new RegExp(Number(month.slice(5))+'월')}));expect(within(detail).getByText(a.reason)).toBeInTheDocument();
+ view.rerender(<HRManager {...props} employees={[{...employee}]} companyId="taebaek" requestScopeKey="uid-a" leaveRequests={[{...a}]}/>);
+ expect(within(screen.getByRole('dialog',{name:title})).getByText(a.reason)).toBeInTheDocument();
+ view.rerender(<HRManager {...props} employees={[other]} companyId="punghoe" requestScopeKey="uid-a" leaveRequests={[b]}/>);
+ expect(screen.queryByRole('dialog')).toBeNull();expect(screen.queryByText(a.reason)).toBeNull();
+ view.rerender(<HRManager {...props} companyId="taebaek" requestScopeKey="uid-a" leaveRequests={[a]}/>);expect(screen.queryByRole('dialog')).toBeNull();
+ view.rerender(<HRManager {...props} employees={[other]} companyId="punghoe" requestScopeKey="uid-a" leaveRequests={[b]}/>);
+ fireEvent.click(screen.getByTitle('올해 연차 신청·사용 내역 보기'));detail=screen.getByRole('dialog',{name:'풍회 사원 연차 상세'});
+ expect(within(detail).queryByText(b.reason)).toBeNull();fireEvent.click(within(detail).getByRole('button',{name:new RegExp(Number(month.slice(5))+'월')}));expect(within(detail).getByText(b.reason)).toBeInTheDocument();
+ view.rerender(<HRManager {...props} employees={[other]} companyId="punghoe" requestScopeKey="uid-b" leaveRequests={[b]}/>);expect(screen.queryByRole('dialog')).toBeNull();
+ view.rerender(<HRManager {...props} employees={[other]} companyId="punghoe" requestScopeKey="uid-a" leaveRequests={[b]}/>);expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(screen.getByTitle('올해 연차 신청·사용 내역 보기'));detail=screen.getByRole('dialog',{name:'풍회 사원 연차 상세'});expect(within(detail).queryByText(b.reason)).toBeNull();
+ fireEvent.click(within(detail).getByRole('button',{name:'풍회 사원 연차 상세 닫기'}));expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('회사 교체의 첫 layout 단계에서도 이전 직원 상세를 렌더하지 않는다',()=>{
+ const observed:(string|null)[]=[];
+ function Host({company}:{company:'taebaek'|'punghoe'}){
+  React.useLayoutEffect(()=>{observed.push(document.querySelector('[role="dialog"]')?.getAttribute('aria-labelledby') ? document.querySelector('[role="dialog"] h3')?.textContent??null : null);},[company]);
+  return <HRManager {...props} companyId={company} requestScopeKey="uid" employees={[{...employee,companyId:company}]}/>;
+ }
+ const view=render(<Host company="taebaek"/>);fireEvent.click(screen.getByRole('button',{name:'연차 관리'}));fireEvent.click(screen.getByTitle('올해 연차 신청·사용 내역 보기'));expect(screen.getByRole('dialog')).toBeInTheDocument();
+ view.rerender(<Host company="punghoe"/>);expect(observed.at(-1)).toBeNull();
+});

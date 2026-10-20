@@ -110,8 +110,12 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역 (월별 그룹, 클릭 시 펼침)
-  const [leaveDetailEmp, setLeaveDetailEmp] = useState<Employee | null>(null);
+  const leaveDetailScope = useRef({ key: actionScopeKey, owner: {} });
+  if (leaveDetailScope.current.key !== actionScopeKey) leaveDetailScope.current = { key: actionScopeKey, owner: {} };
+  const [leaveDetailSelection, setLeaveDetailSelection] = useState<{ employee: Employee; owner: object } | null>(null);
+  const leaveDetailEmp = leaveDetailSelection?.owner === leaveDetailScope.current.owner ? leaveDetailSelection.employee : null;
   const [openLeaveMonths, setOpenLeaveMonths] = useState<Set<string>>(new Set());
+  React.useEffect(() => { setLeaveDetailSelection(null); setOpenLeaveMonths(new Set()); }, [actionScopeKey]);
   // 회사 단체 휴가 — 기본 전원 포함, 뺄 사람만 체크 해제
   const [showVacation, setShowVacation] = useState(false);
   React.useEffect(()=>setShowVacation(false),[companyId,requestScopeKey]);
@@ -350,7 +354,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-6 whitespace-nowrap">
                         <button
-                          onClick={() => { setLeaveDetailEmp(emp); setOpenLeaveMonths(new Set()); }}
+                          onClick={() => { setLeaveDetailSelection({ employee: { ...emp }, owner: leaveDetailScope.current.owner }); setOpenLeaveMonths(new Set()); }}
                           className="text-left group"
                           title="올해 연차 신청·사용 내역 보기"
                         >
@@ -861,7 +865,7 @@ const HRManager: React.FC<HRManagerProps> = ({
         };
 
         return (
-          <LargeModalShell title={`${emp.name} 연차 상세`} onClose={() => setLeaveDetailEmp(null)} bodyClassName="!p-0">
+          <LargeModalShell title={`${emp.name} 연차 상세`} onClose={() => setLeaveDetailSelection(null)} bodyClassName="!p-0">
                   <p className="px-5 pt-4 text-xs text-slate-400 font-bold">
                     {emp.department} · {emp.position} · 입사 {emp.joinDate}
                     {underOneYear && <span className="ml-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">1년 미만</span>}
