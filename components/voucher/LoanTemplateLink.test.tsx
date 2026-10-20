@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import VoucherTemplateManager from '../VoucherTemplateManager';
@@ -8,14 +8,17 @@ import { CashTemplateModal } from '../../src/shared/cashTemplates';
 import { matchingLoan, loanBalance, type LoanContract } from '../../src/shared/loanLedger';
 import { canAutoIssue } from '../../src/shared/autoVoucher';
 import type { AccountCode, FixedCostTemplate } from '../../src/shared/types';
+import React from 'react';
 
-const state = vi.hoisted(() => ({ loans: [] as LoanContract[], notice: vi.fn() }));
+const state = vi.hoisted(() => ({ loans: [] as LoanContract[], notice: vi.fn(), auth: { currentUser: { uid: 'loan-actor' } }, listeners: new Set<(user: { uid: string } | null) => void>() }));
+vi.mock('../../src/shared/firebase', async importOriginal => ({ ...await importOriginal<typeof import('../../src/shared/firebase')>(), auth: state.auth, authReady: Promise.resolve() }));
+vi.mock('firebase/auth', async importOriginal => ({ ...await importOriginal<typeof import('firebase/auth')>(), onAuthStateChanged: (_auth: unknown, listener: (user: { uid: string } | null) => void) => { state.listeners.add(listener); listener(state.auth.currentUser); return () => state.listeners.delete(listener); } }));
 vi.mock('../../src/shared/useLoanContracts', () => ({ useLoanContracts: () => state.loans }));
 vi.mock('../../src/shared/components/appDialog', () => ({ appNotice: state.notice, appConfirm: async () => true, appPrompt: async () => '저장한 상환' }));
 const loan: LoanContract = { id: 'l1', companyId: 'taebaek', name: '운전자금', lenderName: '농협', accountCode: '260', openingDate: '2026-01-01', openingPrincipal: 10000, createdAt: '2026-01-01' };
 const accounts = [{ id: '260', code: '260', name: '단기차입금', type: '부채' }, { id: '293', code: '293', name: '장기차입금', type: '부채' }, { id: '951', code: '951', name: '이자비용', type: '비용' }] as AccountCode[];
 const template = (extra: Partial<FixedCostTemplate> = {}): FixedCostTemplate => ({ id: 't1', companyId: 'taebaek', name: '계약 상환', kind: 'voucher', category: '기타', active: false, amount: 1100, accountCode: '260', mode: '상환', dir: '출금', principal: 1000, interest: 100, loanCode: '260', loanId: 'l1', ...extra });
-beforeEach(() => { state.loans = [loan]; state.notice.mockReset().mockResolvedValue(undefined); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
+beforeEach(() => { state.auth.currentUser = { uid: 'loan-actor' }; state.listeners.clear(); state.loans = [loan]; state.notice.mockReset().mockResolvedValue(undefined); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
 function view(templates = [template()], save = vi.fn(), close = vi.fn(), create = vi.fn(), bank = 'bank') {
   render(<VoucherComposer companyId="taebaek" initialDir="출금" initialDate="2026-09-27" partners={[]} accountCodes={accounts} accountGroups={[]} cashAccounts={[{ id: 'bank', name: '농협', active: true } as never]} fixedCostTemplates={templates} cashEntries={[]} statements={[]} partnerBalances={new Map()} getBalance={() => 0} cashAccountId={bank} onCashAccountId={() => {}} onClose={close} onAddCashEntry={save} onAddFixedCostTemplate={create} recordPayment={() => {}} renderJournal={() => null} />);
   return { save, close, create };
@@ -24,6 +27,11 @@ async function pick(u: ReturnType<typeof userEvent.setup>, name = '계약 상환
   await u.click(screen.getByRole('button', { name: /템플릿 ▾/ }));
   await u.click(screen.getByRole('button', { name: new RegExp(name) }));
 }
+function loanScopeView(companyId: 'taebaek' | 'punghoe', save: (entry: import('../../src/shared/types').CashEntry) => void | Promise<void>, close: () => void) {
+  return <VoucherComposer companyId={companyId} initialDir="출금" initialDate="2026-09-27" partners={[]} accountCodes={accounts} accountGroups={[]} cashAccounts={[{ id: 'bank', name: '농협', active: true } as never]} fixedCostTemplates={[template({ companyId })]} cashEntries={[]} statements={[]} partnerBalances={new Map()} getBalance={() => 0} cashAccountId="bank" onCashAccountId={() => {}} onClose={close} onAddCashEntry={save} recordPayment={() => {}} renderJournal={() => null} />;
+}
+function deferredLoan() { let resolve!: () => void, reject!: (error: Error) => void; const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; }
+function changeActor(uid: string) { state.auth.currentUser = { uid }; for (const listener of state.listeners) listener(state.auth.currentUser); }
 describe('계약 상환 연결', () => {
   it('출금 계좌를 선택하지 않은 상환은 기록하지 않는다', async () => {
     const u = userEvent.setup(); const save = vi.fn(), close = vi.fn();
@@ -61,6 +69,11 @@ describe('계약 상환 연결', () => {
     const u = userEvent.setup(); const { close } = view([template()], save); await pick(u);
     const button = screen.getByRole('button', { name: '저장' }); fireEvent.click(button); fireEvent.click(button);
     expect(save).toHaveBeenCalledTimes(1); expect(close).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    expect(close).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '일반전표 발행 닫기' })); expect(close).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' }); expect(close).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('원금')).toBeDisabled(); expect(screen.getByLabelText('이자')).toBeDisabled();
     reject(new Error('응답 실패')); await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(screen.getByLabelText('원금')).toHaveValue('1,000');
     expect(screen.getByLabelText('이자')).toHaveValue('100');
@@ -118,6 +131,37 @@ describe('계약 상환 연결', () => {
     await u.type(screen.getByPlaceholderText('이름·거래처·계정 검색'), '없음'); expect(screen.queryByRole('button', { name: /농협 상환/ })).toBeNull();
     expect(screen.getByRole('dialog')).toHaveClass('h-[80dvh]');
   });
+});
+
+it.each([false, true])('회사 전환·왕복(%s) 뒤 옛 ACK와 finally는 새 저장과 입력을 바꾸지 않는다', async roundTrip => {
+  state.loans = [loan, { ...loan, companyId: 'punghoe', name: '풍회 대출' }];
+  const old = deferredLoan(), fresh = deferredLoan(), save = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise), close = vi.fn();
+  const rendered = render(loanScopeView('taebaek', save, close)); await pick(userEvent.setup());
+  fireEvent.click(screen.getByRole('button', { name: '저장' })); expect(save).toHaveBeenCalledOnce();
+  rendered.rerender(loanScopeView('punghoe', save, close)); expect(screen.getByLabelText('원금')).toBeEnabled(); expect(screen.getByLabelText('원금')).toHaveValue('1,000');
+  if (roundTrip) rendered.rerender(loanScopeView('taebaek', save, close));
+  fireEvent.click(screen.getByRole('button', { name: '저장' })); expect(save).toHaveBeenCalledTimes(2);
+  expect(save.mock.calls[1][0].id).not.toBe(save.mock.calls[0][0].id); expect(save.mock.calls[1][0].companyId).toBe(roundTrip ? 'taebaek' : 'punghoe');
+  await act(async () => { old.resolve(); await old.promise; });
+  expect(close).not.toHaveBeenCalled(); expect(screen.getByLabelText('원금')).toBeDisabled(); expect(screen.getByRole('button', { name: '저장 중…' })).toBeDisabled();
+  await act(async () => { fresh.resolve(); await fresh.promise; }); expect(close).toHaveBeenCalledOnce();
+});
+
+it('실제 UID 왕복 후 옛 실패와 finally는 새 pending 안내·잠금을 바꾸지 않는다', async () => {
+  const old = deferredLoan(), fresh = deferredLoan(), save = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise), close = vi.fn();
+  render(loanScopeView('taebaek', save, close)); await pick(userEvent.setup()); fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  act(() => { changeActor('new-actor'); changeActor('loan-actor'); }); expect(screen.getByLabelText('원금')).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: '저장' })); expect(save).toHaveBeenCalledTimes(2); expect(save.mock.calls[1][0].id).not.toBe(save.mock.calls[0][0].id);
+  await act(async () => { old.reject(Error('옛 계정 응답 실패')); await old.promise.catch(() => {}); });
+  expect(window.alert).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled(); expect(screen.getByLabelText('원금')).toBeDisabled();
+  await act(async () => { fresh.resolve(); await fresh.promise; }); expect(close).toHaveBeenCalledOnce();
+});
+
+it.each(['success', 'failure'])('unmount 뒤 대출 %s 응답은 닫기·오류를 호출하지 않는다', async mode => {
+  const old = deferredLoan(), save = vi.fn(() => old.promise), close = vi.fn(); const rendered = render(loanScopeView('taebaek', save, close));
+  await pick(userEvent.setup()); fireEvent.click(screen.getByRole('button', { name: '저장' })); rendered.unmount();
+  await act(async () => { if (mode === 'success') old.resolve(); else old.reject(Error('옛 창 응답')); await old.promise.catch(() => {}); });
+  expect(close).not.toHaveBeenCalled(); expect(window.alert).not.toHaveBeenCalled();
 });
 
 it('상환 작성에서 같은 회사 장기 대출을 선택하면 원금 계정도 동기화한다', async () => {

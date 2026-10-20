@@ -1,6 +1,7 @@
 import { CashTemplateModal } from '../../src/features/statements/ui/CashTemplateSelection';
 import {AccrualJournalPreview,CashJournalPreview} from '../../src/features/statements/ui/VoucherJournalPreview';
 import {auth} from '../../src/shared/firebase';
+import {onAuthStateChanged} from 'firebase/auth';
 import {readVoucherPending,storeVoucherPending,clearVoucherPending,voucherPendingKey,voucherNoWriteProof,type VoucherIssuePending} from '../../src/features/statements/infrastructure/voucherIssuePending';
 import { templateStatementType, templateStatementConflict, type TemplateStatementType } from '../../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../../src/shared/components/appDialog';
@@ -198,9 +199,40 @@ export default function VoucherComposer({
   //  1년 안에 갚는 건만 단기차입금(260)이다. 템플릿에 박아 두면 그게 이긴다.
   const [qpLoanCode, setQpLoanCode] = useState('260');
   const [qpLoanId, setQpLoanId] = useState('');
-  const [loanSaving, setLoanSaving] = useState(false);
-  const loanSaveLock = useRef(false);
+  const [, refreshLoanActor] = useState(0);
+  const [loanSavingOwner, setLoanSavingOwner] = useState<object | null>(null);
+  const loanSaveLock = useRef<object | null>(null);
   const loanSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
+  const loanMounted = useRef(true);
+  const loanScope = useRef({ companyId, actorUid: auth.currentUser?.uid ?? '', token: {} });
+  const loanActorUid = auth.currentUser?.uid ?? '';
+  if (loanScope.current.companyId !== companyId || loanScope.current.actorUid !== loanActorUid) {
+    loanScope.current = { companyId, actorUid: loanActorUid, token: {} };
+    loanSaveLock.current = null;
+    loanSaveAttempt.current = null;
+  }
+  const loanSaving = loanSavingOwner === loanScope.current.token;
+  useEffect(() => {
+    loanMounted.current = true;
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      const uid = user?.uid ?? '';
+      if (loanScope.current.actorUid !== uid) {
+        loanScope.current = { companyId: loanScope.current.companyId, actorUid: uid, token: {} };
+        loanSaveLock.current = null;
+        loanSaveAttempt.current = null;
+        setLoanSavingOwner(null);
+        refreshLoanActor(value => value + 1);
+      }
+    });
+    return () => {
+      loanMounted.current = false;
+      loanScope.current.token = {};
+      loanSaveLock.current = null;
+      loanSaveAttempt.current = null;
+      unsubscribe();
+    };
+  }, []);
+  const requestClose = () => { if (!transferLock.current && !loanSaveLock.current) onClose(); };
   const issueLock = useRef<object|null>(null);
   const actorId = auth.currentUser?.uid ?? '';
   const pendingKey = voucherPendingKey(companyId, actorId);
@@ -505,6 +537,8 @@ export default function VoucherComposer({
         };
         const doLoanSave = async () => {
           if (loanSaveLock.current || !onAddCashEntry) return;
+          const uid = auth.currentUser?.uid;
+          if (!uid) { alert('로그인 정보를 확인한 뒤 다시 저장해 주세요.'); return; }
           if (!quickPayAccountId) { alert('상환액이 나갈 계좌를 선택해 주세요.'); return; }
           if (qpLoanId && !matchingLoan(loans, companyId, qpLoanId, qpLoanCode)) {
             alert('대출 계약의 회사와 원금 계정을 확인하고 다시 선택해 주세요.'); return;
@@ -515,13 +549,18 @@ export default function VoucherComposer({
           const key = JSON.stringify(payload);
           // 응답만 실패한 재시도는 같은 ID를 써야 원금이 두 번 차감되지 않는다.
           if (loanSaveAttempt.current?.key !== key) loanSaveAttempt.current = { key, entry: { ...e, companyId } };
-          loanSaveLock.current = true; setLoanSaving(true);
+          const scope = loanScope.current.token, attempt = {};
+          const current = () => loanMounted.current && loanScope.current.token === scope && loanScope.current.companyId === companyId && auth.currentUser?.uid === uid && loanSaveLock.current === attempt;
+          const submitted = loanSaveAttempt.current.entry;
+          loanSaveLock.current = attempt; setLoanSavingOwner(scope);
           try {
-            await onAddCashEntry(loanSaveAttempt.current.entry);
-            onClose();
+            await onAddCashEntry(submitted);
+            if (current()) onClose();
           } catch (error) {
-            alert('상환 전표를 저장하지 못했습니다. 입력을 유지합니다. 다시 시도해 주세요. ' + String(error));
-          } finally { loanSaveLock.current = false; setLoanSaving(false); }
+            if (current()) alert('상환 전표를 저장하지 못했습니다. 입력을 유지합니다. 다시 시도해 주세요. ' + String(error));
+          } finally {
+            if (current()) { loanSaveLock.current = null; setLoanSavingOwner(null); }
+          }
         };
         // 급여도 대출상환과 같은 방식 — 전표는 한 건, 그 안에서 성격을 줄로 가른다.
         //   총급여는 비용(+), 원천공제는 우리가 맡아둔 돈이라 부채 증가(−).
@@ -815,9 +854,9 @@ export default function VoucherComposer({
         );
 
         return (
-          <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0"
-            footer={<fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => { onClose(); }} className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-50">취소</button>
+          <ModalShell title="일반전표 발행" onClose={requestClose} bodyClassName="flex min-h-0 flex-col !p-0"
+            footer={<fieldset disabled={transferSaving || loanSaving || issueSaving || !!issuePending || issueCorrupt} className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={requestClose} className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-50">취소</button>
               <button type="button" onClick={handleQuickPaySave} disabled={!canSave || loanSaving || generalSaving || paymentRecoveryBlocked} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"><Save size={12}/>{loanSaving||generalSaving ? '저장 중…' : '저장'}</button>
             </fieldset>}>
             {issueSaving && <p role="status" className="border-b border-slate-200 p-4 text-sm">전표를 저장 중입니다.</p>}
@@ -831,7 +870,7 @@ export default function VoucherComposer({
             {issueError && <p role="alert" className="px-6 py-3 text-sm text-rose-600">{issueError}</p>}
             {partnerPaymentEnabled&&<section aria-label="일반전표의 이전 수금·지불 확인" className="space-y-3 border-b border-slate-200 p-4"><PartnerPaymentRecoveryPanel payment={paymentRecovery}/></section>}
             {generalPaymentError&&<p role="alert" className="whitespace-pre-line px-6 py-3 text-sm text-rose-600">{generalPaymentError}</p>}
-            <fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt || generalSaving} className="contents">
+            <fieldset disabled={transferSaving || loanSaving || issueSaving || !!issuePending || issueCorrupt || generalSaving} className="contents">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex flex-wrap items-center gap-3 px-4 py-4 md:px-5 border-b border-slate-200 shrink-0">
