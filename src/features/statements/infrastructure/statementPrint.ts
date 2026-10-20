@@ -51,6 +51,9 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     //  서류끼리 대조가 된다. shared/statementLines 의 withDocNames 참고.
     const itemList = withDocNames(items as any[], allItems);
     const totalQty = itemList.reduce((s,i)=>s+(Number(i.qty)||0),0);
+    // 연락처를 더해도 많은 품목의 실제 행·정산표가 반쪽 용지 밖으로 밀리지 않게 한다.
+    const hasManyItems = itemList.length >= 9;
+    const itemRowHeight = hasManyItems ? 4 : 5.5;
 
     const makePage = (borderColor: string, pageLabel: string, stripeColor: string) => {
       const BC = borderColor;
@@ -79,6 +82,8 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         `<td style="border:1px solid ${BC};padding:1px 4px;font-size:10px;overflow:hidden;white-space:nowrap;${extra}">${t}</td>`;
       const L = (t:string) =>
         `<td style="border:1px solid ${BC};background:${LB};padding:1px 4px;font-size:9.5px;font-weight:bold;white-space:nowrap;text-align:center;">${t}</td>`;
+      const contact = (party: { tel?: unknown; fax?: unknown }, separator = '&nbsp;&nbsp;') =>
+        `전화 ${esc(String(party.tel ?? ''))}${separator}팩스 ${esc(String(party.fax ?? ''))}`;
 
       const infoHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
@@ -88,9 +93,9 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
   </colgroup>
   <tbody>
     <tr style="height:5.5mm;">
-      <td rowspan="4" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
+      <td rowspan="${hasManyItems ? 4 : 5}" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
       ${L('상&nbsp;&nbsp;호')}${V(buyName,'font-weight:bold;font-size:11px;')}
-      <td rowspan="4" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
+      <td rowspan="${hasManyItems ? 4 : 5}" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
       ${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:11px;')}
     </tr>
     <tr style="height:5mm;">
@@ -98,13 +103,17 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       ${L('대&nbsp;&nbsp;표')}${V(supCeo,'font-weight:bold;')}
     </tr>
     <tr style="height:5mm;">
-      ${L('사업자번호')}${V(buyBizNo)}
-      ${L('사업자번호')}${V(supBizNo)}
+      ${L('사업자번호')}${V(buyBizNo + (hasManyItems ? `&nbsp;&nbsp;${contact(사는쪽, '&nbsp;·&nbsp;')}` : ''))}
+      ${L('사업자번호')}${V(supBizNo + (hasManyItems ? `&nbsp;&nbsp;${contact(파는쪽, '&nbsp;·&nbsp;')}` : ''))}
     </tr>
     <tr style="height:5mm;">
       ${L('주&nbsp;&nbsp;소')}${V(buyAddr,'font-size:9.5px;')}
       ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:9.5px;')}
     </tr>
+    ${hasManyItems ? '' : `<tr style="height:5mm;">
+      ${L('연락처')}${V(contact(사는쪽))}
+      ${L('연락처')}${V(contact(파는쪽))}
+    </tr>`}
   </tbody>
 </table>`;
 
@@ -114,7 +123,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 
       const iRows = itemList.map((item:any, idx:number) => {
         const bg = idx%2===0 ? '#ffffff' : SC;
-        return `<tr style="height:5.5mm;background:${bg};">
+        return `<tr style="height:${itemRowHeight}mm;background:${bg};">
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
           <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${esc(displaySpec(item.spec))}${item.purchaseUnitId ? '<br/><span style="font-size:8px">단위당 ' + fmt(item.unitKg) + 'kg · 입고 ' + fmt(item.inventoryQty) + 'kg</span>' : ''}</td>
@@ -127,14 +136,14 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 
       // **** 이하여백 **** — 마지막 아이템 바로 다음
       const blankBg0 = itemList.length%2===0 ? '#ffffff' : SC;
-      const blankRow = `<tr style="height:5.5mm;background:${blankBg0};">
+      const blankRow = `<tr style="height:${itemRowHeight}mm;background:${blankBg0};">
         <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0;"></td>
         <td colspan="6" style="border:1px solid ${BC};font-size:10px;padding:0 3px;color:${BC};">*&nbsp;*&nbsp;*&nbsp;*&nbsp;&nbsp;이&nbsp;하&nbsp;여&nbsp;백&nbsp;&nbsp;*&nbsp;*&nbsp;*&nbsp;*</td>
       </tr>`;
 
-      // 하단 미수·미지급 표를 키운 만큼 빈 품목 두 줄을 내준다. 반쪽 용지 경계를 넘으면
+      // 하단 정산표와 연락처 행이 늘어난 만큼 빈 품목 줄만 내준다. 반쪽 용지 경계를 넘으면
       // 첫 장 발행일시와 둘째 장 제목이 절취선에서 겹친다.
-      const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 3);
+      const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 4);
       const eRows = Array.from({length:emptyCount}).map((_,idx)=>{
         const bg = (itemList.length+1+idx)%2===0 ? '#ffffff' : SC;
         return `<tr style="height:5.5mm;background:${bg};">
