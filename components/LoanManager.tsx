@@ -8,6 +8,9 @@ import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import { splitCashEntry } from '../src/shared/splitEntry';
 import { isFinancial } from '../src/shared/partnerRole';
 import { loanBalance, loanMovements, loanOpeningPrincipalForBalance, type LoanContract } from '../src/shared/loanLedger';
+import { auth } from '../src/shared/firebase';
+import { loanCashInput } from '../src/shared/services/loanCashAdapter';
+import { readMatchingLoanMovement, retryLoanMovement } from '../src/shared/services/recordLoanMovement';
 import { createLoanWithOpening, fetchWhere, updateLoanOpening } from '../src/shared/services/firebaseService';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -38,7 +41,13 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   activeSelection.current = { companyId, selectedId };
   const [action, setAction] = useState<'차입' | '상환' | null>(null);
   const [busy, setBusy] = useState(false);
-  const movementSaving = useRef(false);
+  const movementSaving = useRef<object | null>(null);
+  const actorUid = auth.currentUser?.uid ?? '';
+  const movementOwner = useRef({ companyId, selectedId, actorUid });
+  if (movementOwner.current.companyId !== companyId || movementOwner.current.selectedId !== selectedId || movementOwner.current.actorUid !== actorUid) {
+    movementOwner.current = { companyId, selectedId, actorUid };
+    movementSaving.current = null;
+  }
   const [name, setName] = useState('');
   const [lenderName, setLenderName] = useState('');
   const [partnerId, setPartnerId] = useState('');
@@ -141,42 +150,49 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
 
   const saveMovement = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selected || !action) return;
-    if (amountErrors.principal || (action === '상환' && amountErrors.interest)) return;
-    const p = parseMoneyInput(principal), i = action === '상환' ? parseMoneyInput(interest) : 0;
-    if (!date || date < selected.openingDate || !cashAccountId || !Number.isFinite(p) || p < 0 || !Number.isFinite(i) || i < 0 || p + i <= 0) {
-      await appNotice('시작일 이후 날짜·통장·0원 이상의 원금을 확인하세요.'); return;
-    }
-    if (action === '차입' && p <= 0) { await appNotice('차입 원금을 입력하세요.'); return; }
-    if (action === '상환' && p > loanBalance(selected, cashEntries)) {
-      await appNotice('상환 원금이 현재 대출 잔액보다 많습니다.'); return;
-    }
-    const entry: CashEntry | null = action === '차입'
-      ? { id: `cash-loan-${Date.now()}`, companyId, loanId: selected.id, date, createdAt: stampFor(date),
-          cashAccountId, dir: '입금', amount: p, accountCode: selected.accountCode,
-          partnerId: selected.partnerId, partnerName: selected.lenderName,
-          note: note.trim() || `${selected.name} 차입`, createdBy: currentUserName }
-      : splitCashEntry({
-          lines: [
-            { accountCode: selected.accountCode, amount: p, note: '원금' },
-            { accountCode: STANDARD_ACCOUNT.INTEREST, amount: i, note: '이자' },
-          ],
-          note, fallbackNote: `${selected.name} 상환`,
-          base: { companyId, loanId: selected.id, date, createdAt: stampFor(date), cashAccountId,
-            partnerId: selected.partnerId, partnerName: selected.lenderName, createdBy: currentUserName },
-        });
-    if (!entry || movementSaving.current) return;
-    movementSaving.current = true;
-    const stillSelected = () => activeSelection.current.companyId === companyId && activeSelection.current.selectedId === selected.id;
+    if (!selected || !action || movementSaving.current) return;
+    const owner = movementOwner.current, lock = {};
+    movementSaving.current = lock;
+    const stillSelected = () => movementOwner.current === owner && (auth.currentUser?.uid ?? '') === owner.actorUid
+      && activeSelection.current.companyId === companyId && activeSelection.current.selectedId === selected.id;
     try {
-      if (!await appConfirm({ title: `${action} 전표 확인`, message: `${selected.name} · ${date}\n원금 ${won(p)}${i ? ` / 이자 ${won(i)}` : ''}\n${action === '상환' ? '출금' : '입금'} 전표를 발행하고 이 대출에 연결할까요?`, confirmText: '전표 발행' })) return;
+      if (amountErrors.principal || (action === '상환' && amountErrors.interest)) return;
+      const p = parseMoneyInput(principal), i = action === '상환' ? parseMoneyInput(interest) : 0;
+      if (!date || date < selected.openingDate || !cashAccountId || !Number.isFinite(p) || p < 0 || !Number.isFinite(i) || i < 0 || p + i <= 0) {
+        await appNotice('시작일 이후 날짜·통장·0원 이상의 원금을 확인하세요.'); return;
+      }
+      if (action === '차입' && p <= 0) { await appNotice('차입 원금을 입력하세요.'); return; }
+      const entry: CashEntry | null = action === '차입'
+        ? { id: `cash-loan-${Date.now()}`, companyId, loanId: selected.id, date, createdAt: stampFor(date),
+            cashAccountId, dir: '입금', amount: p, accountCode: selected.accountCode,
+            partnerId: selected.partnerId, partnerName: selected.lenderName,
+            note: note.trim() || `${selected.name} 차입`, createdBy: currentUserName }
+        : splitCashEntry({
+            lines: [
+              { accountCode: selected.accountCode, amount: p, note: '원금' },
+              { accountCode: STANDARD_ACCOUNT.INTEREST, amount: i, note: '이자' },
+            ],
+            note, fallbackNote: `${selected.name} 상환`,
+            base: { companyId, loanId: selected.id, date, createdAt: stampFor(date), cashAccountId,
+              partnerId: selected.partnerId, partnerName: selected.lenderName, createdBy: currentUserName },
+          });
+      if (!entry || !stillSelected()) return;
+      const input = loanCashInput(companyId, entry, selected);
+      const observed = readMatchingLoanMovement(companyId, input);
+      if (!observed && action === '상환' && p > loanBalance(selected, cashEntries)) {
+        await appNotice('상환 원금이 현재 대출 잔액보다 많습니다.'); return;
+      }
+      if (!await appConfirm({ title: observed ? '이전 요청 결과 재확인' : `${action} 전표 확인`, message: observed
+        ? '보관된 같은 대출 요청의 처리 결과를 다시 확인합니다. 새 전표를 만들지 않습니다.'
+        : `${selected.name} · ${date}\n원금 ${won(p)}${i ? ` / 이자 ${won(i)}` : ''}\n${action === '상환' ? '출금' : '입금'} 전표를 발행하고 이 대출에 연결할까요?`, confirmText: observed ? '결과 재확인' : '전표 발행' })) return;
       if (!stillSelected()) return;
       setBusy(true);
-      await onAddCashEntry(entry);
+      if (observed) await retryLoanMovement(companyId, input, observed, stillSelected);
+      else await onAddCashEntry(entry);
       if (!stillSelected()) return;
       setAction(null); setPrincipal(''); setInterest('0'); setNote('');
-    } catch (error) { if (stillSelected()) await appNotice(`전표를 저장하지 못했습니다. ${String(error)}`, '저장 실패'); }
-    finally { movementSaving.current = false; if (stillSelected()) setBusy(false); }
+    } catch (error) { if (stillSelected()) await appNotice(`대출 전표의 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 보관된 요청이 있다면 같은 내용으로 다시 확인해 주세요. ${String(error)}`, '처리 결과 확인 필요'); }
+    finally { if (movementSaving.current === lock) { movementSaving.current = null; if (stillSelected()) setBusy(false); } }
   };
 
   return <div className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
