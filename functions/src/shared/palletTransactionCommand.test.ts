@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest, normalizePalletExchangeSource, normalizePalletExchangeOpenResult } from './palletTransactionCommand';
+import { normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest, normalizePalletExchangeSource, normalizePalletExchangeOpenResult, normalizePalletStockEditFields, normalizePalletStockEditRequest, normalizePalletStockEditOpenResult, normalizePalletOperationReference } from './palletTransactionCommand';
 const reference = { companyId: 'taebaek' as const, operationId: 'operation-한글', transactionId: 'ptrans-한글' };
 const transaction = { partnerId: '거래처', palletId: '파렛트', type: 'out' as const, quantity: 2, date: '2026-10-21', note: '' };
 describe('파렛트 공용 요청 정본', () => {
@@ -43,4 +43,29 @@ it('교체완료 v2는 원source 공개 존재값과 고정 회수ID를 보존�
   expect(normalizePalletExchangeOpenResult({ reference, sourceTransactionId: '원거래', source, actorUid: 'u', expectedVersion: '1:000000001' }).source.exchangeReturnQty).toBe(0);
   for (const changed of [{ ...request, sourceTransactionId: reference.transactionId }, { ...request, source: { ...source, status: '교체완료' } }, { ...request, source: { ...source, isTransfer: true } }, { ...request, returnDate: '2026-02-31' }]) expect(() => normalizePalletTransactionRequest(changed)).toThrow();
   expect(() => normalizePalletTransactionRequest({ ...request, source: { ...source, hidden: true } })).toThrow();
+});
+const editReference = { kind: 'pallet-edit' as const, companyId: 'taebaek' as const, operationId: 'edit-op', palletId: '파렛트' };
+const edit = { version: 3 as const, action: 'edit-pallet' as const, reference: editReference, original: { name: ' 파렛트 ', total: 10, damaged: 2 }, expectedVersion: '1:000000001', patch: { name: '' } };
+it('v2 직렬화 골든과 기존3필드 ref는 편집 확장 뒤에도 그대로다', () => {
+  expect(serializePalletTransactionRequest({ version: 2, action: 'complete-exchange', reference, sourceTransactionId: '원거래', source: { ...transaction, status: '교체중' }, expectedVersion: '1:000000001', returnDate: '2026-10-22' })).toBe('{"version":2,"action":"complete-exchange","reference":{"companyId":"taebaek","operationId":"operation-한글","transactionId":"ptrans-한글"},"sourceTransactionId":"원거래","source":{"partnerId":"거래처","palletId":"파렛트","type":"out","quantity":2,"date":"2026-10-21","note":"","status":"교체중"},"expectedVersion":"1:000000001","returnDate":"2026-10-22"}');
+  expect(normalizePalletOperationReference(reference)).toEqual(reference);
+  expect(normalizePalletOperationReference(editReference)).toEqual(editReference);
+  expect(() => normalizePalletTransactionReference(editReference)).toThrow();
+  expect(() => normalizePalletOperationReference({ ...editReference, kind: 'other' })).toThrow();
+});
+it('편집은 세 원문과 dirty만 정규화하고 빈 이름·개별 안전 수량을 그대로 보존한다', () => {
+  expect(normalizePalletStockEditFields({ ...edit.original, hidden: true, inUse: 99 })).toEqual(edit.original);
+  expect(normalizePalletStockEditRequest(edit)).toEqual(edit);
+  expect(normalizePalletStockEditRequest({ ...edit, patch: { total: 0, damaged: Number.MAX_SAFE_INTEGER } }).patch).toEqual({ total: 0, damaged: Number.MAX_SAFE_INTEGER });
+  expect(normalizePalletStockEditOpenResult({ reference: editReference, original: edit.original, actorUid: 'u', expectedVersion: edit.expectedVersion }).original.name).toBe(' 파렛트 ');
+});
+it('빈 dirty·원값 동일·미소유 필드·범위 밖 수량은 저장 원문으로 받지 않는다', () => {
+  for (const patch of [{}, { name: edit.original.name }, { hidden: true }, { total: -1 }, { damaged: 1.5 }, { total: Number.MAX_SAFE_INTEGER + 1 }]) expect(() => normalizePalletStockEditRequest({ ...edit, patch })).toThrow();
+  expect(() => normalizePalletStockEditRequest({ ...edit, original: { ...edit.original, inUse: 99 } })).toThrow();
+});
+it('편집 결과는 kind·palletID·actor와 결합하고 등록 ref로 위장하지 못한다', () => {
+  const result = { version: 1, reference: editReference, actorUid: 'u', status: 'applied', requestHash: 'a'.repeat(64), message: '편집 완료' };
+  expect(normalizePalletTransactionResult(result, editReference, 'u').reference).toEqual(editReference);
+  for (const ref of [reference, { ...editReference, palletId: '다른파렛트' }]) expect(() => normalizePalletTransactionResult(result, ref, 'u')).toThrow();
+  expect(() => normalizePalletTransactionResult(result, editReference, 'other')).toThrow();
 });

@@ -1,6 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, functions } from '../firebase';
-import { normalizePalletTransactionReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, normalizePalletExchangeOpenResult, normalizePalletExchangeOpenInput, normalizePalletExchangeSource, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletExchangeOpenInput, type PalletTransactionResult, } from '../palletTransactionCommand';
+import { normalizePalletTransactionReference, normalizePalletOperationReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, normalizePalletExchangeOpenResult, normalizePalletExchangeOpenInput, normalizePalletExchangeSource, normalizePalletStockEditFields, normalizePalletStockEditOpenResult, normalizePalletStockEditPatch, type PalletOperationReference, type PalletStockEditOpenInput, type PalletStockEditFields, type PalletStockEditPatch, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletExchangeOpenInput, type PalletTransactionResult, } from '../palletTransactionCommand';
 export interface PalletTransactionScope {
     companyId: PalletTransactionReference['companyId'];
     actorUid: string;
@@ -15,7 +15,7 @@ export interface PalletTransactionEntry {
     bodyRaw: string | null;
     referenceRaw: string | null;
     request: PalletTransactionAnyRequest | null;
-    reference: PalletTransactionReference | null;
+    reference: PalletOperationReference | null;
     transaction: PalletTransactionRequest['transaction'] | null;
     summary: {
         action: 'register' | 'complete-exchange';
@@ -27,9 +27,14 @@ export interface PalletTransactionEntry {
         returnQty?: number;
         note: string;
         sourceTransactionId?: string;
+    } | {
+        action: 'edit-pallet';
+        palletId: string;
+        original: PalletStockEditFields;
+        patch: PalletStockEditPatch;
     } | null;
     references: {
-        reference: PalletTransactionReference;
+        reference: PalletOperationReference;
         source: 'body' | 'reference' | 'both';
     }[];
     requestHash: string | null;
@@ -45,10 +50,10 @@ export interface PalletTransactionObservation {
     copyMismatch?: boolean;
 }
 type Current = () => boolean;
-type Own = (entry: PalletTransactionEntry | null) => void;
+type Own = (entry: PalletTransactionEntry | null, previous?: PalletTransactionEntry) => void;
 const prefix = (scope: PalletTransactionScope) => `pallet-transaction-v1:${scope.companyId}:${encodeURIComponent(scope.actorUid)}:`;
-const keyFor = (scope: PalletTransactionScope, ref: PalletTransactionReference) => prefix(scope) + encodeURIComponent(JSON.stringify([ref.operationId, ref.transactionId]));
-const equalRef = (a: PalletTransactionReference, b: PalletTransactionReference) => JSON.stringify(a) === JSON.stringify(b);
+const keyFor = (scope: PalletTransactionScope, ref: PalletOperationReference) => prefix(scope) + encodeURIComponent(JSON.stringify('kind' in ref ? ['pallet-edit', ref.operationId, ref.palletId] : [ref.operationId, ref.transactionId]));
+const equalRef = (a: PalletOperationReference, b: PalletOperationReference) => JSON.stringify(a) === JSON.stringify(b);
 const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), n => n.toString(16).padStart(2, '0')).join('');
 const notify = () => window.dispatchEvent(new Event('pallet-transaction-pending'));
 const running = new Set<string>();
@@ -89,7 +94,7 @@ async function readAt(scope: PalletTransactionScope, key: string): Promise<Palle
     const bodyRaw = localStorage.getItem(key), referenceRaw = localStorage.getItem(key + ':reference');
     let request: PalletTransactionAnyRequest | null = null;
     let side: {
-        reference: PalletTransactionReference;
+        reference: PalletOperationReference;
         bodyDigest: string;
         lastAttempt?: PalletTransactionAttempt;
     } | null = null;
@@ -106,7 +111,7 @@ async function readAt(scope: PalletTransactionScope, key: string): Promise<Palle
     }
     try {
         const parsed = JSON.parse(referenceRaw ?? 'null');
-        const reference = normalizePalletTransactionReference(parsed.reference);
+        const reference = normalizePalletOperationReference(parsed.reference);
         if (parsed.version !== 1 || parsed.actorUid !== scope.actorUid || reference.companyId !== scope.companyId
             || typeof parsed.bodyDigest !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.bodyDigest))
             throw Error();
@@ -136,7 +141,7 @@ async function readAt(scope: PalletTransactionScope, key: string): Promise<Palle
         legacy: !!request && referenceRaw === null,
         lastAttempt: side?.lastAttempt ?? null,
         status: valid ? 'valid' : bodyRaw === null && referenceRaw === null ? 'missing' : 'corrupt',
-        description: request?.version === 2 ? '파렛트 교체 완료 요청' : request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
+        description: request?.version === 3 ? '파렛트 재고 수정 요청' : request?.version === 2 ? '파렛트 교체 완료 요청' : request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
 }
 async function rpc(input: unknown) {
     return (await httpsCallable(functions, 'palletTransactionCommand')(input)).data;
@@ -172,7 +177,7 @@ async function prepare(scope: PalletTransactionScope, input: PalletTransactionAn
         throw Error('요청의 회사가 다릅니다.');
     return exclusive(scope, current, async () => {
         const entries = await read(scope, current);
-        if (request.version === 1 ? findMatching(entries, request.transaction) : findMatchingExchange(entries, request.sourceTransactionId))
+        if (request.version === 1 ? findMatching(entries, request.transaction) : request.version === 2 ? findMatchingExchange(entries, request.sourceTransactionId) : findMatchingEdit(entries, { palletId: request.reference.palletId, patch: request.patch }))
             throw Error('같은 내용의 보관 요청이 있습니다. 그 요청의 결과를 확인하거나 사본을 정리해 주세요.');
         const key = keyFor(scope, request.reference);
         const bodyRaw = JSON.stringify({ version: 1, actorUid: scope.actorUid, request });
@@ -193,15 +198,15 @@ async function prepare(scope: PalletTransactionScope, input: PalletTransactionAn
         return entry;
     });
 }
-async function command(scope: PalletTransactionScope, supplied: PalletTransactionEntry, mode: 'apply' | 'inspect' | 'cancel', current: Current, selected?: PalletTransactionReference, onOwn?: Own): Promise<PalletTransactionObservation> {
+async function command(scope: PalletTransactionScope, supplied: PalletTransactionEntry, mode: 'apply' | 'inspect' | 'cancel', current: Current, selected?: PalletOperationReference, onOwn?: Own): Promise<PalletTransactionObservation> {
     scope = { ...scope };
     supplied = { ...supplied };
-    const selectedSnapshot = selected ? normalizePalletTransactionReference(selected) : undefined;
+    const selectedSnapshot = selected ? normalizePalletOperationReference(selected) : undefined;
     return exclusive(scope, current, async () => {
         assertPair(scope, supplied, current);
         let entry = await readAt(scope, supplied.key);
         assertPair(scope, supplied, current);
-        const reference = normalizePalletTransactionReference(selectedSnapshot ?? entry.reference);
+        const reference = normalizePalletOperationReference(selectedSnapshot ?? entry.reference);
         if (!entry.references.some(row => equalRef(row.reference, reference)))
             throw Error('표시된 요청 번호가 아닙니다.');
         if (mode === 'apply' && (!entry.request || entry.status !== 'valid' || entry.references.length !== 1))
@@ -234,7 +239,7 @@ async function command(scope: PalletTransactionScope, supplied: PalletTransactio
                 let rejected = false;
                 try {
                     rejected = details?.operationStatus === 'rejected' && details.version === 1 && details.writes === false
-                        && equalRef(normalizePalletTransactionReference(details.reference), reference);
+                        && equalRef(normalizePalletOperationReference(details.reference), reference);
                 }
                 catch { /* 다른 요청의 오류를 현재 요청의 무쓰기 증거로 사용하지 않는다. */ }
                 side.lastAttempt = { at: new Date().toISOString(), outcome: rejected ? 'server-rejected' : 'unconfirmed', message: error instanceof Error ? error.message.slice(0, 500) : '처리 결과를 확인하지 못했습니다.' };
@@ -249,9 +254,10 @@ async function command(scope: PalletTransactionScope, supplied: PalletTransactio
                 const next = await readAt(scope, entry.key);
                 if (next.bodyRaw !== entry.bodyRaw || next.referenceRaw !== nextRaw)
                     throw Error('보관 정보가 바뀌었습니다. 다시 읽어 주세요.');
+                const previous = entry;
                 entry = next;
                 assertPair(scope, entry, current);
-                onOwn?.(entry);
+                onOwn?.(entry, previous);
                 notify();
             }
             throw error;
@@ -274,7 +280,7 @@ async function upgrade(scope: PalletTransactionScope, supplied: PalletTransactio
         if (next.bodyRaw !== entry.bodyRaw || next.referenceRaw !== referenceRaw || next.status !== 'valid')
             throw Error('참조 복원을 다시 확인하지 못했습니다. 전송하지 않았습니다.');
         assertPair(scope, next, current);
-        onOwn?.(next);
+        onOwn?.(next, entry);
         notify();
         return next;
     });
@@ -299,7 +305,7 @@ async function discard(scope: PalletTransactionScope, supplied: PalletTransactio
             throw Error('다른 보관 정보가 생겨 그대로 두었습니다.');
         localStorage.removeItem(entry.key + ':reference');
         owner(scope, current);
-        onOwn?.(null);
+        onOwn?.(null, entry);
         notify();
         return { entry: null, terminal: true };
     });
@@ -311,7 +317,7 @@ function projection(entry: PalletTransactionEntry, input: PalletTransactionResul
         const terminal = !!result && result.status !== 'unknown';
         const mismatch = result?.status === 'applied' && !!entry.requestHash && result.requestHash !== entry.requestHash;
         return { ...row, result, terminal, label: row.source === 'body' ? '본문에 남은 요청' : row.source === 'reference' ? '참조에 남은 요청' : '보관된 요청',
-            currentState: result?.status === 'applied' ? entry.summary?.action === 'complete-exchange' ? '이 요청의 교체 완료와 회수 처리가 끝났습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
+            currentState: result?.status === 'applied' ? entry.summary?.action === 'edit-pallet' ? '이 요청의 파렛트 재고 수정이 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : entry.summary?.action === 'complete-exchange' ? '이 요청의 교체 완료와 회수 처리가 끝났습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
             cause: mismatch ? '이 요청은 서버에서 처리됐지만 기기에 보관된 내용과 다릅니다. 현재 입력이 저장됐다는 뜻은 아닙니다.' : !terminal && row.source !== 'body' ? entry.lastAttempt?.message ?? '' : '',
             nextAction: terminal ? '이 기기에 남은 사본을 정리한 뒤 새 업무를 시작할 수 있습니다.' : '결과를 확인하거나 미처리 요청을 중단해 주세요.', canInspect: true, canCancel: !terminal };
     });
@@ -336,6 +342,8 @@ function findMatchingExchange(entries: readonly PalletTransactionEntry[], source
 function summaryFor(request: PalletTransactionAnyRequest | null): PalletTransactionEntry['summary'] {
     if (!request)
         return null;
+    if (request.version === 3)
+        return { action: 'edit-pallet', palletId: request.reference.palletId, original: request.original, patch: request.patch };
     if (request.version === 1) {
         const body = request.transaction;
         return { action: 'register', partnerId: body.partnerId, palletId: body.palletId, type: body.type, date: body.date, quantity: body.quantity, ...(body.exchangeReturnQty !== undefined ? { returnQty: body.exchangeReturnQty } : {}), note: body.note ?? '' };
@@ -357,6 +365,28 @@ async function openExchange(scope: PalletTransactionScope, input: PalletExchange
         return result;
     });
 }
-export const palletTransactionWrites = { open, openExchange, prepare, read, command, discard, upgrade, projection, findMatching, findMatchingExchange };
+function findMatchingEdit(entries: readonly PalletTransactionEntry[], input: {
+    palletId: string;
+    patch: PalletStockEditPatch;
+}) {
+    const patch = normalizePalletStockEditPatch(input.patch);
+    return entries.find(entry => entry.summary?.action === 'edit-pallet' && entry.summary.palletId === input.palletId && JSON.stringify(entry.summary.patch) === JSON.stringify(patch));
+}
+async function openEdit(scope: PalletTransactionScope, input: PalletStockEditOpenInput, current: Current) {
+    scope = { ...scope };
+    const reference = normalizePalletOperationReference(input.reference);
+    if (!('kind' in reference) || reference.companyId !== scope.companyId)
+        throw Error('재고 수정 요청의 회사·대상을 확인해 주세요.');
+    const original = normalizePalletStockEditFields(input.original);
+    return exclusive(scope, current, async () => {
+        const raw = await rpc({ mode: 'open-edit', reference, original });
+        owner(scope, current);
+        const result = normalizePalletStockEditOpenResult(raw);
+        if (!equalRef(result.reference, reference) || result.actorUid !== scope.actorUid || JSON.stringify(result.original) !== JSON.stringify(original))
+            throw Error('재고 수정 준비 응답의 원문·사용자가 다릅니다.');
+        return result;
+    });
+}
+export const palletTransactionWrites = { open, openExchange, openEdit, prepare, read, command, discard, upgrade, projection, findMatching, findMatchingExchange, findMatchingEdit };
 export type PalletTransactionBindings = typeof palletTransactionWrites;
 export default palletTransactionWrites;

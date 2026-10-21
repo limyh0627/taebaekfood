@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import type * as admin from 'firebase-admin';
 import { executePalletTransactionForActor } from './palletTransactionCommand';
-import type { PalletTransactionRequest, PalletExchangeCompletionRequest } from './shared/palletTransactionCommand';
+import type { PalletTransactionRequest, PalletExchangeCompletionRequest, PalletStockEditRequest } from './shared/palletTransactionCommand';
 const actor = { uid: 'u', token: { employeeId: '', companyId: 'taebaek', isAdmin: false } };
 const make = (transfer = false): PalletTransactionRequest => ({ version: 1, reference: { companyId: 'taebaek', operationId: 'op', transactionId: 'tx' }, transaction: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '2026-10-21', note: '', ...(transfer ? { isTransfer: true } : {}) }, ...(transfer ? { transfer: { originalTotal: 2, expectedVersion: '1:000000001' } } : {}) });
 let rows: Map<string, Record<string, unknown>>;
@@ -103,4 +103,43 @@ it('교체 source의 회사·버전·선택값 오염과 중단 fence는 업무 
   await executePalletTransactionForActor(db, actor, { mode: 'cancel', reference: request.reference });
   await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toMatchObject({ details: { operationStatus: 'cancelled' } });
   expect(rows.has('palletTransactions/tx')).toBe(false);
+});
+function editRequest(): PalletStockEditRequest {
+  rows.set('pallets/pallet', { companyId: 'taebaek', name: ' 원래 ', total: 2, damaged: 1, hidden: true, inUse: 5, unknown: { keep: true } });
+  return { version: 3, action: 'edit-pallet', reference: { kind: 'pallet-edit', companyId: 'taebaek', operationId: 'edit-op', palletId: 'pallet' },
+    original: { name: ' 원래 ', total: 2, damaged: 1 }, expectedVersion: '1:000000001', patch: { name: '' } };
+}
+it('편집 open은 최초 세 필드 동치와 native를 읽고 stale원문을 새버전으로 세탁하지 않는다', async () => {
+  const request = editRequest(), db = store();
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'open-edit', reference: request.reference, original: request.original })).toMatchObject({ original: request.original, expectedVersion: request.expectedVersion });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'open-edit', reference: request.reference, original: { ...request.original, total: 10 } })).rejects.toThrow('변경');
+  expect(writes).toBe(0);
+});
+it('편집은 dirty 필드만 patch하고 숨은값·미소유 필드를 보존하며 완료 삭제 후 재생성0이다', async () => {
+  const request = editRequest(), db = store(), before = rows.get('pallets/pallet');
+  await executePalletTransactionForActor(db, actor, { mode: 'apply', request });
+  expect(rows.get('pallets/pallet')).toEqual({ ...before, name: '' }); expect(writes).toBe(2);
+  rows.delete('pallets/pallet'); const count = writes;
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'apply', request })).toMatchObject({ status: 'applied' });
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'cancel', reference: request.reference })).toMatchObject({ status: 'applied' });
+  expect(writes).toBe(count); expect(rows.has('pallets/pallet')).toBe(false);
+});
+it('편집 native·원문·회사 충돌은 명시 무쓰기이고 emptydirty도 영수증을 만들지 않는다', async () => {
+  const request = editRequest(), db = store();
+  for (const input of [{ ...request, expectedVersion: '2:000000001' }, { ...request, original: { ...request.original, total: 9 } }])
+    await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request: input })).rejects.toMatchObject({ details: { operationStatus: 'rejected', writes: false } });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request: { ...request, patch: {} } })).rejects.toThrow('없습니다');
+  rows.set('pallets/pallet', { ...rows.get('pallets/pallet'), companyId: 'punghoe' });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toMatchObject({ details: { operationStatus: 'rejected', writes: false } }); expect(writes).toBe(0);
+});
+it('편집 cancel fence와 다른종류·다른 대상·UID의 영수증 충돌은 업무를 쓰지 않는다', async () => {
+  const request = editRequest(), db = store();
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'cancel', reference: request.reference })).toMatchObject({
+    message: '이 요청의 미처리 중단을 확인했습니다. 이미 처리된 내용을 되돌린 것이 아닙니다.',
+  });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toMatchObject({ details: { operationStatus: 'cancelled' } });
+  for (const reference of [{ ...request.reference, palletId: 'other' }, { companyId: 'taebaek', operationId: 'edit-op', transactionId: 'pallet' }])
+    await expect(executePalletTransactionForActor(db, actor, { mode: 'inspect', reference })).rejects.toThrow('기록');
+  await expect(executePalletTransactionForActor(db, { ...actor, uid: 'other' }, { mode: 'inspect', reference: request.reference })).rejects.toThrow('기록');
+  expect(rows.get('pallets/pallet')?.name).toBe(' 원래 ');
 });

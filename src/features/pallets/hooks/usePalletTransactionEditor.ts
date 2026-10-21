@@ -4,7 +4,8 @@ import { auth } from '../../../shared/firebase';
 import { appConfirm, appNotice } from '../../../shared/components/appDialog';
 import { today } from '../../../shared/day';
 import type { CompanyId, PalletStock, Partner, PalletTransaction } from '../../../shared/types';
-import { normalizePalletTransactionRequest, normalizePalletExchangeSource, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionResult } from '../../../shared/palletTransactionCommand';
+import { normalizePalletTransactionRequest, normalizePalletExchangeSource, type PalletTransactionReference, type PalletOperationReference, type PalletTransactionRequest, type PalletTransactionResult } from '../../../shared/palletTransactionCommand';
+import type { PalletStockRecoveryAction } from './usePalletStockEditor';
 import palletTransactionWrites, { type PalletTransactionObservation } from '../../../shared/services/palletTransactionWrites';
 type Entry = Awaited<ReturnType<typeof palletTransactionWrites.read>>[number];
 type Mode = 'in' | 'out' | 'exchange';
@@ -61,19 +62,21 @@ interface Owner {
 const emptyDraft = (): Draft => ({ partnerId: '', palletId: '', quantity: '', returnQty: '0', newQty: '0', note: '', isTransfer: false });
 const createOwner = (companyId: CompanyId, actorUid: string): Owner => ({ identity: {}, companyId, actorUid, form: {}, execution: null, open: false, mode: 'in', draft: emptyDraft(), reference: null, date: '', originalTotal: null, prepared: null, locked: false, inlineError: '', inlineMessage: '', entries: [], results: new Map(), readSeq: 0, readLoading: false, readError: '', recoveryError: '', recoveryOpen: false, completingSourceId: null, appliedSourceIds: new Set(), lastSourceId: null });
 const pair = (entry: Entry | null, key = '') => JSON.stringify([entry?.key ?? key, entry?.bodyRaw ?? null, entry?.referenceRaw ?? null]);
-const resultKey = (reference: PalletTransactionReference) => JSON.stringify(reference);
+const resultKey = (reference: PalletOperationReference) => JSON.stringify(reference);
 const preparedOf = (entry: Entry, form: object): Prepared => ({ entry, form, requestHash: entry.requestHash, referenceKey: entry.reference ? resultKey(entry.reference) : null, bodyRaw: entry.bodyRaw, referenceRaw: entry.referenceRaw });
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
-export function usePalletTransactionEditor({ companyId, pallets, partners = [], palletTransactions = [], onExchangeApplied }: {
+export function usePalletTransactionEditor({ companyId, pallets, partners = [], palletTransactions = [], onExchangeApplied, onRecoveryObserved, pendingStockEntryKey }: {
     companyId: CompanyId;
     pallets: readonly PalletStock[];
     partners?: readonly Partner[];
     palletTransactions?: readonly PalletTransaction[];
     onExchangeApplied?: (sourceTransactionId: string, isCurrent: () => boolean) => void | Promise<void>;
+    pendingStockEntryKey?: () => string | null;
+    onRecoveryObserved?: (entry: Entry, observation: PalletTransactionObservation, action: PalletStockRecoveryAction) => void | Promise<void>;
 }) {
     const [, repaint] = useReducer(value => value + 1, 0);
-    const latest = useRef({ companyId, pallets, partners, palletTransactions, onExchangeApplied });
-    latest.current = { companyId, pallets, partners, palletTransactions, onExchangeApplied };
+    const latest = useRef({ companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey });
+    latest.current = { companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey };
     const owner = useRef(createOwner(companyId, auth.currentUser?.uid ?? ''));
     const uid = auth.currentUser?.uid ?? '';
     if (owner.current.companyId !== companyId || owner.current.actorUid !== uid)
@@ -219,6 +222,16 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
             await appNotice('교체완료 처리를 확인했습니다. 회수 수량 ' + (entry.request.source.exchangeReturnQty ?? entry.request.source.quantity) + '개입니다.');
         return true;
     };
+    const recordObservation = (entry: Entry, observation: PalletTransactionObservation) => {
+        const result = observation.result;
+        if (!current() || observation.copyMismatch || entry.status !== 'valid' || entry.request?.version !== 3 || !entry.reference || !result
+            || result.actorUid !== captured.actorUid || result.reference.companyId !== captured.companyId || resultKey(result.reference) !== resultKey(entry.reference)
+            || !observation.entry || pair(entry) !== pair(observation.entry) || (result.status === 'applied' && (!entry.requestHash || result.requestHash !== entry.requestHash)))
+            return;
+        captured.entries = [...captured.entries.filter(row => row.key !== entry.key), entry];
+        consume(entry, result);
+        repaint();
+    };
     const changedNotice = (showInline: boolean) => {
         captured.recoveryError = '보관된 파렛트 요청이 바뀌었습니다. 보관 요청을 다시 읽고 확인해 주세요.';
         if (showInline)
@@ -325,15 +338,25 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
             }
         }
     };
-    const recover = async (entry: Entry, action: 'inspect' | 'apply' | 'cancel' | 'discard' | 'upgrade', reference?: PalletTransactionReference) => {
+    const recover = async (entry: Entry, action: 'inspect' | 'apply' | 'cancel' | 'discard' | 'upgrade', reference?: PalletOperationReference) => {
         const execution = begin(entry);
         if (!execution)
             return;
         const form = captured.form, prepared = captured.prepared;
         let acknowledged = false;
+        let recoveredEntry = entry;
         const executing = () => current() && captured.execution === execution;
+        const own = (next: Entry | null, previous?: Entry) => {
+            if (!executing())
+                return;
+            ownObserver(execution)(next);
+            if (next) {
+                void latest.current.onRecoveryObserved?.(previous ?? recoveredEntry, { entry: next, terminal: false }, 'observed');
+                recoveredEntry = next;
+            }
+        };
         try {
-            const observation: PalletTransactionObservation = action === 'discard' ? await palletTransactionWrites.discard(scope, entry, executing, ownObserver(execution)) : action === 'upgrade' ? { entry: await palletTransactionWrites.upgrade(scope, entry, executing, ownObserver(execution)), terminal: false } : await palletTransactionWrites.command(scope, entry, action, executing, reference, ownObserver(execution));
+            const observation: PalletTransactionObservation = action === 'discard' ? await palletTransactionWrites.discard(scope, entry, executing, own) : action === 'upgrade' ? { entry: await palletTransactionWrites.upgrade(scope, entry, executing, own), terminal: false } : await palletTransactionWrites.command(scope, entry, action, executing, reference, own);
             if (!executing())
                 return;
             if (execution.other || observation.copyMismatch) {
@@ -341,6 +364,11 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
                 return;
             }
             consume(entry, observation.result);
+            await latest.current.onRecoveryObserved?.(recoveredEntry, observation, action);
+            if (!executing())
+                return;
+            if (entry.request?.version === 3 || entry.reference && 'kind' in entry.reference)
+                return;
             if (entry.request?.version === 2) {
                 if ((action === 'apply' || action === 'inspect') && observation.terminal && observation.result?.status === 'applied' && observation.result.requestHash === entry.requestHash) {
                     acknowledged = true;
@@ -348,7 +376,7 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
                 }
                 return;
             }
-            if (action === 'inspect' && observation.result?.status === 'applied' && prepared && captured.prepared === prepared
+            if (entry.request?.version === 1 && action === 'inspect' && observation.result?.status === 'applied' && prepared && captured.prepared === prepared
                 && captured.form === form && prepared.form === form && prepared.entry.key === entry.key && entry.status === 'valid'
                 && prepared.requestHash !== null && entry.requestHash === prepared.requestHash && observation.result.requestHash === prepared.requestHash
                 && prepared.referenceKey === resultKey(observation.result.reference) && prepared.referenceKey === (entry.reference ? resultKey(entry.reference) : null)
@@ -370,7 +398,7 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
                     captured.inlineMessage = '';
                 }
             }
-            if (prepared?.entry.key === entry.key && prepared.form === form && captured.form === form) {
+            if (entry.request?.version === 1 && prepared?.entry.key === entry.key && prepared.form === form && captured.form === form) {
                 if (action === 'apply' && observation.result?.status === 'applied' && observation.terminal) {
                     captured.open = false;
                     captured.form = {};
@@ -490,16 +518,16 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
     };
     const rows = captured.entries.map(entry => {
         const transaction = entry.summary;
-        const summary = transaction ? { date: transaction.date,
+        const summary = transaction?.action === 'edit-pallet' ? { action: 'edit-pallet' as const, palletName: latest.current.pallets.find(row => row.id === transaction.palletId)?.name ?? '파렛트 정보 없음', original: transaction.original, patch: transaction.patch } : transaction ? { date: transaction.date,
             action: transaction.action, kind: transaction.action === 'complete-exchange' ? '교체완료' : entry.transaction?.status === '교체중' ? '교체 지급' : entry.transaction?.isTransfer ? transaction.type === 'in' ? '이동 입고' : '이동 지급' : transaction.type === 'in' ? '입고' : '지급',
             quantity: transaction.quantity, returnQty: transaction.returnQty, note: transaction.note ?? '',
             partnerName: latest.current.partners.find(row => row.id === transaction.partnerId)?.name ?? '거래처 정보 없음',
             palletName: latest.current.pallets.find(row => row.id === transaction.palletId)?.name ?? '파렛트 정보 없음' } : null;
         return { entry, summary, ...palletTransactionWrites.projection(entry, [...captured.results.values()]) };
     });
-    const failureRows = rows.filter(row => row.isUnresolved && !(captured.execution?.initial && captured.execution.key === row.entry.key));
+    const failureRows = rows.filter(row => row.isUnresolved && !(row.entry.request?.version === 3 && latest.current.pendingStockEntryKey?.() === row.entry.key) && !(captured.execution?.initial && captured.execution.key === row.entry.key));
     return { scopeToken: captured.identity, scopeKey: `${captured.companyId}:${captured.actorUid}`, isCurrent: current, draft: captured.draft, mode: captured.mode, showForm: captured.open && current(), busy: !!captured.execution, locked: captured.locked,
-        open, close, change, submit, completeExchange, isExchangeApplied: (id: string) => current() && captured.appliedSourceIds.has(id), refreshExchange, canRefreshExchange: current() && captured.lastSourceId !== null, completingSourceId: current() ? captured.completingSourceId : null, inlineError: current() ? captured.inlineError : '', inlineMessage: current() ? captured.inlineMessage : '',
+        recordObservation, open, close, change, submit, completeExchange, isExchangeApplied: (id: string) => current() && captured.appliedSourceIds.has(id), refreshExchange, canRefreshExchange: current() && captured.lastSourceId !== null, completingSourceId: current() ? captured.completingSourceId : null, inlineError: current() ? captured.inlineError : '', inlineMessage: current() ? captured.inlineMessage : '',
         recoveryOpen: current() && captured.recoveryOpen, openRecovery: () => {
             if (current()) {
                 captured.recoveryOpen = true;
@@ -512,6 +540,6 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
             }
         },
         recoveryRows: current() ? rows : [], failureRows: current() ? failureRows : [], failureCount: current() ? failureRows.length : 0, readLoading: captured.readLoading, readError: current() ? captured.readError : '', recoveryError: current() ? captured.recoveryError : '', refresh,
-        inspect: (entry: Entry, reference?: PalletTransactionReference) => recover(entry, 'inspect', reference), retry: (entry: Entry) => recover(entry, 'apply'), cancel: (entry: Entry, reference?: PalletTransactionReference) => recover(entry, 'cancel', reference), discard: (entry: Entry) => recover(entry, 'discard'), upgrade: (entry: Entry) => recover(entry, 'upgrade'),
+        inspect: (entry: Entry, reference?: PalletOperationReference) => recover(entry, 'inspect', reference), retry: (entry: Entry) => recover(entry, 'apply'), cancel: (entry: Entry, reference?: PalletOperationReference) => recover(entry, 'cancel', reference), discard: (entry: Entry) => recover(entry, 'discard'), upgrade: (entry: Entry) => recover(entry, 'upgrade'),
     };
 }

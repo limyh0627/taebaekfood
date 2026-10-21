@@ -25,6 +25,7 @@ import { PalletStock, Order, Partner, OrderStatus, PalletTransaction, CompanyId,
 import { where } from 'firebase/firestore';
 import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { usePalletStockEditor } from '../src/features/pallets/hooks/usePalletStockEditor';
 import { usePalletTransactionEditor } from '../src/features/pallets/hooks/usePalletTransactionEditor';
 import PalletTransactionRecoveryPanel from '../src/features/pallets/ui/PalletTransactionRecoveryPanel';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -88,9 +89,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     return Array.from(map.values());
   }, [liveTransactions, extraTransactions, companyId]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<PalletStock | null>(null);
-  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners, palletTransactions: sourceTransactions, onExchangeApplied: async (sourceId, isCurrent) => {
+  const stockEditor = usePalletStockEditor({ companyId, onOperationObserved: (entry, observation) => transactionEditor.recordObservation(entry, observation), onRecoveryRequired: async () => { await transactionEditor.refresh(); transactionEditor.openRecovery(); } });
+  const editingId = stockEditor.editingId, editForm = stockEditor.draft;
+  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners, palletTransactions: sourceTransactions, pendingStockEntryKey: stockEditor.getPendingEntryKey, onRecoveryObserved: stockEditor.acceptRecovery, onExchangeApplied: async (sourceId, isCurrent) => {
     const observed = currentLive.current.find(row => row.id === sourceId);
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const rows = await fetchDateRange<PalletTransaction>('palletTransactions', 'date', fromDate.toISOString().slice(0, 10), today(), [where('companyId', '==', companyId)]);
@@ -218,28 +219,15 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     }
   };
 
-  const handleEdit = (pallet: PalletStock) => {
-    setEditingId(pallet.id);
-    setEditForm({ ...pallet });
-  };
-
-  const handleSave = () => {
-    if (editForm) {
-      onUpdatePallet(editForm);
-      setEditingId(null);
-      setEditForm(null);
-    }
-  };
-
-  const handleChange = (field: keyof PalletStock, value: any) => {
-    if (editForm) {
-      setEditForm({ ...editForm, [field]: value });
-    }
-  };
+  const handleEdit = stockEditor.begin;
+  const handleSave = stockEditor.save;
+  const handleChange = stockEditor.change;
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
       {hasConfirmedExchange && <div className="text-xs text-violet-700">교체 완료 확인됨 · 목록 갱신 중/다시 조회 필요 <button disabled={transactionEditor.busy} onClick={() => void transactionEditor.refreshExchange()}>완료 목록 다시 조회</button></div>}
+      {stockEditor.error && <p role="alert" className="text-sm text-amber-700">{stockEditor.error}</p>}
+      {stockEditor.message && <p className="text-sm text-slate-600">{stockEditor.message}</p>}
       <PageHeader
         title="파렛트 관리"
         subtitle="실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다."
@@ -326,6 +314,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           {isEditing ? (
                             <input
                               type="text"
+                              disabled={stockEditor.busy || stockEditor.locked}
                               value={editForm?.name}
                               onChange={(e) => handleChange('name', e.target.value)}
                               className="text-xl font-bold text-slate-900 border-b border-indigo-200 outline-none w-full"
@@ -339,15 +328,15 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
                       {isEditing ? (
                         <div className="flex items-center space-x-2">
-                          <button onClick={handleSave} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-700">
+                          <button disabled={stockEditor.busy || stockEditor.locked} onClick={handleSave} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-700">
                             <Check size={20} />
                           </button>
-                          <button onClick={() => setEditingId(null)} className="p-2 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200">
+                          <button disabled={stockEditor.busy} onClick={stockEditor.close} className="p-2 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200">
                             <X size={20} />
                           </button>
                         </div>
                       ) : (
-                        <button onClick={() => handleEdit(pallet)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                        <button disabled={stockEditor.busy} onClick={() => handleEdit(pallet)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
                           <Edit2 size={20} />
                         </button>
                       )}
@@ -359,6 +348,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         {isEditing ? (
                           <input
                             type="number"
+                            disabled={stockEditor.busy || stockEditor.locked}
                             value={editForm?.total}
                             onChange={(e) => handleChange('total', parseInt(e.target.value) || 0)}
                             className="text-2xl font-black text-slate-900 border-b border-indigo-200 outline-none w-full"
@@ -376,6 +366,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         {isEditing ? (
                           <input
                             type="number"
+                            disabled={stockEditor.busy || stockEditor.locked}
                             value={editForm?.damaged}
                             onChange={(e) => handleChange('damaged', parseInt(e.target.value) || 0)}
                             className="text-2xl font-black text-rose-600 border-b border-indigo-200 outline-none w-full"

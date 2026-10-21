@@ -6,7 +6,7 @@ import { initializeApp as clientApp, deleteApp as deleteClientApp, type Firebase
 import { getAuth as clientAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
 import { writeFileSync } from 'node:fs';
 import { executePalletTransactionForActor } from './palletTransactionCommand';
-import { normalizePalletExchangeSource, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletTransactionOpenResult, type PalletExchangeCompletionRequest, type PalletExchangeOpenResult } from './shared/palletTransactionCommand';
+import { normalizePalletExchangeSource, normalizePalletStockEditFields, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletTransactionOpenResult, type PalletExchangeCompletionRequest, type PalletExchangeOpenResult, type PalletStockEditRequest, type PalletStockEditOpenResult } from './shared/palletTransactionCommand';
 const project = process.env.PALLET_TRANSACTION_TEST_PROJECT ?? '';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST, authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const ready = project.startsWith('demo-') && firestoreHost === '127.0.0.1:8182' && authHost === '127.0.0.1:9199';
@@ -22,7 +22,7 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     const auth = clientAuth(client); connectAuthEmulator(auth, `http://${authHost}`, { disableWarnings: true });
     const credential = await signInWithEmailAndPassword(auth, email, 'emulator-only-123');
     who = { uid, token: (await credential.user.getIdTokenResult()).claims };
-    writeFileSync(`work/pallet-exchange-completion-A-${run}-fixture-backup.json`, JSON.stringify({ project, run, fixedPaths: [], policy: '고유 UUID 신규 경로만 사용' }, null, 2));
+    writeFileSync(`work/pallet-stock-edit-A-${run}-fixture-backup.json`, JSON.stringify({ project, run, fixedPaths: [], policy: '고유 UUID 신규 경로만 사용' }, null, 2));
   }, 90000);
   afterAll(async () => {
     if (!app) return;
@@ -30,7 +30,7 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     for (const uid of users) await getAuth(app).deleteUser(uid);
     const removed = (await Promise.all([...paths].map(path => db.doc(path).get()))).every(s => !s.exists);
     const usersRemoved = (await getAuth(app).getUsers(users.map(uid => ({ uid })))).users.length === 0;
-    writeFileSync(`work/pallet-exchange-completion-A-${run}-fixture-cleanup.json`, JSON.stringify({ project, paths: [...paths], removed, usersRemoved, fixedPathsTouched: 0 }, null, 2));
+    writeFileSync(`work/pallet-stock-edit-A-${run}-fixture-cleanup.json`, JSON.stringify({ project, paths: [...paths], removed, usersRemoved, fixedPathsTouched: 0 }, null, 2));
     expect(removed && usersRemoved).toBe(true);
     for (const client of clients) await deleteClientApp(client); await deleteApp(app);
   }, 90000);
@@ -223,5 +223,93 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     expect(await executePalletTransactionForActor(db, who, { mode: 'cancel', reference: request.reference })).toMatchObject({ status: 'applied' });
     expect((await db.doc(`palletTransactions/${request.reference.transactionId}`).get()).exists).toBe(false);
     expect(normalizePalletExchangeSource({ ...request.source, hidden: '제외' })).toEqual(request.source);
+  });
+  async function editing(): Promise<{ edit: PalletStockEditRequest; registration: PalletTransactionRequest }> {
+    const registration = await fixture(), palletRef = db.doc(`pallets/${registration.transaction.palletId}`);
+    await palletRef.update({ name: ' 원래 파렛트 ', inUse: 5, hiddenTimestamp: Timestamp.fromMillis(123456), unknown: { preserved: true } });
+    const raw = (await palletRef.get()).data()!, original = normalizePalletStockEditFields(raw);
+    const reference = { kind: 'pallet-edit' as const, companyId: 'taebaek' as const, operationId: registration.reference.operationId + '-edit', palletId: registration.transaction.palletId };
+    paths.add(`palletTransactionOperations/${reference.operationId}`);
+    const prepared = await executePalletTransactionForActor(db, who, { mode: 'open-edit', reference, original }) as PalletStockEditOpenResult;
+    return { edit: { version: 3, action: 'edit-pallet', reference, original, expectedVersion: prepared.expectedVersion, patch: { name: '수정 파렛트' } }, registration };
+  }
+  it('편집 준비는 원선택 세 값과 native를 읽고 다른 total의 원문에 최신버전을 입히지 않는다', async () => {
+    const { edit } = await editing();
+    expect((await db.doc(`palletTransactionOperations/${edit.reference.operationId}`).get()).exists).toBe(false);
+    await expect(executePalletTransactionForActor(db, who, { mode: 'open-edit', reference: edit.reference, original: { ...edit.original, total: 10 } })).rejects.toThrow('변경');
+    expect((await db.doc(`pallets/${edit.reference.palletId}`).get()).data()?.name).toBe(' 원래 파렛트 ');
+  });
+  it('이름 dirty만 저장하면 total·damaged·hidden·inUse·SDK Timestamp를 그대로 보존한다', async () => {
+    const { edit } = await editing(), target = db.doc(`pallets/${edit.reference.palletId}`), before = (await target.get()).data();
+    expect(await apply(edit)).toMatchObject({ status: 'applied', reference: edit.reference });
+    expect((await target.get()).data()).toEqual({ ...before, name: '수정 파렛트' });
+    const receipt = (await db.doc(`palletTransactionOperations/${edit.reference.operationId}`).get()).data()!;
+    expect(JSON.parse(receipt.requestText).patch).toEqual({ name: '수정 파렛트' });
+  });
+  it('편집의 빈 이름·총량0·총량보다 큰 파손도 개별 안전 정수 원문대로 저장한다', async () => {
+    const { edit } = await editing(); edit.patch = { name: '', total: 0, damaged: Number.MAX_SAFE_INTEGER };
+    await apply(edit);
+    expect((await db.doc(`pallets/${edit.reference.palletId}`).get()).data()).toMatchObject({ name: '', total: 0, damaged: Number.MAX_SAFE_INTEGER, inUse: 5 });
+  });
+  it('편집 준비 뒤 숨은 필드·총량·회사·삭제 경합은 patch와 receipt를 모두 거절한다', async () => {
+    for (const change of ['hidden', 'total', 'company', 'delete']) {
+      const { edit } = await editing(), target = db.doc(`pallets/${edit.reference.palletId}`);
+      if (change === 'delete') await target.delete();
+      else await target.update(change === 'hidden' ? { hiddenTimestamp: Timestamp.fromMillis(999) } : change === 'total' ? { total: 7 } : { companyId: 'punghoe' });
+      await expect(apply(edit)).rejects.toMatchObject({ details: { operationStatus: 'rejected', writes: false } });
+      expect((await db.doc(`palletTransactionOperations/${edit.reference.operationId}`).get()).exists).toBe(false);
+      if (change !== 'delete') expect((await target.get()).data()?.name).toBe(' 원래 파렛트 ');
+    }
+  });
+  it('편집 receipt는 UID·회사·kind·palletID가 다르면 조회·재적용하지 않는다', async () => {
+    const { edit } = await editing(); await apply(edit);
+    for (const actor of [undefined, { uid: 'other', token: who.token }, { uid: who.uid, token: { employeeId: 3, companyId: 'taebaek' } }, { uid: who.uid, token: { employeeId: '', companyId: 'punghoe' } }])
+      await expect(executePalletTransactionForActor(db, actor, { mode: 'inspect', reference: edit.reference })).rejects.toThrow();
+    for (const reference of [{ ...edit.reference, palletId: '다른파렛트' }, { companyId: 'taebaek', operationId: edit.reference.operationId, transactionId: edit.reference.palletId }])
+      await expect(executePalletTransactionForActor(db, who, { mode: 'inspect', reference })).rejects.toThrow('기록');
+  });
+  it('같은 native의 다른 편집 op는 하나만 확정한다', async () => {
+    const { edit: first } = await editing(), second = structuredClone(first); second.reference.operationId += '-other'; second.patch = { name: '다른 편집' };
+    paths.add(`palletTransactionOperations/${second.reference.operationId}`);
+    const outcomes = await Promise.allSettled([apply(first), apply(second)]);
+    expect(outcomes.filter(value => value.status === 'fulfilled')).toHaveLength(1); expect(outcomes.filter(value => value.status === 'rejected')).toHaveLength(1);
+    const receipts = await Promise.all([first, second].map(request => db.doc(`palletTransactionOperations/${request.reference.operationId}`).get()));
+    expect(receipts.filter(s => s.exists)).toHaveLength(1);
+  });
+  it('이름 편집과 이동 등록의 native 경합은 stale total 덮기 없이 한쪽만 확정한다', async () => {
+    const { edit, registration } = await editing(); await transfer(registration);
+    const outcomes = await Promise.allSettled([apply(edit), apply(registration)]);
+    expect(outcomes.filter(value => value.status === 'fulfilled')).toHaveLength(1); expect(outcomes.filter(value => value.status === 'rejected')).toHaveLength(1);
+    const pallet = (await db.doc(`pallets/${edit.reference.palletId}`).get()).data()!;
+    if (outcomes[0].status === 'fulfilled') expect(pallet).toMatchObject({ name: '수정 파렛트', total: 2 });
+    else expect(pallet).toMatchObject({ name: ' 원래 파렛트 ', total: 0 });
+  });
+  it('편집 중단과 apply 경합은 같은 receipt로 하나만 종결하고 중단 뒤 lateapply는0이다', async () => {
+    const { edit } = await editing(); await Promise.allSettled([apply(edit), executePalletTransactionForActor(db, who, { mode: 'cancel', reference: edit.reference })]);
+    const outcome = await executePalletTransactionForActor(db, who, { mode: 'inspect', reference: edit.reference });
+    const applied = 'status' in outcome && outcome.status === 'applied';
+    expect(['applied', 'cancelled']).toContain('status' in outcome ? outcome.status : 'invalid');
+    expect((await db.doc(`pallets/${edit.reference.palletId}`).get()).data()?.name).toBe(applied ? '수정 파렛트' : ' 원래 파렛트 ');
+    const next = (await editing()).edit; await executePalletTransactionForActor(db, who, { mode: 'cancel', reference: next.reference });
+    await expect(apply(next)).rejects.toMatchObject({ details: { operationStatus: 'cancelled' } });
+  });
+  it('편집의 실제 backend receipt쓰기 실패는 먼저 staged된 field patch도 rollback한다', async () => {
+    const { edit } = await editing(), targetRef = db.doc(`pallets/${edit.reference.palletId}`), before = (await targetRef.get()).data();
+    const wrapped = new Proxy(db, { get(target, key) {
+      if (key === 'runTransaction') return (runTx: (tx: FirebaseFirestore.Transaction) => Promise<unknown>) => target.runTransaction(tx => runTx(new Proxy(tx, { get(original, method) {
+        if (method === 'create') return (ref: FirebaseFirestore.DocumentReference, data: FirebaseFirestore.DocumentData) => ref.path.startsWith('palletTransactionOperations/') ? original.update(ref, data) : original.create(ref, data);
+        const value = Reflect.get(original, method); return typeof value === 'function' ? value.bind(original) : value;
+      } })));
+      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    await expect(apply(edit, wrapped)).rejects.toThrow(/NOT_FOUND|No document|not found/i);
+    expect((await targetRef.get()).data()).toEqual(before);
+    expect((await db.doc(`palletTransactionOperations/${edit.reference.operationId}`).get()).exists).toBe(false);
+  });
+  it('편집 완료 뒤 대상 삭제에도 같은 op 재시도·조회·중단은 재생성하지 않는다', async () => {
+    const { edit } = await editing(), target = db.doc(`pallets/${edit.reference.palletId}`); await apply(edit); await target.delete();
+    expect(await apply(edit)).toMatchObject({ status: 'applied' });
+    for (const mode of ['inspect', 'cancel']) expect(await executePalletTransactionForActor(db, who, { mode, reference: edit.reference })).toMatchObject({ status: 'applied' });
+    expect((await target.get()).exists).toBe(false);
   });
 });
