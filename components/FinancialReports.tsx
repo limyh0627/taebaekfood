@@ -8,9 +8,10 @@ import type { OpeningBalance } from '../src/shared/autoJournal';
 import { AR, AP, BANK, INVENTORY } from '../src/shared/autoJournal';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import { today } from '../src/shared/day';
-import { createOpeningInventory, createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
+import { fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { appNotice } from '../src/shared/components/appDialog';
+import { useOpeningDetailEditors } from '../src/features/financials/hooks/useOpeningDetailEditors';
 import type { OpeningPartnerCode } from '../src/shared/openingPartnerBalance';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
@@ -83,20 +84,6 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
   const [saving, setSaving] = useState(false);
   const openingForm = useRef({});
   const openingSaveLock = useRef<object | null>(null);
-  const [partnerId, setPartnerId] = useState('');
-  const [partnerCode, setPartnerCode] = useState<OpeningPartnerCode>(AR);
-  const [partnerAmount, setPartnerAmount] = useState('');
-  const [partnerSaving, setPartnerSaving] = useState(false);
-  const partnerForm = useRef({});
-  const partnerSaveLock = useRef<object | null>(null);
-  const [inventoryItemId, setInventoryItemId] = useState('');
-  const [inventoryQuantity, setInventoryQuantity] = useState('');
-  const [inventoryValue, setInventoryValue] = useState('');
-  const [inventorySaving, setInventorySaving] = useState(false);
-  const inventoryForm = useRef({});
-  const latestOpeningDate = useRef(openingDoc?.date);
-  latestOpeningDate.current = openingDoc?.date;
-  const inventorySaveLock = useRef<object | null>(null);
   const [openingLoadError, setOpeningLoadError] = useState(false);
   const [openingLoading, setOpeningLoading] = useState(true);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
@@ -111,12 +98,6 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     setAccountSetup(providedAccounts.length === 0);
     setAccountDraft({ code: '', name: '', type: '자산', normalBalance: 'debit' });
     setAccountPending(null); setAccountError(''); setAccountSaving(false); accountBusy.current = null;
-    partnerForm.current = {}; partnerSaveLock.current = null; setPartnerSaving(false);
-    setPartnerId(''); setPartnerAmount(''); setPartnerCode(AR);
-    inventoryForm.current = {}; inventorySaveLock.current = null; setInventorySaving(false);
-    setInventoryItemId('');
-    setInventoryQuantity('');
-    setInventoryValue('');
     setOpeningLoadError(false);
     setOpeningLoading(true);
     fetchWhere<OpeningDoc>('openingBalances', 'companyId', companyId)
@@ -125,6 +106,15 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     return () => { cancelled = true; };
   }, [companyId]);
 
+  const detailEditors = useOpeningDetailEditors({ companyId, openingDate: openingDoc?.date ?? null,
+    openingReady: !openingLoading && !openingLoadError && !!openingDoc,
+    onInventoryApplied: (savedCompany, savedDate) => {
+      const captured = scope.current;
+      if (captured.companyId !== savedCompany) return;
+      setOpeningDoc(doc => scope.current === captured && doc?.date === savedDate ? { ...doc, hasInventoryOpening: true } : doc);
+    },
+  });
+  const { partner: partnerEditor, inventory: inventoryEditor } = detailEditors;
   const cashDefault = useMemo(() => cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0), [cashAccounts]);
   const cashOpeningAmounts = useMemo(() => cashAccounts.reduce<Record<string, number>>((amounts, account) => {
     if (account.type === '카드') return amounts;
@@ -179,54 +169,6 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     } catch (error) {
       if (current()) await appNotice(String(error), '기초잔액 저장 실패');
     } finally { if (current()) { openingSaveLock.current = null; setSaving(false); } }
-  };
-  const changePartnerOpening = (change: () => void) => {
-    if (partnerSaveLock.current) return;
-    partnerForm.current = {};
-    change();
-  };
-  const savePartnerOpening = async () => {
-    if (!openingDoc || !partnerId || partnerSaveLock.current) return;
-    const captured = scope.current, form = partnerForm.current, lock = {};
-    const payload = { companyId, date: openingDoc.date, partnerId, code: partnerCode,
-      amount: Number(partnerAmount.replaceAll(',', '')) };
-    partnerSaveLock.current = lock;
-    const ownExecution = () => scope.current === captured && partnerForm.current === form && partnerSaveLock.current === lock;
-    const current = () => ownExecution() && latestOpeningDate.current === payload.date;
-    setPartnerSaving(true);
-    try {
-      const result = await createOpeningPartnerBalance(payload.companyId, payload.date, payload.partnerId, payload.code, payload.amount);
-      if (!current()) return;
-      await appNotice(result === 'unchanged' ? '같은 기초 전표가 이미 저장되어 있습니다.' : '거래처별 기초 전표를 저장했습니다.');
-      if (!current()) return;
-      if (result === 'created') setPartnerAmount('');
-    } catch (error) { if (current()) await appNotice(String(error), '저장 실패'); }
-    finally { if (ownExecution()) { partnerSaveLock.current = null; setPartnerSaving(false); } }
-  };
-  const changeInventory = (change: () => void) => {
-    if (inventorySaveLock.current) return;
-    inventoryForm.current = {};
-    change();
-  };
-  const saveInventoryOpening = async () => {
-    if (!openingDoc || !inventoryItemId || inventorySaveLock.current) return;
-    const captured = scope.current, form = inventoryForm.current, lock = {};
-    const payload = { companyId, date: openingDoc.date, itemId: inventoryItemId,
-      quantity: Number(inventoryQuantity.replaceAll(',', '')), value: Number(inventoryValue.replaceAll(',', '')) };
-    inventorySaveLock.current = lock;
-    const ownExecution = () => scope.current === captured && inventoryForm.current === form && inventorySaveLock.current === lock;
-    const current = () => ownExecution() && latestOpeningDate.current === payload.date;
-    setInventorySaving(true);
-    try {
-      const result = await createOpeningInventory(payload.companyId, payload.date, payload.itemId, payload.quantity, payload.value);
-      if (!current()) return;
-      // 이전 회사 응답이 새 회사의 계정 입력까지 잠그지 않도록 updater 안에서도 소유자를 확인한다.
-      setOpeningDoc(doc => scope.current === captured && inventoryForm.current === form && doc?.date === payload.date ? { ...doc, hasInventoryOpening: true } : doc);
-      await appNotice(result === 'unchanged' ? '같은 기초 재고가 이미 저장돼 있습니다.' : '재고 수량·로트·원장과 기초 전표를 함께 저장했습니다.');
-      if (!current()) return;
-      if (result === 'created') { setInventoryItemId(''); setInventoryQuantity(''); setInventoryValue(''); }
-    } catch (error) { if (current()) await appNotice(String(error), '기초 재고 저장 실패'); }
-    finally { if (ownExecution()) { inventorySaveLock.current = null; setInventorySaving(false); } }
   };
   // 자본금 plug 미리보기
   const capitalPreview = useMemo(() => {
@@ -441,10 +383,10 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
         <div className="text-xs font-black text-slate-700">거래처별 기초 미수·미지급</div>
         <p className="text-[11px] text-slate-500">회계 기초일의 거래처 잔액을 전표로 등록합니다. 108·251 계정 합계에는 같은 금액을 넣지 마세요.</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-          <select disabled={partnerSaving} aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerId} onChange={e => changePartnerOpening(() => setPartnerId(e.target.value))}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          <select disabled={partnerSaving} aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => changePartnerOpening(() => setPartnerCode(e.target.value as OpeningPartnerCode))}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
-          <input disabled={partnerSaving} aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => changePartnerOpening(() => setPartnerAmount(e.target.value.replace(/[^\d,]/g, '')))} placeholder="금액" />
-          <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
+          <select disabled={partnerEditor.saving} aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerEditor.draft.partnerId} onChange={e => partnerEditor.change('partnerId', e.target.value)}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <select disabled={partnerEditor.saving} aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerEditor.draft.code} onChange={e => partnerEditor.change('code', e.target.value as OpeningPartnerCode)}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
+          <input disabled={partnerEditor.saving} aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerEditor.draft.amount} onChange={e => partnerEditor.change('amount', e.target.value)} placeholder="금액" />
+          <button type="button" disabled={!partnerEditor.canSubmit} onClick={() => void partnerEditor.save()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
       </div>
@@ -453,13 +395,13 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
         <div className="text-xs font-black text-slate-700">품목별 기초 재고</div>
         <p className="text-[11px] text-slate-500">처음 등록하는 재고만 입력하세요. 수량은 품목 재고 단위, 평가금액은 해당 수량의 총 원가(원)입니다. 146 계정에 같은 금액을 직접 넣지 마세요.</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-          <select disabled={inventorySaving} aria-label="기초 재고 품목" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={inventoryItemId} onChange={e => changeInventory(() => setInventoryItemId(e.target.value))}>
+          <select disabled={inventoryEditor.saving} aria-label="기초 재고 품목" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={inventoryEditor.draft.itemId} onChange={e => inventoryEditor.change('itemId', e.target.value)}>
             <option value="">품목 선택</option>
             {inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name} {item.spec || ''} ({item.unit || '개'})</option>)}
           </select>
-          <input disabled={inventorySaving} aria-label="기초 재고 수량" inputMode="decimal" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryQuantity} onChange={e => changeInventory(() => setInventoryQuantity(e.target.value.replace(/[^\d.,]/g, '')))} placeholder="수량" />
-          <input disabled={inventorySaving} aria-label="기초 재고 평가금액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryValue} onChange={e => changeInventory(() => setInventoryValue(e.target.value.replace(/[^\d,]/g, '')))} placeholder="평가금액 (원)" />
-          <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !inventoryItemId || !inventoryQuantity || !inventoryValue || inventorySaving} onClick={() => void saveInventoryOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
+          <input disabled={inventoryEditor.saving} aria-label="기초 재고 수량" inputMode="decimal" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryEditor.draft.quantity} onChange={e => inventoryEditor.change('quantity', e.target.value)} placeholder="수량" />
+          <input disabled={inventoryEditor.saving} aria-label="기초 재고 평가금액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryEditor.draft.value} onChange={e => inventoryEditor.change('value', e.target.value)} placeholder="평가금액 (원)" />
+          <button type="button" disabled={!inventoryEditor.canSubmit} onClick={() => void inventoryEditor.save()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
       </div>
