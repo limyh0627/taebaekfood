@@ -4,6 +4,8 @@ import {cashOriginalHash} from './cashMutationReceipt';
 import {openingPartnerStatement,loanOpeningStatement,cashOpeningStatement,loanOpeningPrincipalForBalance,cashOpeningBalanceForCurrent,openingCashAccountCode,openingDocumentId as openingDocId,openingCompanyOf as companyOf,openingCalendarDay as isCalendarDay,type OpeningCompany,type OpeningPartnerCode,type FinancialLoan,type FinancialAccount,type FinancialCash,type FinancialPartner,type OpeningStatement} from './shared/financialOpening';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
 import {kstDateOf} from './shared/calculation';
+import { normalizeFinancialOpeningRecoveryReference, normalizeFinancialOpeningRecoveryResult,
+  type FinancialOpeningRecoveryCommand, type FinancialOpeningRecoveryReference, type FinancialOpeningRecoveryResult } from './shared/financialOpeningRecovery';
 const today=()=>kstDateOf(new Date());
 export type FinancialOpeningInput={companyId:OpeningCompany;operationId:string;releaseId:string}&(
  {kind:'partner-create';date:string;partnerId:string;code:OpeningPartnerCode;amount:number}|
@@ -219,14 +221,59 @@ async function updateCashAccountOpeningWithDb(store: OpeningStore, companyId: Op
   });
 }
 
+function recoveryResult(row: Row, reference: FinancialOpeningRecoveryReference, actorUid: string): FinancialOpeningRecoveryResult {
+  if (row.companyId !== reference.companyId || row.createdBy !== actorUid || row.kind !== reference.kind
+    || !['applied', 'cancelled'].includes(row.status)) {
+    throw new HttpsError('failed-precondition', '기초 금융 처리 기록의 회사·사용자·종류가 다릅니다.');
+  }
+  try {
+    return normalizeFinancialOpeningRecoveryResult({ version: 1, reference, actorUid, status: row.status, requestHash: row.requestHash,
+      ...(row.result !== undefined ? { result: row.result } : {}),
+      message: row.status === 'applied'
+        ? '이 요청은 이미 적용됐습니다. 이후 대상의 수정·삭제 여부는 확인하지 않았습니다.'
+        : '이 요청의 미처리 작업을 중단했습니다. 이미 적용된 업무를 되돌린 것이 아닙니다.' }, reference, actorUid);
+  } catch {
+    throw new HttpsError('failed-precondition', '기초 금융 처리 기록이 손상됐습니다. 원문을 보존하고 다시 확인해 주세요.');
+  }
+}
+function cancelledError(result: FinancialOpeningRecoveryResult): HttpsError {
+  return new HttpsError('failed-precondition', '중단한 기초 금융 요청은 다시 저장할 수 없습니다.', {
+    version: 1, companyId: result.reference.companyId, operationId: result.reference.operationId,
+    operationStatus: 'cancelled', financialWrites: false, financialOpeningRecovery: result,
+  });
+}
+export async function recoverFinancialOpening(db: admin.firestore.Firestore, companyId: OpeningCompany, uid: string, input: FinancialOpeningRecoveryCommand): Promise<FinancialOpeningRecoveryResult> {
+  let reference: FinancialOpeningRecoveryReference;
+  try {
+    if (!input || Object.keys(input).some(key => !['mode', 'reference'].includes(key)) || !['inspect', 'cancel'].includes(input.mode)) throw Error();
+    reference = normalizeFinancialOpeningRecoveryReference(input.reference);
+  } catch { throw new HttpsError('invalid-argument', '기초 금융 조회·중단 요청을 확인해 주세요.'); }
+  if (!uid || reference.companyId !== companyId) throw new HttpsError('permission-denied', '현재 회사의 기초 금융 요청만 확인할 수 있습니다.');
+  const operation = db.collection('financialOpeningOperations').doc(reference.operationId);
+  return db.runTransaction(async tx => {
+    const prior = await tx.get(operation);
+    if (prior.exists) return recoveryResult(prior.data()!, reference, uid);
+    if (input.mode === 'inspect') return { version: 1, reference, actorUid: uid, status: 'unknown', requestHash: null,
+      message: '서버에 이 요청의 처리 기록이 아직 없습니다. 늦게 도착할 수 있으니 다시 확인하거나 미처리 요청을 중단해 주세요.' };
+    // 적용과 같은 문서에서 경합해야 중단 이후 늦은 writer가 금융 문서를 만들지 못한다.
+    tx.create(operation, { companyId, createdBy: uid, kind: reference.kind, status: 'cancelled', requestHash: null, createdAt: new Date().toISOString() });
+    return recoveryResult({ companyId, createdBy: uid, kind: reference.kind, status: 'cancelled', requestHash: null }, reference, uid);
+  });
+}
+
 export async function executeFinancialOpening(db:admin.firestore.Firestore,companyId:OpeningCompany,uid:string,input:FinancialOpeningInput):Promise<'created'|'unchanged'|'updated'> {
  if(!uid||!['taebaek','punghoe'].includes(companyId)||!input||input.companyId!==companyId||!/^[-A-Za-z0-9_:]{1,160}$/.test(input.operationId)||!['partner-create','loan-create','loan-update','account-create','account-update'].includes(input.kind))throw new HttpsError('invalid-argument','기초 금융 요청을 확인하세요.');
  if(input.kind==='partner-create'&&!['108','251'].includes(input.code))throw new HttpsError('invalid-argument','기초 거래처 계정을 확인하세요.');
  const operation=db.collection('financialOpeningOperations').doc(input.operationId),requestHash=cashOriginalHash(input);
  const store:OpeningStore={collection:db.collection.bind(db),runTransaction:async<T>(run:(tx:OpeningTx)=>Promise<T>)=>db.runTransaction(async tx=>{
   const prior=await tx.get(operation);
+  if(prior.exists){
+   const result=recoveryResult(prior.data()!,{companyId,operationId:input.operationId,kind:input.kind},uid);
+   if(result.status==='cancelled')throw cancelledError(result);
+   if(result.requestHash!==requestHash)throw new HttpsError('failed-precondition','기존 기초 금융 요청과 원문이 다릅니다.');
+   return result.result as T;
+  }
   const release=await tx.get(releaseGateRef(db));assertReleaseActive(release,input.releaseId);
-  if(prior.exists){const row=prior.data()!;if(row.companyId!==companyId||row.createdBy!==uid||row.requestHash!==requestHash||row.status!=='applied'||row.kind!==input.kind||!['created','unchanged','updated'].includes(row.result))throw new HttpsError('failed-precondition','기존 기초 금융 요청과 원문이 다릅니다.');return row.result as T;}
   const wrap=(snap:admin.firestore.DocumentSnapshot):Snapshot=>({id:snap.id,ref:snap.ref,exists:()=>snap.exists,data:()=>snap.data()!});
   const get=async(ref:admin.firestore.DocumentReference|admin.firestore.Query)=>{
    if('path' in ref)return wrap(await tx.get(ref));
@@ -241,11 +288,15 @@ export async function executeFinancialOpening(db:admin.firestore.Firestore,compa
  case 'loan-update':await updateLoanOpeningWithDb(store,companyId,input.original,input.newDate,input.targetBalance);return 'updated';
  case 'account-create':return await createCashAccountWithOpeningWithDb(store,companyId,input.account);
  case 'account-update':await updateCashAccountOpeningWithDb(store,companyId,input.original,input.name,input.newDate,input.targetBalance,input.asOf);return 'updated';
- }}catch(error){if(error instanceof HttpsError)throw new HttpsError(error.code,error.message,{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId});throw error;}
+ }}catch(error){if(error instanceof HttpsError){if((error.details as {operationStatus?:string})?.operationStatus==='cancelled')throw error;throw new HttpsError(error.code,error.message,{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId});}throw error;}
 }
-export async function executeFinancialOpeningForActor(db:admin.firestore.Firestore,actor:{uid:string;token:Record<string,unknown>}|undefined,input:FinancialOpeningInput) {
+export async function executeFinancialOpeningForActor(db:admin.firestore.Firestore,actor:{uid:string;token:Record<string,unknown>}|undefined,input:FinancialOpeningInput|FinancialOpeningRecoveryCommand) {
  const company=actor?.token.companyId;
- if(!actor||actor.token.isAdmin!==true||!['taebaek','punghoe'].includes(String(company)))throw new HttpsError('permission-denied','현재 회사 관리자만 기초 금융을 저장할 수 있습니다.');
- return executeFinancialOpening(db,company as OpeningCompany,actor.uid,input);
+ if(!actor?.uid||actor.token.isAdmin!==true||!['taebaek','punghoe'].includes(String(company)))throw new HttpsError('permission-denied','현재 회사 관리자만 기초 금융을 저장할 수 있습니다.');
+ if(input&&typeof input==='object'&&'mode' in input)return recoverFinancialOpening(db,company as OpeningCompany,actor.uid,input as FinancialOpeningRecoveryCommand);
+ return executeFinancialOpening(db,company as OpeningCompany,actor.uid,input as FinancialOpeningInput);
 }
-export const financialOpeningCommand=onCall({region:'asia-northeast3'},async request=>({result:await executeFinancialOpeningForActor(admin.firestore(),request.auth,request.data as FinancialOpeningInput)}));
+export const financialOpeningCommand=onCall({region:'asia-northeast3'},async request=>{
+ const result=await executeFinancialOpeningForActor(admin.firestore(),request.auth,request.data);
+ return typeof result==='string'?{result}:result;
+});
