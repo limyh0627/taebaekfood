@@ -25,6 +25,8 @@ import { PalletStock, Order, Partner, OrderStatus, PalletTransaction, CompanyId,
 import { where } from 'firebase/firestore';
 import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { usePalletTransactionEditor } from '../src/features/pallets/hooks/usePalletTransactionEditor';
+import PalletTransactionRecoveryPanel from '../src/features/pallets/ui/PalletTransactionRecoveryPanel';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -82,9 +84,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PalletStock | null>(null);
-  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
-  const [selectedClientForTrans, setSelectedClientForTrans] = useState<Partner | null>(null);
-  const [transType, setTransType] = useState<'in' | 'out' | 'exchange'>('in');
+  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners });
+  const isTransactionModalOpen = transactionEditor.showForm;
+  const transType = transactionEditor.mode;
+  const selectedClientForTrans = partners.find(partner => partner.id === transactionEditor.draft.partnerId);
   const [selectedClientIdForDetail, setSelectedClientIdForDetail] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyDateFilter, setHistoryDateFilter] = useState('');
@@ -138,44 +141,6 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   }, [partnerHistory, historyPage]);
 
   const totalPages = Math.ceil(partnerHistory.length / ITEMS_PER_PAGE);
-
-  const handleAddTransaction = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const partnerId = (formData.get('partnerId') as string) || selectedClientForTrans?.id || '';
-    const palletId = formData.get('palletId') as string;
-    const note = (formData.get('note') as string) || '';
-    if (!partnerId) { alert('거래처를 선택해주세요.'); return; }
-    if (!palletId) { alert('파렛트 종류를 선택해주세요.'); return; }
-
-    const date = today();
-
-    if (transType === 'exchange') {
-      const returnQty = parseInt(formData.get('returnQty') as string) || 0;
-      const newQty = parseInt(formData.get('newQty') as string) || 0;
-      if (newQty <= 0) { alert('교체 지급(신규) 수량을 입력해주세요.'); return; }
-      // 교체중: 신 파레트 지급(out)만 먼저 기록. 헌 파레트(returnQty) 회수는 입고 확인 시 '교체완료'로 처리.
-      onAddPalletTransaction({
-        id: `ptrans-${Date.now()}-exout`, partnerId, palletId,
-        type: 'out', quantity: newQty, date, note: `교체 지급${note ? ' — ' + note : ''}`,
-        status: '교체중', exchangeReturnQty: returnQty,
-      });
-    } else {
-      const quantity = parseInt(formData.get('quantity') as string) || 0;
-      if (quantity <= 0) return;
-      const isTransfer = formData.get('isTransfer') === 'on';
-      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, partnerId, palletId, type: transType as 'in' | 'out', quantity, date, note, ...(isTransfer ? { isTransfer: true } : {}) });
-      if (isTransfer) {
-        // 이동전표: 거래처 추적 없이 회사 보유 총량만 증감 (지급 −, 입고 +)
-        const pallet = pallets.find(p => p.id === palletId);
-        if (pallet) onUpdatePallet({ ...pallet, total: Math.max(0, pallet.total + (transType === 'in' ? quantity : -quantity)) });
-      }
-      // 일반 지급/입고·교체의 '회수 대기'는 거래 기록에서 자동 계산되므로 재고 문서를 따로 갱신하지 않는다.
-    }
-
-    setIsTransactionModalOpen(false);
-    setSelectedClientForTrans(null);
-  };
 
   // 선택 가능한 월 목록(YYYY-MM) — 거래/주문 출고 날짜 기준, 최신순
   const availableMonths = useMemo(() => {
@@ -288,13 +253,14 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </div>}
         actions={activeTab === 'partners' ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('out'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><Plus size={13} />지급</button>
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('exchange'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><RefreshCw size={13} />교체</button>
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('in'); setIsTransactionModalOpen(true); }} className="h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1"><RefreshCw size={13} />신규 입고</button>
+              <button onClick={() => transactionEditor.open('out')} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><Plus size={13} />지급</button>
+              <button onClick={() => transactionEditor.open('exchange')} className="h-9 px-3 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"><RefreshCw size={13} />교체</button>
+              <button onClick={() => transactionEditor.open('in')} className="h-9 px-3 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1"><RefreshCw size={13} />신규 입고</button>
             </div>
         ) : undefined}
       />
 
+      <PalletTransactionRecoveryPanel editor={transactionEditor} hideButtons={isTransactionModalOpen} />
       {activeTab === 'overview' ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -669,21 +635,21 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               {/* Action Buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) { setSelectedClientForTrans(partner); setTransType('in'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) transactionEditor.open('in', partner.id); }}
                   className="flex-1 py-3.5 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <RefreshCw size={16} />
                   <span>회수</span>
                 </button>
                 <button
-                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) { setSelectedClientForTrans(partner); setTransType('exchange'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) transactionEditor.open('exchange', partner.id); }}
                   className="flex-1 py-3.5 bg-amber-500 text-white rounded-2xl font-black shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <RefreshCw size={16} />
                   <span>교체</span>
                 </button>
                 <button
-                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) { setSelectedClientForTrans(partner); setTransType('out'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const partner = partners.find(c => c.id === selectedClientIdForDetail); if (partner) transactionEditor.open('out', partner.id); }}
                   className="flex-1 py-3.5 bg-rose-600 text-white rounded-2xl font-black shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <Plus size={16} />
@@ -809,12 +775,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
       {/* Transaction Modal */}
       {isTransactionModalOpen && (
-        <ModalShell title={transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'} onClose={() => setIsTransactionModalOpen(false)}>
+        <ModalShell title={transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'} onClose={transactionEditor.close}>
             <p className="mb-4 text-xs text-slate-500">{selectedClientForTrans ? selectedClientForTrans.name : '거래처를 선택하세요'}</p>
-            <form onSubmit={handleAddTransaction} className="space-y-4">
+            <PalletTransactionRecoveryPanel editor={transactionEditor} buttonsOnly />
+            {transactionEditor.inlineError && <p role="alert" className="my-2 text-sm text-rose-700">{transactionEditor.inlineError}</p>}
+            {transactionEditor.inlineMessage && <p className="my-2 text-sm text-amber-700">{transactionEditor.inlineMessage}</p>}
+            <form onSubmit={event => { event.preventDefault(); void transactionEditor.submit(); }} className="space-y-4">
+              <fieldset disabled={transactionEditor.busy || transactionEditor.locked} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">거래처</label>
-                <select name="partnerId" required defaultValue={selectedClientForTrans?.id ?? ''} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
+                <select name="partnerId" required value={transactionEditor.draft.partnerId} onChange={event => transactionEditor.change('partnerId', event.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">거래처 선택</option>
                   {[...partners].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -823,7 +793,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">파렛트 종류</label>
-                <select name="palletId" required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
+                <select name="palletId" value={transactionEditor.draft.palletId} onChange={event => transactionEditor.change('palletId', event.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">종류 선택</option>
                   {visiblePallets.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -836,28 +806,28 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                   <div className="col-span-2 text-[11px] font-bold text-amber-600 bg-amber-50 rounded-lg px-3 py-2">신 파레트를 지급하면 '교체중'으로 등록돼요. 헌 파레트가 입고되면 거래처 상세에서 '교체완료'를 누르세요.</div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">회수 예정(헌 파레트)</label>
-                    <input name="returnQty" type="number" min="0" defaultValue={0} placeholder="회수 예정" className="w-full bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400" />
+                    <input name="returnQty" value={transactionEditor.draft.returnQty} onChange={event => transactionEditor.change('returnQty', event.target.value)} type="number" min="0" placeholder="회수 예정" className="w-full bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-rose-600 uppercase tracking-widest">지급(신 파레트)</label>
-                    <input name="newQty" type="number" min="0" defaultValue={0} placeholder="지급" className="w-full bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-400" />
+                    <input name="newQty" value={transactionEditor.draft.newQty} onChange={event => transactionEditor.change('newQty', event.target.value)} type="number" min="0" placeholder="지급" className="w-full bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-400" />
                   </div>
                 </div>
               ) : (
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">수량</label>
-                  <input name="quantity" type="number" required min="1" placeholder="수량 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input name="quantity" value={transactionEditor.draft.quantity} onChange={event => transactionEditor.change('quantity', event.target.value)} type="number" required min="1" placeholder="수량 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               )}
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">비고 (선택)</label>
-                <input name="note" type="text" placeholder="사유 등 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input name="note" value={transactionEditor.draft.note} onChange={event => transactionEditor.change('note', event.target.value)} type="text" placeholder="사유 등 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
               {transType !== 'exchange' && (
                 <label className="flex items-start gap-2.5 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 cursor-pointer">
-                  <input name="isTransfer" type="checkbox" className="mt-0.5 w-4 h-4 accent-sky-600" />
+                  <input name="isTransfer" checked={transactionEditor.draft.isTransfer} onChange={event => transactionEditor.change('isTransfer', event.target.checked)} type="checkbox" className="mt-0.5 w-4 h-4 accent-sky-600" />
                   <span className="min-w-0">
                     <span className="block text-xs font-black text-sky-700">이동전표</span>
                     <span className="block text-[10px] font-bold text-sky-500 leading-tight mt-0.5">거래처 지급·회수 추적 없이 회사 보유 총 수량만 증감합니다(지급 −, 입고 +). 전체 이력에서만 확인됩니다.</span>
@@ -865,9 +835,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 </label>
               )}
 
+              </fieldset>
               <div className="pt-4 flex space-x-3">
-                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
-                <button type="submit" className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${transType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' : transType === 'exchange' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'}`}>
+                <button type="button" disabled={transactionEditor.busy} onClick={transactionEditor.close} className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+                <button type="submit" disabled={transactionEditor.busy || transactionEditor.locked} className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${transType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' : transType === 'exchange' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'}`}>
                   {transType === 'in' ? '입고 완료' : transType === 'exchange' ? '교체 등록(교체중)' : '지급 완료'}
                 </button>
               </div>

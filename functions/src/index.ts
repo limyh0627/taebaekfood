@@ -379,3 +379,4 @@ export { workOrderCommand } from './workOrderCommand';
 export { productionRecordCommand } from './productionRecordCommand';
 
 export { partnerEditCommand } from './partnerEditCommand';
+export { palletTransactionCommand } from './palletTransactionCommand';
