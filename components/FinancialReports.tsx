@@ -81,6 +81,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<OpeningDoc | null>(null);
   const [saving, setSaving] = useState(false);
+  const openingForm = useRef({});
+  const openingSaveLock = useRef<object | null>(null);
   const [partnerId, setPartnerId] = useState('');
   const [partnerCode, setPartnerCode] = useState<OpeningPartnerCode>(AR);
   const [partnerAmount, setPartnerAmount] = useState('');
@@ -97,6 +99,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     // 회사 규칙은 list 질의에도 companyId 조건이 있어야 허용한다. 전체 컬렉션을 읽으면
     // permission-denied가 나는데 예전 코드는 오류를 삼켜 실제 기초잔액을 '미입력'으로 보였다.
     setOpeningDoc(null);
+    openingForm.current = {}; openingSaveLock.current = null; setSaving(false);
     setDraft(null);
     setEditing(false);
     setAccountSetup(providedAccounts.length === 0);
@@ -144,24 +147,30 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     !(item.stocktakeAnchors?.length)), [items, companyId]);
 
   const startEdit = () => {
+    if (openingSaveLock.current) return;
+    openingForm.current = {};
     const base: OpeningDoc = openingDoc ?? { id: 'main', date: defaultDate, amounts: cashOpeningAmounts };
     setDraft(JSON.parse(JSON.stringify(base))); setEditing(true);
   };
   const saveOpening = async () => {
-    if (!draft || saving) return;
-    if ([AR, AP].some(code => Number(draft.amounts[code] ?? 0) !== 0 &&
-      statements.some(s => s.id.startsWith(`opening-partner-${companyId}-`) && s.items.some(i => i.accountCode === code)))) {
-      await appNotice('거래처별 기초 전표가 있어 108·251 계정 합계를 함께 저장하면 이중계상됩니다.');
-      return;
-    }
+    if (!draft || openingSaveLock.current) return;
+    const captured = scope.current, form = openingForm.current, lock = {};
+    const clean = { ...draft, id: 'main', amounts: Object.fromEntries(Object.entries(draft.amounts).filter(([, v]) => v)) };
+    openingSaveLock.current = lock;
+    const current = () => scope.current === captured && openingForm.current === form && openingSaveLock.current === lock;
     setSaving(true);
     try {
-      const clean = { ...draft, id: 'main', amounts: Object.fromEntries(Object.entries(draft.amounts).filter(([, v]) => v)) };
+      if ([AR, AP].some(code => Number(clean.amounts[code] ?? 0) !== 0 &&
+        statements.some(s => s.id.startsWith(`opening-partner-${companyId}-`) && s.items.some(i => i.accountCode === code)))) {
+        if (current()) await appNotice('거래처별 기초 전표가 있어 108·251 계정 합계를 함께 저장하면 이중계상됩니다.');
+        return;
+      }
       await saveOpeningBalances(companyId, clean.date, clean.amounts);
+      if (!current()) return;
       setOpeningDoc(clean); setEditing(false);
     } catch (error) {
-      await appNotice(String(error), '기초잔액 저장 실패');
-    } finally { setSaving(false); }
+      if (current()) await appNotice(String(error), '기초잔액 저장 실패');
+    } finally { if (current()) { openingSaveLock.current = null; setSaving(false); } }
   };
   const savePartnerOpening = async () => {
     if (!openingDoc || !partnerId || partnerSaving) return;
@@ -342,7 +351,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
             <button onClick={startEdit} disabled={openingLoading || openingLoadError} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-black disabled:opacity-40"><Pencil size={12} /> 편집</button>
           ) : (
             <div className="flex gap-1.5">
-              <button onClick={() => setEditing(false)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[11px] font-black"><X size={12} /> 취소</button>
+              <button onClick={() => { if (!openingSaveLock.current) { openingForm.current = {}; setEditing(false); } }} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[11px] font-black"><X size={12} /> 취소</button>
               <button onClick={saveOpening} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-black disabled:opacity-40"><Save size={12} /> 저장</button>
             </div>
           )}
@@ -352,7 +361,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-slate-400">컷오프 날짜</span>
-              <input type="date" value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })}
+              <input type="date" disabled={saving} value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })}
                 className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               <span className="text-[10px] font-bold text-slate-400">이 날짜의 기초 잔액. 이 값들의 차액이 자본금으로 들어갑니다.</span>
             </div>
@@ -377,7 +386,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
               {openableAccounts.map(a => (
                 <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">
                   <span className="text-[11px] font-bold text-slate-500 flex-1 truncate"><span className="text-slate-300 mr-1">{a.code}</span>{a.name}</span>
-                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293')) || (!!openingDoc?.hasCashOpening && (a.code === BANK || a.code === STANDARD_ACCOUNT.CASH)) || (!!openingDoc?.hasInventoryOpening && a.code === INVENTORY)}
+                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={saving || a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293')) || (!!openingDoc?.hasCashOpening && (a.code === BANK || a.code === STANDARD_ACCOUNT.CASH)) || (!!openingDoc?.hasInventoryOpening && a.code === INVENTORY)}
                     onChange={e => setDraft({ ...draft, amounts: { ...draft.amounts, [String(a.code)]: Number(e.target.value.replace(/[^\d]/g, '')) || 0 } })}
                     className="w-28 text-right text-xs font-black tabular-nums border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-300 disabled:bg-slate-100 disabled:text-slate-400" />
                 </label>

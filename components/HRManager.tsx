@@ -153,12 +153,16 @@ const HRManager: React.FC<HRManagerProps> = ({
     const ownerChanged=payBankOwner.current!==actionScopeKey;payBankOwner.current=actionScopeKey;
     setPayBank(current=>!ownerChanged&&banks.some(a=>a.id===current)?current:defaultCashAccountId(banks,companyId));
   },[cashAccounts,companyId,requestScopeKey,paySaving]);
-  const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
-  const paySlipDocumentScope = React.useRef({companyId, yearMonth:payYm});
+  const paySlipScopeKey = JSON.stringify([companyId, requestScopeKey ?? '', payYm]);
+  const paySlipScope = useRef({ key: paySlipScopeKey, owner: {} });
+  if (paySlipScope.current.key !== paySlipScopeKey) paySlipScope.current = { key: paySlipScopeKey, owner: {} };
+  const [paySlipSelection, setPaySlipSelection] = useState<{ line: PayrollLine; owner: object } | null>(null);
+  const paySlipEmp = paySlipSelection?.owner === paySlipScope.current.owner ? paySlipSelection.line : null;
+  React.useEffect(() => { setPaySlipSelection(null); }, [paySlipScopeKey]);
   const paySlipRef = React.useRef<HTMLDivElement>(null);
   const paySlipSignal = useOutputScope(companyId, JSON.stringify([activeTab,payYm,payDate,paySlipEmp?.employeeId]));
   const printPaySlip = () => {
-    if (!paySlipRef.current || paySlipDocumentScope.current.companyId !== companyId || paySlipDocumentScope.current.yearMonth !== payYm) return;
+    if (!paySlipRef.current || !paySlipSelection || paySlipSelection.owner !== paySlipScope.current.owner || !paySlipEmp) return;
     const signal = paySlipSignal(); if (signal.aborted) return;
     const heading = document.createElement('h1'); heading.textContent = `급여명세서 · ${paySlipEmp?.employeeName ?? ''}`;
     const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(node=>node.outerHTML).join('');
@@ -518,7 +522,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             {payLines.length === 0 ? (
               <p className="py-16 text-center text-xs font-bold text-slate-300">재직 중인 임직원이 없습니다</p>
             ) : (
-              <PayrollLineEditor disabled={paySaving} lines={payLines} onCell={setCell} onPrint={line => { paySlipDocumentScope.current={companyId,yearMonth:payYm}; setPaySlipEmp(line); }} />
+              <PayrollLineEditor disabled={paySaving} lines={payLines} onCell={setCell} onPrint={line => { setPaySlipSelection({ line: { ...line }, owner: paySlipScope.current.owner }); }} />
             )}
 
             <div className="p-4 space-y-2">
@@ -563,8 +567,8 @@ const HRManager: React.FC<HRManagerProps> = ({
       </div>
 
       {/* 급여명세서 — 사원 한 명분. 근로기준법상 교부 의무 항목(지급·공제 내역)을 담는다. */}
-      {paySlipEmp && paySlipDocumentScope.current.companyId === companyId && paySlipDocumentScope.current.yearMonth === payYm && (
-        <ModalShell title={`급여명세서 · ${paySlipEmp.employeeName}`} onClose={() => setPaySlipEmp(null)}>
+      {paySlipEmp && (
+        <ModalShell title={`급여명세서 · ${paySlipEmp.employeeName}`} onClose={() => setPaySlipSelection(null)}>
             <div ref={paySlipRef}>
             <p className="mb-4 text-[11px] font-bold text-slate-400">
               {paySlipEmp.department} {paySlipEmp.position} · {payYm} · 지급일 {payDate}

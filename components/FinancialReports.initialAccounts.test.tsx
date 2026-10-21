@@ -46,3 +46,26 @@ it('331 자동 차액 계정은 송신·잠금 없이 안내하고 다른 코드
  expect(add).not.toHaveBeenCalled();expect(screen.getByText(/자본금은 기초잔액 차액으로 자동 계산/)).toBeInTheDocument();expect(screen.getByLabelText('기초 계정 코드')).toBeEnabled();
  fireEvent.change(screen.getByLabelText('기초 계정 코드'),{target:{value:'122'}});fireEvent.click(screen.getByRole('button',{name:'계정 등록'}));await screen.findByLabelText(/122비품/);expect(add).toHaveBeenCalledTimes(1);
 });
+
+const openingAccount={id:'scope-account',code:'122',name:'수명 비품',type:'자산',normalBalance:'debit'} as AccountCode;
+const scopeBase={...base,accounts:[openingAccount]};
+it('기초잔액 A 응답은 B의 새 저장과 금액·날짜 잠금을 해제하지 않는다',async()=>{
+ api.save.mockReset();api.notice.mockReset();const finishes:Array<()=>void>=[];api.save.mockImplementation(()=>new Promise<void>(resolve=>finishes.push(resolve)));
+ const view=render(<FinancialReports {...scopeBase}/>);await open();fireEvent.change(screen.getByLabelText(/122수명 비품/),{target:{value:'1000'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(api.save).toHaveBeenCalledTimes(1);
+ view.rerender(<FinancialReports {...scopeBase} companyId="punghoe"/>);await open();expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();fireEvent.change(screen.getByLabelText(/122수명 비품/),{target:{value:'2000'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(api.save).toHaveBeenCalledTimes(2);
+ expect(screen.getByLabelText(/122수명 비품/)).toBeDisabled();expect(screen.getByRole('button',{name:'취소'})).toBeDisabled();
+ await act(async()=>finishes[0]());expect(screen.getByLabelText(/122수명 비품/)).toHaveValue('2000');expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ await act(async()=>finishes[1]());expect(screen.getByRole('button',{name:'편집'})).toBeEnabled();await open();expect(screen.getByLabelText(/122수명 비품/)).toHaveValue('2000');
+});
+it('이전 회사 기초잔액 거절은 새 회사에 알림을 띄우지 않는다',async()=>{
+ api.save.mockReset();api.notice.mockReset();let reject!:(error:Error)=>void;api.save.mockImplementation(()=>new Promise<void>((_r,j)=>{reject=j;}));const view=render(<FinancialReports {...scopeBase}/>);await open();fireEvent.click(screen.getByRole('button',{name:'저장'}));view.rerender(<FinancialReports {...scopeBase} companyId="punghoe"/>);await act(async()=>reject(new Error('옛 회사 오류')));expect(api.notice).not.toHaveBeenCalled();
+});
+
+it('기초잔액 저장 중에는 중복송신과 금액·일자·취소를 잠그고 실패 뒤 입력을 유지한다',async()=>{
+ api.save.mockReset();api.notice.mockReset();let reject!:(error:Error)=>void;api.save.mockImplementation(()=>new Promise<void>((_r,j)=>{reject=j;}));const view=render(<FinancialReports {...scopeBase}/>);await open();const amount=screen.getByLabelText(/122수명 비품/);fireEvent.change(amount,{target:{value:'3456'}});const date=view.container.querySelector('input[type="date"]') as HTMLInputElement;fireEvent.change(date,{target:{value:'2026-01-02'}});const save=screen.getByRole('button',{name:'저장'});act(()=>{fireEvent.click(save);fireEvent.click(save);});expect(api.save).toHaveBeenCalledTimes(1);expect(api.save.mock.calls[0]).toEqual(['taebaek','2026-01-02',{'122':3456}]);expect(amount).toBeDisabled();expect(date).toBeDisabled();expect(screen.getByRole('button',{name:'취소'})).toBeDisabled();
+ await act(async()=>reject(new Error('현재 저장 거절')));expect(amount).toHaveValue('3456');expect(date).toHaveValue('2026-01-02');expect(save).toBeEnabled();expect(api.notice).toHaveBeenCalledWith(expect.stringContaining('현재 저장 거절'),'기초잔액 저장 실패');
+});
+it('회사 왕복과 unmount 뒤 기초잔액 응답은 새 편집이나 전역 알림을 건드리지 않는다',async()=>{
+ api.save.mockReset();api.notice.mockReset();let finish!:()=>void;api.save.mockImplementationOnce(()=>new Promise<void>(r=>{finish=r;}));const view=render(<FinancialReports {...scopeBase}/>);await open();fireEvent.change(screen.getByLabelText(/122수명 비품/),{target:{value:'111'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));view.rerender(<FinancialReports {...scopeBase} companyId="punghoe"/>);await open();view.rerender(<FinancialReports {...scopeBase}/>);await open();fireEvent.change(screen.getByLabelText(/122수명 비품/),{target:{value:'777'}});await act(async()=>finish());expect(screen.getByLabelText(/122수명 비품/)).toHaveValue('777');expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+ let reject!:(error:Error)=>void;api.save.mockImplementationOnce(()=>new Promise<void>((_r,j)=>{reject=j;}));fireEvent.click(screen.getByRole('button',{name:'저장'}));view.unmount();await act(async()=>reject(new Error('unmount 뒤 오류')));expect(api.notice).not.toHaveBeenCalled();
+});
