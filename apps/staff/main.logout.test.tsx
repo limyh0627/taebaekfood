@@ -8,7 +8,7 @@ const m = vi.hoisted(() => ({ tree: null as unknown, auth: { currentUser: null a
             getIdTokenResult: () => Promise<{
                 claims: Record<string, unknown>;
             }>;
-        } }, listeners: new Set<(user: unknown) => void>(), signOut: vi.fn(), unregister: vi.fn(), subscriptions: 0, subscriptionStarts: 0, employee: { id: 'employee', companyId: 'taebaek', name: '합성 직원', adminAccess: true, position: '직원', department: '생산', joinDate: '', status: 'working', phone: '' } }));
+        } }, listeners: new Set<(user: unknown) => void>(), signOut: vi.fn(), unregister: vi.fn(), capture: vi.fn(), subscriptions: 0, subscriptionStarts: 0, employee: { id: 'employee', companyId: 'taebaek', name: '합성 직원', adminAccess: true, position: '직원', department: '생산', joinDate: '', status: 'working', phone: '' } }));
 vi.mock('react-dom/client', async () => {
     const actual = await vi.importActual<typeof import('react-dom/client')>('react-dom/client');
     const createRoot: typeof actual.createRoot = (container, options) => {
@@ -34,7 +34,7 @@ vi.mock('../../src/shared/services/firebaseService', () => ({ addItem: vi.fn() }
 vi.mock('../../src/shared/shareTarget', () => ({ takeShareFromUrl: () => null }));
 vi.mock('../../src/shared/swUpdate', () => ({ 새버전확인붙이기: () => () => { } }));
 vi.mock('../../src/shared/blockNumberWheel', () => ({ blockNumberWheel: () => () => { } }));
-vi.mock('../../src/shared/push', () => ({ unregisterPush: m.unregister }));
+vi.mock('../../src/shared/push', () => ({ unregisterPush: m.unregister, capturePushActor: m.capture }));
 vi.mock('../../src/shared/components/LocalTestBanner', () => ({ default: () => null }));
 vi.mock('../../src/shared/components/AppAlertHost', () => ({ default: () => null }));
 vi.mock('../../src/shared/components/AppDialogHost', () => ({ default: () => null }));
@@ -45,9 +45,9 @@ const emit = (next: ReturnType<typeof user> | null) => {
     for (const listener of m.listeners)
         listener(next);
 };
-beforeEach(() => { vi.resetModules(); localStorage.clear(); sessionStorage.clear(); m.tree = null; m.subscriptions = 0; m.subscriptionStarts = 0; m.signOut.mockReset(); m.unregister.mockReset().mockResolvedValue(undefined); m.auth.currentUser = user(); localStorage.setItem('tb_user', JSON.stringify(m.employee)); const root = document.createElement('div'); root.id = 'root'; document.body.appendChild(root); });
+beforeEach(() => { vi.resetModules(); localStorage.clear(); sessionStorage.clear(); m.tree = null; m.subscriptions = 0; m.subscriptionStarts = 0; m.signOut.mockReset(); m.unregister.mockReset().mockResolvedValue(undefined); m.capture.mockReset().mockReturnValue({ready:Promise.resolve(),assertCurrent:vi.fn(),dispose:vi.fn()}); m.auth.currentUser = user(); localStorage.setItem('tb_user', JSON.stringify(m.employee)); const root = document.createElement('div'); root.id = 'root'; document.body.appendChild(root); });
 afterEach(() => { document.getElementById('root')?.remove(); });
-const start = async () => { await import('./main'); const view = render(m.tree as React.ReactNode); await screen.findByRole('button', { name: '검수 로그아웃' }); return view; };
+const start = async () => { await import('./main'); const view = render(m.tree as React.ReactNode); await screen.findByRole('button', { name: '검수 로그아웃' }); await waitFor(() => expect(m.subscriptions).toBe(1)); return view; };
 it('실 Root는 종료 대기 중 업무 구독과 로그인 화면을 숨기고 Auth null 선행 뒤에도 응답을 기다린다', async () => {
     const request = deferred();
     m.signOut.mockReturnValue(request.promise);

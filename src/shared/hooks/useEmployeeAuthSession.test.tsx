@@ -4,16 +4,16 @@ import {readFileSync} from 'node:fs';
 import {act,renderHook,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import type {Employee} from '../types';
-const mock=vi.hoisted(()=>({auth:{currentUser:null as any},listener:null as any,stop:vi.fn(),ready:Promise.resolve() as Promise<void>,signOut:vi.fn(),unregister:vi.fn()}));
+const mock=vi.hoisted(()=>({auth:{currentUser:null as any},listener:null as any,stop:vi.fn(),ready:Promise.resolve() as Promise<void>,signOut:vi.fn(),unregister:vi.fn(),capture:vi.fn(),pushActor:{ready:Promise.resolve(),assertCurrent:vi.fn(),dispose:vi.fn()}}));
 vi.mock('../firebase',()=>({auth:mock.auth,get authReady(){return mock.ready;}}));
-vi.mock('../push',()=>({unregisterPush:mock.unregister}));
+vi.mock('../push',()=>({unregisterPush:mock.unregister,capturePushActor:mock.capture}));
 vi.mock('firebase/auth',()=>({signOut:mock.signOut,onIdTokenChanged:vi.fn((_auth,listener)=>{mock.listener=listener;return mock.stop;})}));
 import {onIdTokenChanged} from 'firebase/auth';
 import {useEmployeeAuthSession} from './useEmployeeAuthSession';
 const employee={id:'emp-a',companyId:'taebaek',name:'합성 직원',adminAccess:true} as Employee;
 const user=(uid='uid-a',claims:Record<string,unknown>={employeeId:'emp-a',companyId:'taebaek',isAdmin:false})=>({uid,isAnonymous:false,getIdTokenResult:vi.fn(async()=>({claims}))});
 const emit=async(value:any)=>{mock.auth.currentUser=value;await act(async()=>{mock.listener(value);});};
-beforeEach(()=>{localStorage.clear();mock.auth.currentUser=null;mock.listener=null;mock.ready=Promise.resolve();vi.clearAllMocks();mock.signOut.mockReset().mockImplementation(async()=>{mock.auth.currentUser=null;mock.listener?.(null);});mock.unregister.mockReset().mockResolvedValue(undefined);});
+beforeEach(()=>{localStorage.clear();mock.auth.currentUser=null;mock.listener=null;mock.ready=Promise.resolve();vi.clearAllMocks();mock.signOut.mockReset().mockImplementation(async()=>{mock.auth.currentUser=null;mock.listener?.(null);});mock.unregister.mockReset().mockResolvedValue(undefined);mock.capture.mockReset().mockReturnValue(mock.pushActor);});
 afterEach(()=>{vi.restoreAllMocks();localStorage.clear();});
 it('저장된 권한 대신 토큰 권한을 쓰고 같은 신원 갱신은 세션 객체와 key를 보존한다',async()=>{
  localStorage.setItem('tb_user',JSON.stringify(employee));const hook=renderHook(()=>useEmployeeAuthSession());await waitFor(()=>expect(mock.listener).toBeTruthy());
@@ -48,7 +48,7 @@ it('로그아웃은 첫 tick 잠금 뒤 null 이벤트가 먼저 와도 응답�
  const hook=await loggedIn(),pending=deferred<void>();mock.signOut.mockReturnValueOnce(pending.promise);let task!:Promise<void>;
  act(()=>{task=hook.result.current.logout();void hook.result.current.logout();void hook.result.current.retryLogout();});
  expect(mock.signOut).toHaveBeenCalledOnce();expect(hook.result.current.logoutState).toBe('pending');await emit(null);expect(hook.result.current.logoutState).toBe('pending');expect(localStorage.getItem('tb_user')).not.toBeNull();
- await act(async()=>{pending.resolve();await task;});expect(hook.result.current.logoutState).toBe('idle');expect(hook.result.current.currentUser).toBeNull();expect(localStorage.getItem('tb_user')).toBeNull();expect(mock.unregister).toHaveBeenCalledExactlyOnceWith('emp-a');
+ await act(async()=>{pending.resolve();await task;});expect(hook.result.current.logoutState).toBe('idle');expect(hook.result.current.currentUser).toBeNull();expect(localStorage.getItem('tb_user')).toBeNull();expect(mock.unregister).toHaveBeenCalledExactlyOnceWith('emp-a',undefined,mock.pushActor);
 });
 it('거절 후 Auth가 남으면 저장세션을 지우지 않고 실패·명시재시도하며 push는 한 번뿐이다',async()=>{
  const hook=await loggedIn();mock.signOut.mockRejectedValueOnce(Error('종료 거절'));await act(async()=>{await expect(hook.result.current.logout()).resolves.toBeUndefined();});
@@ -127,4 +127,18 @@ it('marker가 있어도 authReady 거절 시 실제 Auth null이면 로그인 �
 });
 it('authReady 거절 뒤에도 Auth 이벤트를 감시하여 재시도 토큰대기 중 UID 왕복은 옛 송신을 막는다',async()=>{
  localStorage.setItem(markerKey,marker());const selected=user(),token=deferred<any>();selected.getIdTokenResult.mockRejectedValueOnce(Error('처음 토큰 실패')).mockReturnValueOnce(token.promise);mock.auth.currentUser=selected;mock.ready=Promise.reject(Error('준비 실패'));const hook=renderHook(()=>useEmployeeAuthSession());await waitFor(()=>expect(hook.result.current.logoutState).toBe('failed'));let task!:Promise<void>;act(()=>{task=hook.result.current.retryLogout();});await emit(user('uid-b'));await emit(selected);await act(async()=>{token.resolve({claims:{employeeId:'emp-a',companyId:'taebaek',isAdmin:false}});await task;});expect(mock.signOut).not.toHaveBeenCalled();
+});
+it('푸시 owner는 microtask와 signOut 전에 동기 캡처하며 푸시 완료를 기다리지 않는다',async()=>{
+ const hook=await loggedIn();const push=deferred<void>();mock.unregister.mockReturnValue(push.promise);
+ await act(async()=>hook.result.current.logout());
+ expect(mock.capture).toHaveBeenCalledExactlyOnceWith('emp-a');
+ expect(mock.capture.mock.invocationCallOrder[0]).toBeLessThan(mock.signOut.mock.invocationCallOrder[0]);
+ expect(mock.unregister).toHaveBeenCalledWith('emp-a',undefined,mock.pushActor);
+ expect(hook.result.current.logoutState).toBe('idle');expect(mock.pushActor.dispose).not.toHaveBeenCalled();
+ await act(async()=>push.resolve());expect(mock.pushActor.dispose).toHaveBeenCalledTimes(1);
+});
+it('푸시 owner 캡처가 실패해도 signOut을 실행하며 재시도로 중복 캡처하지 않는다',async()=>{
+ const hook=await loggedIn();mock.capture.mockImplementation(()=>{throw Error('합성 캡처 실패');});mock.signOut.mockRejectedValueOnce(Error('합성 인증 실패'));
+ await act(async()=>hook.result.current.logout());expect(hook.result.current.logoutState).toBe('failed');expect(mock.unregister).not.toHaveBeenCalled();
+ await act(async()=>hook.result.current.retryLogout());expect(hook.result.current.logoutState).toBe('idle');expect(mock.signOut).toHaveBeenCalledTimes(2);expect(mock.capture).toHaveBeenCalledTimes(1);
 });

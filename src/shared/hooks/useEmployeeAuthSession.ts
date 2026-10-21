@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { onIdTokenChanged, signOut, type User } from 'firebase/auth';
 import { auth, authReady } from '../firebase';
 import { employeeSession, readEmployeeSession } from '../employeeSession';
-import { unregisterPush } from '../push';
+import { capturePushActor, unregisterPush } from '../push';
 import type { Employee } from '../types';
 
 const LOGOUT_INTENT_KEY = 'tb_logout_intent_v1';
@@ -194,7 +194,12 @@ export function useEmployeeAuthSession() {
                     if (localStorage.getItem(LOGOUT_INTENT_KEY) !== run.raw) throw Error();
                 } catch { run.storageError = true; }
             } else run.storageError = true;
-            void Promise.resolve().then(() => unregisterPush(run.employee!.id)).catch(() => undefined);
+            // 예약 사이에 계정이 바뀌어도 새 사람의 푸시 표를 지우지 않는다.
+            try {
+                const pushActor = capturePushActor(run.employee.id);
+                void Promise.resolve().then(() => unregisterPush(run.employee!.id, undefined, pushActor))
+                    .catch(() => undefined).finally(() => pushActor.dispose());
+            } catch { /* 푸시 준비 실패로 인증 종료를 막지 않는다. */ }
         }
         const current = () => mounted.current && logoutRun.current === run && (!auth.currentUser || auth.currentUser.uid === run.uid);
         const complete = () => {
