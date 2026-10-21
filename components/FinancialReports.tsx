@@ -91,6 +91,10 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
   const [inventoryQuantity, setInventoryQuantity] = useState('');
   const [inventoryValue, setInventoryValue] = useState('');
   const [inventorySaving, setInventorySaving] = useState(false);
+  const inventoryForm = useRef({});
+  const inventoryOpeningDate = useRef(openingDoc?.date);
+  inventoryOpeningDate.current = openingDoc?.date;
+  const inventorySaveLock = useRef<object | null>(null);
   const [openingLoadError, setOpeningLoadError] = useState(false);
   const [openingLoading, setOpeningLoading] = useState(true);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
@@ -106,6 +110,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     setAccountDraft({ code: '', name: '', type: '자산', normalBalance: 'debit' });
     setAccountPending(null); setAccountError(''); setAccountSaving(false); accountBusy.current = null;
     setPartnerId('');
+    inventoryForm.current = {}; inventorySaveLock.current = null; setInventorySaving(false);
     setInventoryItemId('');
     setInventoryQuantity('');
     setInventoryValue('');
@@ -183,17 +188,30 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     } catch (error) { await appNotice(String(error), '저장 실패'); }
     finally { setPartnerSaving(false); }
   };
+  const changeInventory = (change: () => void) => {
+    if (inventorySaveLock.current) return;
+    inventoryForm.current = {};
+    change();
+  };
   const saveInventoryOpening = async () => {
-    if (!openingDoc || !inventoryItemId || inventorySaving) return;
+    if (!openingDoc || !inventoryItemId || inventorySaveLock.current) return;
+    const captured = scope.current, form = inventoryForm.current, lock = {};
+    const payload = { companyId, date: openingDoc.date, itemId: inventoryItemId,
+      quantity: Number(inventoryQuantity.replaceAll(',', '')), value: Number(inventoryValue.replaceAll(',', '')) };
+    inventorySaveLock.current = lock;
+    const ownExecution = () => scope.current === captured && inventoryForm.current === form && inventorySaveLock.current === lock;
+    const current = () => ownExecution() && inventoryOpeningDate.current === payload.date;
     setInventorySaving(true);
     try {
-      const result = await createOpeningInventory(companyId, openingDoc.date, inventoryItemId,
-        Number(inventoryQuantity.replaceAll(',', '')), Number(inventoryValue.replaceAll(',', '')));
-      setOpeningDoc(doc => doc ? { ...doc, hasInventoryOpening: true } : doc);
+      const result = await createOpeningInventory(payload.companyId, payload.date, payload.itemId, payload.quantity, payload.value);
+      if (!current()) return;
+      // 이전 회사 응답이 새 회사의 계정 입력까지 잠그지 않도록 updater 안에서도 소유자를 확인한다.
+      setOpeningDoc(doc => scope.current === captured && inventoryForm.current === form && doc?.date === payload.date ? { ...doc, hasInventoryOpening: true } : doc);
       await appNotice(result === 'unchanged' ? '같은 기초 재고가 이미 저장돼 있습니다.' : '재고 수량·로트·원장과 기초 전표를 함께 저장했습니다.');
+      if (!current()) return;
       if (result === 'created') { setInventoryItemId(''); setInventoryQuantity(''); setInventoryValue(''); }
-    } catch (error) { await appNotice(String(error), '기초 재고 저장 실패'); }
-    finally { setInventorySaving(false); }
+    } catch (error) { if (current()) await appNotice(String(error), '기초 재고 저장 실패'); }
+    finally { if (ownExecution()) { inventorySaveLock.current = null; setInventorySaving(false); } }
   };
   // 자본금 plug 미리보기
   const capitalPreview = useMemo(() => {
@@ -420,12 +438,12 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
         <div className="text-xs font-black text-slate-700">품목별 기초 재고</div>
         <p className="text-[11px] text-slate-500">처음 등록하는 재고만 입력하세요. 수량은 품목 재고 단위, 평가금액은 해당 수량의 총 원가(원)입니다. 146 계정에 같은 금액을 직접 넣지 마세요.</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-          <select aria-label="기초 재고 품목" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={inventoryItemId} onChange={e => setInventoryItemId(e.target.value)}>
+          <select disabled={inventorySaving} aria-label="기초 재고 품목" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={inventoryItemId} onChange={e => changeInventory(() => setInventoryItemId(e.target.value))}>
             <option value="">품목 선택</option>
             {inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name} {item.spec || ''} ({item.unit || '개'})</option>)}
           </select>
-          <input aria-label="기초 재고 수량" inputMode="decimal" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryQuantity} onChange={e => setInventoryQuantity(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="수량" />
-          <input aria-label="기초 재고 평가금액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryValue} onChange={e => setInventoryValue(e.target.value.replace(/[^\d,]/g, ''))} placeholder="평가금액 (원)" />
+          <input disabled={inventorySaving} aria-label="기초 재고 수량" inputMode="decimal" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryQuantity} onChange={e => changeInventory(() => setInventoryQuantity(e.target.value.replace(/[^\d.,]/g, '')))} placeholder="수량" />
+          <input disabled={inventorySaving} aria-label="기초 재고 평가금액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryValue} onChange={e => changeInventory(() => setInventoryValue(e.target.value.replace(/[^\d,]/g, '')))} placeholder="평가금액 (원)" />
           <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !inventoryItemId || !inventoryQuantity || !inventoryValue || inventorySaving} onClick={() => void saveInventoryOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
