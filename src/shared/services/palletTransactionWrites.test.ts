@@ -5,7 +5,7 @@ const m = vi.hoisted(() => ({ auth: { currentUser: { uid: 'actor', getIdTokenRes
 vi.mock('../firebase', () => ({ auth: m.auth, authReady: Promise.resolve(), functions: {} }));
 vi.mock('firebase/functions', () => ({ httpsCallable: () => m.call }));
 import writes from './palletTransactionWrites';
-import type { PalletTransactionRequest, PalletTransactionResult } from '../palletTransactionCommand';
+import { serializePalletTransactionRequest, type PalletExchangeCompletionRequest, type PalletTransactionRequest, type PalletTransactionResult } from '../palletTransactionCommand';
 const scope = { companyId: 'taebaek' as const, actorUid: 'actor' };
 const current = () => true;
 const request = (operationId = 'op'): PalletTransactionRequest => ({ version: 1, reference: { companyId: 'taebaek', operationId, transactionId: 'tx-' + operationId }, transaction: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '2026-10-21', note: '원문' + operationId } });
@@ -264,4 +264,112 @@ it('RPC 실패 뒤 원인 기록 quota 실패도 원래 원인과 기록 실패�
     finally {
         set.mockRestore();
     }
+});
+function completion(operationId = 'complete', sourceTransactionId = 'source'): PalletExchangeCompletionRequest {
+    return { version: 2, action: 'complete-exchange', reference: { companyId: 'taebaek', operationId, transactionId: 'return-' + operationId }, sourceTransactionId,
+        source: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 5, date: '2026-10-20', note: '원 교체 지급', status: '교체중', exchangeReturnQty: 0 }, expectedVersion: '1:000000000', returnDate: '2026-10-21' };
+}
+function openInput() { const input = completion(); return { reference: input.reference, sourceTransactionId: input.sourceTransactionId, source: input.source }; }
+it('기존 v1 wrapper·정규 본문·prefix와 해시는 확장 뒤에도 같은 bytes다', async () => {
+    const input = request();
+    const canonical = JSON.stringify(input);
+    expect(serializePalletTransactionRequest(input)).toBe(canonical);
+    const entry = await writes.prepare(scope, input, current);
+    expect(entry.bodyRaw).toBe(JSON.stringify({ version: 1, actorUid: 'actor', request: input }));
+    expect(entry.key.startsWith('pallet-transaction-v1:taebaek:actor:')).toBe(true);
+    expect(JSON.parse(entry.referenceRaw!).version).toBe(1);
+    expect((await writes.read(scope))[0].bodyRaw).toBe(entry.bodyRaw);
+});
+it('교체 readonly 준비는 고정 선택 source를 보내며 보관·apply를 하지 않는다', async () => {
+    const input = openInput();
+    m.call.mockResolvedValueOnce({ data: { ...input, actorUid: 'actor', expectedVersion: '7:000000001' } });
+    const result = await writes.openExchange(scope, input, current);
+    expect(result.expectedVersion).toBe('7:000000001');
+    expect(localStorage.length).toBe(0);
+    expect(m.call.mock.calls[0][0]).toEqual({ mode: 'open-exchange', ...input });
+});
+it.each(['actor', 'ref', 'source-id', 'source-body'] as const)('교체 open 응답의 %s가 다르면 신선한 version을 채택하지 않는다', async (variant) => {
+    const input = openInput();
+    const response = { ...structuredClone(input), actorUid: 'actor', expectedVersion: '7:000000001' };
+    if (variant === 'actor')
+        response.actorUid = 'other';
+    if (variant === 'ref')
+        response.reference.operationId = 'other';
+    if (variant === 'source-id')
+        response.sourceTransactionId = 'other';
+    if (variant === 'source-body')
+        response.source.quantity = 6;
+    m.call.mockResolvedValueOnce({ data: response });
+    await expect(writes.openExchange(scope, input, current)).rejects.toThrow('다릅니다');
+    expect(localStorage.length).toBe(0);
+});
+it('교체 open await 중 UID 교체는 응답 version을 반환하지 않는다', async () => {
+    const input = openInput();
+    const wait = deferred<{
+        data: unknown;
+    }>();
+    m.call.mockReturnValueOnce(wait.promise);
+    const task = writes.openExchange(scope, input, current);
+    await vi.waitFor(() => expect(m.call).toHaveBeenCalledOnce());
+    m.auth.currentUser.uid = 'other';
+    wait.resolve({ data: { ...input, actorUid: 'actor', expectedVersion: '1:000000000' } });
+    await expect(task).rejects.toThrow('바뀌');
+    expect(localStorage.length).toBe(0);
+});
+it('교체 완료 source·회수0·날짜·native와 target을 고정하고 lost 뒤 같은 v2만 재송신한다', async () => {
+    const input = completion();
+    let entry = await writes.prepare(scope, input, current);
+    expect(entry.transaction).toBeNull();
+    expect(entry.summary).toMatchObject({ action: 'complete-exchange', quantity: 5, returnQty: 0, date: '2026-10-21', sourceTransactionId: 'source' });
+    m.call.mockRejectedValueOnce(Error('교체 응답 유실'));
+    await expect(writes.command(scope, entry, 'apply', current, undefined, next => { entry = next!; })).rejects.toThrow('유실');
+    const [reloaded] = await writes.read(scope);
+    expect(reloaded.lastAttempt?.message).toBe('교체 응답 유실');
+    m.call.mockResolvedValueOnce({ data: result(reloaded) });
+    const observed = await writes.command(scope, reloaded, 'apply', current);
+    expect(observed.terminal).toBe(true);
+    expect(m.call.mock.calls.map(call => call[0])).toEqual([{ mode: 'apply', request: input }, { mode: 'apply', request: input }]);
+    expect(writes.projection(reloaded, observed.result).currentState).toContain('교체 완료와 회수');
+    expect(localStorage.getItem(entry.key)).not.toBeNull();
+});
+it('다음날 새 target·op·native도 같은 원교체 요청이면 기존 entry를 선택하고 새 보관을 막는다', async () => {
+    const first = await writes.prepare(scope, completion(), current);
+    const next = completion('other');
+    next.returnDate = '2026-10-22';
+    next.expectedVersion = '2:000000000';
+    expect(writes.findMatchingExchange(await writes.read(scope), 'source')?.key).toBe(first.key);
+    await expect(writes.prepare(scope, next, current)).rejects.toThrow('같은 내용');
+    expect(m.call).not.toHaveBeenCalled();
+    expect(localStorage.getItem(first.key)).toBe(first.bodyRaw);
+});
+it('다른 source의 교체와 일반 등록은 별도 업무로 보관할 수 있다', async () => {
+    await writes.prepare(scope, completion(), current);
+    await writes.prepare(scope, completion('other', 'other-source'), current);
+    await seed();
+    expect(await writes.read(scope)).toHaveLength(3);
+    expect(m.call).not.toHaveBeenCalled();
+});
+it('v1 본문과 v2 sidecar 충돌은 각 결과를 확인해야 정리하며 양쪽 업무를 자동 전송하지 않는다', async () => {
+    const a = await seed();
+    const b = await writes.prepare(scope, completion(), current);
+    localStorage.setItem(a.key + ':reference', b.referenceRaw!);
+    const entry = (await writes.read(scope)).find(value => value.key === a.key)!;
+    expect(entry.references).toHaveLength(2);
+    expect(writes.projection(entry).canRetry).toBe(false);
+    m.call.mockResolvedValueOnce({ data: result(a) }).mockResolvedValueOnce({ data: result(b, 'unknown') });
+    await expect(writes.discard(scope, entry, current)).rejects.toThrow('아직');
+    expect(localStorage.getItem(a.key)).toBe(a.bodyRaw);
+    m.call.mockResolvedValueOnce({ data: result(a) }).mockResolvedValueOnce({ data: result(b, 'cancelled') });
+    await writes.discard(scope, entry, current);
+    expect(m.call.mock.calls.every(call => call[0].mode === 'inspect')).toBe(true);
+    expect(localStorage.getItem(b.key)).toBe(b.bodyRaw);
+});
+it('v2 본문만 남은 legacy도 wrapper1 bytes 그대로 명시 ref 복원하며 apply0이다', async () => {
+    const entry = await writes.prepare(scope, completion(), current);
+    localStorage.removeItem(entry.key + ':reference');
+    const [legacy] = await writes.read(scope);
+    const restored = await writes.upgrade(scope, legacy, current);
+    expect(restored.request?.version).toBe(2);
+    expect(restored.bodyRaw).toBe(entry.bodyRaw);
+    expect(m.call).not.toHaveBeenCalled();
 });

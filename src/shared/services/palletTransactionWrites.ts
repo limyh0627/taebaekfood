@@ -1,6 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, functions } from '../firebase';
-import { normalizePalletTransactionReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionResult, } from '../palletTransactionCommand';
+import { normalizePalletTransactionReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, normalizePalletExchangeOpenResult, normalizePalletExchangeOpenInput, normalizePalletExchangeSource, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletExchangeOpenInput, type PalletTransactionResult, } from '../palletTransactionCommand';
 export interface PalletTransactionScope {
     companyId: PalletTransactionReference['companyId'];
     actorUid: string;
@@ -14,9 +14,20 @@ export interface PalletTransactionEntry {
     key: string;
     bodyRaw: string | null;
     referenceRaw: string | null;
-    request: PalletTransactionRequest | null;
+    request: PalletTransactionAnyRequest | null;
     reference: PalletTransactionReference | null;
     transaction: PalletTransactionRequest['transaction'] | null;
+    summary: {
+        action: 'register' | 'complete-exchange';
+        partnerId: string;
+        palletId: string;
+        type: 'in' | 'out';
+        date: string;
+        quantity: number;
+        returnQty?: number;
+        note: string;
+        sourceTransactionId?: string;
+    } | null;
     references: {
         reference: PalletTransactionReference;
         source: 'body' | 'reference' | 'both';
@@ -76,7 +87,7 @@ function assertPair(scope: PalletTransactionScope, entry: PalletTransactionEntry
 }
 async function readAt(scope: PalletTransactionScope, key: string): Promise<PalletTransactionEntry> {
     const bodyRaw = localStorage.getItem(key), referenceRaw = localStorage.getItem(key + ':reference');
-    let request: PalletTransactionRequest | null = null;
+    let request: PalletTransactionAnyRequest | null = null;
     let side: {
         reference: PalletTransactionReference;
         bodyDigest: string;
@@ -120,12 +131,12 @@ async function readAt(scope: PalletTransactionScope, key: string): Promise<Palle
     }
     const valid = !!(request && side && equalRef(request.reference, side.reference) && bodyRaw && await digest(bodyRaw) === side.bodyDigest);
     return { key, bodyRaw, referenceRaw, request: valid ? request : null,
-        reference: side?.reference ?? request?.reference ?? null, transaction: request?.transaction ?? null, references,
+        reference: side?.reference ?? request?.reference ?? null, transaction: request?.version === 1 ? request.transaction : null, summary: summaryFor(request), references,
         requestHash: valid && request ? await digest(serializePalletTransactionRequest(request)) : null,
         legacy: !!request && referenceRaw === null,
         lastAttempt: side?.lastAttempt ?? null,
         status: valid ? 'valid' : bodyRaw === null && referenceRaw === null ? 'missing' : 'corrupt',
-        description: request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
+        description: request?.version === 2 ? '파렛트 교체 완료 요청' : request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
 }
 async function rpc(input: unknown) {
     return (await httpsCallable(functions, 'palletTransactionCommand')(input)).data;
@@ -154,13 +165,14 @@ async function open(scope: PalletTransactionScope, reference: PalletTransactionR
         return normalizePalletTransactionOpenResult(raw, ref, scope.actorUid, palletId, originalTotal);
     });
 }
-async function prepare(scope: PalletTransactionScope, input: PalletTransactionRequest, current: Current, onOwn?: Own) {
+async function prepare(scope: PalletTransactionScope, input: PalletTransactionAnyRequest, current: Current, onOwn?: Own) {
     scope = { ...scope };
     const request = normalizePalletTransactionRequest(input);
     if (request.reference.companyId !== scope.companyId)
         throw Error('요청의 회사가 다릅니다.');
     return exclusive(scope, current, async () => {
-        if (findMatching(await read(scope, current), request.transaction))
+        const entries = await read(scope, current);
+        if (request.version === 1 ? findMatching(entries, request.transaction) : findMatchingExchange(entries, request.sourceTransactionId))
             throw Error('같은 내용의 보관 요청이 있습니다. 그 요청의 결과를 확인하거나 사본을 정리해 주세요.');
         const key = keyFor(scope, request.reference);
         const bodyRaw = JSON.stringify({ version: 1, actorUid: scope.actorUid, request });
@@ -299,7 +311,7 @@ function projection(entry: PalletTransactionEntry, input: PalletTransactionResul
         const terminal = !!result && result.status !== 'unknown';
         const mismatch = result?.status === 'applied' && !!entry.requestHash && result.requestHash !== entry.requestHash;
         return { ...row, result, terminal, label: row.source === 'body' ? '본문에 남은 요청' : row.source === 'reference' ? '참조에 남은 요청' : '보관된 요청',
-            currentState: result?.status === 'applied' ? '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
+            currentState: result?.status === 'applied' ? entry.summary?.action === 'complete-exchange' ? '이 요청의 교체 완료와 회수 처리가 끝났습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
             cause: mismatch ? '이 요청은 서버에서 처리됐지만 기기에 보관된 내용과 다릅니다. 현재 입력이 저장됐다는 뜻은 아닙니다.' : !terminal && row.source !== 'body' ? entry.lastAttempt?.message ?? '' : '',
             nextAction: terminal ? '이 기기에 남은 사본을 정리한 뒤 새 업무를 시작할 수 있습니다.' : '결과를 확인하거나 미처리 요청을 중단해 주세요.', canInspect: true, canCancel: !terminal };
     });
@@ -314,10 +326,37 @@ function projection(entry: PalletTransactionEntry, input: PalletTransactionResul
 function findMatching(entries: readonly PalletTransactionEntry[], transaction: PalletTransactionRequest['transaction']) {
     const normalize = (value: PalletTransactionRequest['transaction']) => normalizePalletTransactionRequest({ version: 1,
         reference: { companyId: 'taebaek', operationId: 'intent', transactionId: 'intent' }, transaction: value,
-        ...(value.isTransfer ? { transfer: { originalTotal: 0, expectedVersion: '0:000000000' } } : {}) }).transaction;
-    const text = JSON.stringify(normalize(transaction));
-    return entries.find(entry => entry.transaction && JSON.stringify(normalize(entry.transaction)) === text);
+        ...(value.isTransfer ? { transfer: { originalTotal: 0, expectedVersion: '0:000000000' } } : {}) }) as PalletTransactionRequest;
+    const text = JSON.stringify(normalize(transaction).transaction);
+    return entries.find(entry => entry.transaction && JSON.stringify(normalize(entry.transaction).transaction) === text);
 }
-export const palletTransactionWrites = { open, prepare, read, command, discard, upgrade, projection, findMatching };
+function findMatchingExchange(entries: readonly PalletTransactionEntry[], sourceTransactionId: string) {
+    return entries.find(entry => entry.summary?.action === 'complete-exchange' && entry.summary.sourceTransactionId === sourceTransactionId);
+}
+function summaryFor(request: PalletTransactionAnyRequest | null): PalletTransactionEntry['summary'] {
+    if (!request)
+        return null;
+    if (request.version === 1) {
+        const body = request.transaction;
+        return { action: 'register', partnerId: body.partnerId, palletId: body.palletId, type: body.type, date: body.date, quantity: body.quantity, ...(body.exchangeReturnQty !== undefined ? { returnQty: body.exchangeReturnQty } : {}), note: body.note ?? '' };
+    }
+    const source = request.source;
+    return { action: 'complete-exchange', sourceTransactionId: request.sourceTransactionId, partnerId: source.partnerId, palletId: source.palletId, type: 'in', date: request.returnDate, quantity: source.quantity, returnQty: source.exchangeReturnQty ?? source.quantity, note: source.note ?? '' };
+}
+async function openExchange(scope: PalletTransactionScope, input: PalletExchangeOpenInput, current: Current) {
+    scope = { ...scope };
+    const { reference, source, sourceTransactionId } = normalizePalletExchangeOpenInput({ ...input, source: normalizePalletExchangeSource(input.source) });
+    if (reference.companyId !== scope.companyId)
+        throw Error('교체 완료 요청의 회사가 다릅니다.');
+    return exclusive(scope, current, async () => {
+        const raw = await rpc({ mode: 'open-exchange', reference, sourceTransactionId, source });
+        owner(scope, current);
+        const result = normalizePalletExchangeOpenResult(raw);
+        if (!equalRef(result.reference, reference) || result.actorUid !== scope.actorUid || result.sourceTransactionId !== sourceTransactionId || JSON.stringify(result.source) !== JSON.stringify(source))
+            throw Error('교체 준비 응답의 원문·사용자가 다릅니다.');
+        return result;
+    });
+}
+export const palletTransactionWrites = { open, openExchange, prepare, read, command, discard, upgrade, projection, findMatching, findMatchingExchange };
 export type PalletTransactionBindings = typeof palletTransactionWrites;
 export default palletTransactionWrites;

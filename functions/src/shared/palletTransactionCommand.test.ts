@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest } from './palletTransactionCommand';
+import { normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest, normalizePalletExchangeSource, normalizePalletExchangeOpenResult } from './palletTransactionCommand';
 const reference = { companyId: 'taebaek' as const, operationId: 'operation-한글', transactionId: 'ptrans-한글' };
 const transaction = { partnerId: '거래처', palletId: '파렛트', type: 'out' as const, quantity: 2, date: '2026-10-21', note: '' };
 describe('파렛트 공용 요청 정본', () => {
@@ -30,4 +30,17 @@ describe('파렛트 공용 요청 정본', () => {
     expect(() => normalizePalletTransactionRequest({ version: 1, reference, transaction: { ...transaction, status: '교체중', exchangeReturnQty: Number.MAX_SAFE_INTEGER + 1 } })).toThrow();
     for (const originalTotal of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) expect(() => normalizePalletTransactionRequest({ version: 1, reference, transaction: { ...transaction, isTransfer: true }, transfer: { originalTotal, expectedVersion: '1:000000001' } })).toThrow();
   });
+});
+it('v1 정규화·직렬화 골든 원문은 v2 확장 뒤에도 바이트가 같다', () => {
+  const request = { version: 1 as const, reference, transaction };
+  expect(serializePalletTransactionRequest(request)).toBe('{"version":1,"reference":{"companyId":"taebaek","operationId":"operation-한글","transactionId":"ptrans-한글"},"transaction":{"partnerId":"거래처","palletId":"파렛트","type":"out","quantity":2,"date":"2026-10-21","note":""}}');
+});
+it('교체완료 v2는 원source 공개 존재값과 고정 회수ID를 보존한다', () => {
+  const source = normalizePalletExchangeSource({ id: '원거래', companyId: 'taebaek', ...transaction, status: '교체중', exchangeReturnQty: 0, hidden: { legacy: true } });
+  expect(source).toEqual({ ...transaction, status: '교체중', exchangeReturnQty: 0 });
+  const request = { version: 2 as const, action: 'complete-exchange' as const, reference, sourceTransactionId: '원거래', source, expectedVersion: '1:000000001', returnDate: '2026-10-22' };
+  expect(normalizePalletTransactionRequest(request)).toEqual(request);
+  expect(normalizePalletExchangeOpenResult({ reference, sourceTransactionId: '원거래', source, actorUid: 'u', expectedVersion: '1:000000001' }).source.exchangeReturnQty).toBe(0);
+  for (const changed of [{ ...request, sourceTransactionId: reference.transactionId }, { ...request, source: { ...source, status: '교체완료' } }, { ...request, source: { ...source, isTransfer: true } }, { ...request, returnDate: '2026-02-31' }]) expect(() => normalizePalletTransactionRequest(changed)).toThrow();
+  expect(() => normalizePalletTransactionRequest({ ...request, source: { ...source, hidden: true } })).toThrow();
 });

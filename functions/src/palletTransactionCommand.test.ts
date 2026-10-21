@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import type * as admin from 'firebase-admin';
 import { executePalletTransactionForActor } from './palletTransactionCommand';
-import type { PalletTransactionRequest } from './shared/palletTransactionCommand';
+import type { PalletTransactionRequest, PalletExchangeCompletionRequest } from './shared/palletTransactionCommand';
 const actor = { uid: 'u', token: { employeeId: '', companyId: 'taebaek', isAdmin: false } };
 const make = (transfer = false): PalletTransactionRequest => ({ version: 1, reference: { companyId: 'taebaek', operationId: 'op', transactionId: 'tx' }, transaction: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '2026-10-21', note: '', ...(transfer ? { isTransfer: true } : {}) }, ...(transfer ? { transfer: { originalTotal: 2, expectedVersion: '1:000000001' } } : {}) });
 let rows: Map<string, Record<string, unknown>>;
@@ -67,4 +67,40 @@ it('이동 덧셈의 안전 정수 초과를 clamp 전에 거절하고 최대값
   request.transaction.type = 'out'; request.transaction.quantity = Number.MAX_SAFE_INTEGER;
   await executePalletTransactionForActor(store(), actor, { mode: 'apply', request });
   expect(rows.get('pallets/pallet')?.total).toBe(0);
+});
+function completion(returnQuantity?: number): PalletExchangeCompletionRequest {
+  const source = { ...make().transaction, status: '교체중' as const, ...(returnQuantity !== undefined ? { exchangeReturnQty: returnQuantity } : {}) };
+  rows.set('palletTransactions/source', { companyId: 'taebaek', ...source, hidden: { saved: true } });
+  return { version: 2, action: 'complete-exchange', reference: make().reference, sourceTransactionId: 'source', source, expectedVersion: '1:000000001', returnDate: '2026-10-22' };
+}
+it('교체 열기는 source 원문을 비교하고 native만 반환하며 불일치는 쓰기0이다', async () => {
+  const request = completion(0), db = store();
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'open-exchange', reference: request.reference, sourceTransactionId: 'source', source: request.source })).toMatchObject({ source: request.source, expectedVersion: request.expectedVersion });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'open-exchange', reference: request.reference, sourceTransactionId: 'source', source: { ...request.source, note: '변경' } })).rejects.toThrow('변경');
+  expect(writes).toBe(0);
+});
+it.each([0, 2, undefined])('교체완료 회수 %s는 상태만 patch하고 양수일 때만 고정 회수행을 만든다', async quantity => {
+  const request = completion(quantity); rows.delete('partners/partner'); rows.delete('pallets/pallet');
+  await executePalletTransactionForActor(store(), actor, { mode: 'apply', request });
+  expect(rows.get('palletTransactions/source')).toEqual({ companyId: 'taebaek', ...request.source, status: '교체완료', hidden: { saved: true } });
+  if (quantity === 0) { expect(rows.has('palletTransactions/tx')).toBe(false); expect(writes).toBe(2); }
+  else { expect(rows.get('palletTransactions/tx')).toEqual({ companyId: 'taebaek', partnerId: 'partner', palletId: 'pallet', type: 'in', quantity: quantity ?? 3, date: '2026-10-22', note: '교체완료 회수' }); expect(writes).toBe(3); }
+});
+it('교체 회수0도 target충돌을 거절하고 완료 source의 다른 op는 재완료하지 않는다', async () => {
+  const request = completion(0), db = store(); rows.set('palletTransactions/tx', { companyId: 'punghoe', note: '보존' });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toThrow('이미'); expect(writes).toBe(0);
+  rows.delete('palletTransactions/tx'); await executePalletTransactionForActor(db, actor, { mode: 'apply', request });
+  const other = structuredClone(request); other.reference.operationId = 'other'; other.reference.transactionId = 'other-return';
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request: other })).rejects.toMatchObject({ details: { operationStatus: 'rejected', writes: false } });
+  const count = writes; rows.delete('palletTransactions/source');
+  expect(await executePalletTransactionForActor(db, actor, { mode: 'apply', request })).toMatchObject({ status: 'applied' }); expect(writes).toBe(count);
+});
+it('교체 source의 회사·버전·선택값 오염과 중단 fence는 업무 쓰기0이다', async () => {
+  const request = completion(2), db = store();
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request: { ...request, expectedVersion: '2:000000001' } })).rejects.toThrow('변경');
+  rows.set('palletTransactions/source', { companyId: 'punghoe', ...request.source });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toThrow('회사'); expect(writes).toBe(0);
+  await executePalletTransactionForActor(db, actor, { mode: 'cancel', reference: request.reference });
+  await expect(executePalletTransactionForActor(db, actor, { mode: 'apply', request })).rejects.toMatchObject({ details: { operationStatus: 'cancelled' } });
+  expect(rows.has('palletTransactions/tx')).toBe(false);
 });

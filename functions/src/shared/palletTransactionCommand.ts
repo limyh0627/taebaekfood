@@ -21,6 +21,22 @@ export interface PalletTransactionRequest {
   transaction: PalletTransactionBody;
   transfer?: { originalTotal: number; expectedVersion: string };
 }
+export interface PalletExchangeOpenInput {
+  reference: PalletTransactionReference;
+  sourceTransactionId: string;
+  source: PalletTransactionBody;
+}
+export interface PalletExchangeOpenResult extends PalletExchangeOpenInput {
+  actorUid: string;
+  expectedVersion: string;
+}
+export interface PalletExchangeCompletionRequest extends PalletExchangeOpenInput {
+  version: 2;
+  action: 'complete-exchange';
+  expectedVersion: string;
+  returnDate: string;
+}
+export type PalletTransactionAnyRequest = PalletTransactionRequest | PalletExchangeCompletionRequest;
 export interface PalletTransactionOpenResult {
   reference: PalletTransactionReference;
   actorUid: string;
@@ -38,7 +54,8 @@ export interface PalletTransactionResult {
 }
 export type PalletTransactionCommand =
   | { mode: 'open'; reference: PalletTransactionReference; palletId: string; originalTotal: number }
-  | { mode: 'apply'; request: PalletTransactionRequest }
+  | ({ mode: 'open-exchange' } & PalletExchangeOpenInput)
+  | { mode: 'apply'; request: PalletTransactionAnyRequest }
   | { mode: 'inspect' | 'cancel'; reference: PalletTransactionReference };
 
 function object(value: unknown): Record<string, unknown> {
@@ -59,7 +76,7 @@ export function normalizePalletTransactionReference(value: unknown): PalletTrans
     || !palletTransactionDocumentId(row.transactionId)) throw Error('파렛트 요청의 회사·번호를 확인해 주세요.');
   return { companyId: row.companyId as PalletTransactionReference['companyId'], operationId: row.operationId, transactionId: row.transactionId };
 }
-export function normalizePalletTransactionRequest(value: unknown): PalletTransactionRequest {
+function normalizePalletTransactionV1Request(value: unknown): PalletTransactionRequest {
   const row = object(value);
   fields(row, ['version', 'reference', 'transaction', 'transfer']);
   const reference = normalizePalletTransactionReference(row.reference), body = object(row.transaction);
@@ -89,7 +106,49 @@ export function normalizePalletTransactionRequest(value: unknown): PalletTransac
   if (JSON.stringify(result).length > 100000) throw Error('파렛트 요청 원문이 너무 큽니다. 비고 길이를 줄여 주세요.');
   return result;
 }
-export function serializePalletTransactionRequest(value: PalletTransactionRequest): string {
+/** 선택한 거래의 업무 필드만 보관한다. 문서 ID·회사와 미소유 필드는 native 버전으로 보호한다. */
+export function normalizePalletExchangeSource(value: unknown): PalletTransactionBody {
+  const raw = object(value), source: Record<string, unknown> = {};
+  for (const key of ['partnerId', 'palletId', 'type', 'quantity', 'date', 'note', 'status', 'exchangeReturnQty', 'isTransfer']) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) source[key] = raw[key];
+  }
+  const normalized = normalizePalletTransactionV1Request({ version: 1, reference: { companyId: 'taebaek', operationId: 'source-projection', transactionId: 'source-projection' }, transaction: source }).transaction;
+  if (normalized.type !== 'out' || normalized.status !== '교체중' || normalized.isTransfer === true) throw Error('교체중인 지급 거래만 완료할 수 있습니다.');
+  return normalized;
+}
+export function normalizePalletExchangeOpenInput(value: unknown): PalletExchangeOpenInput {
+  const row = object(value);
+  fields(row, ['reference', 'sourceTransactionId', 'source']);
+  const reference = normalizePalletTransactionReference(row.reference);
+  if (!palletTransactionDocumentId(row.sourceTransactionId) || row.sourceTransactionId === reference.transactionId) throw Error('원 지급과 회수 거래의 번호를 확인해 주세요.');
+  const source = normalizePalletExchangeSource(row.source);
+  // source 원문에는 공개 필드 외 값을 섞지 않는다. 실제 문서에서 미지 필드를 투영할 때만 위 helper를 쓴다.
+  fields(object(row.source), Object.keys(source));
+  return { reference, sourceTransactionId: row.sourceTransactionId, source };
+}
+export function normalizePalletExchangeOpenResult(value: unknown): PalletExchangeOpenResult {
+  const row = object(value);
+  fields(row, ['reference', 'sourceTransactionId', 'source', 'actorUid', 'expectedVersion']);
+  const input = normalizePalletExchangeOpenInput({ reference: row.reference, sourceTransactionId: row.sourceTransactionId, source: row.source });
+  if (typeof row.actorUid !== 'string' || !row.actorUid || typeof row.expectedVersion !== 'string' || !/^\d+:\d{9}$/.test(row.expectedVersion)) throw Error('교체완료 준비 응답의 사용자·버전을 확인해 주세요.');
+  return { ...input, actorUid: row.actorUid, expectedVersion: row.expectedVersion };
+}
+export function normalizePalletTransactionRequest(value: PalletTransactionRequest): PalletTransactionRequest;
+export function normalizePalletTransactionRequest(value: PalletExchangeCompletionRequest): PalletExchangeCompletionRequest;
+export function normalizePalletTransactionRequest(value: unknown): PalletTransactionAnyRequest;
+export function normalizePalletTransactionRequest(value: unknown): PalletTransactionAnyRequest {
+  const row = object(value);
+  if (row.version === 1) return normalizePalletTransactionV1Request(value);
+  fields(row, ['version', 'action', 'reference', 'sourceTransactionId', 'source', 'expectedVersion', 'returnDate']);
+  const input = normalizePalletExchangeOpenInput({ reference: row.reference, sourceTransactionId: row.sourceTransactionId, source: row.source });
+  if (row.version !== 2 || row.action !== 'complete-exchange' || typeof row.expectedVersion !== 'string' || !/^\d+:\d{9}$/.test(row.expectedVersion)
+    || typeof row.returnDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.returnDate)
+    || !Number.isFinite(Date.parse(row.returnDate)) || new Date(row.returnDate).toISOString().slice(0, 10) !== row.returnDate) throw Error('교체완료 원문의 버전·회수일을 확인해 주세요.');
+  const request: PalletExchangeCompletionRequest = { version: 2, action: 'complete-exchange', ...input, expectedVersion: row.expectedVersion, returnDate: row.returnDate };
+  if (JSON.stringify(request).length > 100000) throw Error('교체완료 원문이 너무 큽니다. 비고 길이를 확인해 주세요.');
+  return request;
+}
+export function serializePalletTransactionRequest(value: PalletTransactionAnyRequest): string {
   return JSON.stringify(normalizePalletTransactionRequest(value));
 }
 function sameReference(left: PalletTransactionReference, right: PalletTransactionReference) {

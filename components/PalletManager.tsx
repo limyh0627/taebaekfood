@@ -4,7 +4,7 @@ import { buildPartnerPalletHistory, buildAvailablePalletMonths, buildPalletSumma
 import { buildPartnerPalletStats, filterPartnerPalletStatus, buildOutstandingByPallet } from '../src/features/pallets/domain/palletBalances';
 
 import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today } from '../src/shared/day';
 import {
   Layers,
@@ -74,8 +74,14 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     return () => { cancelled = true; };
   }, [companyId]);
 
+  const currentLive = useRef(liveTransactions); currentLive.current = liveTransactions;
+  const [exchangeReads, setExchangeReads] = useState<{ companyId: CompanyId; owner: object | null; rows: Map<string, { observed: PalletTransaction | undefined; row: PalletTransaction }> }>({ companyId, owner: null, rows: new Map() });
+
+  const invalidatedReads = useRef(new WeakSet<object>());
+  const exchangeReadsRef = useRef(exchangeReads); exchangeReadsRef.current = exchangeReads;
+
   // 라이브(7일) + 과거(24개월) 병합 — id 기준 dedup, 라이브 우선
-  const palletTransactions = useMemo(() => {
+  const sourceTransactions = useMemo(() => {
     const map = new Map<string, PalletTransaction>();
     extraTransactions.forEach(t => map.set(t.id, t));
     liveTransactions.filter(t => companyOf(t as PalletTransaction & { companyId?: CompanyId }) === companyId).forEach(t => map.set(t.id, t));
@@ -84,7 +90,31 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PalletStock | null>(null);
-  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners });
+  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners, palletTransactions: sourceTransactions, onExchangeApplied: async (sourceId, isCurrent) => {
+    const observed = currentLive.current.find(row => row.id === sourceId);
+    const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
+    const rows = await fetchDateRange<PalletTransaction>('palletTransactions', 'date', fromDate.toISOString().slice(0, 10), today(), [where('companyId', '==', companyId)]);
+    if (!isCurrent()) return;
+    const ownRows = rows.filter(row => companyOf(row as PalletTransaction & { companyId?: CompanyId }) === companyId);
+    palletTxCache.set(companyId, { data: ownRows, at: Date.now() });
+    setExtraHistory({ companyId, rows: ownRows });
+    const returned = ownRows.find(row => row.id === sourceId);
+    if (returned && currentLive.current.find(row => row.id === sourceId) === observed) {
+      const previous = exchangeReadsRef.current;
+      const rows = new Map(previous.owner === transactionEditor.scopeToken ? previous.rows : []);
+      rows.set(sourceId, { observed, row: returned });
+      const next = { companyId, owner: transactionEditor.scopeToken, rows }; exchangeReadsRef.current = next; setExchangeReads(next);
+    }
+  } });
+  const palletTransactions = useMemo(() => {
+    const map = new Map(sourceTransactions.map(row => [row.id, row]));
+    if (exchangeReads.companyId === companyId && exchangeReads.owner === transactionEditor.scopeToken) exchangeReads.rows.forEach((value, id) => {
+      if (liveTransactions.find(row => row.id === id) !== value.observed) invalidatedReads.current.add(value);
+      if (!invalidatedReads.current.has(value)) map.set(id, value.row);
+    });
+    return [...map.values()];
+  }, [sourceTransactions, liveTransactions, companyId, exchangeReads, transactionEditor.scopeToken]);
+  const hasConfirmedExchange = palletTransactions.some(row => row.status === '교체중' && transactionEditor.isExchangeApplied(row.id));
   const isTransactionModalOpen = transactionEditor.showForm;
   const transType = transactionEditor.mode;
   const selectedClientForTrans = partners.find(partner => partner.id === transactionEditor.draft.partnerId);
@@ -155,7 +185,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   // 교체중 거래 목록 (거래처별 표시·완료 처리용)
   const pendingExchanges = useMemo(
-    () => palletTransactions.filter(t => t.status === '교체중'),
+    () => palletTransactions.filter(t => t.status === '교체중' && !transactionEditor.isExchangeApplied(t.id)),
     [palletTransactions],
   );
 
@@ -163,22 +193,6 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const allPalletHistory = useMemo(() => {
     return buildAllPalletHistory(palletTransactions, orders, partners, pallets, monthFilter, historySearch, palletNameOf);
   }, [palletTransactions, orders, partners, pallets, monthFilter, historySearch]);
-
-  // 교체완료: 헌 파레트 입고 확인 → 원 거래를 교체완료로 표시 + 회수(in) 기록
-  const completeExchange = async (tx: PalletTransaction) => {
-    const retQty = tx.exchangeReturnQty ?? tx.quantity;
-    if (!await appConfirm(`헌 파레트 ${retQty}개가 입고(회수)되었나요? 교체완료로 처리합니다.`)) return;
-    try {
-      await updateItem('palletTransactions', tx.id, { status: '교체완료' });
-      const date = today();
-      if (retQty > 0) {
-        onAddPalletTransaction({ id: `ptrans-${Date.now()}-exin`, partnerId: tx.partnerId, palletId: tx.palletId, type: 'in', quantity: retQty, date, note: '교체완료 회수' });
-      }
-    } catch (e) {
-      console.error('[파레트] 교체완료 실패:', e);
-      alert('교체완료 처리 실패: ' + ((e as Error)?.message ?? e));
-    }
-  };
 
   // 거래 삭제(정정) — 오입력된 수동 거래를 지우면 회수 대기는 남은 기록으로 다시 계산된다.
   // (주문 출고에서 파생된 행은 txId가 없어 삭제 버튼이 노출되지 않음)
@@ -225,6 +239,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
+      {hasConfirmedExchange && <div className="text-xs text-violet-700">교체 완료 확인됨 · 목록 갱신 중/다시 조회 필요 <button disabled={transactionEditor.busy} onClick={() => void transactionEditor.refreshExchange()}>완료 목록 다시 조회</button></div>}
       <PageHeader
         title="파렛트 관리"
         subtitle="실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다."
@@ -560,7 +575,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           return (
                             <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               <span className="px-1.5 py-1 rounded-lg text-[10px] font-black bg-violet-50 text-violet-600 whitespace-nowrap">교체중 {total}</span>
-                              <button onClick={() => completeExchange(pending[0])} className="px-2 py-1 rounded-lg text-[10px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-colors whitespace-nowrap">교체완료</button>
+                              <button disabled={transactionEditor.busy} onClick={() => transactionEditor.completeExchange(pending[0])} className="px-2 py-1 rounded-lg text-[10px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-colors whitespace-nowrap">교체완료</button>
                             </div>
                           );
                         })()}
@@ -672,7 +687,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           <div className="text-[11px] font-bold text-slate-600 min-w-0">
                             {pName} · 지급 {t.quantity}개 / 회수예정 {ret}개 <span className="text-slate-400">({t.date})</span>
                           </div>
-                          <button onClick={() => completeExchange(t)} className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-colors">교체완료</button>
+                          <button disabled={transactionEditor.busy} onClick={() => transactionEditor.completeExchange(t)} className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-colors">교체완료</button>
                         </div>
                       );
                     })}

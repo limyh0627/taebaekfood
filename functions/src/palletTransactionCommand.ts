@@ -4,8 +4,9 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import {
   PALLET_TRANSACTION_OPERATIONS, normalizePalletTransactionReference, normalizePalletTransactionRequest,
   normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest,
+  normalizePalletExchangeOpenInput, normalizePalletExchangeSource, normalizePalletExchangeOpenResult,
   palletTransactionDocumentId, type PalletTransactionReference, type PalletTransactionResult,
-  type PalletTransactionOpenResult, type PalletTransactionRequest,
+  type PalletTransactionOpenResult, type PalletTransactionAnyRequest, type PalletExchangeOpenResult,
 } from './shared/palletTransactionCommand';
 
 type Actor = { uid: string; token: Record<string, unknown> };
@@ -41,21 +42,34 @@ function sameCompany(snapshot: admin.firestore.DocumentSnapshot, companyId: stri
   if (!snapshot.exists || snapshot.data()?.companyId !== companyId) throw new HttpsError('failed-precondition', `${label}의 현재 회사와 존재 여부를 확인해 주세요.`);
 }
 
-/** 등록 거래와 이동 재고, 처리 영수증만 원자 확정한다. 기존 삭제·교체완료 경로는 변경하지 않는다. */
+/** 등록·교체완료와 영수증을 원자 확정하며, 기존 삭제의 총량 역산·전체 문서 편집 경합은 별도 한계로 남긴다. */
 export async function executePalletTransactionForActor(
   db: admin.firestore.Firestore, actor: Actor | undefined, input: unknown,
-): Promise<PalletTransactionResult | PalletTransactionOpenResult> {
+): Promise<PalletTransactionResult | PalletTransactionOpenResult | PalletExchangeOpenResult> {
   if (!actor?.uid || typeof actor.token.employeeId !== 'string' || !['taebaek', 'punghoe'].includes(String(actor.token.companyId)))
     throw new HttpsError('permission-denied', '로그인한 회사 직원만 파렛트 요청을 처리할 수 있습니다.');
   const value = object(input), mode = value.mode;
-  if (!['open', 'apply', 'inspect', 'cancel'].includes(String(mode))) throw new HttpsError('invalid-argument', '파렛트 처리 종류를 확인해 주세요.');
-  requireFields(value, mode === 'apply' ? ['mode', 'request'] : mode === 'open' ? ['mode', 'reference', 'palletId', 'originalTotal'] : ['mode', 'reference']);
-  let request: PalletTransactionRequest | undefined, reference: PalletTransactionReference;
+  if (!['open', 'open-exchange', 'apply', 'inspect', 'cancel'].includes(String(mode))) throw new HttpsError('invalid-argument', '파렛트 처리 종류를 확인해 주세요.');
+  requireFields(value, mode === 'apply' ? ['mode', 'request'] : mode === 'open' ? ['mode', 'reference', 'palletId', 'originalTotal']
+    : mode === 'open-exchange' ? ['mode', 'reference', 'sourceTransactionId', 'source'] : ['mode', 'reference']);
+  let request: PalletTransactionAnyRequest | undefined, reference: PalletTransactionReference;
   try {
     request = mode === 'apply' ? normalizePalletTransactionRequest(value.request) : undefined;
     reference = request?.reference ?? normalizePalletTransactionReference(value.reference);
   } catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '파렛트 원문을 확인해 주세요.'); }
   if (reference.companyId !== actor.token.companyId) throw new HttpsError('permission-denied', '다른 회사 파렛트 요청은 처리할 수 없습니다.');
+  if (mode === 'open-exchange') {
+    let opening;
+    try { opening = normalizePalletExchangeOpenInput({ reference, sourceTransactionId: value.sourceTransactionId, source: value.source }); }
+    catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '선택한 교체 지급 원문을 확인해 주세요.'); }
+    const source = await db.collection('palletTransactions').doc(opening.sourceTransactionId).get();
+    sameCompany(source, reference.companyId, '교체 지급 거래');
+    const version = nativeVersion(source);
+    try {
+      if (!version || JSON.stringify(normalizePalletExchangeSource(source.data())) !== JSON.stringify(opening.source)) throw Error();
+    } catch { throw new HttpsError('failed-precondition', '선택한 교체 지급 거래가 변경됐습니다. 현재 이력을 다시 열어 주세요.'); }
+    return normalizePalletExchangeOpenResult({ ...opening, actorUid: actor.uid, expectedVersion: version });
+  }
   if (mode === 'open') {
     if (!palletTransactionDocumentId(value.palletId) || typeof value.originalTotal !== 'number' || !Number.isSafeInteger(value.originalTotal) || value.originalTotal < 0)
       throw new HttpsError('invalid-argument', '선택한 파렛트의 보유 총량을 확인해 주세요.');
@@ -87,7 +101,31 @@ export async function executePalletTransactionForActor(
       tx.create(operation, { ...stopped, requestText: null, createdAt: new Date().toISOString() });
       return stopped;
     }
-    const body = request!.transaction;
+    if (request!.version === 2) {
+      const completion = request!;
+      const sourceRef = db.collection('palletTransactions').doc(completion.sourceTransactionId);
+      const returnRef = db.collection('palletTransactions').doc(reference.transactionId);
+      const [source, child] = await Promise.all([tx.get(sourceRef), tx.get(returnRef)]);
+      try {
+        sameCompany(source, reference.companyId, '교체 지급 거래');
+        if (child.exists) throw new HttpsError('failed-precondition', '예약한 회수 거래 번호가 이미 있습니다. 기존 거래를 덮어쓰지 않았습니다.');
+        if (nativeVersion(source) !== completion.expectedVersion
+          || JSON.stringify(normalizePalletExchangeSource(source.data())) !== JSON.stringify(completion.source))
+          throw new HttpsError('failed-precondition', '교체 지급 거래가 준비 이후 변경됐습니다. 현재 이력을 다시 확인해 주세요.');
+      } catch (error) {
+        throw new HttpsError('failed-precondition', error instanceof Error ? error.message : '교체 지급 원문을 확인하지 못했습니다.',
+          { version: 1, operationStatus: 'rejected', writes: false, reference });
+      }
+      const returnQuantity = completion.source.exchangeReturnQty ?? completion.source.quantity;
+      const applied = { ...result(reference, actor.uid, 'applied', digest), message: '이 교체 지급의 완료 처리를 확정했습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' };
+      tx.update(sourceRef, { status: '교체완료' });
+      if (returnQuantity > 0) tx.create(returnRef, { companyId: reference.companyId, partnerId: completion.source.partnerId,
+        palletId: completion.source.palletId, type: 'in', quantity: returnQuantity, date: completion.returnDate, note: '교체완료 회수' });
+      tx.create(operation, { ...applied, requestText: text, createdAt: new Date().toISOString() });
+      return applied;
+    }
+    const registration = request!;
+    const body = registration.transaction;
     const target = db.collection('palletTransactions').doc(reference.transactionId);
     const palletRef = db.collection('pallets').doc(body.palletId);
     const [transaction, pallet, partner] = await Promise.all([
@@ -97,10 +135,10 @@ export async function executePalletTransactionForActor(
       if (transaction.exists) throw new HttpsError('failed-precondition', '같은 번호의 파렛트 거래가 이미 있습니다. 기존 거래는 덮어쓰지 않았습니다.');
       sameCompany(pallet, reference.companyId, '파렛트');
       sameCompany(partner, reference.companyId, '거래처');
-      if (request!.transfer && (!Number.isSafeInteger(pallet.data()!.total) || pallet.data()!.total < 0
-        || !Number.isSafeInteger(request!.transfer.originalTotal + (body.type === 'in' ? body.quantity : -body.quantity))))
+      if (registration.transfer && (!Number.isSafeInteger(pallet.data()!.total) || pallet.data()!.total < 0
+        || !Number.isSafeInteger(registration.transfer.originalTotal + (body.type === 'in' ? body.quantity : -body.quantity))))
         throw new HttpsError('failed-precondition', '파렛트 보유 총량과 수량의 안전한 정수 범위를 확인해 주세요.');
-      if (request!.transfer && (nativeVersion(pallet) !== request!.transfer.expectedVersion || pallet.data()!.total !== request!.transfer.originalTotal))
+      if (registration.transfer && (nativeVersion(pallet) !== registration.transfer.expectedVersion || pallet.data()!.total !== registration.transfer.originalTotal))
         throw new HttpsError('failed-precondition', '파렛트 재고가 준비 이후 변경됐습니다. 현재 자료를 다시 확인해 주세요.');
     } catch (error) {
       if (error instanceof HttpsError) throw new HttpsError(error.code, error.message,
@@ -109,7 +147,7 @@ export async function executePalletTransactionForActor(
     }
     const applied = result(reference, actor.uid, 'applied', digest);
     tx.create(target, { companyId: reference.companyId, ...body });
-    if (request!.transfer) tx.update(palletRef, { total: Math.max(0, request!.transfer.originalTotal + (body.type === 'in' ? body.quantity : -body.quantity)) });
+    if (registration.transfer) tx.update(palletRef, { total: Math.max(0, registration.transfer.originalTotal + (body.type === 'in' ? body.quantity : -body.quantity)) });
     tx.create(operation, { ...applied, requestText: text, createdAt: new Date().toISOString() });
     return applied;
   });
