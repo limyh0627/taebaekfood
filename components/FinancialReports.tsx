@@ -87,13 +87,15 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
   const [partnerCode, setPartnerCode] = useState<OpeningPartnerCode>(AR);
   const [partnerAmount, setPartnerAmount] = useState('');
   const [partnerSaving, setPartnerSaving] = useState(false);
+  const partnerForm = useRef({});
+  const partnerSaveLock = useRef<object | null>(null);
   const [inventoryItemId, setInventoryItemId] = useState('');
   const [inventoryQuantity, setInventoryQuantity] = useState('');
   const [inventoryValue, setInventoryValue] = useState('');
   const [inventorySaving, setInventorySaving] = useState(false);
   const inventoryForm = useRef({});
-  const inventoryOpeningDate = useRef(openingDoc?.date);
-  inventoryOpeningDate.current = openingDoc?.date;
+  const latestOpeningDate = useRef(openingDoc?.date);
+  latestOpeningDate.current = openingDoc?.date;
   const inventorySaveLock = useRef<object | null>(null);
   const [openingLoadError, setOpeningLoadError] = useState(false);
   const [openingLoading, setOpeningLoading] = useState(true);
@@ -109,7 +111,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
     setAccountSetup(providedAccounts.length === 0);
     setAccountDraft({ code: '', name: '', type: '자산', normalBalance: 'debit' });
     setAccountPending(null); setAccountError(''); setAccountSaving(false); accountBusy.current = null;
-    setPartnerId('');
+    partnerForm.current = {}; partnerSaveLock.current = null; setPartnerSaving(false);
+    setPartnerId(''); setPartnerAmount(''); setPartnerCode(AR);
     inventoryForm.current = {}; inventorySaveLock.current = null; setInventorySaving(false);
     setInventoryItemId('');
     setInventoryQuantity('');
@@ -177,16 +180,28 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
       if (current()) await appNotice(String(error), '기초잔액 저장 실패');
     } finally { if (current()) { openingSaveLock.current = null; setSaving(false); } }
   };
+  const changePartnerOpening = (change: () => void) => {
+    if (partnerSaveLock.current) return;
+    partnerForm.current = {};
+    change();
+  };
   const savePartnerOpening = async () => {
-    if (!openingDoc || !partnerId || partnerSaving) return;
-    const amount = Number(partnerAmount.replaceAll(',', ''));
+    if (!openingDoc || !partnerId || partnerSaveLock.current) return;
+    const captured = scope.current, form = partnerForm.current, lock = {};
+    const payload = { companyId, date: openingDoc.date, partnerId, code: partnerCode,
+      amount: Number(partnerAmount.replaceAll(',', '')) };
+    partnerSaveLock.current = lock;
+    const ownExecution = () => scope.current === captured && partnerForm.current === form && partnerSaveLock.current === lock;
+    const current = () => ownExecution() && latestOpeningDate.current === payload.date;
     setPartnerSaving(true);
     try {
-      const result = await createOpeningPartnerBalance(companyId, openingDoc.date, partnerId, partnerCode, amount);
+      const result = await createOpeningPartnerBalance(payload.companyId, payload.date, payload.partnerId, payload.code, payload.amount);
+      if (!current()) return;
       await appNotice(result === 'unchanged' ? '같은 기초 전표가 이미 저장되어 있습니다.' : '거래처별 기초 전표를 저장했습니다.');
+      if (!current()) return;
       if (result === 'created') setPartnerAmount('');
-    } catch (error) { await appNotice(String(error), '저장 실패'); }
-    finally { setPartnerSaving(false); }
+    } catch (error) { if (current()) await appNotice(String(error), '저장 실패'); }
+    finally { if (ownExecution()) { partnerSaveLock.current = null; setPartnerSaving(false); } }
   };
   const changeInventory = (change: () => void) => {
     if (inventorySaveLock.current) return;
@@ -200,7 +215,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
       quantity: Number(inventoryQuantity.replaceAll(',', '')), value: Number(inventoryValue.replaceAll(',', '')) };
     inventorySaveLock.current = lock;
     const ownExecution = () => scope.current === captured && inventoryForm.current === form && inventorySaveLock.current === lock;
-    const current = () => ownExecution() && inventoryOpeningDate.current === payload.date;
+    const current = () => ownExecution() && latestOpeningDate.current === payload.date;
     setInventorySaving(true);
     try {
       const result = await createOpeningInventory(payload.companyId, payload.date, payload.itemId, payload.quantity, payload.value);
@@ -426,9 +441,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: 
         <div className="text-xs font-black text-slate-700">거래처별 기초 미수·미지급</div>
         <p className="text-[11px] text-slate-500">회계 기초일의 거래처 잔액을 전표로 등록합니다. 108·251 계정 합계에는 같은 금액을 넣지 마세요.</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-          <select aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerId} onChange={e => setPartnerId(e.target.value)}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          <select aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => setPartnerCode(e.target.value as OpeningPartnerCode)}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
-          <input aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => setPartnerAmount(e.target.value.replace(/[^\d,]/g, ''))} placeholder="금액" />
+          <select disabled={partnerSaving} aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerId} onChange={e => changePartnerOpening(() => setPartnerId(e.target.value))}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <select disabled={partnerSaving} aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => changePartnerOpening(() => setPartnerCode(e.target.value as OpeningPartnerCode))}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
+          <input disabled={partnerSaving} aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => changePartnerOpening(() => setPartnerAmount(e.target.value.replace(/[^\d,]/g, '')))} placeholder="금액" />
           <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
