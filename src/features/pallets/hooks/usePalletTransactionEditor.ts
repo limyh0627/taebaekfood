@@ -65,18 +65,19 @@ const pair = (entry: Entry | null, key = '') => JSON.stringify([entry?.key ?? ke
 const resultKey = (reference: PalletOperationReference) => JSON.stringify(reference);
 const preparedOf = (entry: Entry, form: object): Prepared => ({ entry, form, requestHash: entry.requestHash, referenceKey: entry.reference ? resultKey(entry.reference) : null, bodyRaw: entry.bodyRaw, referenceRaw: entry.referenceRaw });
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
-export function usePalletTransactionEditor({ companyId, pallets, partners = [], palletTransactions = [], onExchangeApplied, onRecoveryObserved, pendingStockEntryKey }: {
+export function usePalletTransactionEditor({ companyId, pallets, partners = [], palletTransactions = [], onExchangeApplied, onRecoveryObserved, pendingStockEntryKey, pendingDeletionEntryKey }: {
     companyId: CompanyId;
     pallets: readonly PalletStock[];
     partners?: readonly Partner[];
     palletTransactions?: readonly PalletTransaction[];
     onExchangeApplied?: (sourceTransactionId: string, isCurrent: () => boolean) => void | Promise<void>;
+    pendingDeletionEntryKey?: () => string | null;
     pendingStockEntryKey?: () => string | null;
     onRecoveryObserved?: (entry: Entry, observation: PalletTransactionObservation, action: PalletStockRecoveryAction) => void | Promise<void>;
 }) {
     const [, repaint] = useReducer(value => value + 1, 0);
-    const latest = useRef({ companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey });
-    latest.current = { companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey };
+    const latest = useRef({ companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey, pendingDeletionEntryKey });
+    latest.current = { companyId, pallets, partners, palletTransactions, onExchangeApplied, onRecoveryObserved, pendingStockEntryKey, pendingDeletionEntryKey };
     const owner = useRef(createOwner(companyId, auth.currentUser?.uid ?? ''));
     const uid = auth.currentUser?.uid ?? '';
     if (owner.current.companyId !== companyId || owner.current.actorUid !== uid)
@@ -224,7 +225,7 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
     };
     const recordObservation = (entry: Entry, observation: PalletTransactionObservation) => {
         const result = observation.result;
-        if (!current() || observation.copyMismatch || entry.status !== 'valid' || entry.request?.version !== 3 || !entry.reference || !result
+        if (!current() || observation.copyMismatch || entry.status !== 'valid' || (entry.request?.version !== 3 && entry.request?.version !== 4) || !entry.reference || !result
             || result.actorUid !== captured.actorUid || result.reference.companyId !== captured.companyId || resultKey(result.reference) !== resultKey(entry.reference)
             || !observation.entry || pair(entry) !== pair(observation.entry) || (result.status === 'applied' && (!entry.requestHash || result.requestHash !== entry.requestHash)))
             return;
@@ -518,14 +519,14 @@ export function usePalletTransactionEditor({ companyId, pallets, partners = [], 
     };
     const rows = captured.entries.map(entry => {
         const transaction = entry.summary;
-        const summary = transaction?.action === 'edit-pallet' ? { action: 'edit-pallet' as const, palletName: latest.current.pallets.find(row => row.id === transaction.palletId)?.name ?? '파렛트 정보 없음', original: transaction.original, patch: transaction.patch } : transaction ? { date: transaction.date,
+        const summary = transaction?.action === 'delete-transaction' ? { action: 'delete-transaction' as const, transactionId: transaction.transactionId, original: transaction.original, palletName: latest.current.pallets.find(row => row.id === transaction.original.palletId)?.name ?? '파렛트 정보 없음', partnerName: latest.current.partners.find(row => row.id === transaction.original.partnerId)?.name ?? '거래처 정보 없음' } : transaction?.action === 'edit-pallet' ? { action: 'edit-pallet' as const, palletName: latest.current.pallets.find(row => row.id === transaction.palletId)?.name ?? '파렛트 정보 없음', original: transaction.original, patch: transaction.patch } : transaction ? { date: transaction.date,
             action: transaction.action, kind: transaction.action === 'complete-exchange' ? '교체완료' : entry.transaction?.status === '교체중' ? '교체 지급' : entry.transaction?.isTransfer ? transaction.type === 'in' ? '이동 입고' : '이동 지급' : transaction.type === 'in' ? '입고' : '지급',
             quantity: transaction.quantity, returnQty: transaction.returnQty, note: transaction.note ?? '',
             partnerName: latest.current.partners.find(row => row.id === transaction.partnerId)?.name ?? '거래처 정보 없음',
             palletName: latest.current.pallets.find(row => row.id === transaction.palletId)?.name ?? '파렛트 정보 없음' } : null;
         return { entry, summary, ...palletTransactionWrites.projection(entry, [...captured.results.values()]) };
     });
-    const failureRows = rows.filter(row => row.isUnresolved && !(row.entry.request?.version === 3 && latest.current.pendingStockEntryKey?.() === row.entry.key) && !(captured.execution?.initial && captured.execution.key === row.entry.key));
+    const failureRows = rows.filter(row => row.isUnresolved && !(row.entry.request?.version === 4 && latest.current.pendingDeletionEntryKey?.() === row.entry.key) && !(row.entry.request?.version === 3 && latest.current.pendingStockEntryKey?.() === row.entry.key) && !(captured.execution?.initial && captured.execution.key === row.entry.key));
     return { scopeToken: captured.identity, scopeKey: `${captured.companyId}:${captured.actorUid}`, isCurrent: current, draft: captured.draft, mode: captured.mode, showForm: captured.open && current(), busy: !!captured.execution, locked: captured.locked,
         recordObservation, open, close, change, submit, completeExchange, isExchangeApplied: (id: string) => current() && captured.appliedSourceIds.has(id), refreshExchange, canRefreshExchange: current() && captured.lastSourceId !== null, completingSourceId: current() ? captured.completingSourceId : null, inlineError: current() ? captured.inlineError : '', inlineMessage: current() ? captured.inlineMessage : '',
         recoveryOpen: current() && captured.recoveryOpen, openRecovery: () => {

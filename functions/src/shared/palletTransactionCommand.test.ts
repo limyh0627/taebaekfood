@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest, normalizePalletExchangeSource, normalizePalletExchangeOpenResult, normalizePalletStockEditFields, normalizePalletStockEditRequest, normalizePalletStockEditOpenResult, normalizePalletOperationReference } from './palletTransactionCommand';
+import { normalizePalletTransactionDeleteSource, normalizePalletTransactionDeleteOpenResult, normalizePalletTransactionRequest, normalizePalletTransactionReference, normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest, normalizePalletExchangeSource, normalizePalletExchangeOpenResult, normalizePalletStockEditFields, normalizePalletStockEditRequest, normalizePalletStockEditOpenResult, normalizePalletOperationReference } from './palletTransactionCommand';
 const reference = { companyId: 'taebaek' as const, operationId: 'operation-한글', transactionId: 'ptrans-한글' };
 const transaction = { partnerId: '거래처', palletId: '파렛트', type: 'out' as const, quantity: 2, date: '2026-10-21', note: '' };
 describe('파렛트 공용 요청 정본', () => {
@@ -68,4 +68,21 @@ it('편집 결과는 kind·palletID·actor와 결합하고 등록 ref로 위장�
   expect(normalizePalletTransactionResult(result, editReference, 'u').reference).toEqual(editReference);
   for (const ref of [reference, { ...editReference, palletId: '다른파렛트' }]) expect(() => normalizePalletTransactionResult(result, ref, 'u')).toThrow();
   expect(() => normalizePalletTransactionResult(result, editReference, 'other')).toThrow();
+});
+
+it('삭제 원문은 등록 결합정책과 분리하며 legacy 선택값과 공개 필드 존재를 보존한다',()=>{
+ const original={partnerId:'없는 거래처',palletId:'파렛트',type:'in' as const,quantity:1,date:'옛날',status:'교체완료',exchangeReturnQty:-3,isTransfer:false,note:''};
+ expect(normalizePalletTransactionDeleteSource({...original,hidden:true,id:'old'})).toEqual(original);
+ const reference={kind:'pallet-transaction-delete' as const,companyId:'taebaek' as const,operationId:'delete',transactionId:'거래'};
+ const request={version:4 as const,action:'delete-transaction' as const,reference,original,expectedVersion:'1:000000001'};
+ expect(normalizePalletTransactionRequest(request)).toEqual(request);
+ expect(normalizePalletTransactionDeleteOpenResult({reference,original,expectedVersion:request.expectedVersion,actorUid:'u'})).toMatchObject({original});
+});
+it('삭제 transfer는 master 존재관측을 필수로 하고 ordinary는 관측을 받지 않는다',()=>{
+ const original={partnerId:'p',palletId:'a',type:'out',quantity:1,date:''};const reference={kind:'pallet-transaction-delete',companyId:'taebaek',operationId:'d',transactionId:'t'};
+ const request={version:4,action:'delete-transaction',reference,original,expectedVersion:'1:000000001'};
+ expect(()=>normalizePalletTransactionRequest({...request,pallet:{exists:false}})).toThrow();
+ expect(()=>normalizePalletTransactionRequest({...request,original:{...original,isTransfer:true}})).toThrow();
+ expect(normalizePalletTransactionRequest({...request,original:{...original,isTransfer:true},pallet:{exists:false}})).toMatchObject({pallet:{exists:false}});
+ for(const quantity of [0,1.5,Number.MAX_SAFE_INTEGER+1])expect(()=>normalizePalletTransactionDeleteSource({...original,quantity})).toThrow();
 });

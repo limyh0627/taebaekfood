@@ -10,7 +10,13 @@ export interface PalletEditReference {
   operationId: string;
   palletId: string;
 }
-export type PalletOperationReference = PalletTransactionReference | PalletEditReference;
+export interface PalletTransactionDeleteReference {
+  kind: 'pallet-transaction-delete';
+  companyId: 'taebaek' | 'punghoe';
+  operationId: string;
+  transactionId: string;
+}
+export type PalletOperationReference = PalletTransactionReference | PalletEditReference | PalletTransactionDeleteReference;
 export interface PalletStockEditFields { name: string; total: number; damaged: number }
 export type PalletStockEditPatch = Partial<PalletStockEditFields>;
 export interface PalletStockEditOpenInput { reference: PalletEditReference; original: PalletStockEditFields }
@@ -20,6 +26,35 @@ export interface PalletStockEditRequest extends PalletStockEditOpenInput {
   action: 'edit-pallet';
   expectedVersion: string;
   patch: PalletStockEditPatch;
+}
+export interface PalletTransactionDeleteSource {
+  partnerId: string;
+  palletId: string;
+  type: 'in' | 'out';
+  quantity: number;
+  date: string;
+  note?: string;
+  status?: string;
+  exchangeReturnQty?: number;
+  isTransfer?: boolean;
+}
+export type PalletTransactionDeletePalletObservation = { exists: false } | { exists: true; total: number };
+export type PalletTransactionDeletePalletVersion = { exists: false } | { exists: true; total: number; expectedVersion: string };
+export interface PalletTransactionDeleteOpenInput {
+  reference: PalletTransactionDeleteReference;
+  original: PalletTransactionDeleteSource;
+  pallet?: PalletTransactionDeletePalletObservation;
+}
+export interface PalletTransactionDeleteOpenResult extends PalletTransactionDeleteOpenInput {
+  actorUid: string;
+  expectedVersion: string;
+  pallet?: PalletTransactionDeletePalletVersion;
+}
+export interface PalletTransactionDeleteRequest extends PalletTransactionDeleteOpenInput {
+  version: 4;
+  action: 'delete-transaction';
+  expectedVersion: string;
+  pallet?: PalletTransactionDeletePalletVersion;
 }
 export interface PalletTransactionBody {
   partnerId: string;
@@ -53,7 +88,7 @@ export interface PalletExchangeCompletionRequest extends PalletExchangeOpenInput
   expectedVersion: string;
   returnDate: string;
 }
-export type PalletTransactionAnyRequest = PalletTransactionRequest | PalletExchangeCompletionRequest | PalletStockEditRequest;
+export type PalletTransactionAnyRequest = PalletTransactionRequest | PalletExchangeCompletionRequest | PalletStockEditRequest | PalletTransactionDeleteRequest;
 export interface PalletTransactionOpenResult {
   reference: PalletTransactionReference;
   actorUid: string;
@@ -73,6 +108,7 @@ export type PalletTransactionCommand =
   | { mode: 'open'; reference: PalletTransactionReference; palletId: string; originalTotal: number }
   | ({ mode: 'open-exchange' } & PalletExchangeOpenInput)
   | ({ mode: 'open-edit' } & PalletStockEditOpenInput)
+  | ({ mode: 'open-delete' } & PalletTransactionDeleteOpenInput)
   | { mode: 'apply'; request: PalletTransactionAnyRequest }
   | { mode: 'inspect' | 'cancel'; reference: PalletOperationReference };
 
@@ -102,7 +138,72 @@ export function normalizePalletEditReference(value: unknown): PalletEditReferenc
   return { kind: 'pallet-edit', companyId: row.companyId as PalletEditReference['companyId'], operationId: row.operationId, palletId: row.palletId };
 }
 export function normalizePalletOperationReference(value: unknown): PalletOperationReference {
+  if (object(value).kind === 'pallet-transaction-delete') return normalizePalletTransactionDeleteReference(value);
   return Object.prototype.hasOwnProperty.call(object(value), 'kind') ? normalizePalletEditReference(value) : normalizePalletTransactionReference(value);
+}
+export function normalizePalletTransactionDeleteReference(value: unknown): PalletTransactionDeleteReference {
+  const row = object(value);
+  fields(row, ['kind', 'companyId', 'operationId', 'transactionId']);
+  if (row.kind !== 'pallet-transaction-delete' || !['taebaek', 'punghoe'].includes(String(row.companyId))
+    || !palletTransactionDocumentId(row.operationId) || !palletTransactionDocumentId(row.transactionId)) throw Error('파렛트 거래 삭제의 회사·대상·번호를 확인해 주세요.');
+  return { kind: 'pallet-transaction-delete', companyId: row.companyId as PalletTransactionDeleteReference['companyId'], operationId: row.operationId, transactionId: row.transactionId };
+}
+const deleteSourceFields = ['partnerId', 'palletId', 'type', 'quantity', 'date', 'note', 'status', 'exchangeReturnQty', 'isTransfer'];
+/** 삭제 원문은 옛 status·일자와 선택 필드 존재를 보존한다. 신규 등록·교체의 조합 정책을 소급하지 않는다. */
+export function normalizePalletTransactionDeleteSource(value: unknown): PalletTransactionDeleteSource {
+  const row = object(value);
+  if (!palletTransactionDocumentId(row.partnerId) || !palletTransactionDocumentId(row.palletId) || !['in', 'out'].includes(String(row.type))
+    || !finite(row.quantity) || !Number.isSafeInteger(row.quantity) || row.quantity <= 0 || typeof row.date !== 'string'
+    || (row.note !== undefined && typeof row.note !== 'string') || (row.status !== undefined && typeof row.status !== 'string')
+    || (row.exchangeReturnQty !== undefined && !Number.isSafeInteger(row.exchangeReturnQty))
+    || (row.isTransfer !== undefined && typeof row.isTransfer !== 'boolean')) throw Error('삭제할 파렛트 거래의 원문·수량을 확인해 주세요.');
+  return { partnerId: row.partnerId, palletId: row.palletId, type: row.type as 'in' | 'out', quantity: row.quantity, date: row.date,
+    ...(Object.prototype.hasOwnProperty.call(row, 'note') ? { note: row.note as string } : {}),
+    ...(Object.prototype.hasOwnProperty.call(row, 'status') ? { status: row.status as string } : {}),
+    ...(Object.prototype.hasOwnProperty.call(row, 'exchangeReturnQty') ? { exchangeReturnQty: row.exchangeReturnQty as number } : {}),
+    ...(Object.prototype.hasOwnProperty.call(row, 'isTransfer') ? { isTransfer: row.isTransfer as boolean } : {}) };
+}
+function deletePallet(value: unknown, prepared: true): PalletTransactionDeletePalletVersion;
+function deletePallet(value: unknown, prepared: false): PalletTransactionDeletePalletObservation;
+function deletePallet(value: unknown, prepared: boolean): PalletTransactionDeletePalletVersion | PalletTransactionDeletePalletObservation {
+  const row = object(value);
+  if (row.exists === false) {
+    fields(row, ['exists']); return { exists: false };
+  }
+  fields(row, prepared ? ['exists', 'total', 'expectedVersion'] : ['exists', 'total']);
+  if (row.exists !== true || !finite(row.total) || !Number.isSafeInteger(row.total) || row.total < 0) throw Error('이동 거래 삭제의 파렛트 존재·총량을 확인해 주세요.');
+  if (prepared) {
+    if (typeof row.expectedVersion !== 'string' || !/^\d+:\d{9}$/.test(row.expectedVersion)) throw Error('이동 거래 삭제의 파렛트 버전을 확인해 주세요.');
+    return { exists: true, total: row.total, expectedVersion: row.expectedVersion };
+  }
+  return { exists: true, total: row.total };
+}
+export function normalizePalletTransactionDeleteOpenInput(value: unknown): PalletTransactionDeleteOpenInput {
+  const row = object(value);
+  fields(row, ['reference', 'original', 'pallet']); fields(object(row.original), deleteSourceFields);
+  const reference = normalizePalletTransactionDeleteReference(row.reference), original = normalizePalletTransactionDeleteSource(row.original);
+  if (original.isTransfer === true) return { reference, original, pallet: deletePallet(row.pallet, false) };
+  if (row.pallet !== undefined) throw Error('일반 거래 삭제에는 파렛트 총량 관측을 보내지 않습니다.');
+  return { reference, original };
+}
+export function normalizePalletTransactionDeleteOpenResult(value: unknown): PalletTransactionDeleteOpenResult {
+  const row = object(value);
+  fields(row, ['reference', 'original', 'pallet', 'actorUid', 'expectedVersion']); fields(object(row.original), deleteSourceFields);
+  const reference = normalizePalletTransactionDeleteReference(row.reference), original = normalizePalletTransactionDeleteSource(row.original);
+  if (typeof row.actorUid !== 'string' || !row.actorUid || typeof row.expectedVersion !== 'string' || !/^\d+:\d{9}$/.test(row.expectedVersion)) throw Error('거래 삭제 준비 응답의 사용자·버전을 확인해 주세요.');
+  const base = { reference, original, actorUid: row.actorUid, expectedVersion: row.expectedVersion };
+  if (original.isTransfer === true) return { ...base, pallet: deletePallet(row.pallet, true) };
+  if (row.pallet !== undefined) throw Error('일반 거래 삭제의 파렛트 관측이 잘못됐습니다.');
+  return base;
+}
+export function normalizePalletTransactionDeleteRequest(value: unknown): PalletTransactionDeleteRequest {
+  const row = object(value);
+  fields(row, ['version', 'action', 'reference', 'original', 'expectedVersion', 'pallet']);
+  const opened = normalizePalletTransactionDeleteOpenResult({ reference: row.reference, original: row.original, expectedVersion: row.expectedVersion, actorUid: 'request-validation', ...(row.pallet !== undefined ? { pallet: row.pallet } : {}) });
+  if (row.version !== 4 || row.action !== 'delete-transaction') throw Error('파렛트 거래 삭제 원문의 종류를 확인해 주세요.');
+  const request: PalletTransactionDeleteRequest = { version: 4, action: 'delete-transaction', reference: opened.reference, original: opened.original, expectedVersion: opened.expectedVersion, ...(opened.pallet ? { pallet: opened.pallet } : {}) };
+  if (JSON.stringify(request).length > 100000) throw Error('파렛트 거래 삭제 원문이 너무 큽니다.');
+  return request;
 }
 /** 실제 파렛트 문서에서 편집이 소유하는 세 값만 읽는다. 숨은 필드는 native 버전과 update로 보존한다. */
 export function normalizePalletStockEditFields(value: unknown): PalletStockEditFields {
@@ -210,11 +311,13 @@ export function normalizePalletExchangeOpenResult(value: unknown): PalletExchang
 export function normalizePalletTransactionRequest(value: PalletTransactionRequest): PalletTransactionRequest;
 export function normalizePalletTransactionRequest(value: PalletExchangeCompletionRequest): PalletExchangeCompletionRequest;
 export function normalizePalletTransactionRequest(value: PalletStockEditRequest): PalletStockEditRequest;
+export function normalizePalletTransactionRequest(value: PalletTransactionDeleteRequest): PalletTransactionDeleteRequest;
 export function normalizePalletTransactionRequest(value: unknown): PalletTransactionAnyRequest;
 export function normalizePalletTransactionRequest(value: unknown): PalletTransactionAnyRequest {
   const row = object(value);
   if (row.version === 1) return normalizePalletTransactionV1Request(value);
   if (row.version === 3) return normalizePalletStockEditRequest(value);
+  if (row.version === 4) return normalizePalletTransactionDeleteRequest(value);
   fields(row, ['version', 'action', 'reference', 'sourceTransactionId', 'source', 'expectedVersion', 'returnDate']);
   const input = normalizePalletExchangeOpenInput({ reference: row.reference, sourceTransactionId: row.sourceTransactionId, source: row.source });
   if (row.version !== 2 || row.action !== 'complete-exchange' || typeof row.expectedVersion !== 'string' || !/^\d+:\d{9}$/.test(row.expectedVersion)

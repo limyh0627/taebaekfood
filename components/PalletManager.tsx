@@ -3,7 +3,6 @@ import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS 
 import { buildPartnerPalletHistory, buildAvailablePalletMonths, buildPalletSummary, buildAllPalletHistory } from '../src/features/pallets/domain/palletHistory';
 import { buildPartnerPalletStats, filterPartnerPalletStatus, buildOutstandingByPallet } from '../src/features/pallets/domain/palletBalances';
 
-import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today } from '../src/shared/day';
 import {
@@ -23,8 +22,10 @@ import {
 } from 'lucide-react';
 import { PalletStock, Order, Partner, OrderStatus, PalletTransaction, CompanyId, companyOf, TAEBAEK } from '../types';
 import { where } from 'firebase/firestore';
-import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
+import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import palletTransactionWrites from '../src/shared/services/palletTransactionWrites';
+import { usePalletTransactionDeletion } from '../src/features/pallets/hooks/usePalletTransactionDeletion';
 import { usePalletStockEditor } from '../src/features/pallets/hooks/usePalletStockEditor';
 import { usePalletTransactionEditor } from '../src/features/pallets/hooks/usePalletTransactionEditor';
 import PalletTransactionRecoveryPanel from '../src/features/pallets/ui/PalletTransactionRecoveryPanel';
@@ -49,8 +50,6 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   pallets,
   orders, partners,
   palletTransactions: liveTransactions,
-  onUpdatePallet,
-  onAddPalletTransaction
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'partners' | 'history'>('partners');
 
@@ -88,10 +87,44 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     liveTransactions.filter(t => companyOf(t as PalletTransaction & { companyId?: CompanyId }) === companyId).forEach(t => map.set(t.id, t));
     return Array.from(map.values());
   }, [liveTransactions, extraTransactions, companyId]);
+  const [deletionReads, setDeletionReads] = useState<{ companyId: CompanyId; owner: object | null; rows: Map<string, { observed: PalletTransaction | undefined; row: PalletTransaction | null }> }>({ companyId, owner: null, rows: new Map() });
+  const deletionReadsRef = useRef(deletionReads); deletionReadsRef.current = deletionReads;
+  const deletionOwner = useRef<object | null>(null);
+  const beforeDeletionRows = useRef<PalletTransaction[]>([]);
+  const deletionReadsInFlight = useRef(new Set<{ owner: object; transactionId: string; liveObserved: PalletTransaction | undefined; accepted: Set<PalletTransaction | undefined>; changed: boolean }>());
   const [searchTerm, setSearchTerm] = useState('');
+  const deletionEditor = usePalletTransactionDeletion({ companyId, pallets,
+    onOperationObserved: (entry, observation) => transactionEditor.recordObservation(entry, observation),
+    onRecoveryRequired: async () => { await transactionEditor.refresh(); transactionEditor.openRecovery(); },
+    onApplied: async ({ transactionId, optimisticSource, scope }, isCurrent) => {
+      const ownerToken = deletionEditor.scopeToken;
+      const observed = beforeDeletionRows.current.find(row => row.id === transactionId);
+      const liveObserved = currentLive.current.find(row => row.id === transactionId);
+      const accepted = new Set<PalletTransaction | undefined>([observed]);
+      const applyCurrent = (row: PalletTransaction | null) => {
+        if (!isCurrent() || deletionOwner.current !== ownerToken || currentLive.current.find(value => value.id === transactionId) !== liveObserved) return;
+        const replace = (rows: PalletTransaction[]) => [...rows.filter(value => value.id !== transactionId), ...(row ? [row] : [])];
+        const cached = palletTxCache.get(companyId);
+        if (cached) palletTxCache.set(companyId, { ...cached, data: replace(cached.data) });
+        setExtraHistory(previous => previous.companyId === companyId && deletionOwner.current === ownerToken ? { ...previous, rows: replace(previous.rows) } : previous);
+        const previous = deletionReadsRef.current;
+        const rows = new Map(previous.owner === ownerToken ? previous.rows : []);
+        rows.set(transactionId, { observed: liveObserved, row });
+        const next = { companyId, owner: ownerToken, rows }; deletionReadsRef.current = next; setDeletionReads(next);
+      };
+      const tracking = { owner: ownerToken, transactionId, liveObserved, accepted, changed: false }; deletionReadsInFlight.current.add(tracking);
+      try {
+        if (optimisticSource && observed === optimisticSource) { accepted.add(undefined); applyCurrent(null); }
+        const result = await palletTransactionWrites.readCurrentTransaction(scope, transactionId, isCurrent);
+        if (!isCurrent() || tracking.changed || deletionOwner.current !== ownerToken || !accepted.has(beforeDeletionRows.current.find(row => row.id === transactionId))) return;
+        applyCurrent(result.exists ? result.transaction : null);
+      } finally { deletionReadsInFlight.current.delete(tracking); }
+    }
+  });
+  deletionOwner.current = deletionEditor.scopeToken;
   const stockEditor = usePalletStockEditor({ companyId, onOperationObserved: (entry, observation) => transactionEditor.recordObservation(entry, observation), onRecoveryRequired: async () => { await transactionEditor.refresh(); transactionEditor.openRecovery(); } });
   const editingId = stockEditor.editingId, editForm = stockEditor.draft;
-  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners, palletTransactions: sourceTransactions, pendingStockEntryKey: stockEditor.getPendingEntryKey, onRecoveryObserved: stockEditor.acceptRecovery, onExchangeApplied: async (sourceId, isCurrent) => {
+  const transactionEditor = usePalletTransactionEditor({ companyId, pallets, partners, palletTransactions: sourceTransactions, pendingStockEntryKey: stockEditor.getPendingEntryKey, pendingDeletionEntryKey: deletionEditor.getPendingEntryKey, onRecoveryObserved: async (entry, observation, action) => { if (action === 'observed') { void stockEditor.acceptRecovery(entry, observation, action); void deletionEditor.acceptRecovery(entry, observation, action); return; } await stockEditor.acceptRecovery(entry, observation, action); await deletionEditor.acceptRecovery(entry, observation, action); }, onExchangeApplied: async (sourceId, isCurrent) => {
     const observed = currentLive.current.find(row => row.id === sourceId);
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const rows = await fetchDateRange<PalletTransaction>('palletTransactions', 'date', fromDate.toISOString().slice(0, 10), today(), [where('companyId', '==', companyId)]);
@@ -113,8 +146,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       if (liveTransactions.find(row => row.id === id) !== value.observed) invalidatedReads.current.add(value);
       if (!invalidatedReads.current.has(value)) map.set(id, value.row);
     });
+    beforeDeletionRows.current = [...map.values()];
+    deletionReadsInFlight.current.forEach(read => {
+      if (read.owner !== deletionEditor.scopeToken || liveTransactions.find(row => row.id === read.transactionId) !== read.liveObserved || !read.accepted.has(map.get(read.transactionId))) read.changed = true;
+    });
+    if (deletionReads.companyId === companyId && deletionReads.owner === deletionEditor.scopeToken) deletionReads.rows.forEach((value, id) => {
+      if (liveTransactions.find(row => row.id === id) !== value.observed) invalidatedReads.current.add(value);
+      if (!invalidatedReads.current.has(value)) { if (value.row) map.set(id, value.row); else map.delete(id); }
+    });
     return [...map.values()];
-  }, [sourceTransactions, liveTransactions, companyId, exchangeReads, transactionEditor.scopeToken]);
+  }, [sourceTransactions, liveTransactions, companyId, exchangeReads, transactionEditor.scopeToken, deletionReads, deletionEditor.scopeToken]);
   const hasConfirmedExchange = palletTransactions.some(row => row.status === '교체중' && transactionEditor.isExchangeApplied(row.id));
   const isTransactionModalOpen = transactionEditor.showForm;
   const transType = transactionEditor.mode;
@@ -195,28 +236,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     return buildAllPalletHistory(palletTransactions, orders, partners, pallets, monthFilter, historySearch, palletNameOf);
   }, [palletTransactions, orders, partners, pallets, monthFilter, historySearch]);
 
-  // 거래 삭제(정정) — 오입력된 수동 거래를 지우면 회수 대기는 남은 기록으로 다시 계산된다.
-  // (주문 출고에서 파생된 행은 txId가 없어 삭제 버튼이 노출되지 않음)
-  const deleteTransaction = async (txId: string) => {
-    const tx = palletTransactions.find(t => t.id === txId);
-    if (!tx) return;
-    const label = tx.type === 'in' ? '입고' : '지급';
-    if (!await appConfirm(`이 파렛트 ${label} 거래(${tx.quantity}개)를 삭제할까요?\n되돌릴 수 없습니다.`)) return;
-    try {
-      await deleteItem('palletTransactions', tx.id);
-      // 되돌림: 이동전표만 총 재고 복원. 일반/교체 거래의 회수 대기는 기록에서 계산되므로 삭제만으로 반영됨.
-      if (tx.isTransfer) {
-        const pallet = pallets.find(p => p.id === tx.palletId);
-        if (pallet) onUpdatePallet({ ...pallet, total: Math.max(0, pallet.total + (tx.type === 'in' ? -tx.quantity : tx.quantity)) });
-      }
-      // 라이브 구독(7일)이 즉시 못 지우는 과거 거래 대비 — 로컬 캐시/상태에서도 제거
-      setExtraHistory(prev => prev.companyId === companyId ? { ...prev, rows: prev.rows.filter(t => t.id !== tx.id) } : prev);
-      const cached = palletTxCache.get(companyId);
-      if (cached) palletTxCache.set(companyId, { ...cached, data: cached.data.filter(t => t.id !== tx.id) });
-    } catch (e) {
-      console.error('[파레트] 거래 삭제 실패:', e);
-      alert('삭제 실패: ' + ((e as Error)?.message ?? e));
-    }
+  const deleteTransaction = (transactionId: string) => {
+    const selected = palletTransactions.find(row => row.id === transactionId);
+    if (selected) void deletionEditor.remove(selected);
   };
 
   const handleEdit = stockEditor.begin;
@@ -263,7 +285,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         ) : undefined}
       />
 
-      <PalletTransactionRecoveryPanel editor={transactionEditor} hideButtons={isTransactionModalOpen} />
+      <PalletTransactionRecoveryPanel deletion={deletionEditor} editor={transactionEditor} hideButtons={isTransactionModalOpen} />
       {activeTab === 'overview' ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -453,7 +475,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       <td className="px-3 py-2.5 text-[10px] text-slate-400 truncate max-w-[180px]">{r.note}</td>
                       <td className="px-3 py-2.5 text-center">
                         {r.txId ? (
-                          <button onClick={() => deleteTransaction(r.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
+                          <button disabled={deletionEditor.busy} onClick={() => deleteTransaction(r.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
                             <Trash2 size={13} />
                           </button>
                         ) : <span className="text-[9px] text-slate-200">주문</span>}
@@ -745,7 +767,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           </td>
                           <td className="px-6 py-4 text-center">
                             {item.txId ? (
-                              <button onClick={() => deleteTransaction(item.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
+                              <button disabled={deletionEditor.busy} onClick={() => deleteTransaction(item.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
                                 <Trash2 size={14} />
                               </button>
                             ) : <span className="text-[9px] text-slate-200">주문</span>}
@@ -783,7 +805,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       {isTransactionModalOpen && (
         <ModalShell title={transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'} onClose={transactionEditor.close}>
             <p className="mb-4 text-xs text-slate-500">{selectedClientForTrans ? selectedClientForTrans.name : '거래처를 선택하세요'}</p>
-            <PalletTransactionRecoveryPanel editor={transactionEditor} buttonsOnly />
+            <PalletTransactionRecoveryPanel deletion={deletionEditor} editor={transactionEditor} buttonsOnly />
             {transactionEditor.inlineError && <p role="alert" className="my-2 text-sm text-rose-700">{transactionEditor.inlineError}</p>}
             {transactionEditor.inlineMessage && <p className="my-2 text-sm text-amber-700">{transactionEditor.inlineMessage}</p>}
             <form onSubmit={event => { event.preventDefault(); void transactionEditor.submit(); }} className="space-y-4">

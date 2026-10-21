@@ -6,7 +6,7 @@ import { initializeApp as clientApp, deleteApp as deleteClientApp, type Firebase
 import { getAuth as clientAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
 import { writeFileSync } from 'node:fs';
 import { executePalletTransactionForActor } from './palletTransactionCommand';
-import { normalizePalletExchangeSource, normalizePalletStockEditFields, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletTransactionOpenResult, type PalletExchangeCompletionRequest, type PalletExchangeOpenResult, type PalletStockEditRequest, type PalletStockEditOpenResult } from './shared/palletTransactionCommand';
+import { normalizePalletExchangeSource, normalizePalletStockEditFields, type PalletTransactionDeleteRequest, type PalletTransactionDeleteOpenResult, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletTransactionOpenResult, type PalletExchangeCompletionRequest, type PalletExchangeOpenResult, type PalletStockEditRequest, type PalletStockEditOpenResult } from './shared/palletTransactionCommand';
 const project = process.env.PALLET_TRANSACTION_TEST_PROJECT ?? '';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST, authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const ready = project.startsWith('demo-') && firestoreHost === '127.0.0.1:8182' && authHost === '127.0.0.1:9199';
@@ -22,7 +22,7 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     const auth = clientAuth(client); connectAuthEmulator(auth, `http://${authHost}`, { disableWarnings: true });
     const credential = await signInWithEmailAndPassword(auth, email, 'emulator-only-123');
     who = { uid, token: (await credential.user.getIdTokenResult()).claims };
-    writeFileSync(`work/pallet-stock-edit-A-${run}-fixture-backup.json`, JSON.stringify({ project, run, fixedPaths: [], policy: '고유 UUID 신규 경로만 사용' }, null, 2));
+    writeFileSync(`work/pallet-delete-A-${run}-fixture-backup.json`, JSON.stringify({ project, run, fixedPaths: [], policy: '고유 UUID 신규 경로만 사용' }, null, 2));
   }, 90000);
   afterAll(async () => {
     if (!app) return;
@@ -30,7 +30,7 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     for (const uid of users) await getAuth(app).deleteUser(uid);
     const removed = (await Promise.all([...paths].map(path => db.doc(path).get()))).every(s => !s.exists);
     const usersRemoved = (await getAuth(app).getUsers(users.map(uid => ({ uid })))).users.length === 0;
-    writeFileSync(`work/pallet-stock-edit-A-${run}-fixture-cleanup.json`, JSON.stringify({ project, paths: [...paths], removed, usersRemoved, fixedPathsTouched: 0 }, null, 2));
+    writeFileSync(`work/pallet-delete-A-${run}-fixture-cleanup.json`, JSON.stringify({ project, paths: [...paths], removed, usersRemoved, fixedPathsTouched: 0 }, null, 2));
     expect(removed && usersRemoved).toBe(true);
     for (const client of clients) await deleteClientApp(client); await deleteApp(app);
   }, 90000);
@@ -312,4 +312,59 @@ describe.skipIf(!ready)('파렛트 실제 Auth·Firestore 원자 명령', () => 
     for (const mode of ['inspect', 'cancel']) expect(await executePalletTransactionForActor(db, who, { mode, reference: edit.reference })).toMatchObject({ status: 'applied' });
     expect((await target.get()).exists).toBe(false);
   });
+  async function deleting(transfer = false, missing = false): Promise<PalletTransactionDeleteRequest> {
+    const registration = await fixture();
+    const reference = {kind:'pallet-transaction-delete' as const, ...registration.reference,operationId:registration.reference.operationId+'-delete'};
+    paths.add('palletTransactionOperations/'+reference.operationId);
+    const original={...registration.transaction,date:'옛 날짜',status:'교체완료',exchangeReturnQty:-2,...(transfer?{isTransfer:true}: {})};
+    await db.doc('palletTransactions/'+reference.transactionId).set({companyId:'taebaek',...original,hidden:Timestamp.fromMillis(123)});
+    if(missing)await db.doc('pallets/'+original.palletId).delete();
+    const opened=await executePalletTransactionForActor(db,who,{mode:'open-delete',reference,original,...(transfer?{pallet:missing?{exists:false}:{exists:true,total:2}}:{})}) as PalletTransactionDeleteOpenResult;
+    return {version:4,action:'delete-transaction',reference,original,expectedVersion:opened.expectedVersion,...(opened.pallet?{pallet:opened.pallet}:{})};
+  }
+  it('실삭제 일반·완료 legacy는 master/partner 없이 row와 receipt만 처리한다',async()=>{
+    const request=await deleting();await db.doc('partners/'+request.original.partnerId).delete();await db.doc('pallets/'+request.original.palletId).delete();
+    expect(await apply(request)).toMatchObject({status:'applied'});expect((await db.doc('palletTransactions/'+request.reference.transactionId).get()).exists).toBe(false);
+  });
+  it('실삭제 transfer total-only는 숨은 Timestamp/inUse를 보존하고 기존 역산과 clamp를 적용한다',async()=>{
+    for(const type of ['in','out'] as const){const request=await deleting(true);request.original.type=type;
+      await db.doc('palletTransactions/'+request.reference.transactionId).update({type});
+      await db.doc('pallets/'+request.original.palletId).update({inUse:8,stamp:Timestamp.fromMillis(42)});
+      const opened=await executePalletTransactionForActor(db,who,{mode:'open-delete',reference:request.reference,original:request.original,pallet:{exists:true,total:2}}) as PalletTransactionDeleteOpenResult;
+      request.expectedVersion=opened.expectedVersion;request.pallet=opened.pallet;
+      await apply(request);expect((await db.doc('pallets/'+request.original.palletId).get()).data()).toEqual({companyId:'taebaek',total:type==='in'?0:5,hidden:{legacy:true},damaged:1,inUse:8,stamp:Timestamp.fromMillis(42)});
+    }
+  });
+  it('실삭제 source native의 미지필드 변경도 거절한다',async()=>{
+    const request=await deleting();await db.doc('palletTransactions/'+request.reference.transactionId).update({hidden:'changed'});
+    await expect(apply(request)).rejects.toMatchObject({details:{writes:false}});expect((await db.doc('palletTransactions/'+request.reference.transactionId).get()).exists).toBe(true);
+  });
+  it('실삭제 master native 변경·등장·소실은 모두 거절하고 양관측부재만 row-only이다',async()=>{
+    for(const kind of ['native','appear','disappear','absent']){const request=await deleting(true,kind==='appear'||kind==='absent'), master=db.doc('pallets/'+request.original.palletId);
+      if(kind==='native')await master.update({hidden:'new'});if(kind==='appear')await master.set({companyId:'taebaek',total:2});if(kind==='disappear')await master.delete();
+      if(kind==='absent'){await apply(request);expect((await master.get()).exists).toBe(false);}else await expect(apply(request)).rejects.toMatchObject({details:{writes:false}});
+    }
+  });
+  it('실삭제 동일 source 다른 op 동시성은 한 승자만 총량을 역산한다',async()=>{
+    const request=await deleting(true),other=structuredClone(request);other.reference.operationId+='-other';paths.add('palletTransactionOperations/'+other.reference.operationId);
+    const results=await Promise.allSettled([apply(request),apply(other)]);expect(results.filter(x=>x.status==='fulfilled')).toHaveLength(1);
+    expect((await db.doc('pallets/'+request.original.palletId).get()).data()?.total).toBe(5);
+  });
+  it('실삭제 cancel/apply 경합은 단일 terminal이고 cancel 먼저면 lateapply0이다',async()=>{
+    const request=await deleting();await Promise.allSettled([apply(request),executePalletTransactionForActor(db,who,{mode:'cancel',reference:request.reference})]);
+    const result=await executePalletTransactionForActor(db,who,{mode:'inspect',reference:request.reference});expect(['applied','cancelled']).toContain('status'in result?result.status:'bad');
+    const next=await deleting();await executePalletTransactionForActor(db,who,{mode:'cancel',reference:next.reference});await expect(apply(next)).rejects.toMatchObject({details:{operationStatus:'cancelled'}});
+  });
+  it('실삭제 완료 replay는 대상·master 재생성 없고 타 UID·회사·kind를 거절한다',async()=>{
+    const request=await deleting(true);await apply(request);await db.doc('pallets/'+request.original.palletId).delete();expect(await apply(request)).toMatchObject({status:'applied'});
+    for(const actor of [{...who,uid:'foreign'},{...who,token:{employeeId:'',companyId:'punghoe'}}])await expect(executePalletTransactionForActor(db,actor,{mode:'inspect',reference:request.reference})).rejects.toThrow();
+    await expect(executePalletTransactionForActor(db,who,{mode:'inspect',reference:{companyId:'taebaek',operationId:request.reference.operationId,transactionId:request.reference.transactionId}})).rejects.toThrow();
+    expect((await db.doc('pallets/'+request.original.palletId).get()).exists).toBe(false);
+  });
+  it('실삭제 receipt backend commit 실패는 source delete와 total patch를 모두 rollback한다',async()=>{
+    const request=await deleting(true), source=db.doc('palletTransactions/'+request.reference.transactionId),master=db.doc('pallets/'+request.original.palletId);const before=(await source.get()).data();
+    const wrapped=new Proxy(db,{get(target,key){if(key==='runTransaction')return(runTx:(tx:FirebaseFirestore.Transaction)=>Promise<unknown>)=>target.runTransaction(tx=>runTx(new Proxy(tx,{get(original,method){if(method==='create')return(ref:FirebaseFirestore.DocumentReference,data:FirebaseFirestore.DocumentData)=>original.update(ref,data);const value=Reflect.get(original,method);return typeof value==='function'?value.bind(original):value;}})));const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});
+    await expect(apply(request,wrapped)).rejects.toThrow(/NOT_FOUND|No document|not found/i);expect((await source.get()).data()).toEqual(before);expect((await master.get()).data()?.total).toBe(2);
+  });
+
 });

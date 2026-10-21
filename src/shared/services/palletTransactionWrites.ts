@@ -1,6 +1,8 @@
 import { httpsCallable } from 'firebase/functions';
-import { auth, authReady, functions } from '../firebase';
-import { normalizePalletTransactionReference, normalizePalletOperationReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, normalizePalletExchangeOpenResult, normalizePalletExchangeOpenInput, normalizePalletExchangeSource, normalizePalletStockEditFields, normalizePalletStockEditOpenResult, normalizePalletStockEditPatch, type PalletOperationReference, type PalletStockEditOpenInput, type PalletStockEditFields, type PalletStockEditPatch, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletExchangeOpenInput, type PalletTransactionResult, } from '../palletTransactionCommand';
+import { doc, getDocFromServer } from 'firebase/firestore';
+import { auth, authReady, db, functions } from '../firebase';
+import type { PalletTransaction } from '../types';
+import { palletTransactionDocumentId, normalizePalletTransactionReference, normalizePalletOperationReference, normalizePalletTransactionRequest, normalizePalletTransactionOpenResult, normalizePalletTransactionResult, serializePalletTransactionRequest, normalizePalletExchangeOpenResult, normalizePalletExchangeOpenInput, normalizePalletExchangeSource, normalizePalletStockEditFields, normalizePalletStockEditOpenResult, normalizePalletStockEditPatch, normalizePalletTransactionDeleteSource, normalizePalletTransactionDeleteOpenInput, normalizePalletTransactionDeleteOpenResult, type PalletTransactionDeleteOpenInput, type PalletTransactionDeleteSource, type PalletOperationReference, type PalletStockEditOpenInput, type PalletStockEditFields, type PalletStockEditPatch, type PalletTransactionReference, type PalletTransactionRequest, type PalletTransactionAnyRequest, type PalletExchangeOpenInput, type PalletTransactionResult, } from '../palletTransactionCommand';
 export interface PalletTransactionScope {
     companyId: PalletTransactionReference['companyId'];
     actorUid: string;
@@ -32,6 +34,10 @@ export interface PalletTransactionEntry {
         palletId: string;
         original: PalletStockEditFields;
         patch: PalletStockEditPatch;
+    } | {
+        action: 'delete-transaction';
+        transactionId: string;
+        original: PalletTransactionDeleteSource;
     } | null;
     references: {
         reference: PalletOperationReference;
@@ -52,7 +58,7 @@ export interface PalletTransactionObservation {
 type Current = () => boolean;
 type Own = (entry: PalletTransactionEntry | null, previous?: PalletTransactionEntry) => void;
 const prefix = (scope: PalletTransactionScope) => `pallet-transaction-v1:${scope.companyId}:${encodeURIComponent(scope.actorUid)}:`;
-const keyFor = (scope: PalletTransactionScope, ref: PalletOperationReference) => prefix(scope) + encodeURIComponent(JSON.stringify('kind' in ref ? ['pallet-edit', ref.operationId, ref.palletId] : [ref.operationId, ref.transactionId]));
+const keyFor = (scope: PalletTransactionScope, ref: PalletOperationReference) => prefix(scope) + encodeURIComponent(JSON.stringify('kind' in ref ? ref.kind === 'pallet-edit' ? ['pallet-edit', ref.operationId, ref.palletId] : ['pallet-transaction-delete', ref.operationId, ref.transactionId] : [ref.operationId, ref.transactionId]));
 const equalRef = (a: PalletOperationReference, b: PalletOperationReference) => JSON.stringify(a) === JSON.stringify(b);
 const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), n => n.toString(16).padStart(2, '0')).join('');
 const notify = () => window.dispatchEvent(new Event('pallet-transaction-pending'));
@@ -141,7 +147,7 @@ async function readAt(scope: PalletTransactionScope, key: string): Promise<Palle
         legacy: !!request && referenceRaw === null,
         lastAttempt: side?.lastAttempt ?? null,
         status: valid ? 'valid' : bodyRaw === null && referenceRaw === null ? 'missing' : 'corrupt',
-        description: request?.version === 3 ? '파렛트 재고 수정 요청' : request?.version === 2 ? '파렛트 교체 완료 요청' : request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
+        description: request?.version === 4 ? '파렛트 거래 삭제 요청' : request?.version === 3 ? '파렛트 재고 수정 요청' : request?.version === 2 ? '파렛트 교체 완료 요청' : request ? '파렛트 거래 요청' : '원문 확인이 필요한 파렛트 요청' };
 }
 async function rpc(input: unknown) {
     return (await httpsCallable(functions, 'palletTransactionCommand')(input)).data;
@@ -177,7 +183,7 @@ async function prepare(scope: PalletTransactionScope, input: PalletTransactionAn
         throw Error('요청의 회사가 다릅니다.');
     return exclusive(scope, current, async () => {
         const entries = await read(scope, current);
-        if (request.version === 1 ? findMatching(entries, request.transaction) : request.version === 2 ? findMatchingExchange(entries, request.sourceTransactionId) : findMatchingEdit(entries, { palletId: request.reference.palletId, patch: request.patch }))
+        if (request.version === 1 ? findMatching(entries, request.transaction) : request.version === 2 ? findMatchingExchange(entries, request.sourceTransactionId) : request.version === 3 ? findMatchingEdit(entries, { palletId: request.reference.palletId, patch: request.patch }) : findMatchingDelete(entries, request.reference.transactionId))
             throw Error('같은 내용의 보관 요청이 있습니다. 그 요청의 결과를 확인하거나 사본을 정리해 주세요.');
         const key = keyFor(scope, request.reference);
         const bodyRaw = JSON.stringify({ version: 1, actorUid: scope.actorUid, request });
@@ -317,7 +323,7 @@ function projection(entry: PalletTransactionEntry, input: PalletTransactionResul
         const terminal = !!result && result.status !== 'unknown';
         const mismatch = result?.status === 'applied' && !!entry.requestHash && result.requestHash !== entry.requestHash;
         return { ...row, result, terminal, label: row.source === 'body' ? '본문에 남은 요청' : row.source === 'reference' ? '참조에 남은 요청' : '보관된 요청',
-            currentState: result?.status === 'applied' ? entry.summary?.action === 'edit-pallet' ? '이 요청의 파렛트 재고 수정이 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : entry.summary?.action === 'complete-exchange' ? '이 요청의 교체 완료와 회수 처리가 끝났습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
+            currentState: result?.status === 'applied' ? entry.summary?.action === 'delete-transaction' ? '이 요청의 파렛트 거래 삭제가 처리되었습니다. 현재 거래의 존재 여부는 다시 읽어 확인해 주세요.' : entry.summary?.action === 'edit-pallet' ? '이 요청의 파렛트 재고 수정이 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : entry.summary?.action === 'complete-exchange' ? '이 요청의 교체 완료와 회수 처리가 끝났습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : '이 요청의 파렛트 거래가 처리되었습니다. 이후 수정·삭제 여부는 확인하지 않았습니다.' : result?.status === 'cancelled' ? '미처리 요청을 중단했습니다.' : '아직 처리 결과를 확인하지 못했습니다.',
             cause: mismatch ? '이 요청은 서버에서 처리됐지만 기기에 보관된 내용과 다릅니다. 현재 입력이 저장됐다는 뜻은 아닙니다.' : !terminal && row.source !== 'body' ? entry.lastAttempt?.message ?? '' : '',
             nextAction: terminal ? '이 기기에 남은 사본을 정리한 뒤 새 업무를 시작할 수 있습니다.' : '결과를 확인하거나 미처리 요청을 중단해 주세요.', canInspect: true, canCancel: !terminal };
     });
@@ -342,6 +348,8 @@ function findMatchingExchange(entries: readonly PalletTransactionEntry[], source
 function summaryFor(request: PalletTransactionAnyRequest | null): PalletTransactionEntry['summary'] {
     if (!request)
         return null;
+    if (request.version === 4)
+        return { action: 'delete-transaction', transactionId: request.reference.transactionId, original: request.original };
     if (request.version === 3)
         return { action: 'edit-pallet', palletId: request.reference.palletId, original: request.original, patch: request.patch };
     if (request.version === 1) {
@@ -387,6 +395,44 @@ async function openEdit(scope: PalletTransactionScope, input: PalletStockEditOpe
         return result;
     });
 }
-export const palletTransactionWrites = { open, openExchange, openEdit, prepare, read, command, discard, upgrade, projection, findMatching, findMatchingExchange, findMatchingEdit };
+async function readCurrentTransaction(scope: PalletTransactionScope, transactionId: string, current: Current): Promise<{
+    exists: false;
+} | {
+    exists: true;
+    transaction: PalletTransaction;
+}> {
+    scope = { ...scope };
+    if (!palletTransactionDocumentId(transactionId))
+        throw Error('조회할 파렛트 거래 번호를 확인해 주세요.');
+    await authorize(scope, current);
+    owner(scope, current);
+    const snapshot = await getDocFromServer(doc(db, 'palletTransactions', transactionId));
+    owner(scope, current);
+    if (!snapshot.exists())
+        return { exists: false };
+    const row = snapshot.data();
+    if (row.companyId !== scope.companyId)
+        throw Error('현재 회사의 파렛트 거래가 아닙니다.');
+    return { exists: true, transaction: { ...row, id: transactionId } as PalletTransaction };
+}
+function findMatchingDelete(entries: readonly PalletTransactionEntry[], transactionId: string) {
+    return entries.find(entry => entry.summary?.action === 'delete-transaction' && entry.summary.transactionId === transactionId);
+}
+async function openDelete(scope: PalletTransactionScope, input: PalletTransactionDeleteOpenInput, current: Current) {
+    scope = { ...scope };
+    const captured = normalizePalletTransactionDeleteOpenInput({ ...input, original: normalizePalletTransactionDeleteSource(input.original) });
+    if (captured.reference.companyId !== scope.companyId)
+        throw Error('거래 삭제 요청의 회사가 다릅니다.');
+    return exclusive(scope, current, async () => {
+        const raw = await rpc({ mode: 'open-delete', ...captured });
+        owner(scope, current);
+        const result = normalizePalletTransactionDeleteOpenResult(raw);
+        const pallet = result.pallet === undefined ? undefined : result.pallet.exists ? { exists: true, total: result.pallet.total } : { exists: false };
+        if (!equalRef(result.reference, captured.reference) || result.actorUid !== scope.actorUid || JSON.stringify(result.original) !== JSON.stringify(captured.original) || JSON.stringify(pallet) !== JSON.stringify(captured.pallet))
+            throw Error('거래 삭제 준비 응답의 원문·사용자·파렛트 관측이 다릅니다.');
+        return result;
+    });
+}
+export const palletTransactionWrites = { open, openExchange, openEdit, openDelete, prepare, read, command, discard, upgrade, projection, findMatching, findMatchingExchange, findMatchingEdit, findMatchingDelete, readCurrentTransaction };
 export type PalletTransactionBindings = typeof palletTransactionWrites;
 export default palletTransactionWrites;

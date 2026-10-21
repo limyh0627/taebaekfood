@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import type * as admin from 'firebase-admin';
 import { executePalletTransactionForActor } from './palletTransactionCommand';
-import type { PalletTransactionRequest, PalletExchangeCompletionRequest, PalletStockEditRequest } from './shared/palletTransactionCommand';
+import type { PalletTransactionDeleteRequest, PalletTransactionRequest, PalletExchangeCompletionRequest, PalletStockEditRequest } from './shared/palletTransactionCommand';
 const actor = { uid: 'u', token: { employeeId: '', companyId: 'taebaek', isAdmin: false } };
 const make = (transfer = false): PalletTransactionRequest => ({ version: 1, reference: { companyId: 'taebaek', operationId: 'op', transactionId: 'tx' }, transaction: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '2026-10-21', note: '', ...(transfer ? { isTransfer: true } : {}) }, ...(transfer ? { transfer: { originalTotal: 2, expectedVersion: '1:000000001' } } : {}) });
 let rows: Map<string, Record<string, unknown>>;
@@ -13,6 +13,7 @@ function store(): admin.firestore.Firestore {
     const staged: Array<() => void> = [];
     const answer = await run({ get: async (r: { path: string }) => snap(r.path),
       create: (r: { path: string }, value: Record<string, unknown>) => staged.push(() => { if (rows.has(r.path)) throw Error('exists'); rows.set(r.path, value); writes++; }),
+      delete: (r: { path: string }) => staged.push(() => { rows.delete(r.path); writes++; }),
       update: (r: { path: string }, value: Record<string, unknown>) => staged.push(() => { rows.set(r.path, { ...rows.get(r.path), ...value }); writes++; }) });
     staged.forEach(fn => fn()); return answer;
   } } as unknown as admin.firestore.Firestore;
@@ -142,4 +143,33 @@ it('편집 cancel fence와 다른종류·다른 대상·UID의 영수증 충돌�
     await expect(executePalletTransactionForActor(db, actor, { mode: 'inspect', reference })).rejects.toThrow('기록');
   await expect(executePalletTransactionForActor(db, { ...actor, uid: 'other' }, { mode: 'inspect', reference: request.reference })).rejects.toThrow('기록');
   expect(rows.get('pallets/pallet')?.name).toBe(' 원래 ');
+});
+
+const deletion = (transfer = false): PalletTransactionDeleteRequest => ({ version: 4, action: 'delete-transaction', reference: { kind: 'pallet-transaction-delete', companyId: 'taebaek', operationId: 'delete-op', transactionId: 'old' }, original: { partnerId: 'missing', palletId: 'pallet', type: 'out', quantity: 3, date: '옛 날짜', status: '옛 완료', exchangeReturnQty: -2, ...(transfer ? { isTransfer: true } : {}) }, expectedVersion: '1:000000001', ...(transfer ? { pallet: { exists: true, total: 2, expectedVersion: '1:000000001' } } : {}) });
+function seedDelete(request: PalletTransactionDeleteRequest) { rows.set('palletTransactions/old', { companyId: 'taebaek', ...request.original, hidden: true }); }
+it('삭제 readonly 준비는 옛 status/date/음수 회수 원문을 보존하고 일반 master 존재를 요구하지 않는다', async () => {
+ const request = deletion(); seedDelete(request); rows.delete('pallets/pallet');
+ const opened = await executePalletTransactionForActor(store(), actor, { mode: 'open-delete', reference: request.reference, original: request.original });
+ expect(opened).toMatchObject({ original: request.original, expectedVersion: request.expectedVersion }); expect(writes).toBe(0);
+ await executePalletTransactionForActor(store(), actor, { mode: 'apply', request }); expect(rows.has('palletTransactions/old')).toBe(false); expect(writes).toBe(2);
+});
+it('이동 삭제는 total-only 역산과 영수증을 같이 쓰며 같은 op 재송신은 추가 쓰기0이다', async () => {
+ const request = deletion(true); seedDelete(request); const db=store();
+ await executePalletTransactionForActor(db, actor, { mode:'apply',request });
+ expect(rows.get('pallets/pallet')).toEqual({ companyId:'taebaek',total:5,hidden:'보존' }); expect(rows.has('palletTransactions/old')).toBe(false);
+ const count=writes; await executePalletTransactionForActor(db,actor,{mode:'apply',request}); expect(writes).toBe(count);
+});
+it('삭제 source native·master native/존재·안전 정수 충돌은 전부 무쓰기이다', async () => {
+ const base=deletion(true);seedDelete(base);
+ for (const request of [{...base,expectedVersion:'2:000000001'}, {...base,pallet:{exists:true,total:2,expectedVersion:'2:000000001'}}, {...base,pallet:{exists:false}}])
+ await expect(executePalletTransactionForActor(store(),actor,{mode:'apply',request})).rejects.toMatchObject({details:{writes:false}});
+ const overflow=deletion(true);overflow.pallet={exists:true,total:Number.MAX_SAFE_INTEGER,expectedVersion:'1:000000001'};rows.set('pallets/pallet',{companyId:'taebaek',total:Number.MAX_SAFE_INTEGER});
+ await expect(executePalletTransactionForActor(store(),actor,{mode:'apply',request:overflow})).rejects.toThrow('안전');expect(writes).toBe(0);
+});
+it('부재 master 양관측은 row-only이며 cancel fence와 foreign UID는 삭제를 막는다',async()=>{
+ const request=deletion(true);request.pallet={exists:false};seedDelete(request);rows.delete('pallets/pallet');const db=store();
+ await executePalletTransactionForActor(db,actor,{mode:'cancel',reference:request.reference});
+ await expect(executePalletTransactionForActor(db,actor,{mode:'apply',request})).rejects.toMatchObject({details:{operationStatus:'cancelled'}});
+ await expect(executePalletTransactionForActor(db,{...actor,uid:'other'},{mode:'inspect',reference:request.reference})).rejects.toThrow();expect(rows.has('palletTransactions/old')).toBe(true);
+ request.reference.operationId='absent-op';await executePalletTransactionForActor(db,actor,{mode:'apply',request});expect(rows.has('palletTransactions/old')).toBe(false);
 });

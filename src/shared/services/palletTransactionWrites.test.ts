@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import { webcrypto } from 'node:crypto';
 import { beforeEach, expect, it, vi } from 'vitest';
-const m = vi.hoisted(() => ({ auth: { currentUser: { uid: 'actor', getIdTokenResult: vi.fn() } }, call: vi.fn() }));
-vi.mock('../firebase', () => ({ auth: m.auth, authReady: Promise.resolve(), functions: {} }));
+const m = vi.hoisted(() => ({ auth: { currentUser: { uid: 'actor', getIdTokenResult: vi.fn() } }, call: vi.fn(), doc: vi.fn(), get: vi.fn() }));
+vi.mock('../firebase', () => ({ auth: m.auth, authReady: Promise.resolve(), functions: {}, db: {} }));
 vi.mock('firebase/functions', () => ({ httpsCallable: () => m.call }));
+vi.mock('firebase/firestore', () => ({ doc: m.doc, getDocFromServer: m.get }));
 import writes from './palletTransactionWrites';
-import { serializePalletTransactionRequest, type PalletStockEditRequest, type PalletExchangeCompletionRequest, type PalletTransactionRequest, type PalletTransactionResult } from '../palletTransactionCommand';
+import { serializePalletTransactionRequest, type PalletTransactionDeleteRequest, type PalletTransactionDeleteOpenInput, type PalletStockEditRequest, type PalletExchangeCompletionRequest, type PalletTransactionRequest, type PalletTransactionResult } from '../palletTransactionCommand';
 const scope = { companyId: 'taebaek' as const, actorUid: 'actor' };
 const current = () => true;
 const request = (operationId = 'op'): PalletTransactionRequest => ({ version: 1, reference: { companyId: 'taebaek', operationId, transactionId: 'tx-' + operationId }, transaction: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '2026-10-21', note: '원문' + operationId } });
@@ -14,6 +15,10 @@ beforeEach(() => {
     vi.stubGlobal('crypto', webcrypto);
     localStorage.clear();
     vi.clearAllMocks();
+    m.doc.mockReset();
+    m.get.mockReset();
+    m.call.mockReset();
+    m.doc.mockImplementation((_db, collection, id) => ({ collection, id }));
     m.auth.currentUser.uid = 'actor';
     m.auth.currentUser.getIdTokenResult.mockResolvedValue({ claims: { companyId: 'taebaek', employeeId: 'employee' } });
 });
@@ -481,6 +486,153 @@ it('수정 ref-only 손상도 결과확인과 미처리중단 뒤 명시정리�
     m.call.mockResolvedValueOnce({ data: result(entry, 'cancelled') });
     const stopped = await writes.command(scope, broken, 'cancel', current);
     expect(writes.projection(broken, stopped.result).canDiscard).toBe(true);
+    m.call.mockResolvedValueOnce({ data: result(entry, 'cancelled') });
+    await writes.discard(scope, broken, current);
+    expect(m.call.mock.calls.map(call => call[0].mode)).toEqual(['inspect', 'cancel', 'inspect']);
+});
+it('현재 거래는 정확한 서버 문서만 읽고 원문 필드와 경로 ID를 반환한다', async () => {
+    const row = { companyId: 'taebaek', id: '문서내가짜ID', ...request().transaction, status: '교체완료', unknown: { preserved: true } };
+    m.get.mockResolvedValueOnce({ exists: () => true, data: () => row });
+    expect(await writes.readCurrentTransaction(scope, 'exact-id', current)).toEqual({ exists: true, transaction: { ...row, id: 'exact-id' } });
+    expect(m.doc).toHaveBeenCalledWith({}, 'palletTransactions', 'exact-id');
+    expect(m.get).toHaveBeenCalledWith({ collection: 'palletTransactions', id: 'exact-id' });
+    expect(m.call).not.toHaveBeenCalled();
+});
+it('현재 거래 부재는 getDocFromServer의 실제 부재만 반환한다', async () => {
+    m.get.mockResolvedValueOnce({ exists: () => false });
+    expect(await writes.readCurrentTransaction(scope, 'deleted', current)).toEqual({ exists: false });
+    expect(m.call).not.toHaveBeenCalled();
+});
+it('현재 거래 조회는 다른 회사 원문을 반환하지 않는다', async () => {
+    m.get.mockResolvedValueOnce({ exists: () => true, data: () => ({ companyId: 'punghoe', note: '타회사 비공개' }) });
+    await expect(writes.readCurrentTransaction(scope, 'foreign', current)).rejects.toThrow('현재 회사');
+    expect(m.call).not.toHaveBeenCalled();
+});
+it('현재 거래의 권한 await 중 UID 변경은 서버 문서도 읽지 않는다', async () => {
+    m.auth.currentUser.getIdTokenResult.mockImplementationOnce(async () => { m.auth.currentUser.uid = 'other'; return { claims: { companyId: 'taebaek', employeeId: 'employee' } }; });
+    await expect(writes.readCurrentTransaction(scope, 'exact-id', current)).rejects.toThrow('바뀌');
+    expect(m.get).not.toHaveBeenCalled();
+});
+it('현재 거래 서버 조회 대기 중 owner 변경은 exists 원문을 노출하지 않는다', async () => {
+    const wait = deferred<unknown>();
+    m.get.mockReturnValueOnce(wait.promise);
+    let active = true;
+    const task = writes.readCurrentTransaction(scope, 'exact-id', () => active);
+    await vi.waitFor(() => expect(m.get).toHaveBeenCalledOnce());
+    active = false;
+    wait.resolve({ exists: () => true, data: () => ({ companyId: 'taebaek', ...request().transaction }) });
+    await expect(task).rejects.toThrow('바뀌');
+});
+it('현재 거래 서버 읽기 오류를 부재로 바꾸지 않는다', async () => {
+    m.get.mockRejectedValueOnce(Error('서버 읽기 실패'));
+    await expect(writes.readCurrentTransaction(scope, 'exact-id', current)).rejects.toThrow('서버 읽기 실패');
+});
+function deleting(operationId = 'delete', transactionId = 'source'): PalletTransactionDeleteRequest {
+    return { version: 4, action: 'delete-transaction', reference: { kind: 'pallet-transaction-delete', companyId: 'taebaek', operationId, transactionId }, original: { partnerId: 'partner', palletId: 'pallet', type: 'out', quantity: 3, date: '옛 일자 원문', status: '교체완료', note: '' }, expectedVersion: '1:000000000' };
+}
+it('삭제 open은 옛 status·일자 공개원문을 그대로 대조하고 보관·apply하지 않는다', async () => {
+    const input = deleting();
+    const opening = { reference: input.reference, original: input.original };
+    m.call.mockResolvedValueOnce({ data: { ...opening, actorUid: 'actor', expectedVersion: input.expectedVersion } });
+    expect((await writes.openDelete(scope, opening, current)).original).toEqual(input.original);
+    expect(m.call.mock.calls[0][0]).toEqual({ mode: 'open-delete', ...opening });
+    expect(localStorage.length).toBe(0);
+});
+it.each(['actor', 'reference', 'original'] as const)('삭제 open 응답 %s가 선택과 다르면 새 version을 채택하지 않는다', async (variant) => {
+    const input = deleting();
+    const response = { reference: { ...input.reference }, original: { ...input.original }, actorUid: 'actor', expectedVersion: input.expectedVersion };
+    if (variant === 'actor')
+        response.actorUid = 'other';
+    if (variant === 'reference')
+        response.reference.transactionId = 'other';
+    if (variant === 'original')
+        response.original.quantity = 4;
+    m.call.mockResolvedValueOnce({ data: response });
+    await expect(writes.openDelete(scope, { reference: input.reference, original: input.original, ...(input.pallet ? { pallet: input.pallet } : {}) }, current)).rejects.toThrow('다릅니다');
+    expect(localStorage.length).toBe(0);
+});
+it.each(['existence', 'total'] as const)('이동 삭제 open의 master %s 관측도 최초선택과 같아야 한다', async (variant) => {
+    const input: PalletTransactionDeleteOpenInput = { reference: deleting().reference, original: { ...deleting().original, isTransfer: true }, pallet: { exists: true, total: 10 } };
+    m.call.mockResolvedValueOnce({ data: { ...input, actorUid: 'actor', expectedVersion: '1:000000000', pallet: variant === 'existence' ? { exists: false } : { exists: true, total: 7, expectedVersion: '2:000000000' } } });
+    await expect(writes.openDelete(scope, { reference: input.reference, original: input.original, ...(input.pallet ? { pallet: input.pallet } : {}) }, current)).rejects.toThrow('다릅니다');
+    expect(localStorage.length).toBe(0);
+});
+it('삭제 open RPC 대기중 owner 변경은 같은 원문 응답도 폐기한다', async () => {
+    const input = deleting();
+    const wait = deferred<{
+        data: unknown;
+    }>();
+    let active = true;
+    m.call.mockReturnValueOnce(wait.promise);
+    const task = writes.openDelete(scope, { reference: input.reference, original: input.original }, () => active);
+    await vi.waitFor(() => expect(m.call).toHaveBeenCalledOnce());
+    active = false;
+    wait.resolve({ data: { reference: input.reference, original: input.original, actorUid: 'actor', expectedVersion: input.expectedVersion } });
+    await expect(task).rejects.toThrow('바뀌');
+});
+it('이동 삭제 lost 뒤 source·master관측·native를 그대로 보관해 같은 원문만 재시도한다', async () => {
+    const input = deleting();
+    input.original.isTransfer = true;
+    input.pallet = { exists: true, total: 10, expectedVersion: '2:000000000' };
+    let entry = await writes.prepare(scope, input, current);
+    const before = entry;
+    expect(decodeURIComponent(entry.key)).toContain('["pallet-transaction-delete","delete","source"]');
+    expect(entry.transaction).toBeNull();
+    expect(entry.summary).toEqual({ action: 'delete-transaction', transactionId: 'source', original: input.original });
+    m.call.mockRejectedValueOnce(Error('삭제 응답 유실'));
+    await expect(writes.command(scope, entry, 'apply', current, undefined, (next, previous) => { expect(previous?.referenceRaw).toBe(before.referenceRaw); entry = next!; })).rejects.toThrow('유실');
+    const [reloaded] = await writes.read(scope);
+    expect(reloaded.lastAttempt?.message).toBe('삭제 응답 유실');
+    m.call.mockResolvedValueOnce({ data: result(reloaded) });
+    await writes.command(scope, reloaded, 'apply', current);
+    expect(m.call.mock.calls.map(call => call[0])).toEqual([{ mode: 'apply', request: input }, { mode: 'apply', request: input }]);
+    expect(localStorage.getItem(entry.key)).toBe(entry.bodyRaw);
+});
+it('동일 source 삭제는 다른 op/native/선택값으로 바꿔 새로 보내지 않으며 다른 source는 허용한다', async () => {
+    const entry = await writes.prepare(scope, deleting(), current);
+    const next = deleting('new');
+    next.expectedVersion = '2:000000000';
+    next.original.note = '새 관측';
+    expect(writes.findMatchingDelete(await writes.read(scope), 'source')?.key).toBe(entry.key);
+    await expect(writes.prepare(scope, next, current)).rejects.toThrow('같은 내용');
+    await writes.prepare(scope, deleting('other', 'other-source'), current);
+    expect(await writes.read(scope)).toHaveLength(2);
+    expect(m.call).not.toHaveBeenCalled();
+});
+it('삭제 applied는 현재행부재를 뜻하지 않으며 다른본문hash의 readonly결과도 조회·기기정리를 허용한다', async () => {
+    const entry = await writes.prepare(scope, deleting(), current);
+    const past = { ...result(entry), requestHash: 'a'.repeat(64) };
+    m.call.mockResolvedValueOnce({ data: past });
+    const observed = await writes.command(scope, entry, 'inspect', current);
+    expect(writes.projection(entry, observed.result).currentState).toContain('현재 거래의 존재 여부는 다시 읽어');
+    expect(writes.projection(entry, observed.result).referenceRows[0].cause).toContain('현재 입력이 저장됐다는 뜻은 아닙니다');
+    m.call.mockResolvedValueOnce({ data: past });
+    await writes.discard(scope, entry, current);
+    expect(m.call.mock.calls.map(call => call[0].mode)).toEqual(['inspect', 'inspect']);
+    expect(m.get).not.toHaveBeenCalled();
+});
+it('수정 body+삭제 sidecar 혼합ref는 각terminal결과 뒤 표시쌍만 정리한다', async () => {
+    const edit = await writes.prepare(scope, stockEdit(), current);
+    const deletion = await writes.prepare(scope, deleting(), current);
+    localStorage.setItem(edit.key + ':reference', deletion.referenceRaw!);
+    const entry = (await writes.read(scope)).find(value => value.key === edit.key)!;
+    expect(entry.references).toHaveLength(2);
+    expect(writes.projection(entry).canRetry).toBe(false);
+    m.call.mockResolvedValueOnce({ data: result(edit) }).mockResolvedValueOnce({ data: result(deletion, 'unknown') });
+    await expect(writes.discard(scope, entry, current)).rejects.toThrow('아직');
+    m.call.mockResolvedValueOnce({ data: result(edit) }).mockResolvedValueOnce({ data: result(deletion, 'cancelled') });
+    await writes.discard(scope, entry, current);
+    expect(localStorage.getItem(deletion.key)).toBe(deletion.bodyRaw);
+});
+it('삭제 ref-only 손상은 apply 없이 결과조회·중단·명시정리한다', async () => {
+    const entry = await writes.prepare(scope, deleting(), current);
+    localStorage.setItem(entry.key, '{손상');
+    const [broken] = await writes.read(scope);
+    await expect(writes.command(scope, broken, 'apply', current)).rejects.toThrow('일치');
+    m.call.mockResolvedValueOnce({ data: result(entry, 'unknown') });
+    await writes.command(scope, broken, 'inspect', current);
+    m.call.mockResolvedValueOnce({ data: result(entry, 'cancelled') });
+    await writes.command(scope, broken, 'cancel', current);
     m.call.mockResolvedValueOnce({ data: result(entry, 'cancelled') });
     await writes.discard(scope, broken, current);
     expect(m.call.mock.calls.map(call => call[0].mode)).toEqual(['inspect', 'cancel', 'inspect']);

@@ -6,6 +6,8 @@ import {
   normalizePalletTransactionResult, normalizePalletTransactionOpenResult, serializePalletTransactionRequest,
   normalizePalletExchangeOpenInput, normalizePalletExchangeSource, normalizePalletExchangeOpenResult,
   normalizePalletOperationReference, normalizePalletEditReference, normalizePalletStockEditFields, normalizePalletStockEditOpenResult,
+  normalizePalletTransactionDeleteOpenInput, normalizePalletTransactionDeleteOpenResult, normalizePalletTransactionDeleteSource,
+  type PalletTransactionDeleteOpenResult,
   palletTransactionDocumentId, type PalletOperationReference, type PalletTransactionResult, type PalletStockEditOpenResult,
   type PalletTransactionOpenResult, type PalletTransactionAnyRequest, type PalletExchangeOpenResult,
 } from './shared/palletTransactionCommand';
@@ -43,22 +45,46 @@ function sameCompany(snapshot: admin.firestore.DocumentSnapshot, companyId: stri
   if (!snapshot.exists || snapshot.data()?.companyId !== companyId) throw new HttpsError('failed-precondition', `${label}의 현재 회사와 존재 여부를 확인해 주세요.`);
 }
 
-/** 등록·교체완료·필드 편집과 영수증을 원자 확정하며, 기존 삭제의 총량 역산은 별도 한계로 남긴다. */
+/** 등록·교체완료·필드 편집과 영수증을 원자 확정하며, 거래 삭제도 원자 확정하되 기존 총량 역산 정책은 유지한다. */
 export async function executePalletTransactionForActor(
   db: admin.firestore.Firestore, actor: Actor | undefined, input: unknown,
-): Promise<PalletTransactionResult | PalletTransactionOpenResult | PalletExchangeOpenResult | PalletStockEditOpenResult> {
+): Promise<PalletTransactionResult | PalletTransactionOpenResult | PalletExchangeOpenResult | PalletStockEditOpenResult | PalletTransactionDeleteOpenResult> {
   if (!actor?.uid || typeof actor.token.employeeId !== 'string' || !['taebaek', 'punghoe'].includes(String(actor.token.companyId)))
     throw new HttpsError('permission-denied', '로그인한 회사 직원만 파렛트 요청을 처리할 수 있습니다.');
   const value = object(input), mode = value.mode;
-  if (!['open', 'open-exchange', 'open-edit', 'apply', 'inspect', 'cancel'].includes(String(mode))) throw new HttpsError('invalid-argument', '파렛트 처리 종류를 확인해 주세요.');
+  if (!['open', 'open-exchange', 'open-edit', 'open-delete', 'apply', 'inspect', 'cancel'].includes(String(mode))) throw new HttpsError('invalid-argument', '파렛트 처리 종류를 확인해 주세요.');
   requireFields(value, mode === 'apply' ? ['mode', 'request'] : mode === 'open' ? ['mode', 'reference', 'palletId', 'originalTotal']
-    : mode === 'open-exchange' ? ['mode', 'reference', 'sourceTransactionId', 'source'] : mode === 'open-edit' ? ['mode', 'reference', 'original'] : ['mode', 'reference']);
+    : mode === 'open-delete' ? ['mode', 'reference', 'original', 'pallet'] : mode === 'open-exchange' ? ['mode', 'reference', 'sourceTransactionId', 'source'] : mode === 'open-edit' ? ['mode', 'reference', 'original'] : ['mode', 'reference']);
   let request: PalletTransactionAnyRequest | undefined, reference: PalletOperationReference;
   try {
     request = mode === 'apply' ? normalizePalletTransactionRequest(value.request) : undefined;
     reference = request?.reference ?? normalizePalletOperationReference(value.reference);
   } catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '파렛트 원문을 확인해 주세요.'); }
   if (reference.companyId !== actor.token.companyId) throw new HttpsError('permission-denied', '다른 회사 파렛트 요청은 처리할 수 없습니다.');
+  if (mode === 'open-delete') {
+    let opening;
+    try { opening = normalizePalletTransactionDeleteOpenInput({ reference, original: value.original, ...(value.pallet !== undefined ? { pallet: value.pallet } : {}) }); }
+    catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '삭제 원문을 확인해 주세요.'); }
+    return db.runTransaction(async tx => {
+      const source = await tx.get(db.collection('palletTransactions').doc(opening.reference.transactionId));
+      sameCompany(source, reference.companyId, '삭제할 거래');
+      const version = nativeVersion(source);
+      if (!version || JSON.stringify(normalizePalletTransactionDeleteSource(source.data())) !== JSON.stringify(opening.original))
+        throw new HttpsError('failed-precondition', '삭제할 거래가 변경됐습니다. 현재 이력을 다시 열어 주세요.');
+      let pallet;
+      if (opening.pallet) {
+        const current = await tx.get(db.collection('pallets').doc(opening.original.palletId));
+        if (current.exists !== opening.pallet.exists) throw new HttpsError('failed-precondition', '파렛트 존재 여부가 변경됐습니다.');
+        if (opening.pallet.exists) {
+          sameCompany(current, reference.companyId, '파렛트');
+          const expectedVersion = nativeVersion(current);
+          if (!expectedVersion || current.data()!.total !== opening.pallet.total) throw new HttpsError('failed-precondition', '파렛트 총량이 변경됐습니다.');
+          pallet = { exists: true as const, total: opening.pallet.total, expectedVersion };
+        } else pallet = { exists: false as const };
+      }
+      return normalizePalletTransactionDeleteOpenResult({ ...opening, actorUid: actor.uid, expectedVersion: version, ...(pallet ? { pallet } : {}) });
+    });
+  }
   if (mode === 'open-edit') {
     let editReference, original;
     try {
@@ -119,6 +145,38 @@ export async function executePalletTransactionForActor(
       const stopped = result(reference, actor.uid, 'cancelled', null);
       tx.create(operation, { ...stopped, requestText: null, createdAt: new Date().toISOString() });
       return stopped;
+    }
+    if (request!.version === 4) {
+      const deletion = request!, target = db.collection('palletTransactions').doc(deletion.reference.transactionId);
+      const source = await tx.get(target);
+      const palletRef = db.collection('pallets').doc(deletion.original.palletId);
+      const pallet = deletion.pallet ? await tx.get(palletRef) : undefined;
+      let nextTotal: number | undefined;
+      try {
+        sameCompany(source, reference.companyId, '삭제할 거래');
+        if (nativeVersion(source) !== deletion.expectedVersion
+          || JSON.stringify(normalizePalletTransactionDeleteSource(source.data())) !== JSON.stringify(deletion.original))
+          throw new HttpsError('failed-precondition', '삭제할 거래가 준비 이후 변경됐습니다. 현재 이력을 다시 열어 주세요.');
+        if (deletion.pallet && pallet) {
+          if (pallet.exists !== deletion.pallet.exists) throw new HttpsError('failed-precondition', '파렛트 존재 여부가 변경됐습니다.');
+          if (deletion.pallet.exists) {
+            sameCompany(pallet, reference.companyId, '파렛트');
+            if (nativeVersion(pallet) !== deletion.pallet.expectedVersion || pallet.data()!.total !== deletion.pallet.total)
+              throw new HttpsError('failed-precondition', '파렛트가 삭제 준비 이후 변경됐습니다.');
+            const calculated = deletion.pallet.total + (deletion.original.type === 'in' ? -deletion.original.quantity : deletion.original.quantity);
+            if (!Number.isSafeInteger(calculated)) throw new HttpsError('failed-precondition', '삭제 후 총량의 안전한 정수 범위를 확인해 주세요.');
+            nextTotal = Math.max(0, calculated);
+          }
+        }
+      } catch (error) {
+        throw new HttpsError('failed-precondition', error instanceof Error ? error.message : '삭제 원문을 확인하지 못했습니다.',
+          { version: 1, operationStatus: 'rejected', writes: false, reference });
+      }
+      const applied = { ...result(reference, actor.uid, 'applied', digest), message: '이 파렛트 거래의 삭제를 완료했습니다. 이후 현재 거래 존재 여부는 다시 확인해 주세요.' };
+      tx.delete(target);
+      if (nextTotal !== undefined) tx.update(palletRef, { total: nextTotal });
+      tx.create(operation, { ...applied, requestText: text, createdAt: new Date().toISOString() });
+      return applied;
     }
     if (request!.version === 3) {
       const edit = request!, target = db.collection('pallets').doc(edit.reference.palletId);
