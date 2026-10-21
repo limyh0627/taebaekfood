@@ -11,7 +11,6 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 import ReactDOM from 'react-dom/client';
-import { signOut } from 'firebase/auth';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
@@ -24,12 +23,12 @@ import '../../src/index.css';
 import { loadStartView, saveView } from '../../src/shared/startView';
 import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
-import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import AppDialogHost from '../../src/shared/components/AppDialogHost';
+import SessionLogoutState from '../../src/shared/components/SessionLogoutState';
 import { employeeRuntime } from '../../src/shared/employeeSession';
-import { auth, usingFirebaseEmulators } from '../../src/shared/firebase';
+import { usingFirebaseEmulators } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -50,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}> = ({currentUser,onSessionLogout}) => {
+const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>Promise<void>}> = ({currentUser,onSessionLogout}) => {
   //  숫자 칸 위에서 휠을 굴리면 값이 조용히 바뀐다 — 브라우저 기본 동작이다.
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
@@ -84,15 +83,7 @@ const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
   const appData = useAppData(currentUser !== null, companyId, 관리자구독);
   const adminData = useAdminData(currentUser !== null, companyId);
 
-  const handleLogout = () => {
-    //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
-    //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
-    if (currentUser) void unregisterPush(currentUser.id);
-    void signOut(auth);
-    onSessionLogout();
-    setIsAdminAuthenticated(false);
-    setCurrentView('dashboard');
-  };
+
 
   //  들어갈 수 있는지는 직원 기록의 `adminAccess` 칸이 정한다(canEnterAdmin).
   //  localStorage 에 박힌 사본은 낡으니, 지금 목록의 권한으로 덮어 본다.
@@ -110,7 +101,7 @@ const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
           </div>
           <h2 className="text-lg font-black text-slate-800">관리자 전용 페이지</h2>
           <p className="text-sm text-slate-500">이 페이지는 관리자 계정만 접근할 수 있습니다.<br/>현장 직원은 현장 앱을 이용해 주세요.</p>
-          <button onClick={handleLogout} className="w-full py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all">
+          <button onClick={onSessionLogout} className="w-full py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all">
             로그아웃
           </button>
         </div>
@@ -129,7 +120,7 @@ const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
       onAdminAuth={setIsAdminAuthenticated}
       currentView={currentView}
       setCurrentView={setCurrentView}
-      onLogout={handleLogout}
+      onLogout={onSessionLogout}
       appData={{ ...appData, companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO }}
       adminData={adminData}
       onPreviewStaff={!previewAsStaff ? () => setPreviewAsStaff(true) : undefined}
@@ -142,9 +133,10 @@ const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
 
 const AdminRoot: React.FC = () => {
  const session=useEmployeeAuthSession();
+ if(session.logoutState!=='idle')return <SessionLogoutState state={session.logoutState} error={session.logoutError} onRetry={session.retryLogout}/>;
  if(!session.authChecked)return <div className="min-h-screen bg-slate-50"/>;
  if(!session.currentUser)return <AuthPage app="admin" onLogin={session.onLogin}/>;
- return <AdminSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.clearSession}/>;
+ return <AdminSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.logout}/>;
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

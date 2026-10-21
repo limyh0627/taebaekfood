@@ -11,7 +11,6 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 import ReactDOM from 'react-dom/client';
-import { signOut } from 'firebase/auth';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
@@ -24,12 +23,11 @@ import '../../src/index.css';
 import { loadStartView, saveView } from '../../src/shared/startView';
 import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
-import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import AppDialogHost from '../../src/shared/components/AppDialogHost';
+import SessionLogoutState from '../../src/shared/components/SessionLogoutState';
 import { employeeRuntime } from '../../src/shared/employeeSession';
-import { auth } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -50,7 +48,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}> = ({currentUser,onSessionLogout}) => {
+const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>Promise<void>}> = ({currentUser,onSessionLogout}) => {
   //  숫자 칸 위에서 휠을 굴리면 값이 조용히 바뀐다 — 브라우저 기본 동작이다.
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
@@ -70,14 +68,7 @@ const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
   const appData = useAppData(currentUser !== null, companyId, false);
   const adminData = useAdminData(false, companyId);
 
-  const handleLogout = () => {
-    //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
-    //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
-    if (currentUser) void unregisterPush(currentUser.id);
-    void signOut(auth);
-    onSessionLogout();
-    setCurrentView('orders');
-  };
+
 
   if (currentUser && currentView === 'partner-portal') {
     return (
@@ -101,7 +92,7 @@ const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
       onAdminAuth={() => {}}
       currentView={currentView}
       setCurrentView={setCurrentView}
-      onLogout={handleLogout}
+      onLogout={onSessionLogout}
       appData={{ ...appData, companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO }}
       adminData={adminData}
     />
@@ -110,9 +101,10 @@ const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>void}
 
 const StaffRoot: React.FC = () => {
  const session=useEmployeeAuthSession();
+ if(session.logoutState!=='idle')return <SessionLogoutState state={session.logoutState} error={session.logoutError} onRetry={session.retryLogout}/>;
  if(!session.authChecked)return <div className="min-h-screen bg-slate-50"/>;
  if(!session.currentUser)return <AuthPage app="staff" onLogin={session.onLogin}/>;
- return <StaffSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.clearSession}/>;
+ return <StaffSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.logout}/>;
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
