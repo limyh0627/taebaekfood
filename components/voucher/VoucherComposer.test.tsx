@@ -491,3 +491,21 @@ describe('일반 발행 저장 중 닫기', () => {
     } finally { alertSpy.mockRestore(); }
   });
 });
+
+it('실제 인증 A→B→A 뒤 이전 발행 ACK는 창을 닫거나 보관 원문을 지우지 않는다', async () => {
+  const u = userEvent.setup();
+  let finish!: (value: unknown) => void;
+  const save = vi.fn(() => new Promise<unknown>(resolve => { finish = resolve; }));
+  const { onClose } = 띄우기({ fixedCostTemplates: [템플릿({ name: '인증 왕복', mode: '일반', dir: '출금', accountCode: '811', amount: 10000 })], onIssueCashEntry: save });
+  await 템플릿고르기(u, '인증 왕복');
+  await 저장(u);
+  expect(save).toHaveBeenCalledTimes(1);
+  const key = 'voucher-composer-issue:taebaek:test-auth-uid';
+  const original = localStorage.getItem(key);
+  const emit = (uid: string) => { Object.assign(auth, { currentUser: { uid } }); paymentIo.listeners.forEach(listener => listener({ uid })); };
+  await act(async () => { emit('other-admin'); });
+  await act(async () => { emit('test-auth-uid'); });
+  await act(async () => { finish({ id: 'saved' }); });
+  expect(onClose).not.toHaveBeenCalled();
+  expect(localStorage.getItem(key)).toBe(original);
+});

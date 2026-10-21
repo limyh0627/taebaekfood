@@ -2,7 +2,7 @@ import { CashTemplateModal } from '../../src/features/statements/ui/CashTemplate
 import {AccrualJournalPreview,CashJournalPreview} from '../../src/features/statements/ui/VoucherJournalPreview';
 import {auth} from '../../src/shared/firebase';
 import {onAuthStateChanged} from 'firebase/auth';
-import {readVoucherPending,storeVoucherPending,clearVoucherPending,voucherPendingKey,voucherNoWriteProof,type VoucherIssuePending} from '../../src/features/statements/infrastructure/voucherIssuePending';
+import { useVoucherIssue } from '../../src/features/statements/hooks/useVoucherIssue';
 import { templateStatementType, templateStatementConflict, type TemplateStatementType } from '../../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -232,56 +232,15 @@ export default function VoucherComposer({
       unsubscribe();
     };
   }, []);
-  const requestClose = () => { if (!transferLock.current && !loanSaveLock.current && !issueLock.current) onClose(); };
-  const issueLock = useRef<object|null>(null);
-  const actorId = auth.currentUser?.uid ?? '';
-  const pendingKey = voucherPendingKey(companyId, actorId);
-  const [issuePending, setIssuePending] = useState<VoucherIssuePending | null>(null);
-  const [issueError, setIssueError] = useState('');
-  const [issueCorrupt,setIssueCorrupt] = useState(false);
-  const [issueSaving, setIssueSaving] = useState(false);
+  const issue = useVoucherIssue({ companyId, onIssueCashEntry, onAddCashEntry, onAddIssuedStatement, onApplied: onClose });
+  const { actorUid: actorId, pending: issuePending, error: issueError, corrupt: issueCorrupt, saving: issueSaving, submit: submitIssue } = issue;
+  const requestClose = () => { if (!transferLock.current && !loanSaveLock.current && !issue.isBusy()) onClose(); };
   const generalSaveLock=useRef<object|null>(null);
   const [generalSaving,setGeneralSaving]=useState(false);
   const [generalPaymentError,setGeneralPaymentError]=useState('');
   const generalPartner=useRef(quickPayClientId);
   generalPartner.current=quickPayClientId;
   useEffect(()=>{generalSaveLock.current=null;setGeneralSaving(false);setGeneralPaymentError('');},[companyId,actorId,quickPayClientId]);
-  useEffect(() => {
-    issueLock.current=null;setIssuePending(null); setIssueError(''); setIssueSaving(false);setIssueCorrupt(false);
-    try { setIssuePending(readVoucherPending(pendingKey, companyId, actorId)); }
-    catch (error) { setIssueCorrupt(true);setIssueError(error instanceof Error ? error.message : String(error)); }
-  }, [pendingKey, companyId, actorId]);
-  const submitIssue = async (pending: VoucherIssuePending, retry = false) => {
-    if (issueLock.current) return;
-    const scope = transferScope.current.token;
-    const alive = () => transferScope.current.alive && transferScope.current.token === scope
-      && auth.currentUser?.uid === pending.userId && pending.companyId === companyId;
-    let encoded = '', sent = false;
-    const lock={};issueLock.current = lock; setIssueSaving(true);
-    try {
-      if (!pending.userId || !alive()) throw new Error('로그인과 회사를 다시 확인해 주세요.');
-      const save = pending.kind === 'cashEntries' ? onIssueCashEntry ?? onAddCashEntry : onAddIssuedStatement;
-      if (!save) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
-      encoded = storeVoucherPending(pendingKey, pending);
-      setIssuePending(pending); setIssueError(''); sent = true;
-      if (pending.kind === 'cashEntries') await (onIssueCashEntry ?? onAddCashEntry)!(pending.document);
-      else await onAddIssuedStatement!(pending.document);
-      if (!alive()) return;
-      clearVoucherPending(pendingKey, encoded); setIssuePending(null); onClose();
-    } catch (error) {
-      if (!alive()) return;
-      if (sent && !retry && voucherNoWriteProof(error, pending)) {
-        clearVoucherPending(pendingKey, encoded); setIssuePending(null);
-      }
-      setIssueError(error instanceof Error ? error.message : String(error));
-      const detail = error instanceof Error ? error.message : String(error);
-      alert(sent
-        ? voucherNoWriteProof(error, pending)
-          ? `전표가 저장되지 않았습니다. ${retry ? '이전 요청은 보존했습니다. 이전 전표 재시도로 같은 요청 결과를 확인해 주세요.' : '입력을 수정한 뒤 다시 저장해 주세요.'} ${detail}`
-          : `전표 저장 결과를 확인하지 못했습니다. 새로 발행하지 말고 이전 전표 재시도로 같은 요청 결과를 확인해 주세요. ${detail}`
-        : `전표를 전송하기 전에 입력 또는 최초 요청 보관을 확인하지 못했습니다. 전송하지 않았으며 입력은 유지됩니다. ${detail}`);
-    } finally { if(issueLock.current===lock){issueLock.current=null;if (alive()) setIssueSaving(false);} }
-  };
   const saveCashEntry = async (entry: CashEntry) => {
     // 대출은 기존 전용 명령의 재시도 원문을 사용한다.
     if (entry.loanId) { await onAddCashEntry?.(entry); return; }
@@ -865,7 +824,7 @@ export default function VoucherComposer({
               <p>{issuePending.kind === 'cashEntries' ? issuePending.document.date : issuePending.document.tradeDate} · {issuePending.kind === 'cashEntries' ? issuePending.document.amount.toLocaleString() : issuePending.document.totalAmount.toLocaleString()}원</p>
               <p className="text-sm">{issuePending.kind === 'cashEntries' ? issuePending.document.note : issuePending.document.memo} 새 전표를 만들지 않고 이전 내용으로 재시도합니다.</p>
               <ul className="text-sm">{(issuePending.kind==='issuedStatements'?issuePending.document.items.map(line=>({code:line.accountCode,note:line.name,amount:line.total,side:line.side})):issuePending.document.lines?.map(line=>({code:line.accountCode,note:line.note,amount:line.amount,side:line.side}))??[{code:issuePending.document.accountCode,note:issuePending.document.note,amount:issuePending.document.amount,side:undefined}]).map((line,index)=><li key={index}>{line.side} {accountCodes.find(code=>code.code===line.code)?.name??line.code} · {line.note} {line.amount.toLocaleString()}원</li>)}</ul>
-              <button type="button" disabled={issueSaving} onClick={() => void submitIssue(issuePending,true)} className="rounded-lg bg-emerald-600 px-4 py-2 font-bold text-white">이전 전표 재시도</button>
+              <button type="button" disabled={issueSaving} onClick={() => void issue.retry()} className="rounded-lg bg-emerald-600 px-4 py-2 font-bold text-white">이전 전표 재시도</button>
             </section>}
             {issueError && <p role="alert" className="px-6 py-3 text-sm text-rose-600">{issueError}</p>}
             {partnerPaymentEnabled&&<section aria-label="일반전표의 이전 수금·지불 확인" className="space-y-3 border-b border-slate-200 p-4"><PartnerPaymentRecoveryPanel payment={paymentRecovery}/></section>}
