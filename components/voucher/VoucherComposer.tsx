@@ -232,7 +232,7 @@ export default function VoucherComposer({
       unsubscribe();
     };
   }, []);
-  const requestClose = () => { if (!transferLock.current && !loanSaveLock.current) onClose(); };
+  const requestClose = () => { if (!transferLock.current && !loanSaveLock.current && !issueLock.current) onClose(); };
   const issueLock = useRef<object|null>(null);
   const actorId = auth.currentUser?.uid ?? '';
   const pendingKey = voucherPendingKey(companyId, actorId);

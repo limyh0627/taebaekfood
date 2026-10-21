@@ -437,3 +437,57 @@ it('옛 UID의 늦은 수금 조회는 현재 일반전표를 닫거나 현재 �
   expect(screen.queryByRole('region',{name:'이전 수금·지불 원문과 복구'})).toBeNull();expect(screen.getByLabelText('금액')).toHaveValue('2,891,460');expect(view.onClose).not.toHaveBeenCalled();expect(view.recordPayment).not.toHaveBeenCalled();expect(localStorage.getItem('partner-payment-pending:taebaek:p1:test-auth-uid')).not.toBeNull();
  }finally{(auth.currentUser as {uid:string}).uid='test-auth-uid';}
 });
+
+describe('일반 발행 저장 중 닫기', () => {
+  it.each(['일반', '급여', '보험', '세금'] as const)('%s 저장 응답 전에는 X와 취소가 닫지 않고 ACK 뒤에만 닫는다', async mode => {
+    const u = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    const save = vi.fn(() => new Promise<unknown>(resolve => { finish = resolve; }));
+    const { onClose } = 띄우기({
+      fixedCostTemplates: [템플릿({ name: '닫기 보호', mode, dir: '출금', accountCode: '811', amount: 10000 })],
+      onIssueCashEntry: save,
+    });
+    await 템플릿고르기(u, '닫기 보호');
+    if (mode === '급여') await 채우기(u, '총급여', '10000');
+    if (mode === '보험') await 채우기(u, '회사부담', '10000');
+    if (mode === '세금') await 채우기(u, '부가세', '10000');
+    await 저장(u);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled();
+    await u.click(screen.getByRole('button', { name: '일반전표 발행 닫기' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({ id: 'saved' }); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).toBeNull();
+  });
+
+  it('응답 실패 뒤에는 닫을 수 있고 재마운트 원문 재시도 중에는 다시 닫기를 막는다', async () => {
+    const u = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    const save = vi.fn().mockRejectedValueOnce(new Error('응답 유실'))
+      .mockImplementationOnce(() => new Promise<unknown>(resolve => { finish = resolve; }));
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    try {
+      const first = 띄우기({ fixedCostTemplates: [템플릿({ name: '재시도 보호', mode: '일반', dir: '출금', accountCode: '811', amount: 10000 })], onIssueCashEntry: save });
+      await 템플릿고르기(u, '재시도 보호');
+      await 저장(u);
+      await screen.findByRole('button', { name: '이전 전표 재시도' });
+      const original = structuredClone(save.mock.calls[0][0]);
+      await u.click(screen.getByRole('button', { name: '일반전표 발행 닫기' }));
+      expect(first.onClose).toHaveBeenCalledTimes(1);
+      const { cleanup } = await import('@testing-library/react');
+      cleanup();
+      const second = 띄우기({ onIssueCashEntry: save });
+      await u.click(await screen.findByRole('button', { name: '이전 전표 재시도' }));
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(save.mock.calls[1][0]).toEqual(original);
+      expect(screen.getByRole('button', { name: '취소' })).toBeDisabled();
+      await u.click(screen.getByRole('button', { name: '일반전표 발행 닫기' }));
+      expect(second.onClose).not.toHaveBeenCalled();
+      await act(async () => { finish({ id: 'saved' }); });
+      expect(second.onClose).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).toBeNull();
+    } finally { alertSpy.mockRestore(); }
+  });
+});
