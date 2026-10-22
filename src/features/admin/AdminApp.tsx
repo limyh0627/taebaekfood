@@ -3369,7 +3369,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'partner-signup' && (
-            <PartnerSignupApproval partners={partners} />
+            <PartnerSignupApproval companyId={companyId} partners={partners} />
           )}
           {(currentView === 'documents' || inCabinetDoc) && (() => {
             // 원료만 있는 출고 주문도 서류 처리 뒤 이력으로 이동해야 한다. 품목 유형 필터는

@@ -1,25 +1,11 @@
-import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useEffect, useMemo, useState } from 'react';
+import { usePartnerSignupApproval } from '../src/features/partners/hooks/usePartnerSignupApproval';
+import React, { useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, Search, UserCheck, Phone, Mail, Calendar, Building2, AlertCircle } from 'lucide-react';
-import { where } from 'firebase/firestore';
-import { Partner } from '../src/shared/types';
-import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
+import { Partner, type CompanyId } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
-interface PartnerSignupUser {
-  id: string;
-  uid?: string;
-  username?: string;
-  name?: string;
-  phone?: string;
-  email?: string;
-  type?: 'business' | 'individual';
-  status?: 'pending' | 'approved' | 'rejected';
-  linkedPartnerId?: string | null;
-  createdAt?: string;
-}
-
 interface Props {
+  companyId: CompanyId;
   partners: Partner[];
 }
 
@@ -30,55 +16,15 @@ const fmtDate = (iso?: string) => {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
-  const [pendingUsers, setPendingUsers] = useState<PartnerSignupUser[]>([]);
+const PartnerSignupApproval: React.FC<Props> = ({ partners: allPartners, companyId }) => {
+  const approval = usePartnerSignupApproval(companyId);
+  const partners = allPartners.filter(partner => partner.companyId === companyId);
+  const pendingUsers = approval.rows;
   const [searchByUser, setSearchByUser] = useState<Record<string, string>>({});
   const [selectedPartnerByUser, setSelectedPartnerByUser] = useState<Record<string, string>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const unsub = subscribeToCollection<PartnerSignupUser>(
-      'users',
-      (data) => setPendingUsers(data.filter(u => u.status === 'pending')),
-      [where('status', '==', 'pending')],
-    );
-    return unsub;
-  }, []);
-
   const sortedUsers = useMemo(() => {
     return [...pendingUsers].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
   }, [pendingUsers]);
-
-  const handleApprove = async (user: PartnerSignupUser) => {
-    const pid = selectedPartnerByUser[user.id];
-    if (!pid) { alert('연결할 거래처를 먼저 선택해주세요.'); return; }
-    const partner = partners.find(p => p.id === pid);
-    if (!partner) { alert('선택한 거래처를 찾을 수 없습니다.'); return; }
-    setBusyId(user.id);
-    try {
-      await setDocument('users', user.id, {
-        status: 'approved',
-        linkedPartnerId: pid,
-        linkedPartnerName: partner.name,
-        approvedAt: new Date().toISOString(),
-      });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleReject = async (user: PartnerSignupUser) => {
-    if (!await appConfirm(`${user.name ?? user.username ?? '해당 사용자'} 님의 가입을 거절하시겠습니까?`)) return;
-    setBusyId(user.id);
-    try {
-      await setDocument('users', user.id, {
-        status: 'rejected',
-        rejectedAt: new Date().toISOString(),
-      });
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   return (
     <div className="p-4 sm:p-6">
@@ -92,7 +38,9 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
         }
       />
 
-      {sortedUsers.length === 0 ? (
+      {approval.status === 'loading' && <p role="status" className="mt-4 text-sm text-slate-600">가입 신청 목록을 확인하고 있습니다.</p>}
+      {approval.status === 'error' && <div role="alert" className="mt-4 rounded-xl border p-3 text-sm"><p>{approval.error}</p><button className="mt-2 h-9 rounded-lg border bg-white px-3 text-xs font-semibold" onClick={approval.retryRead}>다시 확인</button></div>}
+      {approval.status === 'ready' && sortedUsers.length === 0 ? (
         <div className="mt-8 bg-white rounded-2xl border border-slate-200 p-12 text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-300 mx-auto mb-3" />
           <p className="text-sm text-slate-500">승인 대기 중인 가입 신청이 없습니다.</p>
@@ -100,6 +48,8 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
       ) : (
         <div className="mt-6 space-y-3">
           {sortedUsers.map((user) => {
+            const record = approval.records.get(user.id);
+            const busy = approval.busy(user.id);
             const search = searchByUser[user.id] ?? '';
             const selectedId = selectedPartnerByUser[user.id] ?? '';
             const selectedPartner = partners.find(p => p.id === selectedId);
@@ -145,9 +95,9 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <input
-                        type="text"
+                        disabled={busy || !!record} type="text"
                         value={search}
-                        onChange={(e) => setSearchByUser(prev => ({ ...prev, [user.id]: e.target.value }))}
+                        onChange={(e) => { if (!approval.busy(user.id) && !record) setSearchByUser(prev => ({ ...prev, [user.id]: e.target.value })); }}
                         placeholder="이름·대표자·사업자번호·연락처"
                         className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
@@ -160,7 +110,7 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => setSelectedPartnerByUser(prev => ({ ...prev, [user.id]: p.id }))}
+                            disabled={busy || !!record} onClick={() => { if (!approval.busy(user.id) && !record) setSelectedPartnerByUser(prev => ({ ...prev, [user.id]: p.id })); }}
                             className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors ${selectedId === p.id ? 'bg-blue-50' : ''}`}
                           >
                             <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -197,11 +147,21 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
                       </div>
                     )}
 
-                    <div className="mt-3 flex items-center gap-2">
+                    {!record && approval.messages[user.id] && <p role="status" className="mt-2 text-xs text-slate-700">{approval.messages[user.id]}</p>}
+                    {record && <div className="mt-3 space-y-2 text-xs">
+                      <p>{record.message}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button className="min-h-9 rounded-lg border bg-white px-3 text-xs font-semibold" disabled={busy} onClick={() => approval.inspect(user.id)}>현재 상태 확인</button>
+                        {'observed' in record && (record.observed === null || record.observed?.status === 'approved' || record.observed?.status === 'rejected') && <button className="min-h-9 rounded-lg border bg-white px-3 text-xs font-semibold" disabled={busy} onClick={() => approval.closeObserved(user.id)}>확인한 내용 닫기</button>}
+                        {record.retryAllowed && <button className="min-h-9 rounded-lg border bg-white px-3 text-xs font-semibold" disabled={busy} onClick={() => approval.retryDecision(user.id)}>같은 내용으로 다시 시도</button>}
+                      </div>
+                      <p>확인할 요청은 이 화면에만 보관됩니다. 결과 확인 전 새로고침하거나 화면을 나가지 마세요.</p>
+                    </div>}
+                    {!record && <div className="mt-3 flex items-center gap-2">
                       <button
                         type="button"
-                        disabled={busyId === user.id || !selectedId}
-                        onClick={() => handleApprove(user)}
+                        disabled={busy || !selectedId}
+                        onClick={() => approval.approve(user, selectedId)}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white transition-colors"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -209,14 +169,14 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
                       </button>
                       <button
                         type="button"
-                        disabled={busyId === user.id}
-                        onClick={() => handleReject(user)}
+                        disabled={busy}
+                        onClick={() => approval.reject(user)}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         거절
                       </button>
-                    </div>
+                    </div>}
                   </div>
                 </div>
               </div>

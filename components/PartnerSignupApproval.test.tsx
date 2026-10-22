@@ -1,0 +1,21 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import type {Partner} from '../src/shared/types';
+const m=vi.hoisted(()=>({user:{uid:'admin'},subscribe:vi.fn(),write:vi.fn(),read:vi.fn(),confirm:vi.fn()}));
+vi.mock('../src/shared/firebase',()=>({auth:{get currentUser(){return m.user;}}}));
+vi.mock('firebase/auth',()=>({onIdTokenChanged:(_auth:unknown,cb:(u:unknown)=>void)=>{queueMicrotask(()=>cb(m.user));return()=>{};}}));
+vi.mock('../src/shared/services/partnerSignupApprovalService',async original=>({...await original<typeof import('../src/shared/services/partnerSignupApprovalService')>(),subscribePendingPartnerSignups:m.subscribe,decidePartnerSignup:m.write,readPartnerSignup:m.read}));
+vi.mock('../src/shared/components/appDialog',()=>({appConfirm:m.confirm}));
+import PartnerSignupApproval from './PartnerSignupApproval';
+import {PartnerSignupError} from '../src/shared/services/partnerSignupApprovalService';
+const partner:Partner={id:'p',companyId:'taebaek',name:'연결 거래처',type:'일반'};
+const row={id:'signup',companyId:'taebaek',name:'신청자',status:'pending'};
+const props={companyId:'taebaek' as const,partners:[partner]};
+beforeEach(()=>{m.user={uid:'admin'};m.subscribe.mockReset();m.write.mockReset();m.read.mockReset();m.confirm.mockReset();m.subscribe.mockImplementation((_scope,cb)=>{cb([row]);return()=>{};});});afterEach(cleanup);
+it('대기 조회는 회사 출처와 오류 포트를 서비스에 전달한다',()=>{render(<PartnerSignupApproval {...props}/>);expect(m.subscribe.mock.calls[0][0]).toMatchObject({companyId:'taebaek',actorUid:'admin'});expect(m.subscribe.mock.calls[0][2]).toEqual(expect.any(Function));});
+it('거절 확인 대기중 같은 행은 확인창을 한 번만 예약한다',async()=>{let resolve!:(value:boolean)=>void;m.confirm.mockImplementation(()=>new Promise(r=>resolve=r));render(<PartnerSignupApproval {...props}/>);const button=screen.getByRole('button',{name:'거절'});fireEvent.click(button);fireEvent.click(button);expect(m.confirm).toHaveBeenCalledOnce();await act(async()=>resolve(false));});
+it('읽기 실패를 대기 없음으로 표시하지 않고 명시 재조회한다',()=>{m.subscribe.mockImplementation((_scope,_cb,error)=>{error(Error('연결 확인 필요'));return()=>{};});render(<PartnerSignupApproval {...props}/>);expect(screen.getByRole('alert')).toHaveTextContent('연결 확인 필요');expect(screen.queryByText('승인 대기 중인 가입 신청이 없습니다.')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'다시 확인'}));expect(m.subscribe).toHaveBeenCalledTimes(2);});
+it('unknown은 목록에서 사라져도 현재상태확인으로 접근하고 pending을 삭제하지 않는다',async()=>{m.write.mockRejectedValue(new PartnerSignupError('응답 미확인','unknown'));render(<PartnerSignupApproval {...props}/>);fireEvent.click(screen.getByRole('button',{name:'연결 거래처'}));await act(async()=>fireEvent.click(screen.getByRole('button',{name:'승인 및 연결'})));act(()=>m.subscribe.mock.calls[0][1]([]));expect(screen.getByRole('button',{name:'현재 상태 확인'})).toBeTruthy();m.read.mockResolvedValue(row);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'현재 상태 확인'})));expect(screen.getByRole('button',{name:'같은 내용으로 다시 시도'})).toBeTruthy();expect(screen.queryByRole('button',{name:'확인한 내용 닫기'})).toBeNull();});
+it('다른 회사 거래처는 승인 연결 선택목록에 표시하지 않는다',()=>{render(<PartnerSignupApproval {...props} partners={[{...partner,companyId:'punghoe'}]}/>);expect(screen.queryByRole('button',{name:'연결 거래처'})).toBeNull();});
