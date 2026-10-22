@@ -1,3 +1,4 @@
+import {handleNewOrderNotification,handleChatMessageNotification} from './pushNotifications';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 export {submitOrderCopyCommand,listOrderInterpretationRulesCommand,reviewOrderInterpretationRuleCommand} from './orderCopyCommands';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -195,136 +196,14 @@ export const dailyAutoVoucher = onSchedule(
 //   · **넣은 사람 빼고** (내가 넣고 내가 알림받을 일은 없다)
 //   · 표(token)가 죽었으면 지운다 — 안 지우면 계속 쌓여 발송이 느려진다
 // ─────────────────────────────────────────────────────────────────────────
-/**
- * 표(token)를 모아 밀고, **죽은 표는 지운다.**
- *
- * 앱을 지웠거나 기기가 바뀌면 표가 죽는데, 안 지우면 계속 쌓여 발송이 느려진다.
- * 새 주문·오피스톡이 같은 함수를 쓴다 — 한쪽만 고쳐지면 한쪽 알림만 이상해진다.
- */
-async function 밀기(
-  받을사람: { id: string; tokens: string[] }[],
-  data: { title: string; body: string; tag: string; view: string },
-  이름: string,
-) {
-  const 표: { token: string; empId: string }[] = [];
-  for (const p of 받을사람) for (const t of p.tokens) 표.push({ token: String(t), empId: p.id });
-  if (!표.length) return;
-
-  const res = await admin.messaging().sendEachForMulticast({
-    tokens: 표.map(x => x.token),
-    //  **data 만 보낸다** — notification 을 같이 보내면 폰이 제멋대로 한 번 더 띄워
-    //  알림이 두 개로 보인다. 띄우는 건 firebase-messaging-sw.js 가 한다.
-    data,
-    android: { priority: 'high' },
-    webpush: { headers: { Urgency: 'high' } },
-  });
-
-  const 죽은표: Record<string, string[]> = {};
-  res.responses.forEach((r, i) => {
-    const code = (r.error as { code?: string } | undefined)?.code ?? '';
-    if (r.success || !/registration-token-not-registered|invalid-argument/.test(code)) return;
-    const { empId, token } = 표[i];
-    (죽은표[empId] ??= []).push(token);
-  });
-  await Promise.all(Object.entries(죽은표).map(([empId, tokens]) =>
-    db.collection('employees').doc(empId).update({
-      fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokens),
-    })));
-
-  console.log(`[${이름}] 보냄 ${res.successCount}/${표.length}, 죽은 표 ${Object.values(죽은표).flat().length}개 지움`);
-}
-
 export const notifyNewOrder = onDocumentCreated(
   { region: REGION, document: 'orders/{orderId}' },
-  async (event) => {
-    const order = event.data?.data();
-    if (!order) return;
-    if (order.partnerName === '생산기록') return;   // 주문이 아니다
-
-    /*  **알림을 켠 사람 = 받을 사람**(2026-09-12 사장님).
-     *
-     *  전에는 `adminAccess === true` 인 사람에게만 보냈다. 그래서 박은지·남명숙·윤찬호는
-     *  마이페이지에서 '폰 알림 켜기' 를 눌러 표까지 받아 뒀는데도 **한 번도 안 갔다** —
-     *  "알림이 제대로 안 온다"의 정체가 이거였다. 오피스톡은 방 참여자에게 그냥 보내서
-     *  그것만 오니 '가끔 온다' 로 느껴졌다.
-     *
-     *  표가 25·32·7개씩 쌓인 것도 같은 뿌리다 — 안 보내니 죽은 표를 지울 일이 없었다.
-     *
-     *  마이페이지 버튼은 이미 "새 주문과 오피스톡 메시지를 알려드립니다" 라고 약속한다.
-     *  **표가 있다 = 본인이 직접 켰다** 이므로 그게 곧 명단이고, 끄는 것도 본인이 한다
-     *  (마이페이지 '알림 끄기' → 표를 뺀다). 관리자 앱 권한과는 상관없는 이야기다.
-     */
-    const emps = await db.collection('employees').get();
-
-    //  넣은 사람은 뺀다. 주문에 누가 넣었는지가 없으면(직원 앱) 아무도 안 뺀다.
-    const 넣은사람 = String(order.createdBy ?? '');
-
-    const 받을 = emps.docs
-      .filter(d => d.id !== 넣은사람)
-      .map(d => ({ id: d.id, tokens: (d.data().fcmTokens ?? []) as string[] }))
-      .filter(x => x.tokens.length);
-
-    /*
-     *  **주문마다 따로 쌓인다**(2026-09-09 사장님). 전에는 `tag` 가 다 `'new-order'` 라
-     *  뒤에 온 알림이 앞의 것을 **덮어썼다** — 앱을 닫아 둔 사이 3건이 들어와도
-     *  폰에는 마지막 1건만 남고, 3건이었다는 것도 알 수 없었다.
-     *
-     *  주문 하나하나가 따로 처리할 일이라 따로 남아야 한다.
-     *  (오피스톡은 그대로 방마다 하나다 — 같은 방 이야기는 묶이는 게 맞다)
-     */
-    await 밀기(받을, {
-      title: '🧾 신규 주문',
-      body: `${order.partnerName ?? '거래처'} 주문이 들어왔습니다.`,
-      tag: `new-order:${event.params.orderId}`, view: 'orders',
-    }, 'notifyNewOrder');
-  },
+  event => handleNewOrderNotification({db,messaging:admin.messaging(),log:console.log},event),
 );
 
-// ─────────────────────────────────────────────────────────────────────────
-// 오피스톡 새 메시지 푸시 — 앱을 완전히 닫아도 온다.
-//
-// 화면 안의 알림(shared/newChatAlert)은 앱이 살아 있을 때만 만든다. 그래서 앱을
-// 닫아 두면 말이 와도 몰랐다(2026-09-06 사장님: "오피스톡 알람은 안 오는거 같은데").
-//
-// 규칙은 화면 것과 같게 —
-//   · 그 방 사람들에게만
-//   · **보낸 사람은 빼고**
-//   · 지운 말은 안 보낸다
-// ─────────────────────────────────────────────────────────────────────────
 export const notifyChatMessage = onDocumentCreated(
   { region: REGION, document: 'chatMessages/{msgId}' },
-  async (event) => {
-    const msg = event.data?.data();
-    if (!msg || msg.deletedAt) return;
-
-    const roomSnap = await db.collection('chatRooms').doc(String(msg.roomId)).get();
-    if (!roomSnap.exists) return;
-    const room = roomSnap.data() ?? {};
-    const 참여자: string[] = (room.participantIds ?? []).filter((id: string) => id !== msg.senderId);
-    if (!참여자.length) return;   // 나와의 대화
-
-    //  방 이름은 **각자 고쳐 둔 게 있으면 그걸** 쓴다(shared/roomName 과 같은 규칙).
-    //  사람마다 다르므로 한 번에 못 보내고 사람별로 나눠 보낸다.
-    const emps = await Promise.all(참여자.map(id => db.collection('employees').doc(id).get()));
-
-    const 글 = msg.text
-      ? String(msg.text)
-      : msg.imageUrl ? '사진을 보냈습니다'
-      : msg.fileUrl ? '파일을 보냈습니다' : '새 메시지가 도착했습니다.';
-
-    for (const d of emps) {
-      if (!d.exists) continue;
-      const tokens: string[] = d.data()?.fcmTokens ?? [];
-      if (!tokens.length) continue;
-
-      const 내이름 = room.nameBy?.[d.id]?.trim() || room.name?.trim() || msg.senderName || '오피스톡';
-      await 밀기([{ id: d.id, tokens }], {
-        title: `💬 ${내이름}`,
-        body: 글.length > 80 ? `${글.slice(0, 80)}…` : 글,
-        tag: String(msg.roomId), view: 'officetalk',
-      }, 'notifyChatMessage');
-    }
-  },
+  event => handleChatMessageNotification({db,messaging:admin.messaging(),log:console.log},event),
 );
 
 export { deleteIssuedStatementCommand } from './deleteIssuedStatementCommand';
