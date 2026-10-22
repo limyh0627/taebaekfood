@@ -8,6 +8,8 @@ import LeaveManager from './LeaveManager';
 import type {PendingLeaveAction} from '../src/features/hr/hooks/useLeaveActions';
 import type {Employee,LeaveRequest} from '../types';
 vi.mock('../src/shared/services/firebaseService',()=>({subscribeToDocument:vi.fn(()=>()=>{}),setDocument:vi.fn()}));
+vi.mock('../src/shared/services/orgChartService',()=>({subscribeOrgChart:vi.fn((_scope,onValue)=>{onValue(null);return()=>{};}),saveOrgChart:vi.fn()}));
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'org-fixture-uid'},onAuthStateChanged:()=>()=>{}}}));
 const employee:Employee={id:'emp',companyId:'taebaek',name:'테스트직원',position:'사원',department:'생산팀',joinDate:'2020-01-01',phone:'010-0000-0000',status:'working'};
 afterEach(cleanup);
 function view(isAdmin=false){const onAddLeaveRequest=vi.fn();const result=render(<LeaveManager companyId="taebaek" currentUser={employee} employees={[employee]} leaveRequests={[]} onAddLeaveRequest={onAddLeaveRequest} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} isAdmin={isAdmin}/>);return{...result,onAddLeaveRequest};}

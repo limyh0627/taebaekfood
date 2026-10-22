@@ -29,10 +29,11 @@ import {
 } from 'lucide-react';
 import { Employee, LeaveRequest, LeaveType, LeaveStatus, CompanyId } from '../types';
 import ModalShell from '../src/shared/components/ModalShell';
-import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
+import {useOrgChartEditor} from '../src/features/hr/hooks/useOrgChartEditor';
+import type {OrgDept,OrgChartConfig} from '../src/shared/services/orgChartService';
 import PageHeader from './PageHeader';
 import ActionButton from '../src/shared/components/ActionButton';
-import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
+
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 관리자 화면과 같은 함수를 쓴다
 import {
@@ -64,20 +65,6 @@ interface LeaveManagerProps extends LeaveActionBindings {
 type LeaveTab = 'my' | 'calendar' | 'orgchart';
 
 // ── 조직도 설정 (Firestore: settings/{companyId}__orgChart) ──
-interface OrgDept {
-  id: string;         // 안정적인 노드 id
-  keys: string[];     // 이 박스에 묶을 employee.department 값들(여러 개 = 병합, 예: 생산관리팀+생산팀)
-  name: string;       // 화면 표시용 부서명 (편집 가능)
-  headId?: string;        // 부서장(팀장) employeeId
-  memo?: string;          // 부서 설명 메모
-  tier?: 'exec' | 'normal'; // 'exec' = 임원 계층(대표와 부서 사이 개별 카드). undefined = 미지정(레거시)
-}
-interface OrgChartConfig {
-  top: { title: string; name: string }; // 대표 노드
-  departments: OrgDept[];
-  updatedAt?: string;
-}
-
 // 시스템/회사 계정(관리자 로그인용) — 조직도·연락처에서 제외
 const isSystemAccount = (e: Employee) => e.id === 'admin' || e.position === '관리자';
 
@@ -200,14 +187,9 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   };
 
   // ── 조직도 / 직원 연락처 ──
-  const [orgSaved, setOrgSaved] = useState<OrgChartConfig | null>(null);   // Firestore 저장본(없으면 null)
-  const [orgDraft, setOrgDraft] = useState<OrgChartConfig | null>(null);   // 편집 중 초안(null이면 보기 모드)
-  const [dirSearch, setDirSearch] = useState('');                          // 직원 연락처 검색어
-
-  useEffect(() => {
-    const unsubOrg = subscribeToDocument<OrgChartConfig>('settings', companySettingDocId(companyId, 'orgChart'), setOrgSaved);
-    return () => { unsubOrg(); };
-  }, [companyId]);
+  const orgEditor=useOrgChartEditor({companyId,employeeId:currentUser.id,requestScopeKey});
+  const {saved:orgSaved,draft:orgDraft,setDraft:setOrgDraft}=orgEditor;
+  const [dirSearch,setDirSearch]=useState('');
 
   // 저장본이 없으면 실제 직원 명단에서 만든 기본 조직도를 보여준다. (레거시 저장본은 임원 계층 보정)
   const effectiveOrg = useMemo<OrgChartConfig>(
@@ -237,11 +219,6 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
     return activeEmployees.filter(e => !e.department || !claimed.has(e.department));
   }, [effectiveOrg, activeEmployees]);
 
-  const saveOrg = async (cfg: OrgChartConfig) => {
-    const payload = { ...cfg, updatedAt: new Date().toISOString() };
-    await setDocument('settings', companySettingDocId(companyId, 'orgChart'), companySettingPatch(companyId, payload));
-    setOrgDraft(null);
-  };
   // draft 부서 필드 수정 헬퍼
   const patchDept = (id: string, patch: Partial<OrgDept>) =>
     setOrgDraft(d => d ? { ...d, departments: d.departments.map(dp => dp.id === id ? { ...dp, ...patch } : dp) } : d);
@@ -680,19 +657,22 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               </div>
             </div>
             {isAdmin && !orgDraft && (
-              <button onClick={() => setOrgDraft(JSON.parse(JSON.stringify(effectiveOrg)))} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-black hover:bg-slate-800 transition-all"><Pencil size={14} />편집</button>
+              <button disabled={!orgEditor.canEdit} onClick={() => orgEditor.startEdit(effectiveOrg)} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-black hover:bg-slate-800 transition-all"><Pencil size={14} />편집</button>
             )}
             {isAdmin && orgDraft && (
               <div className="flex items-center gap-2">
-                <button onClick={() => setOrgDraft(null)} className="px-4 py-2.5 rounded-xl text-xs font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
-                <button onClick={() => saveOrg(orgDraft)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all"><Save size={14} />저장</button>
+                <button disabled={orgEditor.busy} onClick={orgEditor.cancel} className="px-4 py-2.5 rounded-xl text-xs font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+                <button disabled={!orgEditor.canEdit} onClick={() => void orgEditor.save()} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all"><Save size={14} />저장</button>
               </div>
             )}
           </div>
 
+          {orgEditor.status==='loading'&&<p role="status">조직도를 확인하고 있습니다. 확인 후 편집할 수 있습니다.</p>}
+          {orgEditor.error&&<p role="alert">{orgEditor.error}</p>}
+          {orgEditor.status==='error'&&<button type="button" onClick={orgEditor.retry}>조직도 다시 읽기</button>}
           {orgDraft ? (
             /* 편집 모드 */
-            <div className="space-y-4">
+            <fieldset disabled={orgEditor.busy || !orgEditor.canEdit} className="space-y-4">
               <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">대표 노드</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -744,7 +724,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 );
               })}
               <button onClick={() => setOrgDraft(d => d ? { ...d, departments: [...d.departments, { id: genId('dept'), keys: [], name: '새 부서', memo: '' }] } : d)} className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 font-black text-xs hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2"><Plus size={16} />부서 추가</button>
-            </div>
+            </fieldset>
           ) : (
             /* 보기 모드 — 트리형 (대표 → 임원 → 부서) */
             <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-8">
