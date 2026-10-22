@@ -1,3 +1,4 @@
+import { useReturnProcessing } from '../src/features/returns/hooks/useReturnProcessing';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { companyOf } from '../src/shared/types';
@@ -78,7 +79,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   const [filterFrom, setFilterFrom] = useState(monthStart);
   const [filterTo, setFilterTo] = useState(today);
   const [filterQuick, setFilterQuick] = useState<DateRangeQuick>('당월');
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const processing = useReturnProcessing({ companyId, isAdmin, requests: returnRequests, onProcessReturn });
 
   const submissionBusy = useRef(false);
   const [pendingSubmission, setPendingSubmission] = useState<ReturnType<typeof getPendingReturnSubmission>>(null);
@@ -194,7 +195,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
     catch (error) { alert(error instanceof Error ? error.message : '반품 원전표를 확인해주세요.'); return; }
     const token = scope.current.token;
     if (!selectedStatementId && !await appConfirm(`공급가·세액 합계 ${request.totalAmount.toLocaleString()}원\n미수금108을 같은 거래처 미결의 거래일·ID 순으로 차감합니다. 현금 수금이 아닙니다.`)) return;
-    if (scope.current.token !== token) return;
+    if (scope.current.token !== token || returnSubmissionActorUid() !== activeActor) return;
     setSaving(true);
     try {
       const req = {
@@ -214,20 +215,6 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
       if (scope.current.token === submitToken && returnSubmissionActorUid() === activeActor) setSaving(false);
     }
     } finally { submissionBusy.current = false; if (scope.current.token === submitToken && returnSubmissionActorUid() === activeActor) { setSaving(false); } }
-  };
-
-  const handleProcess = async (req: ReturnRequest) => {
-    const token = scope.current.token;
-    if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
-    if (scope.current.token !== token) return;
-    setProcessingId(req.id);
-    try {
-      await onProcessReturn(req);
-    } catch (error) { if (scope.current.token === token && returnSubmissionActorUid() === activeActor) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
-    finally {
-      if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setProcessingId(null);
-    }
   };
 
   const filteredHistory = returnRequests
@@ -491,8 +478,8 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
                   key={req.id}
                   req={req}
                   isAdmin={isAdmin}
-                  isProcessing={processingId === req.id}
-                  onProcess={() => handleProcess(req)}
+                  isProcessing={processing.processingId === req.id} processingBlocked={processing.busy}
+                  onProcess={() => processing.process(req)}
                 />
               ))}
             </div>
@@ -509,10 +496,11 @@ interface ReturnCardProps {
   req: ReturnRequest;
   isAdmin: boolean;
   isProcessing: boolean;
+  processingBlocked: boolean;
   onProcess: () => void;
 }
 
-const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onProcess }) => {
+const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, processingBlocked, onProcess }) => {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -542,7 +530,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
         {req.status === 'pending' && !req.cancelledAt && isAdmin && (
           <button
             onClick={e => { e.stopPropagation(); onProcess(); }}
-            disabled={isProcessing}
+            disabled={processingBlocked}
             className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0"
           >
             {isProcessing ? '처리 중...' : '처리'}
