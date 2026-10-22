@@ -1,3 +1,4 @@
+import {useDeliveryScheduleEditor} from '../src/features/orders/hooks/useDeliveryScheduleEditor';
 import {useOrderEditApplication,type OrderEditBindings} from '../src/features/orders/hooks/useOrderEditApplication';
 import {OrderEditRecovery} from '../src/features/orders/ui/OrderEditRecovery';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
@@ -107,12 +108,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [newDate, setNewDate] = useState('');
-  const [editingTimeSlot, setEditingTimeSlot] = useState<'오전' | '오후'>('오전');
-  const [scheduleConfirmation, setScheduleConfirmation] = useState<'discard' | 'save-shipped' | null>(null);
-  const [scheduleSaveError, setScheduleSaveError] = useState('');
-  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [showAddProductSelect, setShowAddProductSelect] = useState<string | null>(null);
   const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>([]);
@@ -192,80 +187,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const [expandedDeliveredDates, setExpandedDeliveredDates] = useState<Set<string>>(new Set());
   const toggleDeliveredDate = (dateStr: string) => setExpandedDeliveredDates(prev => { const next = new Set(prev); next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr); return next; });
 
-  const handleOrderClick = (order: Order) => {
-    setEditingOrder(order);
-    setNewDate(queryDateKey(order.deliveryDate));
-    setEditingTimeSlot(deliveryTimeSlots[order.id] || '오전');
-    setScheduleConfirmation(null);
-    setScheduleSaveError('');
-  };
-
-  const originalScheduleDate = editingOrder ? queryDateKey(editingOrder.deliveryDate) : '';
-  const originalTimeSlot = editingOrder ? (deliveryTimeSlots[editingOrder.id] || '오전') : '오전';
-  const isScheduleDirty = Boolean(editingOrder) && (newDate !== originalScheduleDate || editingTimeSlot !== originalTimeSlot);
-
-  const closeScheduleEditor = () => {
-    setEditingOrder(null);
-    setScheduleConfirmation(null);
-    setScheduleSaveError('');
-  };
-
-  const requestCloseScheduleEditor = () => {
-    if (isScheduleDirty) {
-      setScheduleConfirmation('discard');
-      return;
-    }
-    closeScheduleEditor();
-  };
-
-  const persistScheduleChange = async () => {
-    if (!editingOrder || !onUpdateDeliveryDate || !newDate || !isScheduleDirty || isSavingSchedule) return;
-
-    const changedAt = new Date().toISOString();
-    const auditId = `delivery-schedule-${editingOrder.id}-${Date.now()}`;
-    const nextTimeSlots = { ...deliveryTimeSlots, [editingOrder.id]: editingTimeSlot };
-    const auditBase = {
-      id: auditId,
-      orderId: editingOrder.id,
-      partnerId: editingOrder.partnerId,
-      partnerName: editingOrder.partnerName,
-      orderStatus: editingOrder.status,
-      changedBy: currentUserName || '미기록',
-      changedAt,
-      previousDeliveryDate: originalScheduleDate,
-      nextDeliveryDate: newDate,
-      previousTimeSlot: originalTimeSlot,
-      nextTimeSlot: editingTimeSlot,
-    };
-
-    setIsSavingSchedule(true);
-    setScheduleSaveError('');
-    try {
-      await setDocument('deliveryScheduleAudits', auditId, { ...auditBase, outcome: 'PENDING' });
-      await onUpdateDeliveryDate(editingOrder.id, new Date(`${newDate}T00:00:00+09:00`).toISOString());
-      await setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, { ordering: deliveryOrdering, timeSlots: nextTimeSlots }));
-      await setDocument('deliveryScheduleAudits', auditId, { outcome: 'COMPLETED', completedAt: new Date().toISOString() });
-      setDeliveryTimeSlots(nextTimeSlots);
-      closeScheduleEditor();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setScheduleSaveError('출고 일정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      await setDocument('deliveryScheduleAudits', auditId, { ...auditBase, outcome: 'FAILED', errorMessage: message }).catch(() => undefined);
-    } finally {
-      setIsSavingSchedule(false);
-      setScheduleConfirmation(null);
-    }
-  };
-
-  const requestSaveDate = () => {
-    if (!editingOrder || !isScheduleDirty || !newDate) return;
-    if (editingOrder.status === OrderStatus.SHIPPED) {
-      setScheduleConfirmation('save-shipped');
-      return;
-    }
-    void persistScheduleChange();
-  };
-
+  const scheduleEditor=useDeliveryScheduleEditor({companyId,requestScopeKey,currentUserName,timeSlots:deliveryTimeSlots,onApplied:request=>setDeliveryTimeSlots(previous=>({...previous,[request.orderId]:request.nextTimeSlot}))});
+  const {editingOrder,newDate,editingTimeSlot,originalScheduleDate,originalTimeSlot,isScheduleDirty,scheduleConfirmation,scheduleSaveError,isSavingSchedule,handleOrderClick,setNewDate,setEditingTimeSlot,closeScheduleEditor,requestCloseScheduleEditor,setScheduleConfirmation,requestSaveDate,persistScheduleChange}=scheduleEditor;
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
     e.dataTransfer.setData('orderId', orderId);
     e.dataTransfer.effectAllowed = 'move';
@@ -821,6 +744,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
       <OrderEditRecovery application={orderEdits} allTargets/>
+      {scheduleEditor.unresolvedCount>0&&<div><button type="button" className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50" disabled={isSavingSchedule} onClick={scheduleEditor.openUnresolved}>일정 변경 확인 {scheduleEditor.unresolvedCount}건</button></div>}
       {!calendarOnly && <PageHeader
         title="배송 관리"
         subtitle="배송 일정과 출고 진행 상태를 관리합니다."
@@ -1641,7 +1565,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           context={`주문일 ${queryDateKey(editingOrder.createdAt).replaceAll('-', '.')} · ${DELIVERY_STATUS_LABEL[editingOrder.status] || editingOrder.status}`}
           onClose={requestCloseScheduleEditor}
           onSave={requestSaveDate}
-          saveDisabled={!newDate || !isScheduleDirty || isSavingSchedule}
+          saveDisabled={!newDate || !isScheduleDirty || isSavingSchedule || scheduleEditor.hasPending || scheduleEditor.requiresRefresh}
         >
           <div className="space-y-5">
             <section aria-labelledby="delivery-order-summary">
@@ -1670,19 +1594,21 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
               <h4 id="delivery-schedule-heading" className="mb-2 text-xs font-black text-slate-700">출고 일정</h4>
               <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
                 <label className="block text-[11px] font-bold text-slate-600" htmlFor="delivery-editor-date">출고예정일
-                  <input id="delivery-editor-date" type="date" value={newDate} onChange={event => { setNewDate(event.target.value); setScheduleSaveError(''); }} className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                  <input disabled={isSavingSchedule || scheduleEditor.hasPending || scheduleEditor.requiresRefresh} id="delivery-editor-date" type="date" value={newDate} onChange={event => setNewDate(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
                 </label>
                 <fieldset>
                   <legend className="text-[11px] font-bold text-slate-600">출고 시간대</legend>
                   <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-1" role="radiogroup" aria-label="출고 시간대">
                     {(['오전', '오후'] as const).map(slot => (
-                      <button key={slot} type="button" role="radio" aria-checked={editingTimeSlot === slot} onClick={() => { setEditingTimeSlot(slot); setScheduleSaveError(''); }} className={`min-h-9 rounded-md text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${editingTimeSlot === slot ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}>{slot}</button>
+                      <button key={slot} type="button" role="radio" aria-checked={editingTimeSlot === slot} disabled={isSavingSchedule || scheduleEditor.hasPending || scheduleEditor.requiresRefresh} onClick={() => setEditingTimeSlot(slot)} className={`min-h-9 rounded-md text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${editingTimeSlot === slot ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}>{slot}</button>
                     ))}
                   </div>
                 </fieldset>
               </div>
             </section>
             <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] font-medium text-slate-500">주문 품목과 수량의 변경·삭제·추가는 주문 관리에서 진행할 수 있습니다.</p>
+            {scheduleEditor.hasPending&&<div className="flex flex-wrap gap-2"><button className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50" disabled={isSavingSchedule} onClick={()=>void scheduleEditor.inspect()}>처리 결과 확인</button><button className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50" disabled={isSavingSchedule} onClick={()=>void persistScheduleChange()}>같은 내용으로 다시 시도</button><button className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50" disabled={isSavingSchedule} onClick={()=>void scheduleEditor.cancelPending()}>미처리 요청 중단</button></div>}
+            {scheduleEditor.requiresRefresh&&<button className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50" disabled={isSavingSchedule} onClick={()=>void scheduleEditor.readCurrent()}>현재 일정 다시 읽기</button>}
             {scheduleSaveError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600">{scheduleSaveError}</p>}
           </div>
         </OrderEditModalShell>
