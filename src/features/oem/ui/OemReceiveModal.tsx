@@ -1,12 +1,10 @@
-import { captureOemCostEvidence, type OemCostEvidence } from '../../admin/oemCostEvidence';
-import { useRef, useState } from 'react';
-import { today } from '../../../shared/day';
+import { type OemCostEvidence } from '../../admin/oemCostEvidence';
+import {useOemReceiptDraft} from '../hooks/useOemReceiptDraft';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import ModalShell from '../../../shared/components/ModalShell';
 import { Item, PurchaseOrder, type CompanyId } from '../../../shared/types';
-import { sentKg, batchLoss, processingFee } from '../../admin/oem';
 import { baseRawName } from '../../../constants/formula';
-import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../../admin/oemEngine';
+import { itemKg } from '../../admin/oemEngine';
 import { isBoxStockItem, type OrderUnitInputs } from '../../../shared/orderUnits';
 import { formatNumberKo as fmt } from '../../../shared/numberDisplay';
 import type { ReceiveInput } from '../domain/oemManager';
@@ -18,41 +16,15 @@ export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, comp
   onClose: () => void;
   onSubmit: (v: { returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }) => void;
 }) {
-  const [date, setDate] = useState(today());
-  const [rawAmounts, setRawAmounts] = useState<string[]>(() => (po.oemSent ?? []).map(() => ''));
-  const [packagingSupply, setPackagingSupply] = useState('');
-  const [packagingConfirmed, setPackagingConfirmed] = useState(false);
-  const capturedAt = useRef(new Date().toISOString());
-  const sentRows = po.oemSent ?? [];
-  const canCaptureEvidence = !po.oemCostEvidence && sentRows.length > 0 && sentRows.every(row => !!row.rawItemId && Number.isFinite(row.kg) && row.kg > 0);
-  const receiptCost: ReturnType<typeof captureOemCostEvidence> = canCaptureEvidence ? captureOemCostEvidence(companyId, sentRows.map((row, i) => ({rawItemId: row.rawItemId, kg: row.kg, supplyAmount: rawAmounts[i] ?? ''})), packagingSupply, packagingConfirmed, capturedAt.current) : {status:'empty' as const};
-  const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
-  // 임가공 품목이 여러 개면 처음부터 각 행으로 띄운다 — 돌아온 것만 수량 입력(빈 행은 저장 시 무시).
-  const [rows, setRows] = useState<{ itemId: string; qty: string }[]>(
-    () => oemItems.length > 0 ? oemItems.map(it => ({ itemId: it.id, qty: '' })) : [{ itemId: '', qty: '' }],
-  );
-  // 벌크(포장 안 하고 온 몫) — kg으로 받아 원료 로트에 그대로 쌓는다. 소분 품목이 여기서 빼간다.
-  const [bulkRows, setBulkRows] = useState<{ material: string; kg: string }[]>([{ material: '', kg: '' }]);
-
-  const returns = rows.filter(r => r.itemId && Number(r.qty) > 0).map(r => ({ itemId: r.itemId, qty: Number(r.qty) }));
-  const bulk = bulkRows.filter(b => b.material && Number(b.kg) > 0).map(b => ({ material: b.material, kg: Number(b.kg) }));
-  const packedKg = returns.reduce((a, r) => {
-    const it = oemItems.find(i => i.id === r.itemId);
-    return a + (it ? itemKg(it, orderUnitInputs) * r.qty : 0);
-  }, 0);
-  const bulkKg = bulk.reduce((a, b) => a + b.kg, 0);
-  const receivedKg = packedKg + bulkKg;
-  const s = sentKg(po.oemSent);
-  const loss = batchLoss(po.oemSent, receivedKg);
-  const money = processingFee(receivedKg, Number(fee) || 0);
-  const canSave = (!!pendingReceipt || returns.length > 0 || bulk.length > 0) && !busy && !pendingError;
-
+  const draft=useOemReceiptDraft({companyId,po,oemItems,busy,pendingReceipt,pendingError,orderUnitInputs});
+  const {date,setDate,rawAmounts,setRawAmounts,packagingSupply,setPackagingSupply,packagingConfirmed,setPackagingConfirmed,receiptCost,canCaptureEvidence,sentRows,fee,setFee,rows,setRows,bulkRows,setBulkRows,bulkKg,receivedKg,s,loss,money,canSave}=draft;
+  const close=()=>{if(!busy&&draft.isCurrent())onClose();};
   return (
-    <ModalShell title="가공입고" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="가공입고" onClose={close} bodyClassName="space-y-4">
         {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
         {pendingReceipt && <p role="status" className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700">이전 입고 요청의 완료 여부를 확인해야 합니다. 재개하면 당시 수량·날짜·원가 근거 그대로 다시 확인합니다. 화면에서 바꾼 입력은 재개 요청에 적용하지 않습니다.</p>}
 
-        <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <fieldset disabled={busy} className="contents"><div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-3">
           <div className="min-w-0">
             <p className="text-sm font-black text-slate-800 truncate">{po.partnerName}</p>
             <p className="text-[11px] text-slate-400">{(po.oemSentAt ?? '').slice(0, 10)} 출고</p>
@@ -148,9 +120,9 @@ export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, comp
           확인사항에서 발행하세요.
         </p>
 
-        <div className="flex gap-2">
-          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => onSubmit({ returns, bulk, unitPricePerKg: Number(fee) || 0, date, ...(receiptCost.evidence ? {oemCostEvidence: receiptCost.evidence} : {}) })} disabled={!canSave}
+        </fieldset><div className="flex gap-2">
+          <button onClick={close} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={() => canSave && draft.isCurrent() && onSubmit(draft.payload())} disabled={!canSave}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-30">
             {busy ? '처리 중…' : pendingReceipt ? '입고 요청 재개' : '가공입고'}
           </button>

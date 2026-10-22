@@ -66,3 +66,11 @@ it('이전 요청은 입력 없는 상태에서도 재개 버튼과 원문 재�
  view.rerender(<ReceiveModal {...props} pendingReceipt={pending} pendingError="원문 확인 필요"/>);
  expect(screen.getByRole('button',{name:'입고 요청 재개'})).toBeDisabled();
 });
+it('입고 대기 중에는 수량·일자·행추가와 창닫기를 잠가 최초 입력을 유지한다',()=>{
+ const close=vi.fn(),submit=vi.fn();const view=render(<ReceiveModal {...props} onClose={close} onSubmit={submit}/>);
+ fireEvent.change(screen.getByPlaceholderText('수량'),{target:{value:'3'}});fireEvent.click(screen.getByRole('button',{name:'가공입고'}));
+ view.rerender(<ReceiveModal {...props} busy onClose={close} onSubmit={submit}/>);
+ expect(screen.getByPlaceholderText('수량')).toBeDisabled();expect(view.container.querySelector('input[type="date"]')).toBeDisabled();expect(screen.getByRole('button',{name:'품목 추가'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'가공입고 닫기'}));expect(close).not.toHaveBeenCalled();
+ view.rerender(<ReceiveModal {...props} pendingError="응답 미확인" onClose={close} onSubmit={submit}/>);expect(screen.getByPlaceholderText('수량')).toHaveValue('3');
+});

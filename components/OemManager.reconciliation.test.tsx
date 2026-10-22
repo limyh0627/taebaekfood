@@ -79,16 +79,22 @@ it('외주 발주가 현재 진행 중이면 이전 미완료 안내와 구분�
   let finish!:()=>void;
   const onIssue=vi.fn(async()=>{await new Promise<void>(resolve=>{finish=resolve;});acknowledgeOemIssueAttempt(first!);await clearOemIssueAttempt(first!,()=>true);});
   const onClose=vi.fn();
+  let inspected!:(value:import('../src/features/admin/oemIssueJob').OemIssueInspection)=>void;
+  const inspect=vi.fn<NonNullable<import('../src/features/oem/domain/oemManager').Props['onInspectIssue']>>(()=>new Promise(resolve=>{inspected=resolve;}));
   render(<OemManager companyId="taebaek" actorUid="actor" items={[]} partners={[]} rawStockKg={()=>100} issueDrafts={[]}
-   issueOpen receiveTarget={null} feeTarget={null} onClose={onClose} onIssue={onIssue} onReceive={vi.fn()} onIssueFee={vi.fn()} />);
+   issueOpen receiveTarget={null} feeTarget={null} onClose={onClose} onIssue={onIssue} onInspectIssue={inspect} onReceive={vi.fn()} onIssueFee={vi.fn()} />);
   fireEvent.click(screen.getByRole('button',{name:'OEM 실패 작업 1'}));
   fireEvent.click(screen.getByRole('button',{name:/외주 출고 처리 결과 미확인/}));
-  const retry=screen.getByRole('button',{name:'같은 내용 다시 시도'});
+  const retry=screen.getByRole('button',{name:'남은 처리 재개'});
+  expect(retry).toBeDisabled();fireEvent.click(retry);expect(onIssue).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'실제 처리 결과 확인'}));await waitFor(()=>expect(inspect).toHaveBeenCalledExactlyOnceWith(first,'actor'));expect(onIssue).not.toHaveBeenCalled();expect(retry).toBeDisabled();
+  await act(async()=>inspected({status:'partial',poId:'pending',cardStatus:'pending',verifiedOperationIds:[],missingOperationIds:['remaining'],unknownOperationIds:[],conflictingOperationIds:[],message:'남은 처리 확인',nextAction:'최초원문으로 남은 처리 재개',canResume:true}));
   expect(retry).toBeEnabled();expect(screen.getByText('참깨 · 100kg')).toBeInTheDocument();
   fireEvent.click(retry);fireEvent.click(retry);
   expect(retry).toBeDisabled();expect(screen.getByText('처리 중…').closest('button')).toBeDisabled();
   expect(screen.getByRole('button',{name:'실패 요청 삭제'})).toBeDisabled();
   expect(onIssue).toHaveBeenCalledExactlyOnceWith({jobId:'pending',oemPartnerId:'fumi',partnerName:'푸미푸드',date:'2026-10-08',sent:[{material:'참깨',kg:100}]},'resume','actor',first);
+  expect(JSON.parse(first.encoded)).toEqual(first.request);expect(first.request.input).toMatchObject({jobId:'pending',date:'2026-10-08',sent:[{rawItemId:'raw',material:'참깨',kg:100}]});
   expect(localStorage.getItem(first.key)).toBe(first.encoded);expect(onClose).not.toHaveBeenCalled();
   await act(async()=>finish());
   await waitFor(()=>expect(screen.getByRole('button',{name:'OEM 실패 작업 0'})).toBeInTheDocument());
