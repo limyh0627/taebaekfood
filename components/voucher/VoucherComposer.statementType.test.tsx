@@ -20,7 +20,7 @@ const accounts = [
   { id: 'payable', code: '253', name: '미지급금', normalBalance: 'credit' },
 ] as AccountCode[];
 const partner = { id: 'bank', name: '수협은행' } as Partner;
-function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {},issue=vi.fn()) {
+function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {},issue=vi.fn(),extraTemplates:FixedCostTemplate[]=[]) {
   const onAddIssuedStatement = issue, onAddFixedCostTemplate = vi.fn();
   const t = { id: 'test-template', kind: 'voucher', name: '은행 템플릿', dir: '대체', mode: '일반',
     statementType, accountCode: '828', amount: 110_000, taxExempt: false, partnerId: 'bank', partnerName: '수협은행',
@@ -28,7 +28,7 @@ function setup(statementType: '비용' | '매출' | '매입', overrides: Partial
     ...overrides,
   } as FixedCostTemplate;
   render(<VoucherComposer companyId="taebaek" initialDir={statementType === '매입' ? '줄돈' : statementType === '매출' ? '받을돈' : '대체'} initialDate="2026-09-28"
-    partners={[partner, { id: 'other-bank', name: '다른은행' } as Partner]} accountCodes={accounts} accountGroups={[]} cashAccounts={[]} fixedCostTemplates={[t]}
+    partners={[partner, { id: 'other-bank', name: '다른은행' } as Partner]} accountCodes={accounts} accountGroups={[]} cashAccounts={[]} fixedCostTemplates={[t,...extraTemplates]}
     cashEntries={[]} statements={[]} partnerBalances={new Map()} getBalance={s => s.totalAmount}
     cashAccountId="" onCashAccountId={vi.fn()} onClose={vi.fn()} onAddIssuedStatement={onAddIssuedStatement}
     onAddFixedCostTemplate={onAddFixedCostTemplate} recordPayment={vi.fn()} renderJournal={() => null} />);
@@ -62,12 +62,14 @@ describe('종류와 거래처가 독립인 실제 전표 작성', () => {
     await u.click(screen.getByRole('button', { name: '저장' }));
     expect(onAddIssuedStatement).toHaveBeenCalledWith(expect.objectContaining({ type: '비용', partnerId: 'other-bank', totalAmount: 110000 }));
   });
-  it('현재 매입 갈래에는 명시 매출 양식을 보여주지 않는다', async () => {
+  it('현재 매입에서도 명시 매출 양식을 고르면 매출로 전환해 저장한다', async () => {
     const u = userEvent.setup(); const { onAddIssuedStatement } = setup('매출');
     await u.click(screen.getByRole('button', { name: /^매입$/ }));
     await u.click(screen.getByRole('button', { name: /템플릿 ▾/ }));
-    expect(screen.queryByRole('button', { name: /은행 템플릿/ })).toBeNull();
-    expect(onAddIssuedStatement).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button',{name:/은행 템플릿/})).toBeInTheDocument();
+    await u.click(screen.getByRole('button',{name:/은행 템플릿/}));
+    await u.click(screen.getByRole('button',{name:'저장'}));
+    expect(onAddIssuedStatement).toHaveBeenCalledOnce();expect(onAddIssuedStatement).toHaveBeenCalledWith(expect.objectContaining({type:'매출',partnerId:'bank',totalAmount:110000}));
   });
   it('명시 매출과 줄돈 방향이 모순인 양식은 매출 갈래에서도 숨긴다', async () => {
     const u = userEvent.setup(); setup('매출', { dir: '줄돈' });
@@ -125,3 +127,7 @@ describe('종류와 거래처가 독립인 실제 전표 작성', () => {
 });
 
 it('대체 원문도 응답유실 뒤 재열기에서 같은 ID·양변·금액으로 재개한다',async()=>{localStorage.clear();const u=userEvent.setup(),save=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce({id:'saved'});vi.spyOn(window,'alert').mockImplementation(()=>{});setup('비용',{},save);await pick(u);await u.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));cleanup();setup('비용',{},save);await u.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);expect(localStorage.length).toBe(0);});
+
+describe('모든 갈래에서 전체 템플릿 탐색',()=>{
+ it.each(['매입','매출','대체','입금','출금','회사이체'])('%s 선택도 모든 유효 그룹과 템플릿을 제공한다',async selected=>{cleanup();const u=userEvent.setup();const extras=(['입금','출금','회사이체','줄돈','받을돈'] as const).map((dir,i)=>({id:'all-'+i,kind:'voucher',name:'전체양식'+i,dir,mode:'일반',accountCode:'828',group:'그룹'+i,...(dir==='줄돈'?{statementType:'매입'}:dir==='받을돈'?{statementType:'매출'}:{})} as FixedCostTemplate));setup('비용',{group:'대체그룹'},undefined,extras);await u.click(screen.getByRole('button',{name:new RegExp('^'+selected+'$')}));await u.click(screen.getByRole('button',{name:/템플릿 ▾/}));for(let i=0;i<5;i++){expect(screen.queryByRole('button',{name:new RegExp('전체양식'+i)})).toBeInTheDocument();expect(screen.getByRole('option',{name:'그룹'+i})).toBeInTheDocument();}expect(screen.getByRole('button',{name:/은행 템플릿/})).toBeInTheDocument();expect(screen.getByRole('option',{name:'대체그룹'})).toBeInTheDocument();});
+});

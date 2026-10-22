@@ -266,27 +266,21 @@ export default function VoucherComposer({
     { label: '매입', dir: '줄돈' }, { label: '매출', dir: '받을돈' }, { label: '대체', dir: '대체' },
     { label: '입금', dir: '입금' }, { label: '출금', dir: '출금' }, { label: '회사이체', dir: '회사이체' },
   ];
-  // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
-  const qpTemplates = useMemo(
-    () => filterTemplates(accountCodes, fixedCostTemplates).filter(t => {
-      if (templateStatementConflict(t)) return false;
-      if (isCashDir(qpDir) || qpDir === '회사이체') return t.dir === qpDir;
-      if (isCashDir(t.dir) || t.dir === '회사이체') return false;
-      const type = t.statementType ?? (t.dir === '대체' ? '비용' : templateStatementType(t));
-      return type === qpStatementType;
-    }),
-    [accountCodes, fixedCostTemplates, qpDir, qpStatementType],
-  );
+  // 템플릿 탐색은 현재 갈래와 무관하며, 모순된 양식만 기존 기준으로 제외한다.
+  const qpTemplates=useMemo(()=>filterTemplates(accountCodes,fixedCostTemplates).filter(t=>!templateStatementConflict(t)),[accountCodes,fixedCostTemplates]);
   /**
-   * 템플릿은 현재 선택한 갈래를 유지하며 계정·거래처·금액·품목을 채운다.
+   * 템플릿을 고르면 그 양식의 갈래와 계정·거래처·금액·품목을 함께 채운다.
    * 매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라, 그게 실제로 시간을 줄인다.
    *
    * 안 채우는 칸을 남겨 두면 안 된다. 앞서 고른 템플릿의 값이 그대로 남아
    * **딴 전표 금액으로 끊긴다** — 없는 값은 비우는 것까지가 '가져오는' 것이다.
    */
   const pickTemplate = (t: CashTemplate) => {
-    // 호환 확인한 양식만 현재 갈래로 읽는다. 원양식과 자동 발행 계약은 바꾸지 않는다.
-    const manualTemplate = !isCashDir(qpDir) && qpDir !== '회사이체' ? { ...t, dir: qpDir, statementType: qpStatementType } : t;
+    const selectedType=t.statementType??(t.dir==='대체'?'비용':templateStatementType(t));
+    const targetDir:VoucherDir=isCashDir(t.dir)||t.dir==='회사이체'?t.dir:selectedType==='매입'?'줄돈':selectedType==='매출'?'받을돈':'대체';
+    // 옛 대체 양식은 거래처가 있어도 대체로 유지하고 원양식은 수정하지 않는다.
+    const manualTemplate=!isCashDir(targetDir)&&targetDir!=='회사이체'?{...t,dir:targetDir,statementType:selectedType}:t;
+    setQpDir(targetDir);
     setQpTemplateId(t.id);    // 고른 것을 id로 붙든다 — 계정만으로는 같은 계정 템플릿이 섞인다
     setQpMode(t.mode);
     //  자금 표는 이제 줄이 원천이다 — 템플릿 계정을 첫 줄에 넣는다. 안 넣으면 계정이 빈 채로 열린다.
@@ -1517,7 +1511,7 @@ export default function VoucherComposer({
 
             {qpPickerOpen && (
               <CashTemplateModal
-                templates={qpTemplates} accountCodes={accountCodes} hideDirectionTabs directionLabel={composerDirs.find(row => row.dir === qpDir)?.label}
+                templates={qpTemplates} accountCodes={accountCodes} hideDirectionTabs
                 activeId={currentTemplate(qpTemplates)?.id ?? null}
                 onPick={pickTemplate}
                 onDirect={() => { setQpTemplateId(null); setQpMode('일반'); setQpLoanId(''); setQuickPayClientId(''); setQuickPayClientSearch(''); setQpAccrTaxExempt(true); setQpPickerOpen(false); }}
