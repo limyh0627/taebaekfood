@@ -82,9 +82,15 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   const processing = useReturnProcessing({ companyId, isAdmin, requests: returnRequests, onProcessReturn });
 
   const submissionBusy = useRef(false);
+  const draftToken = scope.current.token;
+  const canEditDraft = () => scope.current.token === draftToken && returnSubmissionActorUid() === activeActor && !submissionBusy.current;
+  const blockBusyDraftEvent = (event: React.SyntheticEvent) => {
+    if (!canEditDraft()) { event.preventDefault(); event.stopPropagation(); }
+  };
   const [pendingSubmission, setPendingSubmission] = useState<ReturnType<typeof getPendingReturnSubmission>>(null);
   const [submissionError, setSubmissionError] = useState('');
   const [resumingSubmission, setResumingSubmission] = useState(false);
+  const submissionLocked = saving || resumingSubmission;
   useEffect(() => {
     const load = () => { try { setPendingSubmission(getPendingReturnSubmission(companyId)); setSubmissionError(''); }
       catch(error) { setSubmissionError(error instanceof Error ? error.message : '이전 접수 원문을 확인해주세요.'); } };
@@ -92,11 +98,11 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
     return () => { window.removeEventListener('return-submission-pending', load); window.removeEventListener('storage', load); };
   }, [companyId]);
   const handleResumeSubmission = async () => {
-    if (submissionBusy.current) return;
+    if (!canEditDraft()) return;
     submissionBusy.current = true; setResumingSubmission(true);
     const token = scope.current.token;
     try { await resumeReturnSubmission(companyId); if (!(scope.current.token === token && returnSubmissionActorUid() === activeActor)) return;
-      setPendingSubmission(null); setSubmissionError(''); setReturnLineItems([]); setNote(''); setTab('이력');
+      setPendingSubmission(null); setSubmissionError('');
     } catch(error) { if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setSubmissionError(error instanceof Error ? error.message : '접수 결과를 확인하지 못했습니다. 원문은 보존했습니다.'); }
     finally { submissionBusy.current = false; if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setResumingSubmission(false); }
   };
@@ -182,7 +188,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   } catch { /* 원전표와 수량이 유효해지면 원전표 기준 금액을 표시한다. */ }
 
   const handleSubmit = async () => {
-    if (submissionBusy.current) return;
+    if (!canEditDraft()) return;
     submissionBusy.current = true; const submitToken = scope.current.token; setSaving(true);
     try {
     const selectedClient = partners.find(c => c.id === selectedClientId);
@@ -228,7 +234,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
         {(['접수', '이력'] as Tab[]).map(t => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            disabled={submissionLocked} onClick={() => { if (canEditDraft()) setTab(t); }}
             className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
               tab === t ? 'bg-white border-indigo-300 text-indigo-700' : 'bg-white border-transparent text-slate-500 hover:bg-slate-50'
             }`}
@@ -246,7 +252,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
         <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
           {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
         {submissionError && <p role="alert">{submissionError}</p>}
-        <button className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800" onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
+        <button className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800" onClick={handleResumeSubmission} disabled={submissionLocked}>이전 접수 확인</button>
       </div>}
       />
 
@@ -255,7 +261,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
 
       {/* ── 접수 탭 ── */}
       {tab === '접수' && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+        <fieldset disabled={submissionLocked} onChangeCapture={blockBusyDraftEvent} onClickCapture={blockBusyDraftEvent} onMouseDownCapture={blockBusyDraftEvent} className="min-w-0 bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
           {/* 거래처 / 원주문 / 전표 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
@@ -451,7 +457,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
               {saving ? '저장 중...' : '반품 접수'}
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {/* ── 이력 탭 ── */}

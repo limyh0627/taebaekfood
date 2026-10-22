@@ -52,7 +52,7 @@ describe('반품 회사 전환 초안', () => {
     expect(screen.getByLabelText(`taebaek 품목 ${field}`)).toHaveProperty('value', '100');
   });
 
-  it('이전 접수 확인 성공 후 자료가 와도 행을 다시 만들지 않는다', async () => {
+  it('이전 접수 확인은 무관 현재 자동 제안과 선택을 보존한다', async () => {
     mock.pending = { request: { partnerName: '이전 거래처', returnType: '매출', totalAmount: 100 } };
     mock.command.mockResolvedValue(undefined);
     const loaded = props('taebaek');
@@ -60,7 +60,9 @@ describe('반품 회사 전환 초안', () => {
     selectPartner('거래처 검색...');
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '이전 접수 확인' })); });
     view.rerender(<ReceivingReturnsManager {...props('taebaek')} />);
-    expect(screen.queryByPlaceholderText('0')).toBeNull();
+    expect(screen.getByPlaceholderText('0')).toHaveValue(null);
+    expect(screen.getByPlaceholderText('거래처 검색...')).toHaveValue('taebaek 거래처');
+    expect(screen.getAllByText('taebaek 품목').length).toBeGreaterThan(0);
     expect(mock.command).toHaveBeenCalledOnce();
   });
 
