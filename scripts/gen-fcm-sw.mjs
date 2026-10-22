@@ -1,27 +1,29 @@
-//  .env 를 읽어 public/firebase-messaging-sw.js 를 만든다.
-//  서비스워커는 모듈을 못 읽어서 설정값을 파일에 박아야 한다 — 손으로 두 벌 적지 않으려고
-//  빌드 전에 여기서 만든다(package.json 의 prebuild).
-import { readFileSync, writeFileSync } from 'node:fs';
+// 명시적인 수동 생성만 public 원본을 쓴다. 앱 빌드는 Vite 플러그인이 산출물에 직접 넣는다.
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateFirebaseBuildEnvironment, renderFirebaseMessagingWorker } from './firebase-build-env.ts';
 
-const env = Object.fromEntries(
-  readFileSync('.env', 'utf8').split(String.fromCharCode(10))
-    .filter(l => l.includes('=') && !l.trimStart().startsWith('#'))
-    .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }));
+async function main() {
+  const projectDir = fileURLToPath(new URL('../', import.meta.url));
+  const options = { mode: 'production', config: 'vite.admin.config.ts', out: 'public/firebase-messaging-sw.js' };
+  for (let index = 2; index < process.argv.length; index += 2) {
+    const name = process.argv[index];
+    if (!['--mode', '--config', '--out'].includes(name) || !process.argv[index + 1]) throw new Error('사용 가능한 생성 인자: --mode, --config, --out');
+    options[name.slice(2)] = process.argv[index + 1];
+  }
+  // dotenv를 따로 해석하면 실제 앱과 다른 값이 들어가므로 Vite 정본을 그대로 쓴다.
+  const { resolveConfig } = await import('vite');
+  const config = await resolveConfig({ configFile: resolve(projectDir, options.config), mode: options.mode }, 'build');
+  const firebase = validateFirebaseBuildEnvironment(config.env, config.mode);
+  const source = renderFirebaseMessagingWorker(firebase, readFileSync(resolve(projectDir, 'scripts/firebase-messaging-sw.template.js'), 'utf8'));
+  const output = resolve(projectDir, options.out);
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, source, 'utf8');
+  console.log('FCM 서비스워커 생성 완료 (mode: ' + config.mode + '): ' + output);
 
-const need = ['VITE_FIREBASE_API_KEY','VITE_FIREBASE_AUTH_DOMAIN','VITE_FIREBASE_PROJECT_ID',
-  'VITE_FIREBASE_STORAGE_BUCKET','VITE_FIREBASE_MESSAGING_SENDER_ID','VITE_FIREBASE_APP_ID'];
-const 없는것 = need.filter(k => !env[k]);
-if (없는것.length) { console.error('.env 에 없다:', 없는것.join(', ')); process.exit(1); }
-
-const cfg = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
-};
-
-const tpl = readFileSync('scripts/firebase-messaging-sw.template.js', 'utf8');
-writeFileSync('public/firebase-messaging-sw.js', tpl.replace('__CONFIG__', JSON.stringify(cfg, null, 2)), 'utf8');
-console.log('public/firebase-messaging-sw.js 만듦');
+}
+void main().catch(error => {
+  console.error(error instanceof Error ? error.message : 'FCM 서비스워커 생성 환경을 확인해 주세요.');
+  process.exitCode = 1;
+});

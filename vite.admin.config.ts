@@ -1,3 +1,4 @@
+import { firebaseBuildEnvironment } from './scripts/firebase-build-env';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -12,6 +13,7 @@ export default defineConfig({
   envDir: process.env.TAEBAEK_BUILD_ENV_DIR || projectDir,
   base: '/',
   plugins: [
+    firebaseBuildEnvironment(projectDir),
     react(),
     VitePWA({
       //  **새 버전을 알아서 받는다**(2026-09-03 사장님).
