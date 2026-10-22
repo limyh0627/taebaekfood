@@ -6,6 +6,7 @@ vi.mock('../firebase',()=>({authReady:Promise.resolve(),auth:mocks.auth,db:{}}))
 vi.mock('firebase/firestore',()=>({where:(field:string,op:string,value:string)=>({field,op,value}),doc:vi.fn(),getDoc:vi.fn()}));
 vi.mock('../partnerAdvanceAudit',()=>({verifyAdvanceStatements:mocks.verify}));
 vi.mock('../services/firebaseService',()=>({subscribeToCollection:(name:string,callback:(rows:any[])=>void,clauses:{field:string;value:string}[])=>{mocks.listeners.push({name,callback,company:clauses.find(row=>row.field==='companyId')?.value??''});return()=>{};},subscribeToRecentCollection:()=>()=>{},subscribeToDocument:()=>()=>{},fetchCollection:async()=>[],fetchDateRange:async()=>[]}));
+vi.mock('./useCompanyInfoRead',()=>({useCompanyInfoRead:()=>({value:null,status:'idle',error:'',retry:()=>{},observationToken:{},isCurrent:()=>false})}));
 import {useAppData} from './useAppData';
 const emit=(name:string,company:string,rows:any[])=>mocks.listeners.filter(row=>row.name===name&&row.company===company).at(-1)!.callback(rows);
 const statement=(id:string,companyId:string)=>({id,companyId,partnerId:'p',items:[],tradeDate:'2026-10-01',noncashApplication:{kind:'advance-application'}});

@@ -15,7 +15,6 @@ import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
 import { addItem } from '../../src/shared/services/firebaseService';
-import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import PartnerPortal from '../../components/PartnerPortal';
 import StaffApp from '../../src/features/staff/StaffApp';
@@ -93,7 +92,7 @@ const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>Promi
       currentView={currentView}
       setCurrentView={setCurrentView}
       onLogout={onSessionLogout}
-      appData={{ ...appData, companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO }}
+      appData={appData}
       adminData={adminData}
     />
   );

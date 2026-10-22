@@ -15,8 +15,9 @@ const mock = vi.hoisted(() => ({
   documents: [] as Array<{ id: string; callback: (value: any) => void }>,
 }));
 
-vi.mock('../firebase', () => ({ authReady: Promise.resolve(), auth: mock.auth }));
-vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }) }));
+vi.mock('../firebase', () => ({ authReady: Promise.resolve(), auth: mock.auth, db: {} }));
+vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }), doc: (_db:unknown,_name:string,id:string)=>({id}), onSnapshot:(ref:{id:string},callback:(snapshot:{exists:()=>boolean;data:()=>unknown})=>void)=>{mock.documents.push({id:ref.id,callback:(value:unknown)=>callback({exists:()=>value!==null,data:()=>value})});return()=>{};} }));
+beforeEach(()=>{mock.auth.currentUser={uid:'actor-a'};});
 vi.mock('../services/firebaseService', () => ({
   subscribeToCollection: (collection: string, callback: (orders: Order[]) => void) => {
     mock.listeners.push({ name: collection, callback });

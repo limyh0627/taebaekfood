@@ -15,6 +15,7 @@ vi.mock('../services/firebaseService',()=>({
   return name==='item_bom'?[{parent_id:'box',child_id:'loose',quantity:count,companyId}]:name==='item_pack'?[{item_id:'loose',units_per_box:count+1,companyId}]:[];
  }
 }));
+vi.mock('./useCompanyInfoRead',()=>({useCompanyInfoRead:()=>({value:null,status:'idle',error:'',retry:()=>{},observationToken:{},isCurrent:()=>false})}));
 import {useAppData} from './useAppData';
 const originalBom=getBomIndex(),originalPack=getPackIndex();
 afterEach(()=>{setBomIndex(originalBom);setPackIndex(originalPack);});beforeEach(()=>{mocks.listeners=[];});

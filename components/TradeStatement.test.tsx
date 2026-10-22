@@ -1,4 +1,6 @@
 import {companyInfoOpening} from '../src/shared/companyInfoCommand';
+
+
 import type {CompanyInfoOutcome,CompanyInfoOperationContext} from '../src/features/statements/infrastructure/companyInfoWrites';
 import type {PartnerItemTermsInput} from '../src/features/items/infrastructure/partnerItemTermsWrites';
 const ownerExcel = vi.hoisted(() => ({ download: vi.fn(), document: vi.fn(), actor: null as null | ((user: {uid:string} | null) => void) }));
@@ -93,7 +95,7 @@ it.each([true,false])('수금·지불 미반영 확정은 원금액·날짜를 �
 
 it('같은 작성창의 결제 미반영 복구는 부모 종료로 컴포넌트를 내리지 않고 결제 수정창을 유지한다',async()=>{
  const apply=vi.fn().mockRejectedValue(Error('응답 유실')),close=vi.fn();
- function Parent(){const [open,setOpen]=React.useState(true);return open?<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={apply} onComposerClose={()=>{close();setOpen(false);}}/>:<p>부모가 작성창을 종료함</p>;}
+ function Parent(){const [open,setOpen]=React.useState(true);return open?<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={apply} onComposerClose={()=>{close();setOpen(false);}}/>:<p>부모가 작성창을 종료함</p>;}
  render(<Parent/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
  const entry=listTradePendings('taebaek','test-uid')[0],p=entry.pending!;
  p.payment={amount:100,date:'2026-10-14',cashAccountId:'old-bank'};localStorage.setItem(entry.key,JSON.stringify(p));fireEvent(window,new StorageEvent('storage'));
@@ -160,19 +162,19 @@ it('서버 첫 내용으로 재시도한 뒤 정확한 재조회·정리 완료�
 it('처리결과 확인 중 사용자가 바뀌었다 돌아와 같은 항목을 열어도 늦은 결과를 표시하지 않는다',async()=>{
  lowerOnlyFixture();let resolve!:(value:unknown)=>void;recoveryMocks.inspect.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
  const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],pendingInvoice,composerOnly:true};
- const view=render(<TradeStatement {...props}/>);fireEvent.click(await recoveryAction('처리결과 확인'));
+ const view=render(<TradeStatement {...companyReadyFixture} {...props}/>);fireEvent.click(await recoveryAction('처리결과 확인'));
  await waitFor(()=>expect(recoveryMocks.inspect).toHaveBeenCalledOnce());
- (auth.currentUser as {uid:string}).uid='another-user';view.rerender(<TradeStatement {...props}/>);
- (auth.currentUser as {uid:string}).uid='test-uid';view.rerender(<TradeStatement {...props}/>);
+ (auth.currentUser as {uid:string}).uid='another-user';view.rerender(<TradeStatement {...companyReadyFixture} {...props}/>);
+ (auth.currentUser as {uid:string}).uid='test-uid';view.rerender(<TradeStatement {...companyReadyFixture} {...props}/>);
  await recoveryAction('처리결과 확인');
  await act(async()=>resolve({status:'applied',reason:'다른 사용자에게 보이면 안 되는 이전 결과',currentStatement:'present'}));
  expect(screen.queryByText('다른 사용자에게 보이면 안 되는 이전 결과')).not.toBeInTheDocument();
  expect(localStorage.getItem(lowerKey)).not.toBeNull();
 });
-const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn(),complete:vi.fn()}));
+const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn(),complete:vi.fn(),build:vi.fn()}));
 const recoveryMocks=vi.hoisted(()=>({inspect:vi.fn(),backup:vi.fn(),clear:vi.fn(),resumePayment:vi.fn(),retry:vi.fn(),delete:vi.fn()}));
 vi.mock('../src/features/statements/infrastructure/tradeStatementRecoveryService',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/tradeStatementRecoveryService')>(),inspectTradeStatementRecovery:recoveryMocks.inspect,exportTradeStatementRecovery:recoveryMocks.backup,clearVerifiedTradeStatementRecovery:recoveryMocks.clear,resumeTradeStatementRecoveryPayment:recoveryMocks.resumePayment,retryTradeStatementRecovery:recoveryMocks.retry,deleteTradeStatementRecovery:recoveryMocks.delete}));
-vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
+vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>{const actual=await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>();return {...actual,buildStatementPrintHtml:(...args:Parameters<typeof actual.buildStatementPrintHtml>)=>{issueMocks.build();return actual.buildStatementPrintHtml(...args);},printStatementViaIframe:issueMocks.print};});
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment,completeTradeStatementRequest:issueMocks.complete}));
 vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'},onAuthStateChanged:(callback:(user:{uid:string}|null)=>void)=>{const previous=ownerExcel.actor;const combined=(user:{uid:string}|null)=>{previous?.(user);callback(user);};ownerExcel.actor=combined;return()=>{if(ownerExcel.actor===combined)ownerExcel.actor=previous;};}},db:{}}));
 // 저장 콜백 시험의 빈 Firebase 핸들은 조회에도 쓰지 않는다. 신규 단위 동작은 별도 시험한다.
@@ -289,7 +291,7 @@ function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
     await onAddIssuedStatement(statement);
     return 'applied' as const;
   });
-  render(<TradeStatement orders={[]} allItems={[{ ...item, id: 'box' }, item]}
+  render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[{ ...item, id: 'box' }, item]}
     partners={[partner]} partnerItems={[price]} issuedStatements={[]}
     pendingInvoice={pendingInvoice} onAddIssuedStatement={onAddIssuedStatement}
     onApplyStatement={onApplyStatement}
@@ -691,7 +693,7 @@ it('이미 발행된 요청을 삭제하면 새 발행 없이 기존 전표를 �
  const request=lowerOnlyFixture();recoveryMocks.delete.mockImplementationOnce(async()=>{localStorage.removeItem(lowerKey);return {outcome:'applied',statement:request.statement,reason:'기존 발행 확인'};});const apply=vi.fn();setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(await recoveryAction('실패 요청 삭제'));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'실패 작업 상세'})).not.toBeInTheDocument());expect(apply).not.toHaveBeenCalled();expect(screen.queryByRole('dialog',{name:'실패 작업 상세'})).not.toBeInTheDocument();
 });
 it('삭제 중 사용자가 바뀌면 늦은 결과로 입력을 닫거나 변경하지 않는다',async()=>{
- lowerOnlyFixture();let resolve!:(value:unknown)=>void;recoveryMocks.delete.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],pendingInvoice,composerOnly:true};const view=render(<TradeStatement {...props}/>);fireEvent.click(await recoveryAction('실패 요청 삭제'));await waitFor(()=>expect(recoveryMocks.delete).toHaveBeenCalled());(auth.currentUser as {uid:string}).uid='other-uid';view.rerender(<TradeStatement {...props}/>);await act(async()=>resolve({outcome:'rewrite',reason:'늦은 삭제'}));expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();expect(screen.queryByText('늦은 삭제')).not.toBeInTheDocument();
+ lowerOnlyFixture();let resolve!:(value:unknown)=>void;recoveryMocks.delete.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],pendingInvoice,composerOnly:true};const view=render(<TradeStatement {...companyReadyFixture} {...props}/>);fireEvent.click(await recoveryAction('실패 요청 삭제'));await waitFor(()=>expect(recoveryMocks.delete).toHaveBeenCalled());(auth.currentUser as {uid:string}).uid='other-uid';view.rerender(<TradeStatement {...companyReadyFixture} {...props}/>);await act(async()=>resolve({outcome:'rewrite',reason:'늦은 삭제'}));expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();expect(screen.queryByText('늦은 삭제')).not.toBeInTheDocument();
 });
 it('사본 삭제 뒤 별도로 남은 결제 항목은 전표 재발행과 재삭제 대신 결제 확인만 제공한다',async()=>{
  const request=lowerOnlyFixture(),paymentKey='partner-payment-pending:taebaek:partner:test-uid',paymentText=JSON.stringify({version:2,request:{operationId:'pay-only',amount:10,cashAccountId:'old-bank',tradeDate:'2026-10-15'}});localStorage.setItem(paymentKey,paymentText);
@@ -700,7 +702,7 @@ it('사본 삭제 뒤 별도로 남은 결제 항목은 전표 재발행과 재�
  setup(undefined,undefined,{composerOnly:true});fireEvent.click(screen.getByRole('button',{name:'실패 1'}));const paymentList=await screen.findByRole('dialog',{name:'실패 작업 목록'});expect(within(paymentList).getByText('수금·지불 확인 · 진단 거래처 · 2026-10-15 · 10원')).toBeInTheDocument();expect(within(paymentList).queryByText(/6,600원/)).not.toBeInTheDocument();await recoveryAction('처리결과 확인');expect(screen.queryByText(/원래 결제 요청을 재개해 주세요/)).not.toBeInTheDocument();expect(screen.getByText(/전표 실패 사본은 삭제됐습니다/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'실패 요청 삭제'})).not.toBeInTheDocument();expect(localStorage.getItem(paymentKey)).toBe(paymentText);
 });
 it('작성창이 없을 때 삭제가 확정되면 검증된 원작성 품목으로 새 작성창을 연다',async()=>{
- const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={vi.fn().mockRejectedValue(Error('응답 유실'))}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(listTradePendings('taebaek','test-uid')).toHaveLength(1));const entry=listTradePendings('taebaek','test-uid')[0];first.unmount();
+ const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={vi.fn().mockRejectedValue(Error('응답 유실'))}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(listTradePendings('taebaek','test-uid')).toHaveLength(1));const entry=listTradePendings('taebaek','test-uid')[0];first.unmount();
  recoveryMocks.delete.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return {outcome:'rewrite',pending:entry.pending,reason:'취소 후 삭제'};});setup(undefined,undefined,{pendingInvoice:null});fireEvent.click(await recoveryAction('실패 요청 삭제'));await screen.findByRole('dialog',{name:'매입 전표 작성'});expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('1');expect(screen.getByLabelText('전표일자')).toHaveValue(entry.pending!.input.statement.tradeDate);
 });
 it('최초 송신 사본만 있어도 삭제 확정 후 읽을 수 있는 원품목으로 새 작성한다',async()=>{
@@ -717,9 +719,9 @@ it('전표 취소와 별개로 결제 미확인 상태는 정리나 새 발행�
  recoveryMocks.inspect.mockResolvedValueOnce({status:'cancelled',reason:'전표 취소 완료',currentStatement:'unverified',serverRequestText:JSON.stringify(request),payment:{status:'unknown',reason:'결제 확인 필요'}});setup(undefined,undefined,{composerOnly:true});fireEvent.click(await recoveryAction('처리결과 확인'));await screen.findByText(/결제 결과는 아직 확인되지 않았습니다/);expect(screen.queryByRole('button',{name:'확인된 결제 요청 정리'})).not.toBeInTheDocument();expect(screen.queryByText(/작성 중인 입력을 수정해 저장/)).not.toBeInTheDocument();expect(screen.queryByText('서버에 남은 첫 저장 시도 내용')).not.toBeInTheDocument();expect(recoveryMocks.clear).not.toHaveBeenCalled();expect(localStorage.getItem(paymentKey)).toBe(paymentText);
 });
 it.each(['company','uid'])('복구에서 연 발행 상세는 %s 변경 시 닫힌다',async scope=>{
- const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const p=JSON.parse(localStorage.getItem(pendingKey())!);p.input.command.orderIds=['order-A'];localStorage.setItem(pendingKey(),JSON.stringify(p));first.unmount();
- const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[{...p.input.statement,id:'actual-other',orderId:'order-A',docNo:'261013-001'}],onApplyStatement:apply};const view=render(<TradeStatement {...props}/>);await recoveryAction('같은 내용 다시 시도');fireEvent.click(screen.getByRole('button',{name:'발행된 전표 보기 · 261013-001'}));expect(screen.getAllByText('261013-001').length).toBeGreaterThan(0);
- if(scope==='uid')(auth.currentUser as {uid:string}).uid='other-uid';view.rerender(<TradeStatement {...props} companyId={scope==='company'?'punghoe':'taebaek'}/>);expect(screen.queryByRole('button',{name:'✕'})).not.toBeInTheDocument();expect(screen.queryByRole('dialog',{name:'실패 작업 상세'})).not.toBeInTheDocument();
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const p=JSON.parse(localStorage.getItem(pendingKey())!);p.input.command.orderIds=['order-A'];localStorage.setItem(pendingKey(),JSON.stringify(p));first.unmount();
+ const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[{...p.input.statement,id:'actual-other',orderId:'order-A',docNo:'261013-001'}],onApplyStatement:apply};const view=render(<TradeStatement {...companyReadyFixture} {...props}/>);await recoveryAction('같은 내용 다시 시도');fireEvent.click(screen.getByRole('button',{name:'발행된 전표 보기 · 261013-001'}));expect(screen.getAllByText('261013-001').length).toBeGreaterThan(0);
+ if(scope==='uid')(auth.currentUser as {uid:string}).uid='other-uid';view.rerender(<TradeStatement {...companyReadyFixture} {...props} companyId={scope==='company'?'punghoe':'taebaek'}/>);expect(screen.queryByRole('button',{name:'✕'})).not.toBeInTheDocument();expect(screen.queryByRole('dialog',{name:'실패 작업 상세'})).not.toBeInTheDocument();
 });
 
 it('외부 상세 ID의 최초 열기는 회사 초기화 뒤에도 유지한다',async()=>{
@@ -750,7 +752,7 @@ it('상세 선택 원문이 다른 창에서 바뀌면 재시도 없이 원문 �
 
 it('보관한 미확인 A와 무관한 B는 새로 저장하며 A 원문도 다시 확인할 수 있다',async()=>{
  const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
- const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
+ const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
  const original=apply.mock.calls[0][0],key=pendingKey(),text=localStorage.getItem(key);
  await archiveCurrentRequest();await waitFor(()=>expect(screen.getByRole('dialog',{name:'실패 작업 목록'})).toBeInTheDocument());returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();
@@ -764,7 +766,7 @@ it('보관한 미확인 A와 무관한 B는 새로 저장하며 A 원문도 다�
 
 it('보관한 A와 같은 발주 B는 원문과 저장 횟수를 유지하고 어떤 요청인지 안내한다',async()=>{
  const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));
- const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
+ const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),text=localStorage.getItem(key);
  await archiveCurrentRequest();await waitFor(()=>expect(screen.getByRole('dialog',{name:'실패 작업 목록'})).toBeInTheDocument());returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();first.unmount();
  setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-A']},onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));
@@ -773,7 +775,7 @@ it('보관한 A와 같은 발주 B는 원문과 저장 횟수를 유지하고 �
 
 it('동일 주문의 다른 발행 전표는 보기만 안내하고 미확인 원문을 완료로 삭제하지 않는다',async()=>{
  const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));
- const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);
+ const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),p=JSON.parse(localStorage.getItem(key)!);p.input.command.orderIds=['order-A'];const text=JSON.stringify(p);localStorage.setItem(key,text);first.unmount();
  setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[{...p.input.statement,id:'actual-other',orderId:'order-A',docNo:'261013-001'}],onApplyStatement:apply});
  await recoveryAction('같은 내용 다시 시도');expect(screen.getByText(/관련 주문은 이미 다른 전표로 발행되어 있습니다/)).toBeInTheDocument();expect(screen.getByRole('button',{name:'발행된 전표 보기 · 261013-001'})).toBeEnabled();expect(localStorage.getItem(key)).toBe(text);expect(apply).toHaveBeenCalledOnce();
@@ -787,7 +789,7 @@ it('서버 취소가 불가능하면 원문과 작성 화면을 유지하고 구
 
 it('응답 유실 뒤 다시 열면 이전 주요 발행 원문을 재시도한다', async () => {
   const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
-  const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-original']}} onApplyStatement={apply} composerOnly/>);
+  const first=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-original']}} onApplyStatement={apply} composerOnly/>);
   fireEvent.click(screen.getByRole('button',{name:'저장'}));
   await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
   const original=apply.mock.calls[0][0];
@@ -804,7 +806,7 @@ it('응답 유실 뒤 다시 열면 이전 주요 발행 원문을 재시도한�
 it('전표 발행 뒤 지급 응답 유실도 재열기에서 같은 전표와 지급 원문으로 재시도한다',async()=>{
  const apply=vi.fn().mockResolvedValue('duplicate');issueMocks.payment.mockRejectedValueOnce(new Error('지급 응답 유실')).mockResolvedValue(undefined);
  const accounts=[{id:'bank',companyId:'taebaek' as const,name:'은행',type:'통장' as const,active:true,openingBalance:0,openingDate:'2026-01-01',createdAt:''}];
- const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly cashAccounts={accounts}/>);
+ const view=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly cashAccounts={accounts}/>);
  fireEvent.click(screen.getByLabelText('지불도 함께'));fireEvent.click(screen.getByRole('button',{name:'저장'}));
  await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledOnce());const original=issueMocks.payment.mock.calls[0];const body=apply.mock.calls[0][0];view.unmount();
  setup(undefined,undefined,{pendingInvoice:null,composerOnly:true,onApplyStatement:apply,cashAccounts:accounts});
@@ -859,7 +861,7 @@ it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2
    .mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce('duplicate');
  const props={orders:[],allItems:[raw],partners:[partner],partnerItems:[rawPrice],issuedStatements:[],composerOnly:true,
  pendingInvoice:{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:44000}]},onApplyStatement:callback};
- const view=render(<TradeStatement {...props}/>);
+ const view=render(<TradeStatement {...companyReadyFixture} {...props}/>);
  fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});
  expect(screen.queryByText(/^거래 수량 \(/)).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(callback).toHaveBeenCalledOnce());
@@ -867,7 +869,7 @@ it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2
  expect(sent.statement.items[0]).toMatchObject({qty:2,price:44000,supply:80000,total:88000,purchaseUnitId:'manual-kg',purchaseUnit:'20kg',purchaseQty:2,unitKg:20,inventoryQty:40});
  expect(sent.costUpdates).toEqual([{itemId:raw.id,price:2000,beforeCost:80,sourceLineIndex:0}]);
  expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'20kg',purchaseUnitId:'manual-kg',unitKg:20,inventoryQty:40});
- view.unmount();render(<TradeStatement {...props}/>);
+ view.unmount();render(<TradeStatement {...companyReadyFixture} {...props}/>);
  fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
  expect(callback.mock.calls[1][0]).toEqual(sent);
 });
@@ -878,7 +880,7 @@ it('신규 벌크 매입의 기본kg는 snapshot을 저장하고 면세단가440
  const rawPrice:PartnerItem={...price,itemId:raw.id,price:44000,taxType:'면세'};
  const apply=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>().mockResolvedValue('applied');
  const updateCost=vi.fn(),upsertPrice=vi.fn().mockResolvedValue({status:'saved'});
- render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[rawPrice]} issuedStatements={[]}
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[rawPrice]} issuedStatements={[]}
    pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:44000}]}} onApplyStatement={apply} onUpdateItemCost={updateCost} onSavePartnerItemTerms={upsertPrice} composerOnly/>);
  expect(await screen.findByLabelText('1행 매입단위 숫자')).toHaveValue('1');expect(screen.queryByLabelText('1행 원가 기준 수량 kg')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'저장'}));
@@ -894,27 +896,27 @@ it('신규 벌크 매입의 기본kg는 snapshot을 저장하고 면세단가440
 
 it('실제매입20kg·수량2·면세44000 단가는 입고40kg와kg원가2200을 같은전표에 보존한다',async()=>{
  const raw={...item,id:'manual-raw',name:'들깨',type:'raw',subtype:'벌크',unit:'포',cost:80} as Item,apply=vi.fn().mockResolvedValue('applied');
- render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});expect(screen.queryByText(/단위당/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
  const sent=apply.mock.calls[0][0];expect(sent.statement.items[0]).toMatchObject({qty:2,price:44000,supply:88000,tax:0,inventoryQty:40,purchaseUnit:'20kg'});expect(sent.statement.items[0].purchaseQuantityKg).toBeUndefined();expect(sent.costUpdates).toEqual([{itemId:raw.id,price:2200,beforeCost:80,sourceLineIndex:0}]);
 });
 it('실제숫자20에서단위만g로바꾸면숫자는20이며20g·수량2스냅샷.04kg를발행한다',async()=>{
- const raw={...item,id:'grams-raw',name:'소량들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn().mockResolvedValue({status:'saved'});render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onSavePartnerItemTerms={upsert}
+ const raw={...item,id:'grams-raw',name:'소량들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn().mockResolvedValue({status:'saved'});render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onSavePartnerItemTerms={upsert}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44}]}}/>);
  const amount=await screen.findByLabelText('1행 매입단위 숫자'),measure=screen.getByLabelText('1행 매입단위 단위');expect(amount).toHaveValue('1');expect(measure).toHaveValue('kg');fireEvent.change(amount,{target:{value:'20'}});fireEvent.change(measure,{target:{value:'g'}});expect(amount).toHaveValue('20');expect(measure).toHaveValue('g');for(const text of ['원료 매입 설정','단위당','금액은 거래 수량'])expect(screen.queryByText(text,{exact:false})).not.toBeInTheDocument();expect(screen.queryByText(/^거래 수량 \(/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,price:44,purchaseUnit:'20g',unitKg:.02,inventoryQty:.04,total:88});expect(apply.mock.calls[0][0].costUpdates).toEqual([{itemId:raw.id,price:2200,beforeCost:0,sourceLineIndex:0}]);await waitFor(()=>expect(upsert).toHaveBeenCalledOnce());expect(upsert.mock.calls[0][0].terms.price).toBe(2200);
 });
 it('숫자빈값뒤단위g/거래수량3을바꿔도자동1로살아나지않고폼보존·저장거절',async()=>{
- const raw={...item,id:'blank-grams',name:'소량참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+ const raw={...item,id:'blank-grams',name:'소량참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44}]}}/>);const amount=await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(amount,{target:{value:''}});fireEvent.change(screen.getByLabelText('1행 매입단위 단위'),{target:{value:'g'}});fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'3'}});expect(amount).toHaveValue('');expect(screen.getByLabelText('1행 매입단위 단위')).toHaveValue('g');fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(amount).toHaveValue('');
 });
 it.each(['','0','.'])('잘못된단위 %s는 실제저장콜백0·입력보존',async value=>{
- const raw={...item,id:'invalid-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+ const raw={...item,id:'invalid-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  const input=await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(input,{target:{value}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(input).toHaveValue(value);
 });
 it.each([['unit','0.0001'],['qty','0.0001'],['unit','9'.repeat(308)],['qty','9'.repeat(308)],['qty','Infinity']])('작은중량·overflow 실제 %s 입력은 순차편집중 폼을보존하고 저장만거절',async(field,value)=>{
- const raw={...item,id:'tiny-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+ const raw={...item,id:'tiny-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  const unit=await screen.findByLabelText('1행 매입단위 숫자'),qty=screen.getByLabelText('1행 거래 수량');if(field==='unit')fireEvent.change(qty,{target:{value:'1'}});else if(value.length>100)fireEvent.change(unit,{target:{value:'2'}});
  const input=field==='unit'?unit:qty;for(const partial of ['',value.slice(0,1),value.slice(0,3),value])expect(()=>fireEvent.change(input,{target:{value:partial}})).not.toThrow();expect(input).toHaveValue(value);expect(screen.getByRole('button',{name:'저장'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(input).toHaveValue(value);
@@ -922,7 +924,7 @@ it.each([['unit','0.0001'],['qty','0.0001'],['unit','9'.repeat(308)],['qty','9'.
 
 it('계정만 변경하면 직접입력 단위snapshot·거래수량을 유지한다',async()=>{
  const raw={...item,id:'account-raw',name:'들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied');
- render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,taxType:'면세',price:44000}]} accountCodes={[{id:'500',code:'500',name:'원재료비'},{id:'505',code:'505',name:'부재료비'}] as any} issuedStatements={[]} composerOnly onApplyStatement={apply}
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,taxType:'면세',price:44000}]} accountCodes={[{id:'500',code:'500',name:'원재료비'},{id:'505',code:'505',name:'부재료비'}] as any} issuedStatements={[]} composerOnly onApplyStatement={apply}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});const quantity=screen.getByLabelText('1행 거래 수량'),select=quantity.closest('tr')!.querySelector('select')!;fireEvent.change(select,{target:{value:'505'}});expect(screen.getByLabelText('1행 매입단위 숫자')).toHaveValue('20');expect(screen.queryByText(/단위당/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,purchaseUnitId:'manual-kg',purchaseUnit:'20kg',purchaseQty:2,unitKg:20,inventoryQty:40,accountCode:'505'});
 });
@@ -930,16 +932,16 @@ it('계정만 변경하면 직접입력 단위snapshot·거래수량을 유지�
 it('실제20kg발행은 거래처kg단가2200을 저장하고 다음 신규kg품목선택에2200을 넣는다',async()=>{
  const raw={...item,id:'next-raw',name:'다음들깨',type:'raw',subtype:'벌크',unit:'포',cost:80} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn().mockResolvedValue({status:'saved'});
  const base={orders:[],allItems:[raw],partners:[partner],issuedStatements:[],composerOnly:true,onApplyStatement:apply,onSavePartnerItemTerms:upsert};
- const view=render(<TradeStatement {...base} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]}
+ const view=render(<TradeStatement {...companyReadyFixture} {...base} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(upsert).toHaveBeenCalledOnce());const savedInput=upsert.mock.calls[0][0];expect(savedInput).toMatchObject({target:{itemId:raw.id},terms:{price:2200,taxType:'면세'}});const savedPartnerPrice={...price,itemId:raw.id,...savedInput.terms};expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,price:44000,inventoryQty:40});view.unmount();
- render(<TradeStatement {...base} partnerItems={[savedPartnerPrice]} pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:'',name:'',spec:'',qty:1,price:0}]}}/>);
+ render(<TradeStatement {...companyReadyFixture} {...base} partnerItems={[savedPartnerPrice]} pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:'',name:'',spec:'',qty:1,price:0}]}}/>);
  const search=await screen.findByPlaceholderText('제품명...');fireEvent.focus(search);fireEvent.change(search,{target:{value:raw.name}});fireEvent.mouseDown(await screen.findByText(raw.name));
  expect(screen.getByLabelText('1행 매입단위 숫자')).toHaveValue('1');const quantity=screen.getByLabelText('1행 거래 수량');expect(quantity).toHaveValue('1');expect(quantity.closest('tr')!.querySelector('td:nth-child(5) input')).toHaveValue('2200');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));expect(apply.mock.calls[1][0].statement.items[0]).toMatchObject({qty:1,price:2200,purchaseUnit:'kg',unitKg:1,inventoryQty:1});
 });
 it('실제같은원료 kg/20kg 혼합발행은거래처단가upsert0이며 원가합산만보존한다',async()=>{
  const raw={...item,id:'mixed-raw',name:'혼합들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn().mockResolvedValue({status:'saved'});
- render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onSavePartnerItemTerms={upsert}
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onSavePartnerItemTerms={upsert}
   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000},{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
  await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(screen.getByLabelText('2행 매입단위 숫자'),{target:{value:'20'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const sent=apply.mock.calls[0][0];expect(sent.statement.items.map((row:any)=>row.price)).toEqual([44000,44000]);expect(sent.statement.items.map((row:any)=>row.inventoryQty)).toEqual([2,40]);expect(sent.costUpdates).toEqual([{itemId:raw.id,price:4190,beforeCost:0,sourceLineIndex:0,sourceLineIndices:[0,1]}]);expect(upsert).not.toHaveBeenCalled();
 });
@@ -949,7 +951,7 @@ it('입고 전표 상세 진입은 기존 매입 수정 모달을 보기로 열�
  const statement: IssuedStatement = {id:'inbound-view',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:'은하산업',tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'261010-001',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,
  items:[{itemId:item.id,name:'생들기름-캔',spec:'16.5kgml',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500'}]};
  const close=vi.fn(),composerClose=vi.fn();
- render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} onComposerClose={composerClose} composerOnly/>);
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} onComposerClose={composerClose} composerOnly/>);
  const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});
  expect(screen.queryByRole('dialog',{name:/발행 전표 상세/})).not.toBeInTheDocument();
  expect(within(dialog).getByText('16.5kg')).toBeInTheDocument();expect(statement.items[0].spec).toBe('16.5kgml');
@@ -964,20 +966,20 @@ it('외부 상세 선택 변경은 기존 composer에서 다른 전표로 바뀌
  const first: IssuedStatement={id:'detail-a',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'A',orderId:'',items:[{name:'첫 품목',spec:'350ml',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true}],totalSupply:100,totalTax:0,totalAmount:100};
  const second={...first,id:'detail-b',docNo:'B',items:[{...first.items[0],name:'둘째 품목'}]};
  const close=vi.fn();const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[first,second],onDetailClose:close,composerOnly:true};
- const view=render(<TradeStatement {...props} detailStatementId={first.id}/>);
+ const view=render(<TradeStatement {...companyReadyFixture} {...props} detailStatementId={first.id}/>);
  expect(await screen.findByText('첫 품목')).toBeInTheDocument();
- view.rerender(<TradeStatement {...props} detailStatementId={second.id}/>);
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} detailStatementId={second.id}/>);
  await waitFor(()=>expect(screen.getByText('둘째 품목')).toBeInTheDocument());
  fireEvent.click(screen.getByRole('button',{name:'매입 전표 수정 닫기'}));
- view.rerender(<TradeStatement {...props} issuedStatements={[{...first}, {...second}]} detailStatementId={second.id}/>);
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} issuedStatements={[{...first}, {...second}]} detailStatementId={second.id}/>);
  expect(screen.queryByRole('dialog',{name:'매입 전표 수정'})).not.toBeInTheDocument();expect(close).toHaveBeenCalledOnce();
- view.rerender(<TradeStatement {...props} companyId="punghoe" detailStatementId={first.id}/>);
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} companyId="punghoe" detailStatementId={first.id}/>);
  expect(screen.queryByRole('dialog',{name:'매입 전표 수정'})).not.toBeInTheDocument();
 });
 it('외부 noncash 적용 전표 상세는 일반 composer 수정으로 확대하지 않고 기존 적용 취소를 유지한다',async()=>{
  const statement: IssuedStatement={id:'noncash-view',companyId:'taebaek',type:'비용',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'N',orderId:'',items:[],totalSupply:100,totalTax:0,totalAmount:100,
  noncashApplication:{kind:'advance-application',version:1,companyId:'taebaek',partnerId:partner.id,operationId:'apply',purpose:'합성',requestFingerprint:'hash',sourceFingerprints:{},targetFingerprints:{},allocations:[]}};
- const close=vi.fn();render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} composerOnly/>);
+ const close=vi.fn();render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} composerOnly/>);
  expect(await screen.findByRole('dialog',{name:`발행 전표 상세 — ${partner.name}`})).toBeInTheDocument();
  expect(screen.getByRole('button',{name:'적용 취소'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'수정'})).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:`발행 전표 상세 — ${partner.name} 닫기`}));expect(close).toHaveBeenCalledOnce();
@@ -987,7 +989,7 @@ it('외부 noncash 적용 전표 상세는 일반 composer 수정으로 확대�
 it('저장 원문 금액이 수량×단가와 달라도 보기·인쇄는 그대로이고 수정 진입 뒤에만 계산한다',async()=>{
  const statement: IssuedStatement={id:'original-rounding',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'261010-123',orderId:'',totalSupply:271,totalTax:28,totalAmount:299,
  items:[{name:'원문 품목',spec:'350ml',qty:3,price:100,supply:271,tax:28,total:299,isTaxExempt:false,accountCode:'500'}]};
- render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);
+ render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);
  const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});
  const row=within(dialog).getByText('원문 품목').closest('tr')!;
  expect(within(row).getByText('271')).toBeInTheDocument();expect(within(row).getByText('28')).toBeInTheDocument();expect(within(row).getByText('299')).toBeInTheDocument();
@@ -1002,8 +1004,8 @@ it('외부 일반 전표에서 적용 전표로 선택을 바꾸면 일반 compo
  const first: IssuedStatement={id:'normal-before',companyId:'taebaek',type:'매출',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'A',orderId:'',items:[],totalSupply:100,totalTax:0,totalAmount:100};
  const special: IssuedStatement={...first,id:'special-after',noncashApplication:{kind:'advance-application',version:1,companyId:'taebaek',partnerId:partner.id,operationId:'apply',purpose:'합성',requestFingerprint:'hash',sourceFingerprints:{},targetFingerprints:{},allocations:[]}};
  const props={orders:[],allItems:[],partners:[partner],partnerItems:[],issuedStatements:[first,special],composerOnly:true};
- const view=render(<TradeStatement {...props} detailStatementId={first.id}/>);expect(await screen.findByRole('dialog',{name:'매출 전표 수정'})).toBeInTheDocument();
- view.rerender(<TradeStatement {...props} detailStatementId={special.id}/>);
+ const view=render(<TradeStatement {...companyReadyFixture} {...props} detailStatementId={first.id}/>);expect(await screen.findByRole('dialog',{name:'매출 전표 수정'})).toBeInTheDocument();
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} detailStatementId={special.id}/>);
  expect(await screen.findByRole('dialog',{name:`발행 전표 상세 — ${partner.name}`})).toBeInTheDocument();expect(screen.getAllByRole('dialog')).toHaveLength(1);
  expect(screen.queryByRole('dialog',{name:'매출 전표 수정'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'적용 취소'})).toBeInTheDocument();
 });
@@ -1016,7 +1018,7 @@ it('실제 같은 ID의 유효한 미확인 요청은 작성 입력을 계속 �
 });
 
 it.each([false,true])('과거 구조 정상 0원 A는 재시도 없이 삭제 가능하고 무관 B를 저장한다: 삭제 %s',async deleted=>{
- const firstApply=vi.fn().mockRejectedValue(Error('응답 유실'));const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} composerOnly onApplyStatement={firstApply}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(firstApply).toHaveBeenCalledOnce());const entry=listTradePendings('taebaek','test-uid')[0],p=JSON.parse(entry.text);view.unmount();p.input.statement.totalAmount=0;p.input.statement.totalSupply=0;p.input.statement.items[0].total=0;p.input.statement.items[0].price=0;const text=JSON.stringify(p);localStorage.setItem(entry.key,text);const apply=vi.fn().mockResolvedValue('applied');setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-B']},onApplyStatement:apply});const qty=screen.getByLabelText('1행 거래 수량');expect(qty).not.toBeDisabled();fireEvent.change(qty,{target:{value:'2'}});const retry=await recoveryAction('같은 내용 다시 시도');expect(retry).toBeDisabled();fireEvent.click(retry);expect(apply).not.toHaveBeenCalled();expect(screen.getByText(/이전 요청의 합계가 0원/)).toBeInTheDocument();if(deleted){recoveryMocks.delete.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return {outcome:'rewrite',reason:'미발행 확인 후 삭제'};});fireEvent.click(screen.getByRole('button',{name:'실패 요청 삭제'}));await waitFor(()=>expect(localStorage.getItem(entry.key)).toBeNull());}returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('2');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].poIds).toEqual(['po-B']);expect(localStorage.getItem(entry.key)).toBe(deleted?null:text);
+ const firstApply=vi.fn().mockRejectedValue(Error('응답 유실'));const view=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} composerOnly onApplyStatement={firstApply}/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(firstApply).toHaveBeenCalledOnce());const entry=listTradePendings('taebaek','test-uid')[0],p=JSON.parse(entry.text);view.unmount();p.input.statement.totalAmount=0;p.input.statement.totalSupply=0;p.input.statement.items[0].total=0;p.input.statement.items[0].price=0;const text=JSON.stringify(p);localStorage.setItem(entry.key,text);const apply=vi.fn().mockResolvedValue('applied');setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-B']},onApplyStatement:apply});const qty=screen.getByLabelText('1행 거래 수량');expect(qty).not.toBeDisabled();fireEvent.change(qty,{target:{value:'2'}});const retry=await recoveryAction('같은 내용 다시 시도');expect(retry).toBeDisabled();fireEvent.click(retry);expect(apply).not.toHaveBeenCalled();expect(screen.getByText(/이전 요청의 합계가 0원/)).toBeInTheDocument();if(deleted){recoveryMocks.delete.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return {outcome:'rewrite',reason:'미발행 확인 후 삭제'};});fireEvent.click(screen.getByRole('button',{name:'실패 요청 삭제'}));await waitFor(()=>expect(localStorage.getItem(entry.key)).toBeNull());}returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('2');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].poIds).toEqual(['po-B']);expect(localStorage.getItem(entry.key)).toBe(deleted?null:text);
 });
 
 it('담당자 Auth UID를 현재 직원 이름으로 표시하고 이름순 정렬하며 원전표 ID는 보존한다', () => {
@@ -1032,31 +1034,31 @@ it('담당자 Auth UID를 현재 직원 이름으로 표시하고 이름순 정�
 it('목록 엑셀 미리보기 수명은 회사·인증 UID 변경과 화면 해제 때 중단된다', () => {
  const statement: IssuedStatement = { id:'excel-scope',companyId:'taebaek',type:'매출',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'EXCEL',totalSupply:100,totalTax:0,totalAmount:100,items:[] };
  const props = { orders: [], allItems: [item], partners: [partner], partnerItems: [price], issuedStatements: [statement], companyId: 'taebaek' as const };
- const view = render(<TradeStatement {...props} />);
+ const view = render(<TradeStatement {...companyReadyFixture} {...props} />);
  const open = () => { fireEvent.click(screen.getByRole('button', { name: '엑셀' })); return ownerExcel.download.mock.calls.at(-1)![0].signal as AbortSignal; };
  const first = open(); expect(first.aborted).toBe(false);
- view.rerender(<TradeStatement {...props} companyId="punghoe" />); expect(first.aborted).toBe(true);
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} companyId="punghoe" />); expect(first.aborted).toBe(true);
  const second = open(); act(() => ownerExcel.actor?.({ uid: 'other-uid' })); expect(second.aborted).toBe(true);
- view.rerender(<TradeStatement {...props} />); const third = open(); view.unmount(); expect(third.aborted).toBe(true);
+ view.rerender(<TradeStatement {...companyReadyFixture} {...props} />); const third = open(); view.unmount(); expect(third.aborted).toBe(true);
 });
 
 it('캐시 전표가 있어도 최초 인증 UID가 없으면 목록 엑셀을 열지 않는다', () => {
  const user = auth.currentUser; (auth as unknown as {currentUser:null}).currentUser = null;
  try {
   const statement: IssuedStatement = { id:'excel-no-user',companyId:'taebaek',type:'매출',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'NO-USER',totalSupply:100,totalTax:0,totalAmount:100,items:[] };
-  render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" />);
+  render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" />);
   fireEvent.click(screen.getByRole('button', { name:'엑셀' })); expect(ownerExcel.download).not.toHaveBeenCalled();
  } finally { (auth as unknown as {currentUser:typeof user}).currentUser = user; }
 });
 
 it('발행 문서 엑셀도 인증된 화면 수명과 원품목을 미리보기 서비스에 전달한다', async () => {
  const statement: IssuedStatement = { id:'document-preview',companyId:'taebaek',type:'매입',tradeDate:ownerToday(),issuedAt:ownerToday(),partnerId:partner.id,partnerName:partner.name,orderId:'',docNo:'DOCUMENT',totalSupply:250,totalTax:0,totalAmount:250,items:[{itemId:item.id,name:'문서 원품목',spec:'kg',qty:2.5,price:100,supply:250,tax:0,total:250,isTaxExempt:true,accountCode:'500'}] };
- const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" detailStatementId={statement.id}/>);
+ const view=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} companyId="taebaek" detailStatementId={statement.id}/>);
  const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'엑셀'}));
  expect(ownerExcel.document).toHaveBeenCalledOnce();const request=ownerExcel.document.mock.calls[0][0];expect(request.items[0]).toMatchObject({qty:2.5,price:100});expect(request.signal.aborted).toBe(false);view.unmount();expect(request.signal.aborted).toBe(true);
 });
 
-it('전표인쇄는회사UID출력signal을전달하고계정변경후재인쇄를차단한다',async()=>{const statement:IssuedStatement={id:'html-print-scope',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'HTML-SCOPE',orderId:'',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'인쇄원문',spec:'kg',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]};const view=render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));const signal=issueMocks.print.mock.calls.at(-1)![2] as AbortSignal;expect(signal.aborted).toBe(false);const count=issueMocks.print.mock.calls.length;act(()=>ownerExcel.actor?.({uid:'different-user'}));expect(signal.aborted).toBe(true);fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));expect(issueMocks.print).toHaveBeenCalledTimes(count);view.unmount();expect(signal.aborted).toBe(true);});
+it('전표인쇄는회사UID출력signal을전달하고계정변경후재인쇄를차단한다',async()=>{const statement:IssuedStatement={id:'html-print-scope',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'HTML-SCOPE',orderId:'',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'인쇄원문',spec:'kg',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]};const view=render(<TradeStatement {...companyReadyFixture} orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));const signal=issueMocks.print.mock.calls.at(-1)![2] as AbortSignal;expect(signal.aborted).toBe(false);const count=issueMocks.print.mock.calls.length;act(()=>ownerExcel.actor?.({uid:'different-user'}));expect(signal.aborted).toBe(true);fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));expect(issueMocks.print).toHaveBeenCalledTimes(count);view.unmount();expect(signal.aborted).toBe(true);});
 
 it('전표 실제 배치는 내역탭 행동 복구 검색 뒤에 결과 건수를 표시한다',()=>{
  setup(undefined,undefined,{pendingInvoice:undefined});
@@ -1122,8 +1124,8 @@ it('회사 정보 설정은 async ACK 전 유지하고 표시 변경 항목만 �
 });
 it('회사 정보 설정은 같은 회사 UID 교체 때 닫히고 옛 ACK로 새 창 초안을 닫지 않는다',async()=>{
  let finish!:(value:CompanyInfoOutcome)=>void;const gate=new Promise<CompanyInfoOutcome>(resolve=>{finish=resolve;}),save=vi.fn(()=>gate),base={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],companyId:'taebaek' as const,companyInfo:{name:'회사',ceoName:'대표',bizNo:'1',bizType:'제조',bizItem:'식품',address:'옛 주소'},onSaveCompanyInfo:save,companyInfoRecovery:companyPorts};
- const view=render(<TradeStatement {...base}/>);fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'옛 계정 수정'}});fireEvent.click(within(screen.getByRole('dialog',{name:'회사 정보 설정'})).getByRole('button',{name:'저장'}));
- (auth.currentUser as {uid:string}).uid='new-company-actor';view.rerender(<TradeStatement {...base}/>);expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 계정 초안'}});await act(async()=>finish({status:'saved',requestFinalized:true}));expect(screen.getByRole('dialog',{name:'회사 정보 설정'})).toBeInTheDocument();expect(screen.getByLabelText('사업장 주소')).toHaveValue('새 계정 초안');
+ const view=render(<TradeStatement {...companyReadyFixture} {...base}/>);fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'옛 계정 수정'}});fireEvent.click(within(screen.getByRole('dialog',{name:'회사 정보 설정'})).getByRole('button',{name:'저장'}));
+ (auth.currentUser as {uid:string}).uid='new-company-actor';view.rerender(<TradeStatement {...companyReadyFixture} {...base}/>);expect(screen.queryByRole('dialog',{name:'회사 정보 설정'})).toBeNull();fireEvent.click(screen.getByTitle('회사 정보 설정'));await act(async()=>{await Promise.resolve();});fireEvent.change(screen.getByLabelText('사업장 주소'),{target:{value:'새 계정 초안'}});await act(async()=>finish({status:'saved',requestFinalized:true}));expect(screen.getByRole('dialog',{name:'회사 정보 설정'})).toBeInTheDocument();expect(screen.getByLabelText('사업장 주소')).toHaveValue('새 계정 초안');
 });
 
 it('전표의 거래조건 사본 정리는 picker와 무관하게 정확 관측원문만 전달한다',async()=>{
@@ -1136,7 +1138,7 @@ it('전체 수정은 ACK 전 X와 중복 저장을 막고 처음 선택한 r0·U
 it('수정 응답 유실은 원문과 입력을 보존하고 같은 수정의 자동 재송신 없이 이유를 모달에 표시한다',async()=>{const save=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onUpdateIssuedStatement']>>(async()=>{throw Error('응답 유실');}),{dialog}=await openLifecycleEditor(save);fireEvent.click(within(dialog).getByRole('button',{name:'저장'}));await waitFor(()=>expect(within(dialog).getByRole('alert')).toHaveTextContent('응답 유실'));expect(dialog).toBeInTheDocument();expect(within(dialog).getByRole('button',{name:'저장'})).toBeDisabled();expect(save).toHaveBeenCalledOnce();});
 it('날짜 적용은 확인 대기 중 중복 송신하지 않고 회사UID 교체 뒤에는 저장하지 않는다',async()=>{let finish!:(value:boolean)=>void;vi.mocked(appConfirm).mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const save=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onUpdateIssuedStatement']>>(async()=>{}),original=lifecycleStatement();setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[original],focusDocNo:original.docNo,onUpdateIssuedStatement:save});const row=(await screen.findAllByText(original.partnerName)).find(el=>el.closest('tr'))!.closest('tr')!;fireEvent.change(within(row).getByLabelText('전표일자'),{target:{value:'2026-11-01'}});fireEvent.click(within(row).getByRole('button',{name:'날짜 적용'}));expect(save).not.toHaveBeenCalled();expect(within(row).getByRole('button',{name:'날짜 적용'})).toBeDisabled();act(()=>{(auth.currentUser as {uid:string}).uid='new-user';ownerExcel.actor?.({uid:'new-user'});});await act(async()=>finish(true));expect(save).not.toHaveBeenCalled();});
 it('증빙 저장은 선택 r0와 UID를 전달하고 응답 거절을 끝까지 표시한다',async()=>{const save=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onUpdateIssuedStatement']>>(async()=>{throw Error('증빙 권한 거절');}),original=lifecycleStatement();setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[original],focusDocNo:original.docNo,onUpdateIssuedStatement:save});const select=await screen.findByLabelText(original.partnerName+' 증빙');const value=(select as HTMLSelectElement).options[1].value;fireEvent.change(select,{target:{value}});await waitFor(()=>expect(save).toHaveBeenCalledOnce());expect(save.mock.calls[0]).toEqual([original.id,expect.objectContaining({evidence:value}),expect.objectContaining({mutationRevision:0}),'test-uid',expect.any(Function)]);expect(await screen.findAllByText(/증빙 권한 거절/)).not.toHaveLength(0);});
-it('같은 컴포넌트에서 회사UID를 바꾼 뒤 늦은 저장 ACK는 새 편집창과 입력을 닫지 않는다',async()=>{const gate=deferred(),save=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onUpdateIssuedStatement']>>(async()=>gate.promise),old=lifecycleStatement();const props={orders:[],allItems:[],partners:[partner],partnerItems:[],onUpdateIssuedStatement:save,onSavePartnerItemTerms:vi.fn(async()=>({status:'saved' as const}))};const view=render(<TradeStatement {...props} companyId="taebaek" issuedStatements={[old]} detailStatementId={old.id}/>);let dialog=await screen.findByRole('dialog',{name:'매출 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));fireEvent.click(within(dialog).getByRole('button',{name:'저장'}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());const next={...old,id:'new-scope',companyId:'punghoe' as const,memo:'새 회사 입력'};act(()=>{(auth.currentUser as {uid:string}).uid='new-user';ownerExcel.actor?.({uid:'new-user'});});view.rerender(<TradeStatement {...props} companyId="punghoe" issuedStatements={[next]} detailStatementId={next.id}/>);dialog=await screen.findByRole('dialog',{name:'매출 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));const memo=within(dialog).getByDisplayValue('새 회사 입력');fireEvent.change(memo,{target:{value:'새 계정이 작성한 비고'}});await act(async()=>gate.resolve());expect(dialog).toBeInTheDocument();expect(memo).toHaveValue('새 계정이 작성한 비고');expect(save).toHaveBeenCalledOnce();expect(within(dialog).getByRole('button',{name:'저장'})).toBeEnabled();});
+it('같은 컴포넌트에서 회사UID를 바꾼 뒤 늦은 저장 ACK는 새 편집창과 입력을 닫지 않는다',async()=>{const gate=deferred(),save=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onUpdateIssuedStatement']>>(async()=>gate.promise),old=lifecycleStatement();const props={orders:[],allItems:[],partners:[partner],partnerItems:[],onUpdateIssuedStatement:save,onSavePartnerItemTerms:vi.fn(async()=>({status:'saved' as const}))};const view=render(<TradeStatement {...companyReadyFixture} {...props} companyId="taebaek" issuedStatements={[old]} detailStatementId={old.id}/>);let dialog=await screen.findByRole('dialog',{name:'매출 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));fireEvent.click(within(dialog).getByRole('button',{name:'저장'}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());const next={...old,id:'new-scope',companyId:'punghoe' as const,memo:'새 회사 입력'};act(()=>{(auth.currentUser as {uid:string}).uid='new-user';ownerExcel.actor?.({uid:'new-user'});});view.rerender(<TradeStatement {...companyReadyFixture} {...props} companyId="punghoe" issuedStatements={[next]} detailStatementId={next.id}/>);dialog=await screen.findByRole('dialog',{name:'매출 전표 수정'});fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));const memo=within(dialog).getByDisplayValue('새 회사 입력');fireEvent.change(memo,{target:{value:'새 계정이 작성한 비고'}});await act(async()=>gate.resolve());expect(dialog).toBeInTheDocument();expect(memo).toHaveValue('새 계정이 작성한 비고');expect(save).toHaveBeenCalledOnce();expect(within(dialog).getByRole('button',{name:'저장'})).toBeEnabled();});
 
 // 실제 영속 writer와 controller를 함께 사용하고 서버 명령 경계만 합성한다.
 import {createStatementEditWrites,type StatementEditBindings,type StatementEditWire} from '../src/shared/services/statementEditWrites';
@@ -1161,4 +1163,40 @@ it('수정 실패가 있고 발행 요청이 없는 모달은 각 영역을 구�
  expect(within(dialog).queryByText('확인할 실패 작업이 없습니다.')).not.toBeInTheDocument();
  expect(within(dialog).getByRole('button',{name:'수정 결과 확인'})).toBeEnabled();
  expect(h.counts().writes).toBe(0);
+});
+
+const fixtureCompany={name:'합성 현재회사',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:''};
+const fixtureCompanyToken={};
+const companyReadyFixture={companyInfo:fixtureCompany,companyInfoRead:{companyId:'taebaek' as const,value:fixtureCompany,status:'ready' as const,error:'',retry:()=>{},observationToken:fixtureCompanyToken,isCurrent:(token:object)=>token===fixtureCompanyToken}};
+it.each(['loading','missing','error'] as const)('회사설정 %s이면 실제 작성 저장을 보내지 않고 입력과 설정 접근을 유지한다',status=>{
+ const read={...companyReadyFixture.companyInfoRead,status},apply=vi.fn();
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,companyInfoRead:read});
+ fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'3'}});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ expect(apply).not.toHaveBeenCalled();expect(appConfirm).not.toHaveBeenCalled();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('3');
+ expect(screen.getByRole('button',{name:'회사 설정 확인'})).toBeEnabled();
+});
+it('값만 전달하고 read가 없는 production 인쇄는 builder 호출 전에 막는다',async()=>{
+ const original=lifecycleStatement();setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[original],detailStatementId:original.id,companyInfoRead:undefined});
+ const dialog=await screen.findByRole('dialog',{name:'매출 전표 수정'});
+ fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));
+ expect(issueMocks.print).not.toHaveBeenCalled();expect(issueMocks.build).not.toHaveBeenCalled();expect(dialog).toBeInTheDocument();
+});
+it('다른회사 read는 ready여도 발행하지 않는다',()=>{
+ const apply=vi.fn();setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,companyInfoRead:{...companyReadyFixture.companyInfoRead,companyId:'punghoe'}});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(appConfirm).not.toHaveBeenCalled();
+});
+it('미확인 설정의 작성창에서 회사설정 모달을 열고 닫아도 초안을 유지한다',async()=>{
+ setup(undefined,undefined,{composerOnly:true,companyInfoRead:undefined});fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'3'}});
+ const composer=screen.getByRole('dialog');fireEvent.click(within(composer).getByRole('button',{name:'회사 설정 확인'}));
+ expect(composer).not.toBeInTheDocument();const settings=await screen.findByRole('dialog',{name:/회사/});fireEvent.click(within(settings).getByRole('button',{name:/닫기/}));
+ expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('3');
+});
+it('실제 발행 확인 대기에서 회사정보 관측이 바뀌면 최초 원문을 송신하지 않는다',async()=>{
+ const valid=vi.fn(()=>true),apply=vi.fn(),read={...companyReadyFixture.companyInfoRead,isCurrent:valid};
+ const duplicate={...lifecycleStatement(),id:'duplicate-company-lease',type:'매입' as const,totalSupply:6000,totalTax:600,totalAmount:6600};
+ vi.mocked(appConfirm).mockImplementationOnce(async()=>{valid.mockReturnValue(false);return true;});
+ setup(undefined,undefined,{composerOnly:true,issuedStatements:[duplicate],companyInfoRead:read,onApplyStatement:apply});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(appConfirm).toHaveBeenCalledOnce());
+ await waitFor(()=>expect(screen.getByText(/회사 정보가 바뀌었습니다/)).toBeInTheDocument());expect(apply).not.toHaveBeenCalled();expect(listTradePendings('taebaek','test-uid')).toHaveLength(0);expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('1');
 });

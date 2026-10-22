@@ -14,7 +14,6 @@ import ReactDOM from 'react-dom/client';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
-import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import AdminApp from '../../src/features/admin/AdminApp';
 import { takeShareFromUrl } from '../../src/shared/shareTarget';
@@ -121,7 +120,7 @@ const AdminSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>Promi
       currentView={currentView}
       setCurrentView={setCurrentView}
       onLogout={onSessionLogout}
-      appData={{ ...appData, companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO }}
+      appData={appData}
       adminData={adminData}
       onPreviewStaff={!previewAsStaff ? () => setPreviewAsStaff(true) : undefined}
       onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined}

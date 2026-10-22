@@ -6,7 +6,7 @@ import TradeStatement from './TradeStatement';
 import { today } from '../src/shared/day';
 import type { IssuedStatement } from '../src/shared/types';
 const mocks = vi.hoisted(() => ({ forget: vi.fn(), notice: vi.fn(async () => {}) }));
-vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []) }));
+vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []), activeReleaseId: async ()=>'synthetic-release', stripUndefined: (value:unknown)=>JSON.parse(JSON.stringify(value)) }));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn(async () => true), appPrompt: vi.fn(async () => null), appNotice: mocks.notice }));
 vi.mock('../src/features/admin/useVoucherLedger', () => ({ useVoucherLedger: ({ issuedStatements }: any) => ({ mergedStatements: issuedStatements, journalBySource: new Map(), partnerBalances: new Map(), getBalance: () => 0, canSettle: () => false, isVouchered: () => false, isFetchingHistory: false, forgetStatement: mocks.forget }) }));
 vi.mock('../src/features/statements/ui/StatementTradeRow', () => ({ StatementTradeTableRow: ({ statement, onOpen }: any) => <tr><td><button onClick={onOpen}>{statement.docNo} 열기</button></td></tr>, StatementTradeMobileRow: () => null }));

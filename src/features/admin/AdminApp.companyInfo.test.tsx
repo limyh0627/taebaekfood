@@ -52,3 +52,20 @@ it('보관목록과 명시 이력은 현재 회사·UID만 읽고 cursor를 보�
  expect(h.readCompanyInfoOperations).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'A'});expect(h.listCompanyInfoHistory).toHaveBeenCalledWith(h.context,'cursor');
  h.setCurrent(false);await expect(h.ports.onListCompanyInfoHistory(h.context)).rejects.toThrow();
 });
+function documentProps(tag:string,read:unknown){
+ let element:ts.JsxOpeningElement|ts.JsxSelfClosingElement|undefined;
+ const find=(node:ts.Node)=>{if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(file)===tag)element=node;ts.forEachChild(node,find);};find(file);
+ if(!element)throw Error('실제 서류 컴포넌트 연결 누락');
+ const names=new Set(['companyInfo','companyInfoRead','onOpenCompanySettings']);
+ const attrs=element.attributes.properties.filter(a=>ts.isJsxAttribute(a)&&names.has(a.name.getText(file))).map(a=>a.getText(file)).join(' ');
+ const code=ts.transpileModule('return <Document '+attrs+'/>;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None,jsx:ts.JsxEmit.React}}).outputText;
+ const setCurrentView=vi.fn(),companyInfo={name:'현재 회사'},React={createElement:(_type:unknown,props:unknown)=>({props})};
+ const result=new Function('React','Document','companyInfo','companyInfoRead','setCurrentView',code)(React,()=>null,companyInfo,read,setCurrentView);
+ return {props:result.props,setCurrentView,companyInfo};
+}
+it.each(['TradeStatement','TaxStatement'])('실제 Admin %s JSX는 읽기 관측을 재작성하지 않고 전달한다',tag=>{
+ const read={status:'ready',value:{name:'현재 회사'},observationToken:{},isCurrent:vi.fn(()=>true),retry:vi.fn()};const h=documentProps(tag,read);
+ expect(h.props.companyInfoRead).toBe(read);expect(h.props.companyInfo).toBe(h.companyInfo);expect(read.isCurrent).not.toHaveBeenCalled();expect(read.retry).not.toHaveBeenCalled();
+ const missing=documentProps(tag,undefined);expect(missing.props).toHaveProperty('companyInfoRead',undefined);
+ if(tag==='TaxStatement'){h.props.onOpenCompanySettings();expect(h.setCurrentView).toHaveBeenCalledExactlyOnceWith('trade-statement');}
+});

@@ -1,3 +1,4 @@
+import { useStatementCompanyInfoGuard, type StatementCompanyInfoRead, type StatementCompanyInfoLease } from '../src/features/statements/hooks/useStatementCompanyInfoGuard';
 import StatementEditRecoveryPanel from '../src/features/statements/ui/StatementEditRecoveryPanel';
 import type {StatementEditBindings,StatementEditFollowupPlan,StatementEditProgress} from '../src/shared/services/statementEditWrites';
 import {buildStatementEditPatch} from '../src/features/statements/application/statementEditor';
@@ -187,6 +188,8 @@ interface TradeStatementProps extends PartnerItemTermsBindings {
   onRemoveOrderRequest?: (id: string) => void;
   // 매입전표 발행 시: 발주카드 없으면 새로 생성(입고대기, 같은 거래처 품목 묶음), 있으면 발주카드에 전표 id 연결 + 입고대기 전환
   companyInfo?: CompanyInfo | null;
+  companyInfoRead?: StatementCompanyInfoRead;
+  onOpenCompanySettings?: () => void;
   onSaveCompanyInfo?: StatementCompanyDialogProps['onSave'];
   companyInfoRecovery?: CompanyInfoRecoveryPorts;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
@@ -280,7 +283,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddConfirmedOrder,
   onRemoveConfirmedOrder,
   onRemoveOrderRequest,
-  companyInfo,
+  companyInfo, companyInfoRead, onOpenCompanySettings,
   onSaveCompanyInfo,
   companyInfoRecovery,
   onUpdateItemCost,
@@ -1464,6 +1467,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
+  const companyGuard = useStatementCompanyInfoGuard({companyId,companyInfo,read:companyInfoRead,onOpenSettings:()=>setShowCompanyModal(true)});
   const partySnapshot = useMemo(() => {
     const { sup, buy } = 서류당사자ById({
       isSale: stmtType === '매출', companyInfo, partners,
@@ -1540,7 +1544,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [planPriceSync,onSavePartnerItemTerms, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
-  const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
+  const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds, companyLease?: StatementCompanyInfoLease): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     // 입력 실수는 저장 시도 원문을 만들기 전에 고친다. 실패 복구 목록은 송신 결과 확인에만 쓴다.
     if (!isCalendarDay(tradeDate)) { alert('전표일자를 확인해 주세요. 실제 존재하는 날짜를 YYYY-MM-DD 형식으로 입력한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
@@ -1622,8 +1626,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const current=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&cashEditScope.current.companyId===companyId;
     const conflicts=findTradePendingConflicts(listTradePendings(companyId,uid),input);
     if(conflicts.length){refreshIssuePendings();setRecoveryOpen(true);setRecoverySelection({key:conflicts[0].key,text:conflicts[0].text});throw new Error(`같은 주문·발주의 미확인 전표 때문에 저장할 수 없습니다. ${conflicts.map(entry=>entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:'판독할 수 없는 요청').join(', ')}. 실패 작업 상세에서 이전 요청을 확인해 주세요.`);}
+    if(!companyLease?.isCurrent())throw Error('회사 정보를 다시 확인해 주세요. 작성 내용은 유지했습니다.');
     const entry=await storeTradePendingEntry(pending,current);if(!current())throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');setSendingPending(pending);refreshIssuePendings();
     let 결과:Awaited<ReturnType<NonNullable<typeof onApplyStatement>>>;
+    if(!companyLease?.isCurrent())throw Error('회사 정보가 바뀌었습니다. 작성 내용을 확인한 뒤 다시 시도해 주세요.');
     try{결과=await onApplyStatement(input);}catch(error){if(current()&&tradeNoWriteProof(error,pending)){await clearTradePendingEntry(entry.key,entry.text,companyId,uid,current);if(current()){refreshIssuePendings();issueIdentityRef.current=null;}}throw error;}
     if(!cashEditScope.current.alive||cashEditScope.current.token!==token||auth.currentUser?.uid!==uid)throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
@@ -1797,6 +1803,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const handleIssue = async () => {
+    const companyLease=companyGuard.acquire();if(!companyLease)return;
     const token=cashEditScope.current.token,uid=auth.currentUser?.uid;
     const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid;
     if (saveBusyRef.current) return;
@@ -1850,7 +1857,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     let acknowledged:IssuedStatement|null=null;
     let followup='전표 요청 사본 정리';
     try {
-      const issued = await markIssued(registerInbound, skipLinkIds);
+      const issued = await markIssued(registerInbound, skipLinkIds, companyLease);
       if (!issued||!alive()) return;
       const stmt=issued.statement;acknowledged=stmt;
       //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
@@ -1895,9 +1902,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (saveBusyRef.current || statementEditor.isBusy() || !editingStmt || lineItems.length === 0) return;
     if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return; }
     if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return; }
+    const companyLease=companyGuard.acquire();if(!companyLease)return;
     let skipLinkIds: Set<string> | null = null;
     let followupPlan:StatementEditFollowupPlan;
-    await statementEditor.saveEdit({patch:buildStatementEditPatch(editDraft),confirm:async()=>{skipLinkIds=await confirmUnlinkedLines();return !!skipLinkIds;},
+    await statementEditor.saveEdit({isCurrent:companyLease.isCurrent,patch:buildStatementEditPatch(editDraft),confirm:async()=>{skipLinkIds=await confirmUnlinkedLines();return !!skipLinkIds && companyLease.isCurrent();},
       getFollowupPlan:()=>{followupPlan=planPriceSync(editingStmt.type,skipLinkIds!);return followupPlan;},
       afterSave:async(isCurrent,report)=>{await applyPriceSync(editingStmt.type,skipLinkIds!,false,isCurrent,followupPlan,report);}});
   };
@@ -1931,6 +1939,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handlePrint = () => {
     const signal=printSignal();if(!signal)return;
     if (editingStmt && !isEditMode) { handleDetailPrint(editingStmt); return; }
+    const companyLease=companyGuard.acquire();if(!companyLease)return;
     const balance = printBalance(stmtType, selectedClient?.id || '', totalAmount, editingStmt ?? undefined);
     const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems, balance });
     void printStatementViaIframe(html, `${stmtType}전표`, signal);
@@ -1939,6 +1948,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const signal=printSignal();if(!signal)return;
+    const companyLease=companyGuard.acquire();if(!companyLease)return;
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
     const balance = printBalance(stmt.type, stmt.partnerId, stmt.totalAmount, stmt);
@@ -1946,7 +1956,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     void printStatementViaIframe(html, `${stmt.type}전표`, signal);
   };
 
-  const handleReceipt = () => { const signal=printSignal();if(!signal)return;return printStatementViaIframe(buildReceiptHtml({
+  const handleReceipt = () => { const companyLease=companyGuard.acquire();if(!companyLease)return; const signal=printSignal();if(!signal)return;return printStatementViaIframe(buildReceiptHtml({
     companyInfo, tradeDate, docNo, partnerName: selectedClient?.name || '', items: lineItems,
     totals: { supply: totalSupply, tax: totalTax, amount: totalAmount },
   }), '영수증', signal); };
@@ -2342,8 +2352,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       <button type="button" className={`${recoveryButtonClass} mt-4`} disabled={isSaving} onClick={()=>setRecoverySelection(null)}>실패 작업 목록으로</button>
     </LargeModalShell>}
   </>;
+  const companyInfoNotice = companyGuard.blocked&&<div role="status" className="flex flex-wrap items-center gap-2 bg-white text-sm text-slate-700"><span>{companyGuard.message}</span><button type="button" onClick={companyGuard.retry}>회사 정보 다시 읽기</button><button type="button" onClick={companyGuard.openSettings}>회사 설정 확인</button></div>;
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
+      {!createMode&&!detailStmt&&companyInfoNotice}
+      {showCompanyModal && <StatementCompanyDialog {...companyInfoRecovery} key={companyId+':'+(issueActor??'')} companyId={companyId} actorUid={issueActor} initial={companyInfo}
+        onClose={() => setShowCompanyModal(false)} onSave={onSaveCompanyInfo}/>}
       {recoveryDialogs()}
       <PartnerItemTermsRecovery editor={termsEditor}/>
       {(linkSaveSummary.confirmed.length>0||linkSaveSummary.unconfirmed)&&<p role="status" className="text-xs text-slate-600">{linkSaveSummary.confirmed.length>0&&`연결 저장 확인: ${linkSaveSummary.confirmed.join(', ')}. `}{linkSaveSummary.unconfirmed&&`저장 확인이 필요한 품목: ${linkSaveSummary.unconfirmed}. 위에서 결과를 확인하거나 요청을 중단한 뒤 현재 내용을 다시 열어 주세요.`}</p>}
@@ -2410,8 +2424,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
            꺼진 코드를 남겨 두면 **살아 있는 줄 알고 고치게 된다** (실제로 그랬다). */}
 
       {/* ── 회사 정보 설정 모달 ── */}
-      {showCompanyModal && <StatementCompanyDialog {...companyInfoRecovery} key={companyId+':'+(issueActor??'')} companyId={companyId} actorUid={issueActor} initial={companyInfo}
-        onClose={() => setShowCompanyModal(false)} onSave={onSaveCompanyInfo}/>}
+
 
       {mainTab === 'history' && <>
 
@@ -2756,8 +2769,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )}
 
       {/* ── 발행내역 상세 모달 ── */}
-      {detailStmt && (
+      {detailStmt && !showCompanyModal && (
         <LargeModalShell title={`발행 전표 상세 — ${detailStmt.partnerName}`} onClose={closeDetail} bodyClassName="!p-0">
+          {companyInfoNotice}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>{detailStmt.type}</span>
@@ -2813,10 +2827,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {!createMode && statementEditor.error && <p role="alert" className="text-sm text-rose-700">{statementEditor.error}</p>}
       {!createMode && statementEditor.message && !statementEditor.error && <p role="status">{statementEditor.message}</p>}
-      {createMode && !recoveryOpen && !detailStmt && (
+      {createMode && !recoveryOpen && !detailStmt && !showCompanyModal && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
 
+          <div className="px-4 py-2">{companyInfoNotice}</div>
           <div className="flex flex-wrap gap-2 px-4 py-2">{recoveryEntryButtons}</div>
           {statementEditor.notice && <p role="status" className="px-4 py-2 text-sm">{statementEditor.notice}</p>}
           {statementEditor.error && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{statementEditor.error}</p>}

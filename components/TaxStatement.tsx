@@ -1,3 +1,4 @@
+import { useStatementCompanyInfoGuard, type StatementCompanyInfoRead } from '../src/features/statements/hooks/useStatementCompanyInfoGuard';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import { appNotice } from '../src/shared/components/appDialog';
 import { previewHtmlPrint } from '../src/shared/htmlPrintOutput';
@@ -33,6 +34,8 @@ interface TaxStatementProps {
   issuedStatements: IssuedStatement[];
   partners: Partner[];
   companyInfo?: CompanyInfo | null;
+  companyInfoRead?: StatementCompanyInfoRead;
+  onOpenCompanySettings?: () => void;
   onApplyTaxIssue?: (input: { operationId: string; statements: IssuedStatement[]; scope: TaxIssueScope; issuedAt: string }) =>
     Promise<{ id: string; data: Partial<IssuedStatement> }[]>;
 }
@@ -53,9 +56,10 @@ const partyRows = (party: DocParty): Array<[string, string]> => [
 const TaxStatement: React.FC<TaxStatementProps> = ({
   companyId = 'taebaek',
   issuedStatements: liveStatements, partners,
-  companyInfo,
+  companyInfo, companyInfoRead, onOpenCompanySettings,
   onApplyTaxIssue,
 }) => {
+  const companyGuard=useStatementCompanyInfoGuard({companyId,companyInfo,read:companyInfoRead,onOpenSettings:onOpenCompanySettings});
   const [activeTab, setActiveTab] = useState<'issue' | 'history'>('issue');
 
   // 라이브 구독은 7일치만 → 과거 12개월치를 온디맨드로 추가 로드
@@ -291,6 +295,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
    * '발행됨'을 보기 때문에, 안 찍으면 영영 미발행으로 남는다.
    */
   const handleTaxIssue = async (resume=false) => {
+    if(!resume&&!issueSnapshot&&!companyGuard.acquire())return;
     if(!resume&&selectedStmts.length>100){alert('한 번에 전표 100건까지 발행 결과를 기록할 수 있습니다.');return;}
     if(taxBusyRef.current||(!resume&&(sourceChanged||selectedStmts.length===0||!onApplyTaxIssue||taxPending||taxPendingError)))return;
     const token=taxScopeRef.current.token,uid=auth.currentUser?.uid,selectedIds=taxStmtIds,selectionScope=taxSelectionScopeRef.current;
@@ -313,14 +318,15 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const outputSignal = useOutputScope(companyId, JSON.stringify([activeTab, selectedMonth, taxClientId, taxStmtIds]));
   const handleTaxPdf = async () => {
     if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
+    const companyLease=issueSnapshot?null:companyGuard.acquire();if(!issueSnapshot&&!companyLease)return;
     const signal = outputSignal(); if (signal.aborted) return;
     const snapshot = snapshotOutputElement(taxPrintRef.current);
     const fileName = `세금계산서_${selectedClient?.name}_${tradeMonth}.pdf`;
     try {
       const html2canvas = (await import('html2canvas')).default;
-      if (signal.aborted) return;
+      if (signal.aborted || companyLease&&!companyLease.isCurrent()) return;
       const canvas = await html2canvas(snapshot.element, { scale: 2, useCORS: true });
-      if (signal.aborted) return;
+      if (signal.aborted || companyLease&&!companyLease.isCurrent()) return;
       const imgW = 190, imgH = canvas.height * imgW / canvas.width;
       await previewRasterPdf({pages:[{width:210,height:297,draws:[{image:canvas.toDataURL('image/png'),x:10,y:imgH<297?(297-imgH)/2:10,width:imgW,height:imgH}]}],fileName,signal});
     } catch { if (!signal.aborted) await appNotice('PDF 미리보기를 준비하지 못했습니다. 내용을 확인한 뒤 다시 시도해 주세요.'); }
@@ -328,6 +334,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   const handleTaxPrint = () => {
+    if(!issueSnapshot&&!companyGuard.acquire())return;
     if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
     const signal = outputSignal(); if (signal.aborted) return;
     void previewHtmlPrint({title:'세금계산서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
@@ -381,6 +388,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   const historyOutputSignal = useOutputScope(companyId, JSON.stringify([activeTab, selectedMonth, histClientId, histPreviewGroupKey]));
   const handleHistPrint = () => {
+    if(!previewSnapshot&&!companyGuard.acquire())return;
     if (!previewPrintRef.current) return;
     const signal = historyOutputSignal(); if (signal.aborted) return;
     void previewHtmlPrint({title:'세금계산서',signal,html:`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
@@ -390,15 +398,16 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   const handleHistPdf = async () => {
+    const companyLease=previewSnapshot?null:companyGuard.acquire();if(!previewSnapshot&&!companyLease)return;
     if (!previewPrintRef.current || !previewGroup) return;
     const signal = historyOutputSignal(); if (signal.aborted) return;
     const snapshot = snapshotOutputElement(previewPrintRef.current);
     const fileName = `세금계산서_${previewClient?.name}_${previewGroup.stmts[0].tradeDate.slice(0, 7)}.pdf`;
     try {
       const html2canvas = (await import('html2canvas')).default;
-      if (signal.aborted) return;
+      if (signal.aborted || companyLease&&!companyLease.isCurrent()) return;
       const canvas = await html2canvas(snapshot.element, { scale: 2, useCORS: true });
-      if (signal.aborted) return;
+      if (signal.aborted || companyLease&&!companyLease.isCurrent()) return;
       const imgW = 190, imgH = canvas.height * imgW / canvas.width;
       await previewRasterPdf({pages:[{width:210,height:297,draws:[{image:canvas.toDataURL('image/png'),x:10,y:imgH<297?(297-imgH)/2:10,width:imgW,height:imgH}]}],fileName,signal});
     } catch { if (!signal.aborted) await appNotice('PDF 미리보기를 준비하지 못했습니다. 내용을 확인한 뒤 다시 시도해 주세요.'); }
@@ -407,6 +416,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
+      {companyGuard.blocked&&<div role="status" className="flex flex-wrap items-center gap-2 bg-white text-sm text-slate-700"><span>{companyGuard.message}</span><button type="button" onClick={companyGuard.retry}>회사 정보 다시 읽기</button>{companyGuard.openSettings&&<button type="button" onClick={companyGuard.openSettings}>회사 설정 화면으로 이동</button>}</div>}
       <PageHeader
         title="세금계산서"
         subtitle="발행된 세금계산서를 조회하거나 새로 발행합니다."

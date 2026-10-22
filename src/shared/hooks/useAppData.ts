@@ -14,14 +14,14 @@ import {
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
   CashAccount, CashEntry, Settlement, CompanyId, OrderStatus, companyOf,
 } from '../types';
-import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
+import { subscribeToCollection, subscribeToRecentCollection, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import type { OrderUnitInputs } from '../orderUnits';
 import { buildBomIndex } from '../bomIndex';
 import { buildPackIndex, type PackRow } from '../packIndex';
 import { where, doc, getDoc } from 'firebase/firestore';
 import { auth, db, authReady } from '../firebase';
 import { dateOfLocal, kstDateRangeUtc } from '../day';
-import { companySettingDocId } from '../companySettings';
+import { useCompanyInfoRead, type CompanyInfoRead } from './useCompanyInfoRead';
 
 export interface WorkOrderItem {
   id: string;
@@ -88,6 +88,7 @@ export interface AppData {
   returnOperationsLoaded: boolean;
   itemReceipts: ItemReceipt[];
   companyInfo: CompanyInfo | null;
+  companyInfoRead?: CompanyInfoRead;
   accountGroups: AccountGroup[];
   accountCodes: AccountCode[];
   fixedCostTemplates: FixedCostTemplate[];
@@ -150,7 +151,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   //  사 온 기록 — 제품별원장이 '입고' 줄로 읽는다(2026-09-03부터)
   const [itemReceipts, setItemReceipts] = useState<ItemReceipt[]>([]);
-  const [companyInfo, setCompanyInfo] = useState<{ companyId: CompanyId; value: CompanyInfo | null } | null>(null);
+  const companyInfoRead = useCompanyInfoRead({ companyId, enabled });
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
@@ -357,8 +358,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         listen<WorkOrderItem>(COL.workOrderItems, (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex)), co),
         listenRecent<ReturnRequest>(COL.returnRequests, 'createdAt', 7, setReturnRequests, co),
         listen<ItemReceipt>(COL.itemReceipts, setItemReceipts, co),
-        //  회사별 설정 문서 — 문서 id 를 회사 id 로 둬 두 회사가 서로 덮어쓰지 않는다.
-        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), value => { if (!cancelled) setCompanyInfo({ companyId, value }); }),
       ];
     });
 
@@ -507,7 +506,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   return {
     ...scopedData,
     orderUnitInputs: { bom: bomIndex, pack: packIndex },
-    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: enabled && companyInfo?.companyId === companyId ? companyInfo.value : null,
+    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
     isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

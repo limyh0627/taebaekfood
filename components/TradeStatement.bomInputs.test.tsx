@@ -5,10 +5,10 @@ import {render,screen,waitFor} from '@testing-library/react';
 import {buildBomIndex,getBomIndex,setBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex} from '../src/shared/packIndex';
 import type {IssuedStatement,Item,Partner,PartnerItem} from '../src/shared/types';
-vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'},onAuthStateChanged:(callback:(user:{uid:string})=>void)=>{callback({uid:'test-uid'});return ()=>{};}},db:{}}));
 // 회사별 BOM 시험은 Firebase 읽기를 하지 않고 빈 매입단위 등록표를 사용한다.
 vi.mock('../src/shared/services/itemPurchaseUnitService',()=>({subscribeItemPurchaseUnits:vi.fn((_companyId,onData)=>{onData([]);return vi.fn();})}));
-vi.mock('../src/shared/services/firebaseService',()=>({fetchCollection:vi.fn(async()=>[])}));
+vi.mock('../src/shared/services/firebaseService',()=>({fetchCollection:vi.fn(async()=>[]),activeReleaseId:async()=>'synthetic-release',stripUndefined:(value:unknown)=>JSON.parse(JSON.stringify(value))}));
 vi.mock('../src/features/admin/useVoucherLedger',()=>({useVoucherLedger:({issuedStatements}:{issuedStatements:IssuedStatement[]})=>({mergedStatements:issuedStatements,journalBySource:new Map(),partnerBalances:new Map(),getBalance:(s:IssuedStatement)=>s.totalAmount,canSettle:()=>false,isVouchered:()=>false,isFetchingHistory:false,forgetStatement:vi.fn()})}));
 vi.mock('./CashLedger',()=>({AccountModal:()=>null}));
 vi.mock('./voucher/VoucherComposer',()=>({default:()=>null}));

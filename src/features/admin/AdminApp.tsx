@@ -331,7 +331,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements: allIssuedStatements,
-    itemFormulas, itemBoms, returnRequests, itemReceipts, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
+    itemFormulas, itemBoms, returnRequests, itemReceipts, companyInfo, companyInfoRead, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
     ordersMonths, setOrdersMonths,
@@ -4465,6 +4465,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
+              companyInfoRead={companyInfoRead}
               onSaveCompanyInfo={saveStatementCompanyInfo}
               companyInfoRecovery={companyInfoRecoveryBindings}
               onUpdateItemCost={(itemId, cost) => cascadeItemCost(itemId, cost)}
@@ -4476,6 +4477,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               issuedStatements={issuedStatements}
               partners={partners}
               companyInfo={companyInfo}
+              companyInfoRead={companyInfoRead}
+              onOpenCompanySettings={() => setCurrentView('trade-statement')}
               onApplyTaxIssue={async input => {
                 return applyTaxIssueWrites({ ...input, companyId });
               }}

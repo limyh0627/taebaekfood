@@ -133,7 +133,7 @@ function recoverySetup() {
     const scope = { companyId: 'taebaek' as const, actorUid: 'actor' };
     const applied = async () => { const entry = (await bindings.readPending(scope))[0]; return { version: 1, reference: entry.reference, actorUid: 'actor', status: 'applied', requestHash: entry.retained?.requestHash, revision: 1, message: '본문 반영' }; };
     const mount = (ports: StatementEditBindings = bindings) => renderHook(() => useStatementEditor({ ...scope, original, draftFingerprint: 'A', bindings: ports, onCommitted }));
-    return { bindings, call, scope, applied, mount, onCommitted };
+    return { bindings, call, scope, applied, mount, onCommitted, port };
 }
 it('영속 원문 ACK 뒤에만 현재 폼을 닫고 완료 사본을 정리한다', async () => {
     const setup = recoverySetup();
@@ -229,4 +229,29 @@ it('복구 재시도 응답도 유실되면 최신 관측값을 다시 읽어 �
     await act(async () => { await view.result.current.retry(view.result.current.failureRows[0].entry); });
     expect(setup.call).toHaveBeenCalledTimes(3); expect(view.result.current.readError).toBe('');
     expect(view.result.current.failureRows[0].currentState).toContain('처리 완료'); expect(setup.onCommitted).not.toHaveBeenCalled();
+});
+it('회사설정 lease가 확인 대기 중 바뀌면 송신0·입력보존과 자기 busy 해제를 지킨다',async()=>{
+ const wait=deferred<boolean>();let current=true;const view=setup();let task!:Promise<unknown>;
+ act(()=>{task=view.result.current.saveEdit({patch:{memo:'A'},confirm:()=>wait.promise,isCurrent:()=>current});});
+ current=false;await act(async()=>{wait.resolve(true);await task;});
+ expect(view.save).not.toHaveBeenCalled();expect(view.onCommitted).not.toHaveBeenCalled();expect(view.result.current.busy).toBe(false);
+});
+it('영속 prepare 대기 뒤 회사설정 lease가 바뀌면 apply하지 않고 보관원문은 남긴다',async()=>{
+ const setup=recoverySetup();const wait=deferred<Awaited<ReturnType<StatementEditBindings['prepare']>>>();let current=true;
+ const prepare=vi.fn(async(...args:Parameters<StatementEditBindings['prepare']>)=>{const entry=await setup.bindings.prepare(...args);await wait.promise;return entry;});
+ const apply=vi.fn(setup.bindings.apply);const view=setup.mount({...setup.bindings,prepare,apply});await waitFor(()=>expect(view.result.current.readLoading).toBe(false));let task!:Promise<unknown>;
+ act(()=>{task=view.result.current.saveEdit({patch:{memo:'A'},isCurrent:()=>current});});await waitFor(()=>expect(prepare).toHaveBeenCalledOnce());
+ const entries=await setup.bindings.readPending(setup.scope);await waitFor(()=>expect(entries).toHaveLength(1));current=false;
+ await act(async()=>{wait.resolve(entries[0]);await task;});expect(apply).not.toHaveBeenCalled();expect(view.result.current.busy).toBe(false);expect(setup.onCommitted).not.toHaveBeenCalled();expect(await setup.bindings.readPending(setup.scope)).toHaveLength(1);
+});
+
+
+it('실서비스 권한 await 뒤 lease가 바뀌면 최종 callable을 보내지 않는다',async()=>{
+ const fixture=recoverySetup(),gate=deferred<void>();let current=true,hold=false,waiting=false;
+ const ports=createStatementEditWrites({...fixture.port,check:async(_scope,isCurrent)=>{if(hold){waiting=true;await gate.promise;}if(!isCurrent())throw Error('현재 설정 관측이 바뀜');}});
+ const prepare=ports.prepare;
+ const view=fixture.mount({...ports,prepare:async(...args)=>{const entry=await prepare(...args);hold=true;return entry;}});
+ await waitFor(()=>expect(view.result.current.readLoading).toBe(false));let task!:Promise<unknown>;
+ act(()=>{task=view.result.current.saveEdit({patch:{memo:'A'},isCurrent:()=>current});});await waitFor(()=>expect(waiting).toBe(true));
+ current=false;await act(async()=>{gate.resolve();await task;});expect(fixture.call).not.toHaveBeenCalled();expect(fixture.onCommitted).not.toHaveBeenCalled();expect(view.result.current.busy).toBe(false);
 });

@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const m = vi.hoisted(() => ({ tree: null as unknown, auth: { currentUser: null as null | {
+const m = vi.hoisted(() => ({ tree: null as unknown, info: {} as unknown, read: undefined as unknown, received: null as null | {appData:{companyInfo:unknown;companyInfoRead?:unknown};companyId:unknown}, auth: { currentUser: null as null | {
             uid: string;
             isAnonymous: boolean;
             getIdTokenResult: () => Promise<{
@@ -20,15 +20,11 @@ vi.mock('react-dom/client', async () => {
 });
 vi.mock('firebase/auth', () => ({ signOut: m.signOut, onIdTokenChanged: (_auth: unknown, listener: (user: unknown) => void) => { m.listeners.add(listener); listener(m.auth.currentUser); return () => m.listeners.delete(listener); } }));
 vi.mock('../../src/shared/firebase', () => ({ auth: m.auth, authReady: Promise.resolve(), usingFirebaseEmulators: false }));
-vi.mock('../../src/shared/hooks/useAppData', () => ({ useAppData: () => { React.useEffect(() => { m.subscriptions++; m.subscriptionStarts++; return () => { m.subscriptions--; }; }, []); return { employees: [m.employee], companyInfo: {} }; } }));
+vi.mock('../../src/shared/hooks/useAppData', () => ({ useAppData: () => { React.useEffect(() => { m.subscriptions++; m.subscriptionStarts++; return () => { m.subscriptions--; }; }, []); return { employees: [m.employee], companyInfo: m.info, companyInfoRead: m.read }; } }));
 vi.mock('../../src/hooks/useAdminData', () => ({ useAdminData: () => ({}) }));
 vi.mock('../../src/shared/components/AuthPage', () => ({ default: () => <p>검수 로그인 화면</p> }));
-vi.mock('../../src/features/admin/AdminApp', () => ({ default: ({ onLogout }: {
-        onLogout: () => void;
-    }) => <div><p>검수 관리자 업무 화면</p><button onClick={onLogout}>검수 로그아웃</button></div> }));
-vi.mock('../../src/features/staff/StaffApp', () => ({ default: ({ onLogout }: {
-        onLogout: () => void;
-    }) => <div><p>검수 직원 업무 화면</p><button onClick={onLogout}>검수 로그아웃</button></div> }));
+vi.mock('../../src/features/admin/AdminApp', () => ({ default: (props: {onLogout:()=>void;appData:{companyInfo:unknown;companyInfoRead?:unknown};companyId:unknown}) => {m.received=props;return <div><p>검수 관리자 업무 화면</p><button onClick={props.onLogout}>검수 로그아웃</button></div>;} }));
+vi.mock('../../src/features/staff/StaffApp', () => ({ default: (props: {onLogout:()=>void;appData:{companyInfo:unknown;companyInfoRead?:unknown};companyId:unknown}) => {m.received=props;return <div><p>검수 직원 업무 화면</p><button onClick={props.onLogout}>검수 로그아웃</button></div>;} }));
 vi.mock('../../components/PartnerPortal', () => ({ default: () => null }));
 vi.mock('../../src/shared/services/firebaseService', () => ({ addItem: vi.fn() }));
 vi.mock('../../src/shared/shareTarget', () => ({ takeShareFromUrl: () => null }));
@@ -39,13 +35,13 @@ vi.mock('../../src/shared/components/LocalTestBanner', () => ({ default: () => n
 vi.mock('../../src/shared/components/AppAlertHost', () => ({ default: () => null }));
 vi.mock('../../src/shared/components/AppDialogHost', () => ({ default: () => null }));
 const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((ok, no) => { resolve = ok; reject = no; }); return { promise, resolve, reject }; };
-const user = (uid = 'synthetic-uid') => ({ uid, isAnonymous: false, getIdTokenResult: async () => ({ claims: { employeeId: 'employee', companyId: 'taebaek', isAdmin: true } }) });
+const user = (uid = 'synthetic-uid', companyId = m.employee.companyId) => ({ uid, isAnonymous: false, getIdTokenResult: async () => ({ claims: { employeeId: 'employee', companyId, isAdmin: true } }) });
 const emit = (next: ReturnType<typeof user> | null) => {
     m.auth.currentUser = next;
     for (const listener of m.listeners)
         listener(next);
 };
-beforeEach(() => { vi.resetModules(); localStorage.clear(); sessionStorage.clear(); m.tree = null; m.subscriptions = 0; m.subscriptionStarts = 0; m.signOut.mockReset(); m.unregister.mockReset().mockResolvedValue(undefined); m.capture.mockReset().mockReturnValue({ready:Promise.resolve(),assertCurrent:vi.fn(),dispose:vi.fn()}); m.auth.currentUser = user(); localStorage.setItem('tb_user', JSON.stringify(m.employee)); const root = document.createElement('div'); root.id = 'root'; document.body.appendChild(root); });
+beforeEach(() => { vi.resetModules(); localStorage.clear(); sessionStorage.clear(); m.tree = null; m.info={}; m.read=undefined; m.received=null; m.employee.companyId='taebaek'; m.subscriptions = 0; m.subscriptionStarts = 0; m.signOut.mockReset(); m.unregister.mockReset().mockResolvedValue(undefined); m.capture.mockReset().mockReturnValue({ready:Promise.resolve(),assertCurrent:vi.fn(),dispose:vi.fn()}); m.auth.currentUser = user(); localStorage.setItem('tb_user', JSON.stringify(m.employee)); const root = document.createElement('div'); root.id = 'root'; document.body.appendChild(root); });
 afterEach(() => { document.getElementById('root')?.remove(); });
 const start = async () => { await import('./main'); const view = render(m.tree as React.ReactNode); await screen.findByRole('button', { name: '검수 로그아웃' }); await waitFor(() => expect(m.subscriptions).toBe(1)); return view; };
 it('실 Root는 종료 대기 중 업무 구독과 로그인 화면을 숨기고 Auth null 선행 뒤에도 응답을 기다린다', async () => {
@@ -129,4 +125,15 @@ it('실 Root 재마운트에서도 실패한 로그아웃의 차단과 명시 �
     await act(async () => { emit(null); retry.resolve(); });
     expect(await screen.findByText('검수 로그인 화면')).toBeInTheDocument();
     expect(m.signOut).toHaveBeenCalledTimes(2);
+});
+
+it('풍회 설정이 없어도 실제 Root는 null과 읽기 상태를 그대로 전달하고 업무 화면을 유지한다',async()=>{
+ m.employee.companyId='punghoe';m.auth.currentUser=user();localStorage.setItem('tb_user',JSON.stringify(m.employee));m.info=null;
+ const read={status:'missing',value:null,error:'',retry:vi.fn(),observationToken:{},isCurrent:()=>false};m.read=read;
+ await start();expect(m.received?.companyId).toBe('punghoe');expect(m.received?.appData.companyInfo).toBeNull();expect(m.received?.appData.companyInfoRead).toBe(read);expect(screen.getByRole('button',{name:'검수 로그아웃'})).toBeInTheDocument();
+});
+it('실제 Root는 현재 회사의 정상 설정과 동일한 읽기 관측 객체를 자식에게 전달한다',async()=>{
+ m.employee.companyId='punghoe';m.auth.currentUser=user();localStorage.setItem('tb_user',JSON.stringify(m.employee));const info={name:'합성 현재회사',bankAccount:'합성 계좌'};m.info=info;
+ const read={status:'ready',value:info,error:'',retry:vi.fn(),observationToken:{},isCurrent:()=>true};m.read=read;
+ await start();expect(m.received?.companyId).toBe('punghoe');expect(m.received?.appData.companyInfo).toBe(info);expect(m.received?.appData.companyInfoRead).toBe(read);
 });

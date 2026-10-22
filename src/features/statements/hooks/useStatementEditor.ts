@@ -16,6 +16,7 @@ export interface StatementEditorOptions {
     onCommitted?: () => void;
 }
 export interface StatementEditInput {
+    isCurrent?: () => boolean;
     patch: Partial<IssuedStatement>;
     confirm?: () => Promise<boolean>;
     afterSave?: (isCurrent: () => boolean, report: (progress: StatementEditProgress) => Promise<void>) => unknown | Promise<unknown>;
@@ -162,7 +163,8 @@ export function useStatementEditor(options: StatementEditorOptions) {
         const fixed = latest.current;
         const requestScope = JSON.stringify([fixed.companyId, fixed.actorUid, original.id]);
         const prepared = { entry: null as StatementEditEntry | null };
-        const current = () => isCurrentActor() && state.current === owner && latest.current.companyId === fixed.companyId && latest.current.actorUid === fixed.actorUid;
+        const ownerCurrent = () => isCurrentActor() && state.current === owner && latest.current.companyId === fixed.companyId && latest.current.actorUid === fixed.actorUid;
+        const current = () => ownerCurrent() && (input.isCurrent?.() ?? true);
         try {
             const captured = captureStatementEdit(original, original.id, fixed.companyId);
             const patch = structuredClone(input.patch);
@@ -232,7 +234,7 @@ export function useStatementEditor(options: StatementEditorOptions) {
             }
         }
         finally {
-            if (current()) {
+            if (ownerCurrent()) {
                 owner.busy = false;
                 repaint();
             }
