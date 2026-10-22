@@ -1,10 +1,8 @@
-import { useState } from 'react';
-import { today } from '../../../shared/day';
+import {useOemFeeDraft} from '../hooks/useOemFeeDraft';
 import ModalShell from '../../../shared/components/ModalShell';
 import { Item, PurchaseOrder, type CompanyId } from '../../../shared/types';
-import { sentKg, processingFee } from '../../admin/oem';
-import { OEM_DEFAULT_FEE_PER_KG } from '../../admin/oemEngine';
-import { inspectStoredOemCostDisplay, reconcileOemBatch } from '../../admin/oemReconciliation';
+import { sentKg } from '../../admin/oem';
+import { inspectStoredOemCostDisplay } from '../../admin/oemReconciliation';
 import { type OrderUnitInputs } from '../../../shared/orderUnits';
 import { formatNumberKo as fmt } from '../../../shared/numberDisplay';
 
@@ -14,14 +12,10 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
   onClose: () => void;
   onSubmit: (v: { unitPricePerKg: number; date: string }) => void;
 }) {
-  const [date, setDate] = useState(today());
-  const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
-  const kg = po.oemReceivedKg ?? 0;
-  const money = processingFee(kg, Number(fee) || 0);
-  const reconciliation = reconcileOemBatch(po, items, companyId, orderUnitInputs);
+  const {date,fee,setDate,setFee,money,reconciliation,canSubmit,submit,close}=useOemFeeDraft({po,items,companyId,busy,onClose,onSubmit,orderUnitInputs});
 
   return (
-    <ModalShell title="가공비 전표 발행" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="가공비 전표 발행" onClose={close} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           입고 내역을 확인하고 발행하세요. <b>가공비만</b> 매입전표로 끊깁니다 — 원료는 우리 것이라 금액에 없습니다.
         </p>
@@ -42,12 +36,12 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">
               가공단가 (원/kg) <span className="text-slate-300 normal-case font-bold">· 부가세 포함</span>
             </label>
-            <input inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
+            <input disabled={busy} inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
               className="w-28 border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300" />
           </div>
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">전표일자</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            <input disabled={busy} type="date" value={date} onChange={e => setDate(e.target.value)}
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300" />
           </div>
         </div>
@@ -58,8 +52,8 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => onSubmit({ unitPricePerKg: Number(fee) || 0, date })} disabled={busy || kg <= 0}
+          <button onClick={close} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={submit} disabled={!canSubmit}
             className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 disabled:opacity-30">
             {busy ? '발행 중…' : '전표 발행'}
           </button>

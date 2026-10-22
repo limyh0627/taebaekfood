@@ -1,7 +1,5 @@
-import { captureOemCostEvidence } from '../../admin/oemCostEvidence';
-import { rawHolderByName } from '../../../shared/rawHolder';
+import {useOemIssueDraft} from '../hooks/useOemIssueDraft';
 import React, { useRef, useState } from 'react';
-import { today } from '../../../shared/day';
 import { Plus, X } from 'lucide-react';
 import ModalShell from '../../../shared/components/ModalShell';
 import { Item, Partner, PurchaseOrder, type CompanyId } from '../../../shared/types';
@@ -17,24 +15,12 @@ export function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDra
   onClose: () => void;
   onSubmit: (v: IssueInput) => void;
 }) {
-  const [partnerId, setPartnerId] = useState('');
-  const [date, setDate] = useState(today());
-  const [rows, setRows] = useState<{ material: string; kg: string; supplyAmount?:string }[]>([{ material: '', kg: '' }]);
-  const [note, setNote] = useState('');
-  const [packagingSupply,setPackagingSupply]=useState('');
-  const [packagingConfirmed,setPackagingConfirmed]=useState(false);
-  const costRows=rows.filter(row=>row.material && Number(row.kg)>0).map(row=>({rawItemId:rawHolderByName(rawItems,row.material,companyId)?.id,kg:Number(row.kg),supplyAmount:row.supplyAmount??''}));
-  const costStatus=captureOemCostEvidence(companyId,costRows,packagingSupply,packagingConfirmed,new Date().toISOString());
-
-  const partner = partners.find(p => p.id === partnerId);
-  const sent = rows.filter(r => r.material && Number(r.kg) > 0).map(r => ({ material: r.material, kg: Number(r.kg) }));
-  const shortage = sent.filter(s => s.kg > rawStockKg(s.material));
-  const canSave = !!partnerId && sent.length > 0 && !busy;
+  const {partnerId,setPartnerId,date,setDate,rows,setRows,note,setNote,packagingSupply,setPackagingSupply,packagingConfirmed,setPackagingConfirmed,costStatus,shortage,canSave,submit,close}=useOemIssueDraft({companyId,partners,rawItems,rawStockKg,busy,onClose,onSubmit});
 
   return (
-    <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="외주 발주 · 원료 내보내기" onClose={close} bodyClassName="space-y-4">
         <ExternalDispatchEvidence companyId={companyId} orders={purchaseOrders ?? issueDrafts} />
-        <p className="text-[11px] text-slate-400 leading-snug">
+        <fieldset disabled={busy} className="contents"><p className="text-[11px] text-slate-400 leading-snug">
           우리 원료를 외주공장에 보냅니다. <b>본재고에서 빠지고 외주로 나갑니다</b>(전표 없음 — 우리 것의 이동).
           발주하면 <b>입고대기</b>에 뜨고, 돌아오면 거기서 가공입고 하시면 됩니다.
         </p>
@@ -102,9 +88,9 @@ export function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDra
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)"
           className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300" />
 
-        <div className="flex gap-2">
-          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 disabled:opacity-40">취소</button>
-          <button onClick={() => onSubmit({ jobId:`oem-${crypto.randomUUID()}`, oemPartnerId: partnerId, partnerName: partner?.name ?? '', sent, date, note: note.trim() || undefined, ...(costStatus.evidence ? {oemCostEvidence:costStatus.evidence} : {}) })}
+        </fieldset><div className="flex gap-2">
+          <button onClick={close} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 disabled:opacity-40">취소</button>
+          <button onClick={submit}
             disabled={!canSave}
             className="flex-1 py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 disabled:opacity-30">
             {busy ? '처리 중…' : '발주 (원료 내보내기)'}

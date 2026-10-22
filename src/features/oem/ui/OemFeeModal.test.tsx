@@ -36,3 +36,4 @@ it('처리 중 중복 발행과 취소를 막고 평상시 취소 콜백을 유�
  view.rerender(<FeeModal {...props} onClose={close}/>);
  fireEvent.click(screen.getByRole('button',{name:'취소'}));expect(close).toHaveBeenCalledOnce();
 });
+it('발행 대기에는 단가와 전표일자를 잠가 최초 입력을 보존한다',()=>{const view=render(<FeeModal {...props}/>);fireEvent.change(view.container.querySelector('input[inputmode="numeric"]')!,{target:{value:'450'}});view.rerender(<FeeModal {...props} busy/>);expect(view.container.querySelector('input[inputmode="numeric"]')).toBeDisabled();expect(view.container.querySelector('input[type="date"]')).toBeDisabled();});
