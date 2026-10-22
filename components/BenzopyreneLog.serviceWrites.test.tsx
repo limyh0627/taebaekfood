@@ -6,12 +6,10 @@ import BenzopyreneLog from './BenzopyreneLog';
 import * as services from '../src/shared/services/firebaseService';
 import {appNotice} from '../src/shared/components/appDialog';
 
-const state = vi.hoisted(() => ({ update: vi.fn(), remove: vi.fn(), subscriptions: [] as any[], rows: [] as any[],preview:vi.fn(),dispose:vi.fn(),capture:vi.fn(),pending:null as null|Promise<any> }));
+const state = vi.hoisted(() => ({ actor:'synthetic-user', authListeners:new Set<(user:{uid:string})=>void>(), update: vi.fn(), remove: vi.fn(), subscriptions: [] as any[], rows: [] as any[],preview:vi.fn(),dispose:vi.fn(),capture:vi.fn(),pending:null as null|Promise<any> }));
 vi.mock('../src/shared/rasterPdfOutput',()=>({previewRasterPdf:state.preview,snapshotOutputElement:(element:HTMLElement)=>({element:element.cloneNode(true),dispose:state.dispose})}));
 vi.mock('html2canvas',()=>({default:state.capture}));
-vi.mock('../src/shared/firebase', () => ({ db: {}, authReady: Promise.resolve(), auth: { currentUser: {
-  uid:'synthetic-user',getIdTokenResult: async () => ({ claims: { companyId: 'taebaek' } }),
-} } }));
+vi.mock('../src/shared/firebase',()=>({db:{},authReady:Promise.resolve(),auth:{get currentUser(){return{uid:state.actor,getIdTokenResult:async()=>({claims:{companyId:'taebaek'}})};},onAuthStateChanged:(callback:(user:{uid:string})=>void)=>{state.authListeners.add(callback);queueMicrotask(()=>{if(state.authListeners.has(callback))callback({uid:state.actor});});return()=>state.authListeners.delete(callback);}}}));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockResolvedValue(true),appNotice:vi.fn() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
@@ -29,6 +27,7 @@ vi.mock('firebase/firestore', () => ({
   getDocs: vi.fn(), getDoc: vi.fn(), writeBatch: vi.fn(), runTransaction: vi.fn(), documentId: vi.fn(), arrayUnion: vi.fn(),
 }));
 beforeEach(() => {
+  state.actor='synthetic-user';state.authListeners.clear();
   vi.mocked(appNotice).mockClear();
   state.preview.mockReset().mockResolvedValue(undefined);state.dispose.mockReset();state.pending=null;state.capture.mockReset().mockImplementation(()=>state.pending??Promise.resolve({width:1123,height:1000,toDataURL:()=> 'data:image/png;base64,AA=='}));
   state.update.mockReset().mockResolvedValue(undefined);
@@ -93,3 +92,7 @@ it('회사 질의와 회사 전환 때 초안·기록 초기화로 이전 회사
   expect(screen.queryByText('합성 검사 제품')).not.toBeInTheDocument();
   expect(screen.queryByDisplayValue('옛 회사 초안')).not.toBeInTheDocument();
 });
+
+it('수정 저장 대기중 취소와 원입력은 잠겨 새초안으로 넘어가지 않는다',async()=>{let finish!:()=>void;state.update.mockReturnValue(new Promise<void>(r=>finish=r));render(<BenzopyreneLog companyId="taebaek" isAdmin/>);fireEvent.click(screen.getByRole('button',{name:'수정'}));fireEvent.click(screen.getByRole('button',{name:'수정 저장'}));await waitFor(()=>expect(state.update).toHaveBeenCalledOnce());expect(screen.getByRole('button',{name:'수정 취소'})).toBeDisabled();expect(screen.getByDisplayValue('0.1')).toBeDisabled();await act(async()=>finish());});
+it('신규 저장 대기중 작성 입력을 잠그고 거절 후 원입력을 유지한다',async()=>{let fail!:(e:Error)=>void;vi.spyOn(window,'alert').mockImplementation(()=>{});vi.spyOn(console,'error').mockImplementation(()=>{});const add=vi.spyOn(services,'addItem').mockImplementation(()=>new Promise((_r,reject)=>fail=reject));render(<BenzopyreneLog companyId="taebaek" isAdmin/>);fireEvent.change(screen.getByPlaceholderText('제품명 입력'),{target:{value:'현재 제품'}});fireEvent.click(screen.getByRole('button',{name:'검사 기록 추가'}));expect(screen.getByPlaceholderText('제품명 입력')).toBeDisabled();await act(async()=>fail(Error('실패')));expect(screen.getByPlaceholderText('제품명 입력')).toHaveValue('현재 제품');add.mockRestore();});
+it('삭제 확인 뒤 실제 계정이 바뀌면 원기록 삭제를 송신하지 않는다',async()=>{const {appConfirm}=await import('../src/shared/components/appDialog');let approve!:(value:boolean)=>void;vi.mocked(appConfirm).mockImplementationOnce(()=>new Promise(r=>approve=r));render(<BenzopyreneLog companyId="taebaek" isAdmin/>);fireEvent.click(screen.getByRole('button',{name:'검사 기록 삭제'}));state.actor='other';await act(async()=>approve(true));expect(state.remove).not.toHaveBeenCalled();});

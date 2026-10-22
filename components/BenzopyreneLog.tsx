@@ -1,32 +1,15 @@
-import { appConfirm } from '../src/shared/components/appDialog';
+import { useBenzopyreneEditor, type BenzopyreneTest } from '../src/features/quality/hooks/useBenzopyreneEditor';
 import React, { useEffect, useRef, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
 import { FlaskConical, Plus, Trash2, FileDown, Save, X } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import type { CompanyId } from '../src/shared/types';
 import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import { previewRasterPdf, snapshotOutputElement } from '../src/shared/rasterPdfOutput';
 import { appNotice } from '../src/shared/components/appDialog';
 
-// 벤조피렌 시험 검사성적서 1건
-interface BenzopyreneTest {
-  id: string;
-  productName: string;    // 제품명
-  receivedDate: string;   // 접수 연월일
-  completedDate: string;  // 검사 완료일
-  testItem: string;       // 검사항목 (기본 '벤조피렌')
-  criteria: string;       // 시험 검사 기준
-  result: string;         // 검사결과
-  judgment: '적합' | '부적합' | '';  // 판정
-  lotNo?: string;         // (선택) 로트번호
-  createdAt: string;
-  addedBy?: string;
-}
-
 const COL = 'border border-slate-300 px-2 py-1.5 text-xs';
-const DEFAULT_CRITERIA = '2.0 μg/kg 이하';
 
 interface Props {
   companyId: CompanyId;
@@ -34,17 +17,10 @@ interface Props {
   isAdmin?: boolean;
 }
 
-const emptyDraft = (): Omit<BenzopyreneTest, 'id' | 'createdAt'> => ({
-  productName: '', receivedDate: todayStr(), completedDate: todayStr(),
-  testItem: '벤조피렌', criteria: DEFAULT_CRITERIA, result: '', judgment: '', lotNo: '',
-});
-
 const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName, isAdmin = false }) => {
   const [rows, setRows] = useState<BenzopyreneTest[]>([]);
-  const [draft, setDraft] = useState(emptyDraft());
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editRow, setEditRow] = useState<BenzopyreneTest | null>(null);
-  const [saving, setSaving] = useState(false);
+  const editor = useBenzopyreneEditor({companyId,currentUserName,isAdmin});
+  const {draft,editingId,editRow,busy:saving,setDraft,setEditRow,addRow,saveEdit,removeRow} = editor;
   const tableRef = useRef<HTMLDivElement>(null);
   const outputSignal=useOutputScope(companyId,'benzopyrene');
   const outputBusy=useRef(false);
@@ -59,43 +35,6 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
       err => console.error('[벤조피렌] 구독 실패:', err));
     return () => unsub();
   }, [companyId]);
-
-  const addRow = async () => {
-    if (!draft.productName.trim()) { alert('제품명을 입력해주세요.'); return; }
-    setSaving(true);
-    try {
-      await addItem('benzopyreneTests', {
-        ...draft,
-        productName: draft.productName.trim(),
-        result: draft.result.trim(),
-        createdAt: new Date().toISOString(),
-        ...(currentUserName ? { addedBy: currentUserName } : {}),
-      });
-      setDraft(emptyDraft());
-    } catch (e) {
-      console.error('[벤조피렌] 저장 실패:', e);
-      alert('저장 실패: ' + ((e as Error)?.message ?? e));
-    } finally { setSaving(false); }
-  };
-
-  const saveEdit = async () => {
-    if (!editRow) return;
-    setSaving(true);
-    try {
-      const { id, ...data } = editRow;
-      await updateItem('benzopyreneTests', id, data);
-      setEditingId(null); setEditRow(null);
-    } catch (e) {
-      console.error('[벤조피렌] 수정 실패:', e);
-      alert('수정 실패: ' + ((e as Error)?.message ?? e));
-    } finally { setSaving(false); }
-  };
-
-  const removeRow = async (id: string) => {
-    if (!await appConfirm('이 검사 기록을 삭제할까요?')) return;
-    try { await deleteItem('benzopyreneTests', id); }
-    catch (e) { console.error('[벤조피렌] 삭제 실패:', e); alert('삭제 실패: ' + ((e as Error)?.message ?? e)); }
-  };
 
   const downloadPDF = async () => {
     const signal=outputSignal();if (!tableRef.current||signal.aborted||outputBusy.current) return;
@@ -130,33 +69,33 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
       {isAdmin && (
         <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           <Field label="제품명">
-            <input value={draft.productName} onChange={e => setDraft(d => ({ ...d, productName: e.target.value }))}
+            <input disabled={saving} value={draft.productName} onChange={e => setDraft(d => ({ ...d, productName: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="제품명 입력" />
           </Field>
           <Field label="접수 연월일">
-            <input type="date" value={draft.receivedDate} onChange={e => setDraft(d => ({ ...d, receivedDate: e.target.value }))}
+            <input disabled={saving} type="date" value={draft.receivedDate} onChange={e => setDraft(d => ({ ...d, receivedDate: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" />
           </Field>
           <Field label="검사 완료일">
-            <input type="date" value={draft.completedDate} onChange={e => setDraft(d => ({ ...d, completedDate: e.target.value }))}
+            <input disabled={saving} type="date" value={draft.completedDate} onChange={e => setDraft(d => ({ ...d, completedDate: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" />
           </Field>
           <Field label="시험 검사 기준">
-            <input value={draft.criteria} onChange={e => setDraft(d => ({ ...d, criteria: e.target.value }))}
+            <input disabled={saving} value={draft.criteria} onChange={e => setDraft(d => ({ ...d, criteria: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" />
           </Field>
           <Field label="검사결과">
-            <input value={draft.result} onChange={e => setDraft(d => ({ ...d, result: e.target.value }))}
+            <input disabled={saving} value={draft.result} onChange={e => setDraft(d => ({ ...d, result: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="예: 불검출 / 0.5 μg/kg" />
           </Field>
           <Field label="판정">
-            <select value={draft.judgment} onChange={e => setDraft(d => ({ ...d, judgment: e.target.value as BenzopyreneTest['judgment'] }))}
+            <select disabled={saving} value={draft.judgment} onChange={e => setDraft(d => ({ ...d, judgment: e.target.value as BenzopyreneTest['judgment'] }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
               <option value="">선택</option><option value="적합">적합</option><option value="부적합">부적합</option>
             </select>
           </Field>
           <Field label="로트번호 (선택)">
-            <input value={draft.lotNo} onChange={e => setDraft(d => ({ ...d, lotNo: e.target.value }))}
+            <input disabled={saving} value={draft.lotNo} onChange={e => setDraft(d => ({ ...d, lotNo: e.target.value }))}
               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="예: 260616-01" />
           </Field>
           <div className="flex items-end">
@@ -189,21 +128,21 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
             )}
             {rows.map(r => editingId === r.id && editRow ? (
               <tr key={r.id} className="bg-amber-50">
-                <td className={COL}><input value={editRow.productName} onChange={e => setEditRow({ ...editRow, productName: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
-                <td className={COL}><input type="date" value={editRow.receivedDate} onChange={e => setEditRow({ ...editRow, receivedDate: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
-                <td className={COL}><input type="date" value={editRow.completedDate} onChange={e => setEditRow({ ...editRow, completedDate: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
-                <td className={COL}><input value={editRow.testItem} onChange={e => setEditRow({ ...editRow, testItem: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
-                <td className={COL}><input value={editRow.criteria} onChange={e => setEditRow({ ...editRow, criteria: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
-                <td className={COL}><input value={editRow.result} onChange={e => setEditRow({ ...editRow, result: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} value={editRow.productName} onChange={e => setEditRow({ ...editRow, productName: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} type="date" value={editRow.receivedDate} onChange={e => setEditRow({ ...editRow, receivedDate: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} type="date" value={editRow.completedDate} onChange={e => setEditRow({ ...editRow, completedDate: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} value={editRow.testItem} onChange={e => setEditRow({ ...editRow, testItem: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} value={editRow.criteria} onChange={e => setEditRow({ ...editRow, criteria: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} value={editRow.result} onChange={e => setEditRow({ ...editRow, result: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
                 <td className={COL}>
-                  <select value={editRow.judgment} onChange={e => setEditRow({ ...editRow, judgment: e.target.value as BenzopyreneTest['judgment'] })} className="w-full border rounded px-1 py-0.5 bg-white">
+                  <select disabled={saving} value={editRow.judgment} onChange={e => setEditRow({ ...editRow, judgment: e.target.value as BenzopyreneTest['judgment'] })} className="w-full border rounded px-1 py-0.5 bg-white">
                     <option value="">선택</option><option value="적합">적합</option><option value="부적합">부적합</option>
                   </select>
                 </td>
-                <td className={COL}><input value={editRow.lotNo ?? ''} onChange={e => setEditRow({ ...editRow, lotNo: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
+                <td className={COL}><input disabled={saving} value={editRow.lotNo ?? ''} onChange={e => setEditRow({ ...editRow, lotNo: e.target.value })} className="w-full border rounded px-1 py-0.5" /></td>
                 <td className={`${COL} whitespace-nowrap`}>
                   <button aria-label="수정 저장" onClick={saveEdit} disabled={saving} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Save size={13} /></button>
-                  <button aria-label="수정 취소" onClick={() => { setEditingId(null); setEditRow(null); }} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X size={13} /></button>
+                  <button aria-label="수정 취소" onClick={editor.cancelEdit} disabled={saving} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X size={13} /></button>
                 </td>
               </tr>
             ) : (
@@ -218,8 +157,8 @@ const BenzopyreneLogForCompany: React.FC<Props> = ({ companyId, currentUserName,
                 <td className={`${COL} text-center text-slate-400`}>{r.lotNo || '-'}</td>
                 {isAdmin && (
                   <td className={`${COL} whitespace-nowrap text-center`}>
-                    <button onClick={() => { setEditingId(r.id); setEditRow(r); }} className="px-1.5 py-0.5 text-[10px] font-black text-indigo-500 hover:bg-indigo-50 rounded">수정</button>
-                    <button aria-label="검사 기록 삭제" onClick={() => removeRow(r.id)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded"><Trash2 size={12} /></button>
+                    <button onClick={() => editor.startEdit(r)} disabled={saving} className="px-1.5 py-0.5 text-[10px] font-black text-indigo-500 hover:bg-indigo-50 rounded">수정</button>
+                    <button aria-label="검사 기록 삭제" disabled={saving} onClick={() => removeRow(r.id)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded"><Trash2 size={12} /></button>
                   </td>
                 )}
               </tr>
