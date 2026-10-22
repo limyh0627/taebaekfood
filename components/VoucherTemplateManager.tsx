@@ -1,3 +1,4 @@
+import { useVoucherTemplateActions, type VoucherTemplateActions } from '../src/features/statements/hooks/useVoucherTemplateActions';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { canAutoIssue } from '../src/shared/autoVoucher';
@@ -35,9 +36,7 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 /** 묶음이 없으면 여기로 모인다 — 새 템플릿의 기본값 */
 export const NO_GROUP = '분류없음';
 
-export default function VoucherTemplateManager({
-  templates, accountCodes, partners = [], onUpdate, onDelete, onCreate, compact = false, onFilterChange, onGroupChange, onSearchChange, companyId = 'taebaek',
-}: {
+type VoucherTemplateManagerProps = {
   companyId?: CompanyId;
   templates: FixedCostTemplate[];
   accountCodes: AccountCode[];
@@ -51,7 +50,12 @@ export default function VoucherTemplateManager({
   onFilterChange?: (filter: 'all' | 'auto' | 'hidden') => void;
   onGroupChange?: (group: string) => void;
   onSearchChange?: (search: string) => void;
-}) {
+};
+
+function VoucherTemplateManagerForScope({
+  templates, accountCodes, partners = [], onUpdate, onDelete, onCreate, compact = false, onFilterChange, onGroupChange, onSearchChange, companyId = 'taebaek',
+  actions,
+}: VoucherTemplateManagerProps & {actions:VoucherTemplateActions}) {
   const loans = useLoanContracts(companyId);
   const loanAutoReady = (t: FixedCostTemplate) => t.companyId === companyId && canAutoIssue({ ...t, autoIssue: true }, t.startYm || today().slice(0, 7), loans);
   const loanAutoNotice = '자동 상환은 같은 회사의 대출 계약, 원금 계정, 원금·이자 합계와 출금 방향을 확인해 주세요.';
@@ -61,15 +65,17 @@ export default function VoucherTemplateManager({
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const detailTpl = templates.find(t => t.id === selectedId);
-  const [busy, setBusy] = useState(false);
-  const actionLock = useRef(false);
-  const runAction = async (action: () => Promise<void>) => {
-    if (actionLock.current) return;
-    actionLock.current = true; setBusy(true);
-    try { await action(); }
-    catch (error) { await appNotice('처리하지 못했습니다. 화면과 입력을 유지합니다. 다시 시도해 주세요. ' + String(error), '저장 실패'); }
-    finally { actionLock.current = false; setBusy(false); }
-  };
+  const busy = actions.busy;
+  const latestTemplates = useRef(templates); latestTemplates.current = templates;
+  const latestDelete = useRef(onDelete); latestDelete.current = onDelete;
+  const latestSelectedId = useRef(selectedId); latestSelectedId.current = selectedId;
+  const currentTarget = (id:string) => latestTemplates.current.find(template => template.id === id && (!template.companyId || template.companyId === companyId));
+  const runAction = (action:(current:()=>boolean)=>Promise<void>) => actions.runAction(async current => {
+    const target = editTpl ?? detailTpl;
+    if (target?.companyId && target.companyId !== companyId) return;
+    if (current()) await action(current);
+  });
+  const blockBusy = (event:React.SyntheticEvent) => { if (!actions.canInteract()) { event.preventDefault(); event.stopPropagation(); } };
   // 분개 미리보기 — 평소엔 접어 둔다. 차·대는 사용자가 고르는 게 아니라 확인하는 것이다.
   const [showJournal, setShowJournal] = useState(false);
   /**
@@ -131,11 +137,13 @@ export default function VoucherTemplateManager({
    * 같은 이름이 둘이면 목록에서 어느 것을 고르는지 알 수 없다.
    */
   const openClone = (t: FixedCostTemplate) => {
+    if (!actions.canInteract() || (t.companyId && t.companyId !== companyId)) return;
     openEdit(t, true);
     setForm(f => ({ ...f, name: `${t.name} ${t.builtin ? '(내 템플릿)' : '(사본)'}` }));
   };
 
   const openEdit = (t: FixedCostTemplate, clone = false) => {
+    if (!actions.canInteract() || (t.companyId && t.companyId !== companyId)) return;
     setShowJournal(false);
     setEditTpl(t);
     setCloning(clone);
@@ -150,7 +158,7 @@ export default function VoucherTemplateManager({
   };
 
   return (
-    <div className="border border-slate-200 rounded-2xl overflow-hidden">
+    <div onChangeCapture={blockBusy} onClickCapture={blockBusy} onMouseDownCapture={blockBusy} className="border border-slate-200 rounded-2xl overflow-hidden">
       <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2 flex-wrap">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">
           템플릿 <span className="text-slate-300">{templates.length}</span>
@@ -187,7 +195,7 @@ export default function VoucherTemplateManager({
               <div className="divide-y divide-slate-200">
                 {g.items.map(t => (
                   <button key={t.id} type="button" aria-label={t.name + ' 상세보기'}
-                    onClick={() => setSelectedId(t.id)}
+                    onClick={() => { if (actions.canInteract()) setSelectedId(t.id); }}
                     className="w-full bg-white px-4 py-4 flex items-start gap-4 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-slate-800 break-words">{t.name}</span>
@@ -210,7 +218,7 @@ export default function VoucherTemplateManager({
 
       {detailTpl && !editTpl && (
         <ModalShell title="템플릿 상세보기" subtitle={detailTpl.name} layer={1100}
-          onClose={() => { if (!actionLock.current) setSelectedId(''); }} bodyClassName="space-y-5">
+          onClose={() => { if (actions.canInteract()) setSelectedId(''); }} bodyClassName="space-y-5">
           <div aria-busy={busy}>
             {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).length > 0 && <p className="mb-3 text-sm text-rose-600">현재 회사 계정표에 {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).join(', ')} 없음 — 계정을 수정해 주세요.</p>}
             <h4 className="text-lg font-bold text-slate-900">{detailTpl.name}</h4>
@@ -233,7 +241,7 @@ export default function VoucherTemplateManager({
             <p className="text-xs font-bold text-slate-500">자동 발행 설정</p>
             <button disabled={busy || !onUpdate} title={detailTpl.autoIssue ? '자동 발행 끄기' : '자동 발행 켜기'}
               className="min-h-11 min-w-11 flex items-center justify-center rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"
-              onClick={() => runAction(async () => {
+              onClick={() => runAction(async current => {
                 if (!detailTpl.autoIssue && detailTpl.mode === '상환' && !loanAutoReady(detailTpl)) { await appNotice(loanAutoNotice); return; }
                 const missing = missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code)));
                 if (!detailTpl.autoIssue && (!(detailTpl.amount > 0) || !detailTpl.accountCode || missing.length || (!isCashDir(dirOf(detailTpl)) && !canAutoStatement(detailTpl)))) {
@@ -244,12 +252,14 @@ export default function VoucherTemplateManager({
             <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
             <button aria-label="수정" disabled={busy || !onUpdate} title="이름·묶음·금액·발행 방식 수정" onClick={() => openEdit(detailTpl)} className="min-h-11 min-w-11 flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-40"><Pencil size={18}/></button>
             <button aria-label="복제" title="복제" disabled={busy || !onCreate} onClick={() => openClone(detailTpl)} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"><Copy size={18}/></button>
-            <button aria-label={detailTpl.hidden ? '숨김 해제' : '숨기기'} title={detailTpl.hidden ? '숨김 해제' : '숨기기'} disabled={busy || !onUpdate} onClick={() => runAction(async () => { await onUpdate?.(detailTpl.id, { hidden: !detailTpl.hidden }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40">{detailTpl.hidden ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
-            <button aria-label={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} title={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} disabled={busy || !onUpdate} onClick={() => runAction(async () => { await onUpdate?.(detailTpl.id, { favorite: !detailTpl.favorite }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"><Star size={18} fill={detailTpl.favorite ? 'currentColor' : 'none'}/></button>
-            <button disabled={busy || !!detailTpl.builtin || !onDelete} onClick={() => runAction(async () => {
+            <button aria-label={detailTpl.hidden ? '숨김 해제' : '숨기기'} title={detailTpl.hidden ? '숨김 해제' : '숨기기'} disabled={busy || !onUpdate} onClick={() => runAction(async current => { await onUpdate?.(detailTpl.id, { hidden: !detailTpl.hidden }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40">{detailTpl.hidden ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
+            <button aria-label={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} title={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} disabled={busy || !onUpdate} onClick={() => runAction(async current => { await onUpdate?.(detailTpl.id, { favorite: !detailTpl.favorite }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"><Star size={18} fill={detailTpl.favorite ? 'currentColor' : 'none'}/></button>
+            <button disabled={busy || !!detailTpl.builtin || !onDelete} onClick={() => runAction(async current => {
               if (detailTpl.builtin) return;
-              if (!await appConfirm({ title: '템플릿 삭제', message: detailTpl.name + ' 템플릿을 삭제할까요?', confirmText: '삭제', tone: 'rose' })) return;
-              await onDelete?.(detailTpl.id); setSelectedId('');
+              if (!await appConfirm({ title: '템플릿 삭제', message: detailTpl.name + ' 템플릿을 삭제할까요?', confirmText: '삭제', tone: 'rose' }) || !current()) return;
+              const latest = currentTarget(detailTpl.id); const remove = latestDelete.current;
+              if (!latest || latest.builtin || latestSelectedId.current !== detailTpl.id || typeof remove !== 'function' || !current()) return;
+              await remove(detailTpl.id); if (current()) setSelectedId('');
             })} className="rounded-xl border border-rose-200 px-3 py-3 text-sm font-bold text-rose-600 disabled:opacity-40">삭제</button>
           </div>
           </div>
@@ -259,7 +269,8 @@ export default function VoucherTemplateManager({
 
       {/* 수정 — 이름·묶음·금액·거래처·발행 방식 */}
       {editTpl && (
-        <ModalShell title={cloning ? '새 템플릿 만들기' : '템플릿 수정'} onClose={() => { if (!actionLock.current) setEditTpl(null); }} layer={1100} bodyClassName="space-y-4">
+        <ModalShell title={cloning ? '새 템플릿 만들기' : '템플릿 수정'} onClose={() => { if (actions.canInteract()) setEditTpl(null); }} layer={1100} bodyClassName="space-y-4">
+          <fieldset disabled={busy} className="min-w-0 border-0 p-0 space-y-4">
           {/* 폭 — 분개 미리보기에 계정명이 통째로 들어가야 한다. max-w-sm(384px)에선
     금액칸을 빼고 나면 이름 자리가 손바닥만 해서 '255 부가세…'로 잘렸다. */}
             {cloning ? (
@@ -295,11 +306,11 @@ export default function VoucherTemplateManager({
                     {form.group && !groupNames.includes(form.group) && <option value="__custom">{form.group}</option>}
                   </select>
                   <button type="button"
-                    onClick={async () => {
+                    onClick={() => runAction(async current => {
                       const name = await appPrompt('새 묶음 이름', '');
-                      if (name === null) return;
+                      if (name === null || !current()) return;
                       setForm(f => ({ ...f, group: name.trim() }));
-                    }}
+                    })}
                     title="새 묶음 만들기"
                     className="shrink-0 px-2.5 rounded-xl border border-slate-200 text-slate-400 hover:border-indigo-400 hover:text-indigo-600 transition-all">
                     <FolderPlus size={16}/>
@@ -563,7 +574,7 @@ export default function VoucherTemplateManager({
               <button disabled={busy} onClick={() => setEditTpl(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button
                 disabled={busy || (cloning ? !onCreate : !onUpdate)}
-                onClick={() => runAction(async () => {
+                onClick={() => runAction(async current => {
                   if (!form.name.trim()) { await appNotice('이름을 입력하세요.'); return; }
                   // 두 줄 갈래는 두 칸이 곧 값이고, amount는 통장에서 움직이는 돈이다.
                   const sm = splitModeOf(editTpl.mode);
@@ -602,7 +613,7 @@ export default function VoucherTemplateManager({
                   if (cloning) {
                     // 뼈대(갈래·계정·입력 방식)는 기본에서 물려받고, builtin 표시는 떼어 낸다 —
                     // 그래야 내 것으로서 고치고 지울 수 있다.
-                    await onCreate?.({
+                    if (!current()) return; await onCreate?.({
                       ...patch,
                       ...(form.statementType === '비용' && editTpl.transferLines?.length ? { transferLines: editTpl.transferLines } : {}),
                       ...(form.accountCode ? { accountCode: form.accountCode } : {}),
@@ -612,8 +623,9 @@ export default function VoucherTemplateManager({
                       active: false, hidden: false,
                     } as Omit<FixedCostTemplate, 'id'>);
                   } else {
-                    await onUpdate?.(editTpl.id, patch);
+                    if (!current()) return; await onUpdate?.(editTpl.id, patch);
                   }
+                  if (!current()) return;
                   setEditTpl(null);
                   if (cloning) setSelectedId('');
                 })}
@@ -621,8 +633,14 @@ export default function VoucherTemplateManager({
                 <Check size={13}/>{busy ? '저장 중…' : cloning ? '만들기' : '저장'}
               </button>
             </div>
+        </fieldset>
         </ModalShell>
       )}
     </div>
   );
+}
+
+export default function VoucherTemplateManager(props:VoucherTemplateManagerProps) {
+  const actions = useVoucherTemplateActions(props.companyId ?? 'taebaek');
+  return <VoucherTemplateManagerForScope key={actions.scopeKey} {...props} actions={actions}/>;
 }

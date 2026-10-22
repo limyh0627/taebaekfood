@@ -23,7 +23,7 @@ describe('풍회 전표 템플릿의 계정 복구', () => {
   it('없는 계정의 사유를 보여 주고 현재 회사 계정으로 바꿔 저장한다', async () => {
     const u = userEvent.setup();
     const onUpdate = vi.fn();
-    render(<VoucherTemplateManager templates={[template]} accountCodes={accounts} onUpdate={onUpdate} />);
+    render(<VoucherTemplateManager companyId="punghoe" templates={[template]} accountCodes={accounts} onUpdate={onUpdate} />);
 
     expect(screen.getByText('계정 없음')).toBeInTheDocument();
     expect(screen.getByText('현재 회사 계정표에 931 없음')).toBeInTheDocument();
@@ -66,3 +66,6 @@ it('편집 폼에서도 연결 계약과 분할값을 확인하여 명시적으�
   await u.click(screen.getByRole('button', { name: '저장' }));
   expect(onUpdate).toHaveBeenCalledWith('edit-loan', expect.objectContaining({ loanId: 'loan', loanCode: '260', principal: 100, interest: 10, amount: 110, autoIssue: true }));
 });
+
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'template-actor'}}}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,callback:(user:{uid:string})=>void)=>{callback({uid:'template-actor'});return()=>{};}}));

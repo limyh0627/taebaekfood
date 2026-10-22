@@ -88,3 +88,6 @@ it('목록 조회 초기화는 부모 필터 세 값을 동기화하고 템플�
  expect(onSearchChange).toHaveBeenLastCalledWith('보험');expect(onGroupChange).toHaveBeenLastCalledWith('합성그룹');expect(onFilterChange).toHaveBeenLastCalledWith('auto');
  fireEvent.click(within(panel).getByRole('button',{name:'초기화'}));expect(onSearchChange).toHaveBeenLastCalledWith('');expect(onGroupChange).toHaveBeenLastCalledWith('');expect(onFilterChange).toHaveBeenLastCalledWith('all');expect(onUpdate).not.toHaveBeenCalled();
 });
+
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'template-actor'}}}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,callback:(user:{uid:string})=>void)=>{callback({uid:'template-actor'});return()=>{};}}));
