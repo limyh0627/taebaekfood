@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React from 'react';
+import { usePartnerPortalDraft } from '../src/features/orders/hooks/usePartnerPortalDraft';
 import { 
   ShoppingBag, 
   User, 
@@ -28,97 +29,7 @@ interface PartnerPortalProps {
 }
 
 const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerItems, onOrderSubmit, onExit }) => {
-  const [step, setStep] = useState<'auth' | 'order' | 'confirm'>('auth');
-  const [partnerIdInput, setPartnerIdInput] = useState('');
-  const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
-  const [cart, setCart] = useState<{ [itemId: string]: number }>({});
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
-
-  const handleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    const partner = partners.find(c => c.id.toLowerCase() === partnerIdInput.toLowerCase());
-    if (partner) {
-      setSelectedClient(partner);
-      setStep('order');
-    } else {
-      alert('유효하지 않은 거래처 코드입니다. (예: c1, c2)');
-    }
-  };
-
-  const associatedProducts = useMemo(() => {
-    if (!selectedClient) return [];
-    return items.filter(p => 
-      p.type === 'product' &&
-      isLinkedToPartner(partnerItems, selectedClient.id, p.id)
-    );
-  }, [items, selectedClient, partnerItems]);
-
-  const updateCart = (itemId: string, delta: number) => {
-    setCart(prev => {
-      const current = prev[itemId] || 0;
-      const next = Math.max(0, current + delta);
-      if (next === 0) {
-        const { [itemId]: _unused, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [itemId]: next };
-    });
-  };
-
-  /** 이 거래처에 파는 단가. 안 정해져 있으면 undefined — 0 으로 눙치지 않는다. */
-  const 단가 = (itemId: string) => salePriceOf(partnerItems, selectedClient?.id ?? '', itemId);
-
-  // Fix: Explicitly type reduce parameters to avoid arithmetic error with unknown types
-  const totalAmount = Object.entries(cart).reduce((sum: number, [id, qty]) => {
-    const product = items.find(p => p.id === id);
-    // Fix: Explicitly cast qty as number as Object.entries value might be inferred as unknown in some environments
-    return sum + (product ? (단가(product.id) ?? 0) * (qty as number) : 0);
-  }, 0);
-
-  const handleSubmit = async () => {
-    if (!selectedClient || savingRef.current) return;
-    savingRef.current = true;
-    setSaving(true);
-
-    const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
-      const product = items.find(p => p.id === id)!;
-      return {
-        itemId: id,
-        name: product.name,
-        // Fix: Explicitly cast qty as number to match OrderItem.quantity type
-        quantity: qty as number,
-        price: 단가(id) ?? 0,
-        checked: false
-      };
-    });
-
-    const newOrder: Order = {
-      id: `WEB-${Date.now()}`,
-      partnerId: selectedClient.id,
-      partnerName: selectedClient.name,
-      items: orderItems,
-      totalAmount,
-      status: OrderStatus.PENDING,
-      createdAt: new Date().toISOString(),
-      deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString(), // 기본 3일 뒤
-      email: selectedClient.email || '',
-      source: selectedClient.type as OrderSource,
-      region: selectedClient.region || '미지정'
-    };
-
-    try {
-      await onOrderSubmit(newOrder);
-      setIsSuccess(true);
-      setStep('confirm');
-    } catch (error) {
-      window.alert(`주문을 저장하지 못했습니다. ${error instanceof Error ? error.message : '다시 시도해 주세요.'}`);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  };
+  const { step, partnerIdInput, selectedClient, cart, isSuccess, saving, error, associatedProducts, updateCart, 단가, totalAmount, handleSubmit, handleAuth, changePartnerInput, backToAuth, exit, orderAgain } = usePartnerPortalDraft({ partners, items, partnerItems, onOrderSubmit, onExit });
 
   if (step === 'auth') {
     return (
@@ -137,7 +48,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
                 autoFocus
                 type="text" 
                 value={partnerIdInput}
-                onChange={(e) => setPartnerIdInput(e.target.value)}
+                onChange={(e) => changePartnerInput(e.target.value)}
                 placeholder="거래처 코드 (ID)" 
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-14 pr-4 py-4 font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
@@ -147,7 +58,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
             </button>
           </form>
           
-          <button onClick={onExit} className="mt-8 text-slate-400 font-bold flex items-center justify-center mx-auto hover:text-indigo-600 transition-colors">
+          <button onClick={exit} disabled={saving} className="mt-8 text-slate-400 font-bold flex items-center justify-center mx-auto hover:text-indigo-600 transition-colors">
             <ArrowLeft size={16} className="mr-2" />
             관리자 화면으로 돌아가기
           </button>
@@ -169,12 +80,12 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
               관리자가 확인 후 발송 처리를 시작합니다.
            </p>
            <button 
-              onClick={() => { setStep('order'); setCart({}); setIsSuccess(false); }}
+              onClick={orderAgain}
               className="w-full bg-emerald-600 text-white py-5 rounded-3xl font-black shadow-xl hover:bg-emerald-700 transition-all"
            >
               추가 주문하기
            </button>
-           <button onClick={onExit} className="mt-6 text-slate-400 font-bold hover:text-emerald-600 transition-colors">
+           <button onClick={exit} disabled={saving} className="mt-6 text-slate-400 font-bold hover:text-emerald-600 transition-colors">
               포털 나가기
            </button>
         </div>
@@ -194,11 +105,12 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
                <p className="text-[10px] text-indigo-600 font-black uppercase tracking-widest">{selectedClient?.type} 채널</p>
             </div>
          </div>
-         <button onClick={() => setStep('auth')} className="p-2 text-slate-400 hover:bg-slate-50 rounded-full">
+         <button onClick={backToAuth} disabled={saving} className="p-2 text-slate-400 hover:bg-slate-50 rounded-full">
             <X size={24} />
          </button>
       </header>
 
+      {error && <p role="alert" className="px-6 py-2 text-sm text-slate-700">{error}</p>}
       <main className="flex-1 p-6 space-y-8 max-w-4xl mx-auto w-full">
          <div className="bg-indigo-600 rounded-[32px] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full translate-x-32 -translate-y-32 blur-3xl" />
@@ -241,11 +153,11 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
                         <div className="flex items-center justify-between pt-4 border-t border-slate-50">
                            <span className="text-[10px] font-bold text-slate-400 uppercase">수량 선택</span>
                            <div className="flex items-center space-x-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                              <button onClick={() => updateCart(p.id, -1)} className="p-2 bg-white text-slate-400 rounded-xl hover:text-indigo-600 transition-colors shadow-sm">
+                              <button disabled={saving} onClick={() => updateCart(p.id, -1)} className="p-2 bg-white text-slate-400 rounded-xl hover:text-indigo-600 transition-colors shadow-sm">
                                  <Minus size={16} />
                               </button>
                               <span className="w-8 text-center font-black text-slate-800">{qty}</span>
-                              <button onClick={() => updateCart(p.id, 1)} className="p-2 bg-white text-slate-400 rounded-xl hover:text-indigo-600 transition-colors shadow-sm">
+                              <button disabled={saving} onClick={() => updateCart(p.id, 1)} className="p-2 bg-white text-slate-400 rounded-xl hover:text-indigo-600 transition-colors shadow-sm">
                                  <Plus size={16} />
                               </button>
                            </div>

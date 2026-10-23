@@ -1,3 +1,4 @@
+import {useBoxItemEditor} from '../src/features/items/hooks/useBoxItemEditor';
 import {usePartnerItemTermsEditor} from '../src/features/items/hooks/usePartnerItemTermsEditor';
 import type {PartnerItemTermsBindings,PartnerItemTermsTarget} from '../src/features/items/infrastructure/partnerItemTermsWrites';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
@@ -9,7 +10,7 @@ import {ServiceTerms,PartnerItemTermsRecovery} from '../src/features/items/ui/Se
 export {ServiceTerms} from '../src/features/items/ui/ServiceTerms';
 
 import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { where } from 'firebase/firestore';
 import { matchesSearch } from '../src/shared/hangul';
 //  검색조건 칸은 주문·배송과 **같은 부품**을 쓴다 — 한쪽만 고치면 두 화면이 갈린다
@@ -168,30 +169,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   // ── 박스 품목 만들기 ──
   // 낱개에서 'N개입' 박스 품목을 만든다. BOM = 낱개×N + 겉박스·테이프(고르면).
   // 이름·id는 기존 규칙을 따라 자동으로 채우고('{낱개} (N개입)' / box-{낱개id}-{N}) 편집 가능.
-  const [purchaseUnitItem, setPurchaseUnitItem] = useState<Item | null>(null);
-  const [boxModal, setBoxModal] = useState<Item | null>(null);
-  const [boxForm, setBoxForm] = useState<{ name: string; count: string; comps: { id: string; qty: string }[] }>({ name: '', count: '10', comps: [] });
-  const openBoxModal = (unit: Item) => {
-    setBoxModal(unit);
-    setBoxForm({ name: `${unit.name} (10개입)`, count: '10', comps: [] });
-  };
-  // 개입수를 바꾸면 이름도 따라 바뀐다 — 단, 이름을 직접 고쳤으면 건드리지 않는다.
-  const setBoxCount = (v: string) => setBoxForm(f => {
-    const auto = boxModal ? `${boxModal.name} (${f.count}개입)` : '';
-    return { ...f, count: v, name: f.name !== auto ? f.name : `${boxModal?.name ?? ''} (${v}개입)` };
-  });
-  const saveBoxItem = async () => {
-    if (!boxModal || !onCreateBoxItem) return;
-    const count = parseFloat(boxForm.count) || 0;
-    if (count <= 0) { window.alert('개입수를 입력하세요.'); return; }
-    const name = boxForm.name.trim() || `${boxModal.name} (${count}개입)`;
-    if (items.some(i => !i.archived && i.name === name)) { window.alert('같은 이름의 품목이 이미 있습니다.'); return; }
-    await onCreateBoxItem(boxModal, {
-      name, count,
-      components: boxForm.comps.filter(c => c.id).map(c => ({ id: c.id, qty: parseFloat(c.qty) || 0 })),
-    });
-    setBoxModal(null);
-  };
+  const purchaseScope=useRef({companyId,requestScopeKey:requestScopeKey??''});
+  if(purchaseScope.current.companyId!==companyId||purchaseScope.current.requestScopeKey!==(requestScopeKey??''))purchaseScope.current={companyId,requestScopeKey:requestScopeKey??''};
+  const selectedPurchaseScope=purchaseScope.current;
+  const [purchaseSelection,setPurchaseSelection]=useState<{owner:object;item:Item}|null>(null);
+  const purchaseUnitItem=purchaseSelection?.owner===selectedPurchaseScope?purchaseSelection.item:null;
+  const setPurchaseUnitItem=(item:Item|null)=>{if(purchaseScope.current===selectedPurchaseScope)setPurchaseSelection(item?{owner:selectedPurchaseScope,item}:null);};
+  const boxEditor=useBoxItemEditor({companyId,requestScopeKey,items,save:onCreateBoxItem});
+  const {unit:boxModal,form:boxForm}=boxEditor;
+  const openBoxModal=boxEditor.open,setBoxForm=boxEditor.setForm,setBoxCount=boxEditor.setCount,saveBoxItem=boxEditor.save;
 
   const products = items;
   const itemCustomers = partnerItems;
@@ -1763,7 +1749,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
       {/* ── 박스 품목 만들기 ── */}
       {purchaseUnitItem && <PurchaseUnitManagerModal key={`${companyId}:${purchaseUnitItem.id}`} companyId={companyId} item={purchaseUnitItem} partners={partners} onClose={() => setPurchaseUnitItem(null)}/>}
       {boxModal && (
-        <ModalShell title="박스 품목 만들기" onClose={() => setBoxModal(null)} bodyClassName="space-y-4">
+        <ModalShell title="박스 품목 만들기" onClose={() => boxEditor.close()} bodyClassName="space-y-4">
+            <fieldset disabled={boxEditor.busy} className="min-w-0 border-0 p-0 space-y-4">
             <p className="text-[11px] text-slate-400">낱개 · {boxModal.name}</p>
 
             <div>
@@ -1812,12 +1799,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setBoxModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={() => boxEditor.close()} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button onClick={saveBoxItem}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 flex items-center justify-center gap-1.5">
                 <Save size={12} />만들기
               </button>
             </div>
+            {boxEditor.error&&<p role="alert" className="text-sm text-rose-600">{boxEditor.error}</p>}
+            </fieldset>
         </ModalShell>
       )}
 
