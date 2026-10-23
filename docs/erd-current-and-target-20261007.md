@@ -1,5 +1,15 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+## 2026-10-23 배송 일정 원자 변경 · 배포 반영
+
+검수 소스 `9b1faa5`를 관리자·직원 Hosting에 반영했다. 새 컬렉션을 추가하지 않고 기존 `deliveryScheduleAudits`의 신규 일정 변경 기록에 최초 `request` 전체와 종결 상태를 저장한다. `request`는 version·companyId·actorUid·auditId·orderId·previousDeliveryDate·previousStatus·previousTimeSlot·nextDeliveryDate·nextTimeSlot·changedBy·changedAt을 고정한다.
+
+`deliveryScheduleAudits.orderId`와 `request.orderId`는 같은 회사 `orders.id`를 가리킨다. 정상 적용은 주문의 출고일, 회사별 `settings`의 deliveryOrdering 문서에서 `timeSlots[orderId]`, 감사 기록의 `COMPLETED`를 한 클라이언트 트랜잭션으로 저장한다. 기존 다른 주문의 시간대와 순서는 보존한다. 미처리 요청 중단은 같은 auditId에 `CANCELLED`와 동일 원문을 거래로 남기며 정상 클라이언트의 늦은 적용과 한쪽 결과로 수렴한다. 동일 ID에 다른 원문이 있거나 옛 기록의 원문이 부족하면 완료를 추정하지 않는다.
+
+이는 기존 권한의 클라이언트 감사 기록이며 서버 전용 처리 영수증은 아니다. 조회 부재만으로 늦은 쓰기까지 미처리로 확정하지 않는다. 요청은 화면 메모리에 보관하므로 새로고침 복구를 보장하지 않으며, 별도 드래그·순서/시간대 writer 전체를 이 경로로 바꾼 것은 아니다. 이번 OEM 작성·반품·가입승인·검사기록·전표 템플릿 수명 보완은 새 저장 스키마를 추가하지 않는다. 가입승인은 기존 users의 상태·거래처 연결 필드만 존재/pending 검증 후 변경한다.
+
+사용자 기준 [태백푸드 ERD (Copy)](https://claude.ai/artifact/T8R51jYNrPovuEFLauDk3x)의 화면 구성과 양식은 변경하지 않았다. 현재 공개 링크는 로그아웃 읽기 화면으로 편집 기능이 비활성화되어 있어 원본 게시물에는 직접 반영하지 못했다. 위 내용은 원본에 반영할 변경 명세이며 이 저장소의 기존 대조 문서에 먼저 갱신했다. 원본의 컬렉션85개·문서 수 기준일2026-10-21은 표시 출처를 유지하며 운영 DB를 다시 계수하지 않았다.
+
 ## 2026-10-16 네 원본의 잔여 산출물 실행
 
 사용자가 지정한 ERD·노션,039 구형 필드,031 외주 통합,생산서류의 조사·정리·설계 산출물을 수행했다. 제품의 새 결함을 찾는 것만 진행으로 보지 않고 현재 남은 수용 요구를 대조했다. 이번에는 제품 소스·스키마·운영자료를 변경하지 않아 사전 재생성·앱 빌드·Hosting 배포는 필요하지 않다.
