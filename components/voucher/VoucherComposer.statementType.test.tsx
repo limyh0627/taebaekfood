@@ -4,6 +4,7 @@ import { render, screen,waitFor,cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import type { AccountCode, FixedCostTemplate, Partner } from '../../src/shared/types';
+import { journalizeStatement } from '../../src/shared/autoJournal';
 import { appConfirm } from '../../src/shared/components/appDialog';
 
 vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}},authReady:Promise.resolve(),functions:{}}));
@@ -17,6 +18,7 @@ vi.mock('../../src/shared/components/appDialog', () => ({
 
 const accounts = [
   { id: 'expense', code: '828', name: '지급수수료', normalBalance: 'debit' },
+  { id: 'insurance', code: '821', name: '보험료', normalBalance: 'debit' },
   { id: 'payable', code: '253', name: '미지급금', normalBalance: 'credit' },
 ] as AccountCode[];
 const partner = { id: 'bank', name: '수협은행' } as Partner;
@@ -130,4 +132,13 @@ it('대체 원문도 응답유실 뒤 재열기에서 같은 ID·양변·금액�
 
 describe('모든 갈래에서 전체 템플릿 탐색',()=>{
  it.each(['매입','매출','대체','입금','출금','회사이체'])('%s 선택도 모든 유효 그룹과 템플릿을 제공한다',async selected=>{cleanup();const u=userEvent.setup();const extras=(['입금','출금','회사이체','줄돈','받을돈'] as const).map((dir,i)=>({id:'all-'+i,kind:'voucher',name:'전체양식'+i,dir,mode:'일반',accountCode:'828',group:'그룹'+i,...(dir==='줄돈'?{statementType:'매입'}:dir==='받을돈'?{statementType:'매출'}:{})} as FixedCostTemplate));setup('비용',{group:'대체그룹'},undefined,extras);await u.click(screen.getByRole('button',{name:new RegExp('^'+selected+'$')}));await u.click(screen.getByRole('button',{name:/템플릿 ▾/}));for(let i=0;i<5;i++){expect(screen.queryByRole('button',{name:new RegExp('전체양식'+i)})).toBeInTheDocument();expect(screen.getByRole('option',{name:'그룹'+i})).toBeInTheDocument();}expect(screen.getByRole('button',{name:/은행 템플릿/})).toBeInTheDocument();expect(screen.getByRole('option',{name:'대체그룹'})).toBeInTheDocument();});
+});
+describe('종류만 정정한 합성 대체 템플릿의 매입 선택',()=>{
+ it.each([{label:'합성 기장료',code:'828',exempt:false},{label:'합성 화재보험료 과세',code:'821',exempt:false},{label:'합성 화재보험료 면세',code:'821',exempt:true}])('$label는 원세금 그대로 253 상대변으로 균형 발행한다',async({label,code,exempt})=>{
+  cleanup();localStorage.clear();const u=userEvent.setup();const issue=vi.fn();const {template}=setup('매입',{name:label,dir:'대체',accountCode:code,transferLines:undefined,taxExempt:exempt,active:false,autoIssue:false},issue);const original=structuredClone(template);
+  await u.click(screen.getByRole('button',{name:/템플릿 ▾/}));await u.click(await screen.findByRole('button',{name:new RegExp(label)}));
+  expect(screen.getByRole('button',{name:'매입'})).toHaveAttribute('aria-pressed','true');await u.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(issue).toHaveBeenCalledTimes(1));
+  const statement=issue.mock.calls[0][0];expect(statement).toMatchObject({type:'매입',partnerId:'bank',totalAmount:110000,totalTax:exempt?0:10000,totalSupply:exempt?110000:100000});expect(statement.items).toHaveLength(1);expect(statement.items[0]).toMatchObject({accountCode:code,isTaxExempt:exempt});
+  const lines=journalizeStatement(statement)!.lines;expect(lines).toEqual(expect.arrayContaining([expect.objectContaining({accountCode:'253',credit:110000}),expect.objectContaining({accountCode:code,debit:exempt?110000:100000})]));expect(lines.reduce((sum,line)=>sum+(line.debit??0)-(line.credit??0),0)).toBe(0);expect(template).toEqual(original);expect(template.autoIssue).toBe(false);
+ });
 });
