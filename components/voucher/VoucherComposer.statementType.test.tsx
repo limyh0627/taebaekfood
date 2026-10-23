@@ -22,14 +22,14 @@ const accounts = [
   { id: 'payable', code: '253', name: '미지급금', normalBalance: 'credit' },
 ] as AccountCode[];
 const partner = { id: 'bank', name: '수협은행' } as Partner;
-function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {},issue=vi.fn(),extraTemplates:FixedCostTemplate[]=[]) {
+function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {},issue=vi.fn(),extraTemplates:FixedCostTemplate[]=[],companyId:'taebaek'|'punghoe'='taebaek') {
   const onAddIssuedStatement = issue, onAddFixedCostTemplate = vi.fn();
   const t = { id: 'test-template', kind: 'voucher', name: '은행 템플릿', dir: '대체', mode: '일반',
     statementType, accountCode: '828', amount: 110_000, taxExempt: false, partnerId: 'bank', partnerName: '수협은행',
     ...(statementType === '비용' ? { transferLines: [{ accountCode: '828', side: '차변' }, { accountCode: '253', side: '대변' }] } : {}),
     ...overrides,
   } as FixedCostTemplate;
-  render(<VoucherComposer companyId="taebaek" initialDir={statementType === '매입' ? '줄돈' : statementType === '매출' ? '받을돈' : '대체'} initialDate="2026-09-28"
+  render(<VoucherComposer companyId={companyId} initialDir={statementType === '매입' ? '줄돈' : statementType === '매출' ? '받을돈' : '대체'} initialDate="2026-09-28"
     partners={[partner, { id: 'other-bank', name: '다른은행' } as Partner]} accountCodes={accounts} accountGroups={[]} cashAccounts={[]} fixedCostTemplates={[t,...extraTemplates]}
     cashEntries={[]} statements={[]} partnerBalances={new Map()} getBalance={s => s.totalAmount}
     cashAccountId="" onCashAccountId={vi.fn()} onClose={vi.fn()} onAddIssuedStatement={onAddIssuedStatement}
@@ -142,3 +142,4 @@ describe('종류만 정정한 합성 대체 템플릿의 매입 선택',()=>{
   const lines=journalizeStatement(statement)!.lines;expect(lines).toEqual(expect.arrayContaining([expect.objectContaining({accountCode:'253',credit:110000}),expect.objectContaining({accountCode:code,debit:exempt?110000:100000})]));expect(lines.reduce((sum,line)=>sum+(line.debit??0)-(line.credit??0),0)).toBe(0);expect(template).toEqual(original);expect(template.autoIssue).toBe(false);
  });
 });
+it('풍회 합성 화재보험 면세정정은 240600 전액과 자동253 상대변으로 저장한다',async()=>{cleanup();localStorage.clear();const u=userEvent.setup(),issue=vi.fn();const {template}=setup('매입',{companyId:'punghoe',name:'합성 풍회 화재보험 면세',dir:'대체',accountCode:'821',amount:240600,taxExempt:true,transferLines:undefined,active:false,autoIssue:false},issue,[],'punghoe');const before=structuredClone(template);await u.click(screen.getByRole('button',{name:/템플릿 ▾/}));await u.click(await screen.findByRole('button',{name:/합성 풍회 화재보험 면세/}));expect(screen.getByRole('button',{name:'매입'})).toHaveAttribute('aria-pressed','true');await u.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(issue).toHaveBeenCalledTimes(1));const stmt=issue.mock.calls[0][0];expect(stmt).toMatchObject({type:'매입',totalAmount:240600,totalSupply:240600,totalTax:0});const lines=journalizeStatement(stmt)!.lines;expect(lines).toEqual(expect.arrayContaining([expect.objectContaining({accountCode:'821',debit:240600}),expect.objectContaining({accountCode:'253',credit:240600})]));expect(lines.reduce((sum,line)=>sum+(line.debit??0)-(line.credit??0),0)).toBe(0);expect(template).toEqual(before);expect(template.autoIssue).toBe(false);});

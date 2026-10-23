@@ -1,9 +1,10 @@
-// 운영 원문은 비공개 계획에만 보관하고, 승인한 종류 필드 한 개 외에는 쓰지 않는다.
+// 운영 원문은 비공개 계획에만 보관하고, 종류 14개와 정확한 풍회 화재보험 면세 1개 외에는 쓰지 않는다.
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 export const PROJECT = 'taebaek-3abe4';
+export const FIRE = Object.freeze({ id: 'fct-1790492102540', companyId: 'punghoe', name: '보험료 (화재)', amount: '240600', partnerId: 'c-1786079039448-punghoe' });
 export const ROOT = `projects/${PROJECT}/databases/(default)/documents`;
 export const TARGET_IDS = Object.freeze(['fct-1787222602711', 'fct-1787223265793', 'fct-1787283396231', 'fct-1788329835682', 'fct-1790488733561', 'fct-1790492102540', 'fct-builtin-elec', 'fct-builtin-ins', 'fct-builtin-lease', 'fct-builtin-rent', 'fct-cesco-mine', 'fct-taebaek-kt-communications', 'fct-taebaek-tax-accountant-fees-transfer', 'fct-taebaek-tax-adjustment-fee-transfer'].sort());
 export type Fields = Record<string, unknown>;
@@ -19,7 +20,7 @@ export interface Observation {
     partners: TypedDocument[];
 }
 export interface Plan {
-    version: 1;
+    version: 2;
     projectId: string;
     createdAt: string;
     operationId: string;
@@ -32,7 +33,7 @@ export interface Plan {
     hash: string;
 }
 export interface Receipt {
-    version: 1;
+    version: 2;
     planHash: string;
     mode: 'apply' | 'undo';
     state: 'before' | 'after' | 'conflict';
@@ -99,6 +100,11 @@ function validateReferences(observation: Observation, targets: TypedDocument[]) 
         }
     }
 }
+function plannedFields(before: TypedDocument): Fields {
+    if (id(before) === FIRE.id)
+        check(field(before, 'companyId') === FIRE.companyId && field(before, 'name') === FIRE.name && field(before, 'amount', 'integerValue') === FIRE.amount && field(before, 'partnerId') === FIRE.partnerId && field(before, 'taxExempt', 'booleanValue') === false, '풍회 화재보험 면세 원문 조건이 다릅니다.');
+    return { ...clone(before.fields), statementType: { stringValue: '매입' }, ...(id(before) === FIRE.id ? { taxExempt: { booleanValue: true } } : {}) };
+}
 export function buildPlan(observation: Observation): Plan {
     check(observation.templates.length === 102, '최초 전체 템플릿 102개와 다릅니다.');
     const seen = new Set<string>();
@@ -110,12 +116,12 @@ export function buildPlan(observation: Observation): Plan {
     const targets = observation.templates.filter(isCandidate).sort((a, b) => id(a).localeCompare(id(b)));
     check(hash(targets.map(id).sort()) === hash(TARGET_IDS), '조건 집합과 고정 14개 대상이 다릅니다.');
     validateReferences(observation, targets);
-    const base = { version: 1 as const, projectId: PROJECT, createdAt: new Date().toISOString(), operationId: randomUUID(), observation: clone(observation), targets: targets.map(before => ({ id: id(before), before: clone(before), afterFields: { ...clone(before.fields), statementType: { stringValue: '매입' } } })) };
+    const base = { version: 2 as const, projectId: PROJECT, createdAt: new Date().toISOString(), operationId: randomUUID(), observation: clone(observation), targets: targets.map(before => ({ id: id(before), before: clone(before), afterFields: plannedFields(before) })) };
     return { ...base, hash: hash(base) };
 }
 export function validatePlan(plan: Plan) {
     const { hash: expected, ...body } = plan;
-    check(expected === hash(body) && plan.version === 1 && plan.projectId === PROJECT, '계획 해시가 다릅니다.');
+    check(expected === hash(body) && plan.version === 2 && plan.projectId === PROJECT, '계획 해시가 다릅니다.');
     check(hash(plan.targets.map(t => t.id).sort()) === hash(TARGET_IDS));
     check(plan.observation.templates.length === 102);
     const selected = plan.observation.templates.filter(isCandidate);
@@ -125,7 +131,7 @@ export function validatePlan(plan: Plan) {
         document(t.before, 'fixedCostTemplates');
         check(id(t.before) === t.id && isCandidate(t.before));
         check(hash(selected.find(d => id(d) === t.id)) === hash(t.before));
-        check(hash(t.afterFields) === hash({ ...t.before.fields, statementType: { stringValue: '매입' } }));
+        check(hash(t.afterFields) === hash(plannedFields(t.before)));
     }
 }
 export function writesFor(plan: Plan, mode: 'apply' | 'undo', after?: Receipt): RestWrite[] {
@@ -143,7 +149,7 @@ export function writesFor(plan: Plan, mode: 'apply' | 'undo', after?: Receipt): 
         nativeVersion(current.updateTime);
         if (mode === 'undo')
             check(hash(current.fields) === hash(t.afterFields));
-        return { update: { name: t.before.name, fields: mode === 'apply' ? { statementType: { stringValue: '매입' } } : {} }, updateMask: { fieldPaths: ['statementType'] }, currentDocument: { updateTime: current.updateTime } };
+        return { update: { name: t.before.name, fields: mode === 'apply' ? { statementType: { stringValue: '매입' }, ...(t.id === FIRE.id ? { taxExempt: { booleanValue: true } } : {}) } : (t.id === FIRE.id ? { taxExempt: clone(t.before.fields.taxExempt) } : {}) }, updateMask: { fieldPaths: t.id === FIRE.id ? ['statementType', 'taxExempt'] : ['statementType'] }, currentDocument: { updateTime: current.updateTime } };
     });
 }
 export async function observePlan(plan: Plan, port: Port, mode: 'apply' | 'undo', responseConfirmed = false): Promise<Receipt> {
@@ -161,7 +167,7 @@ export async function observePlan(plan: Plan, port: Port, mode: 'apply' | 'undo'
         before &&= hash(doc.fields) === hash(t.before.fields);
         after &&= hash(doc.fields) === hash(t.afterFields);
     }
-    return { version: 1, planHash: plan.hash, mode, state: before ? 'before' : after ? 'after' : 'conflict', responseConfirmed, documents: docs.filter((d): d is TypedDocument => !!d) };
+    return { version: 2, planHash: plan.hash, mode, state: before ? 'before' : after ? 'after' : 'conflict', responseConfirmed, documents: docs.filter((d): d is TypedDocument => !!d) };
 }
 /** intent는 네트워크보다 먼저 불변 저장한다. 재실행은 관측만 하며 같은 commit을 다시 보내지 않는다. */
 export async function execute(plan: Plan, port: Port, mode: 'apply' | 'undo', recordIntent: () => void, after?: Receipt): Promise<Receipt> {
@@ -244,7 +250,7 @@ async function main() {
                 throw Error('문서 조회 실패 HTTP ' + response.status);
             return response.json();
         }, commit: writes => request(`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:commit`, { method: 'POST', body: JSON.stringify({ writes }) }) };
-    const base = resolve('work/template-balance-repair-20261023'), planPath = base + '-plan.json', receiptPath = base + '-receipt.json';
+    const base = resolve('work/template-balance-repair-20261023-v2'), planPath = base + '-plan.json', receiptPath = base + '-receipt.json';
     const preserve = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value, null, 2), { flag: 'wx' });
     if (mode === '--dry') {
         check(!existsSync(planPath), '최초 백업 계획을 덮어쓰지 않습니다.');
@@ -282,7 +288,7 @@ async function main() {
         mode: string;
     } : undefined;
     const after = direction === 'undo' && !existingIntent ? JSON.parse(readFileSync(receiptPath, 'utf8')) as Receipt : undefined;
-    const result = await runRepair(plan, port, direction, { existingIntent, recordIntent: () => preserve(intentPath, { version: 1, planHash: plan.hash, mode: direction, at: new Date().toISOString() }), validateReferences: async () => {
+    const result = await runRepair(plan, port, direction, { existingIntent, recordIntent: () => preserve(intentPath, { version: 2, planHash: plan.hash, mode: direction, at: new Date().toISOString() }), validateReferences: async () => {
             const currentPartners = await Promise.all(plan.observation.partners.map(p => port.get(p.name)));
             check(currentPartners.every(Boolean));
             validateReferences({ templates: plan.observation.templates, accounts: await list('accountCodes'), partners: currentPartners as TypedDocument[] }, plan.targets.map(t => t.before));
