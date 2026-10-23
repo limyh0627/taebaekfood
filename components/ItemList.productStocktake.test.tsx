@@ -14,8 +14,8 @@ vi.mock('firebase/firestore',async(importOriginal)=>({...await importOriginal<ty
  if(patch){memory.item={...memory.item,...patch};memory.writes++;if(memory.lose){memory.lose=false;throw Error('응답 유실');}}return result;
 }}));
 const product={id:'p',companyId:'taebaek',name:'실사제품',type:'product',unit:'개',spec:'1kg',stock:3,minStock:0,lots:[{id:'l',qtyIn:3,qtyRemaining:3,unitKg:1,kgIn:3,kgRemaining:3,status:'active'}]} as Item;
-function element(companyId:'taebaek'|'punghoe'='taebaek'){return <ItemList companyId={companyId} items={[product]} orderRequests={[]} confirmedOrders={[]} inboundPartners={[]} rawMaterialLedger={[]} partners={[]} isAdmin currentUser={{id:'employee',name:'관리자'}}
- onUpdateItem={vi.fn()} onAddItem={vi.fn()} onAddOrderRequest={vi.fn()} onRemoveOrderRequest={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()}/>;}
+function element(companyId:'taebaek'|'punghoe'='taebaek', item:Item=product, rawWrite=vi.fn()){return <ItemList companyId={companyId} items={[item]} orderRequests={[]} confirmedOrders={[]} inboundPartners={[]} rawMaterialLedger={[]} partners={[]} isAdmin currentUser={{id:'employee',name:'관리자'}}
+ onUpdateItem={vi.fn()} onAddItem={vi.fn()} onAddOrderRequest={vi.fn()} onRemoveOrderRequest={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={rawWrite} onDeleteRawMaterialEntry={vi.fn()}/>;}
 function view(){return render(element());}
 async function open(){fireEvent.click(screen.getAllByText('실사제품')[0]);fireEvent.click(await screen.findByRole('button',{name:'실사 반영'}));return screen.findByRole('heading',{name:'재고 실사'});}
 beforeEach(()=>{localStorage.clear();memory.item=JSON.parse(JSON.stringify(product));memory.writes=0;memory.lose=false;memory.fail=false;memory.uid='u';memory.companyId='taebaek';memory.beforeRead=null;memory.readWait=null;});
@@ -60,4 +60,51 @@ it('저장 대기 중 닫았다 다시 연 새 실사 모달은 이전 busy에 �
  await waitFor(()=>expect(localStorage.length).toBe(1));await waitFor(()=>expect(memory.readWait).toBeNull());
  const dialog=screen.getByRole('heading',{name:'재고 실사'}).closest('[role="dialog"]')!;fireEvent.click(within(dialog as HTMLElement).getByRole('button',{name:'취소'}));
  await open();expect(screen.getByRole('button',{name:'실사 결과 확인'})).not.toBeDisabled();finish();await waitFor(()=>expect(memory.writes).toBe(1));expect(screen.getByRole('button',{name:'실사 결과 확인'})).not.toBeDisabled();
+});
+
+it('최초 실사 대기에는 수량과 최소수량 입력을 잠근다',async()=>{
+ view();await open();let finish!:()=>void;memory.readWait=new Promise(resolve=>{finish=resolve;});fireEvent.click(screen.getByRole('button',{name:'실사 반영'}));
+ const dialog=screen.getByRole('heading',{name:'재고 실사'}).closest('[role="dialog"]')!;
+ for (const input of within(dialog as HTMLElement).getAllByRole('spinbutton')) expect(input).toBeDisabled();
+ finish();await waitFor(()=>expect(memory.writes).toBe(1));
+});
+it('원료 실사 확인중 실UID가 바뀌면 원래 callback을 보내지 않는다',async()=>{
+ const raw={...product,type:'product',subtype:'벌크',name:'합성원료',unit:'kg'} as Item,write=vi.fn().mockResolvedValue({ok:true,appliedKg:0});
+ render(element('taebaek',raw,write));fireEvent.click(screen.getAllByText('합성원료')[0]);fireEvent.click(await screen.findByRole('button',{name:'실사 반영'}));
+ let finish!:(yes:boolean)=>void;vi.mocked(appConfirm).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ fireEvent.click(screen.getByRole('button',{name:'실사 반영'}));await waitFor(()=>expect(finish).toBeTypeOf('function'));memory.uid='다른사용자';finish(true);
+ await new Promise(resolve=>setTimeout(resolve,20));expect(write).not.toHaveBeenCalled();
+});
+
+async function reopenBeforeAck(){
+ view();await open();const dialog=screen.getByRole('heading',{name:'재고 실사'}).closest('[role="dialog"]')!;
+ fireEvent.change(within(dialog as HTMLElement).getAllByRole('spinbutton')[0],{target:{value:'5'}});
+ let finish!:()=>void;memory.readWait=new Promise(resolve=>{finish=resolve;});fireEvent.click(screen.getByRole('button',{name:'실사 반영'}));
+ await waitFor(()=>expect(localStorage.length).toBe(1));await waitFor(()=>expect(memory.readWait).toBeNull());
+ const key=localStorage.key(0)!,captured=JSON.parse(localStorage.getItem(key)!);
+ fireEvent.click(within(dialog as HTMLElement).getByRole('button',{name:'취소'}));await open();finish();await waitFor(()=>expect(memory.writes).toBe(1));await waitFor(()=>expect(localStorage.length).toBe(0));
+ return{key,captured};
+}
+it('대기 중 재연 창은 옛 ACK 사본정리 뒤에도 최초 요청의 결과만 확인한다',async()=>{
+ await reopenBeforeAck();memory.item.stock=4;memory.item.lots=[{...memory.item.lots[0],qtyRemaining:4,kgRemaining:4}];const before=JSON.stringify(memory.item);
+ fireEvent.click(screen.getByRole('button',{name:'실사 결과 확인'}));await waitFor(()=>expect(screen.queryByRole('heading',{name:'재고 실사'})).toBeNull());
+ expect(memory.writes).toBe(1);expect(JSON.stringify(memory.item)).toBe(before);expect(localStorage.length).toBe(0);
+ expect(screen.getByText('실사 처리 기록을 확인했습니다. 재고는 다시 변경하지 않았습니다.')).toBeInTheDocument();
+});
+it('표시한 원문 사본이 사라지고 저장 앵커도 없으면 조회만 실패하고 재적용하지 않는다',async()=>{
+ view();await open();memory.fail=true;fireEvent.click(screen.getByRole('button',{name:'실사 반영'}));await screen.findByText(/쓰기 실패/);const key=localStorage.key(0)!;localStorage.removeItem(key);memory.fail=false;
+ fireEvent.click(screen.getByRole('button',{name:'실사 결과 확인'}));await new Promise(resolve=>setTimeout(resolve,20));expect(memory.writes).toBe(0);await screen.findByText(/저장 근거를 찾지 못했습니다/);expect(screen.getByRole('button',{name:'실사 결과 확인'})).toBeEnabled();expect(localStorage.length).toBe(0);
+});
+it('저장 앵커 조회 뒤 다른 사본으로 바뀌면 현재 사본과 표시 원문을 보존한다',async()=>{
+ const {key,captured}=await reopenBeforeAck();const other={...captured,operationId:'다른-실사'};memory.beforeRead=()=>{memory.beforeRead=null;localStorage.setItem(key,JSON.stringify(other));};
+ fireEvent.click(screen.getByRole('button',{name:'실사 결과 확인'}));await screen.findByText(/다른 실사 요청은 정리하지 않았습니다/);expect(localStorage.getItem(key)).toBe(JSON.stringify(other));expect(memory.writes).toBe(1);expect(screen.getByText(/보존된 최초 실사 5/)).toBeInTheDocument();
+});
+
+it('보관 원문 조회는 현재 품목의 최소수량 누락과 무관하게 처리 기록만 확인한다',async()=>{
+ const alert=vi.spyOn(window,'alert').mockImplementation(()=>{});
+ const request={version:1 as const,operationId:'처리된-옛실사',companyId:'taebaek' as const,uid:'u',itemId:'p',itemName:'옛품목명',targetQty:5,unitKg:1,capturedAt:'2026-10-20T00:00:00.000Z'};
+ localStorage.setItem('product-stocktake:taebaek:u:p',JSON.stringify({...request,state:'submitted'}));
+ memory.item={...memory.item,minStock:undefined,stock:4,stocktakeAnchors:[{id:request.operationId,request}]};
+ render(element('taebaek',{...product,minStock:undefined} as unknown as Item));await open();fireEvent.click(screen.getByRole('button',{name:'실사 결과 확인'}));
+ expect(alert).not.toHaveBeenCalled();await screen.findByText('실사 처리 기록을 확인했습니다. 재고는 다시 변경하지 않았습니다.');expect(memory.writes).toBe(0);expect(memory.item.stock).toBe(4);expect(localStorage.length).toBe(0);await open();fireEvent.click(screen.getByRole('button',{name:'실사 반영'}));expect(alert).toHaveBeenCalledWith('최소 수량은 0 이상이어야 합니다.');expect(memory.writes).toBe(0);alert.mockRestore();
 });

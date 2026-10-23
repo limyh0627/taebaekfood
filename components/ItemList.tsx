@@ -1,9 +1,10 @@
+import { useStocktakeEditor } from '../src/features/items/hooks/useStocktakeEditor';
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 import { boxEquivalentLabel, inventoryNameSpec, withSpec, parseMakeLabel } from '../src/features/items/ui/itemListDisplay';
-import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
+import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, productStocktakeRequest, clearProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
 import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { hasPendingReturn } from '../src/features/admin/returnCommands';
@@ -60,7 +61,7 @@ import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { hasPendingReturnQuantity, resumePendingReturnQuantity } from '../src/shared/services/pendingFlowQuantityService';
 import { cancelReturnRequest, hasPendingReturnCancellation, resumeReturnCancellation } from '../src/shared/services/returnRequestCancellation';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
-import { productStocktakeActor, durableCanUnpack, durableProductStocktake as stocktakeByQty } from '../src/shared/services/unpackService';
+import { productStocktakeActor, durableCanUnpack, durableProductStocktake as stocktakeByQty, stocktakeByQty as inspectProductStocktake } from '../src/shared/services/unpackService';
 import { getPackIndex, packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -692,16 +693,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
   //    즉시 편집을 닫아버려서 "눌러도 아무 반응 없음"이 됐다 — 상태를 나눠 둔 까닭이다)
   const [editingClosingId, setEditingClosingId] = useState<string | null>(null);
   const [editingClosingVal, setEditingClosingVal] = useState<string>('');
-  const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
-  const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
-  const stocktakeOperationId = useRef('');
-  const [stocktakePending,setStocktakePending] = useState<ProductStocktakeAttempt | null>(null);
+  const stocktakeEditor = useStocktakeEditor({ companyId, actorKey: currentUser?.id, getUid: () => auth.currentUser?.uid });
+  const { item: rowEditProduct, form: rowEditForm, lotId: stocktakeLotId, pending: stocktakePending, saving: stocktakeSaving, operationId: stocktakeOperationId } = stocktakeEditor;
+  const setRowEditProduct = (_item: Item | null) => stocktakeEditor.close();
+  const setRowEditForm = stocktakeEditor.setForm, setStocktakeLotId = stocktakeEditor.setLotId, setStocktakePending = stocktakeEditor.setPending;
   const stocktakeScope = useRef({companyId,itemId:rowEditProduct?.id});
   stocktakeScope.current={companyId,itemId:rowEditProduct?.id};
-  useEffect(()=>{setRowEditProduct(null);setStocktakePending(null);},[companyId,currentUser?.id]);
-  const [stocktakeSaving, setStocktakeSaving] = useState(false);
-  useEffect(()=>{setStocktakeSaving(false);},[companyId,currentUser?.id,rowEditProduct]);
-  const [stocktakeLotId, setStocktakeLotId] = useState('');
   const [detailProduct, setDetailProduct] = useState<Item | null>(null);
   const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
   const [detailOrderIsBox, setDetailOrderIsBox] = useState<boolean>(false);
@@ -1001,26 +998,24 @@ const ItemListContent: React.FC<ItemListProps> = ({
       if (!uid) { setToast({message:'로그인 후 제품 실사를 확인해 주세요.'}); return; }
       try { pending=readProductStocktakeAttempt(companyId,uid,product.id); } catch(error) { setToast({message:String(error)}); return; }
     }
-    setStocktakePending(pending);
-    stocktakeOperationId.current = `stocktake-${product.id}-${crypto.randomUUID()}`;
     const activeLot = isRawHolder(product)
       ? (product.lots ?? []).find(lot => lot.status !== 'depleted')
       : undefined;
-    setStocktakeLotId(activeLot?.id ?? '');
     const stockKg = activeLot ? Number(activeLot.kgRemaining ?? 0) : Number(product.stock ?? 0);
-    setRowEditProduct(product);
-    setRowEditForm({
+    stocktakeEditor.open(product, {
       name: product.name, type: product.type,
       stock: pending?.targetQty ?? (product.density ? Math.round((stockKg / product.density) * 1000) / 1000 : stockKg),
       minStock: pending?.minStock ?? product.minStock, unit: product.unit,
-    });
+    }, activeLot?.id ?? '', pending);
   };
 
   // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤.
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
-  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs }): Promise<boolean> => {
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs; isCurrent?: () => boolean }): Promise<boolean> => {
+    const isCurrent = options?.isCurrent ?? (() => true);
+    if (!isCurrent()) return false;
     const inputs = options?.inputs ?? orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
     if (isNaN(val) || val < 0) return false;
     if (isRawHolder(product)) {
@@ -1031,6 +1026,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       if (!await appConfirm(targetLot
         ? `[${targetLot.lotNo || targetLot.supplierName}] 로트 잔량을 ${val}${unitLabel}로 맞출까요?\n선택한 로트와 타임라인에 '재고 정정'으로 반영됩니다.`
         : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return false;
+      if (!isCurrent()) return false;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
       const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
       /**
@@ -1040,6 +1036,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
        * 뒤가 실패하면 로트만 움직인 채 조용히 끝났다. 이제 명령 하나가 한 트랜잭션으로 쓴다.
        * 얼마나 움직였는지(`appliedKg`)는 명령이 알려 준다 — 여기서 미리 셀 필요가 없다.
        */
+      if (!isCurrent()) return false;
       const r = await onAddRawMaterialEntry({
         id: `rm-stocktake-${Date.now()}`,
         material,
@@ -1056,6 +1053,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         unit: 'kg',
         addedBy: currentUser?.name,
       } as RawMaterialEntry);
+      if (!isCurrent()) return false;
       if (!r.ok) { setToast({ message: `${product.name} 실사 실패 — ${r.reason}` }); return false; }
       const adjustKg = Math.round((r.appliedKg ?? 0) * 1000) / 1000;
       setToast({
@@ -1078,6 +1076,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
        * 로트가 없던 품목도 실사 시점부터 이월 로트를 세운다. 그래야 다음 출고가 다시
        * 별도 음수 로트를 만들지 않고 `stock` 과 같은 기준에서 이어진다.
        */
+      if (!isCurrent()) return false;
       const r = await stocktakeByQty({
         companyId: companyOf(product),
         itemId: product.id,
@@ -1087,6 +1086,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         ...(options?.operationId ? { operationId: options.operationId } : {}),
         unitKg: stockKg(1, product, id => items.find(x => x.id === id), inputs) ?? 0,
       });
+      if (!isCurrent()) return false;
       setToast({ message: r.message });
       return r.ok;
     }
@@ -2553,6 +2553,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">카테고리</label>
                       <select
+                        disabled={stocktakeSaving || !!stocktakePending}
                         value={rowEditForm.type as string || ''}
                         onChange={e => setRowEditForm(f => ({ ...f, category: e.target.value as any }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2568,6 +2569,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">품목명</label>
                       <input
                         type="text"
+                        disabled={stocktakeSaving || !!stocktakePending}
                         value={rowEditForm.name || ''}
                         onChange={e => setRowEditForm(f => ({ ...f, name: e.target.value }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2588,7 +2590,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 {!productEditable && isRawHolder(rowEditProduct) && (
                   <div>
                     <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">정정할 로트</label>
-                    <select value={stocktakeLotId} onChange={event => {
+                    <select disabled={stocktakeSaving || !!stocktakePending} value={stocktakeLotId} onChange={event => {
+                      if (!stocktakeEditor.canEdit()) return;
                       const id = event.target.value;
                       const lot = (rowEditProduct.lots ?? []).find(candidate => candidate.id === id);
                       setStocktakeLotId(id);
@@ -2628,7 +2631,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         type="number"
                         min="0"
                         step="any"
-                        disabled={!!stocktakePending}
+                        disabled={stocktakeSaving || !!stocktakePending}
                         value={rowEditForm.stock ?? ''}
                         onChange={e => setRowEditForm(f => ({ ...f, stock: parseFloat(e.target.value) || 0 }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2654,7 +2657,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">최소 수량</label>
                     <input
                       type="number"
-                      disabled={!!stocktakePending}
+                      disabled={stocktakeSaving || !!stocktakePending}
                       value={rowEditForm.minStock ?? ''}
                       onChange={e => setRowEditForm(f => ({ ...f, minStock: parseInt(e.target.value) || 0 }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2667,6 +2670,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">단위</label>
                     <input
                       type="text"
+                      disabled={stocktakeSaving || !!stocktakePending}
                       value={rowEditForm.unit || ''}
                       onChange={e => setRowEditForm(f => ({ ...f, unit: e.target.value }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2684,26 +2688,43 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     const sameScope=()=>unpackMounted.current&&auth.currentUser?.uid===stocktakeUid&&stocktakeScope.current.companyId===capturedCompany&&stocktakeScope.current.itemId===p.id&&stocktakeOperationId.current===generation;
                     const newStock = rowEditForm.stock;
                     const minStock = rowEditForm.minStock;
-                    if (newStock === undefined || !Number.isFinite(newStock) || newStock < 0) {
+                    if (!stocktakePending && (newStock === undefined || !Number.isFinite(newStock) || newStock < 0)) {
                       alert('재고는 0 이상이어야 합니다.');
                       return;
                     }
-                    if (!isRawHolder(p) && (minStock === undefined || !Number.isFinite(minStock) || minStock < 0)) {
+                    if (!stocktakePending && !isRawHolder(p) && (minStock === undefined || !Number.isFinite(minStock) || minStock < 0)) {
                       alert('최소 수량은 0 이상이어야 합니다.');
                       return;
                     }
-                    setStocktakeSaving(true);
+                    const execution = stocktakeEditor.begin();
+                    if (!execution) return;
+                    const isCurrent = () => sameScope() && execution.isCurrent();
                     try {
+                      if (stocktakePending) {
+                        const capturedPending = stocktakePending;
+                        const request = productStocktakeRequest(capturedPending);
+                        if (!isCurrent()) return;
+                        const result = await inspectProductStocktake({ ...request, request, mode: 'inspect' });
+                        if (!isCurrent()) return;
+                        if (result.ok) {
+                          clearProductStocktakeAttempt(capturedPending);
+                          if (!isCurrent()) return;
+                          setStocktakePending(null);
+                          setRowEditProduct(null);
+                        }
+                        setToast({ message: result.ok ? '실사 처리 기록을 확인했습니다. 재고는 다시 변경하지 않았습니다.' : result.message });
+                        return;
+                      }
                       // 재고·로트·실사 기록·최소 수량을 한 거래로 저장한다.
-                      const ok = await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined,
-                        isRawHolder(p) ? undefined : { minStock, operationId: stocktakeOperationId.current });
-                      if (!sameScope()) return;
+                      const ok = await commitStockEdit(p, newStock!, 0, isRawHolder(p) ? stocktakeLotId : undefined,
+                        { ...(isRawHolder(p) ? {} : { minStock, operationId: stocktakeOperationId.current }), isCurrent });
+                      if (!isCurrent()) return;
                       if (ok) { setStocktakePending(null);setRowEditProduct(null); }
                       else if (!isRawHolder(p) && stocktakeUid) setStocktakePending(readProductStocktakeAttempt(companyId,stocktakeUid,p.id));
                     } catch (error) {
-                      if(sameScope()) setToast({ message: `실사 실패 — ${error instanceof Error ? error.message : String(error)}` });
+                      if(isCurrent()) setToast({ message: `실사 실패 — ${error instanceof Error ? error.message : String(error)}` });
                     } finally {
-                      if (sameScope()) setStocktakeSaving(false);
+                      execution.finish();
                     }
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"

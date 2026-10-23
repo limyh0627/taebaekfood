@@ -1,3 +1,5 @@
+import {useOfficeTalkComposer} from '../src/features/chat/hooks/useOfficeTalkComposer';
+import {useOfficeTalkRoomDraft} from '../src/features/chat/hooks/useOfficeTalkRoomDraft';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import ActionButton from '../src/shared/components/ActionButton';
 
@@ -97,9 +99,6 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       onRoomOpened?.();
     }
   }, [initialRoomId]);
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
-  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-  const [messageText, setMessageText] = useState('');
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,8 +117,6 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   // 서버 스냅샷이 도착하기 전까지 내가 보낸 말을 보존한다. 다음 스냅샷이 목록을 통째로
   // 덮어쓰면서 방금 보낸 말이 사라졌다 다시 나타나는 깜빡임을 막는다.
   const pendingMessages = useRef(new Map<string, ChatMessage>());
-  const activeRoomIdRef = useRef<string | null>(activeRoomId);
-  activeRoomIdRef.current = activeRoomId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,9 +124,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   //  카톡처럼 사진·파일은 + 뒤에 숨긴다 — 입력칸이 좁아지는 걸 막는다(2026-09-03 사장님)
   const [attachOpen, setAttachOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
+
   //  여러 장 올릴 때 '3장 중 1장' 을 보이려고 센다
-  const [uploadCount, setUploadCount] = useState({ done: 0, total: 0 });
+
   //  **카톡·문자에서 공유해 들어온 글**(2026-09-03 사장님).
   //  들어올 땐 대화방이 안 정해져 있다. 방을 고를 때까지 들고 있다가 입력칸에 넣는다.
   const [pendingShare, setPendingShare] = useState<string>(() => peekSharedText());
@@ -282,48 +279,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setIsEditingRoomName(false);
   };
 
-  const handleCreateRoom = async () => {
-    if (selectedParticipants.length === 0) return;
-
-    const participantIds = [...new Set([...selectedParticipants, currentUser.id])];
-    const companyId = companyOf(currentUser);
-    const participantCompanies = participantCompaniesOf(participantIds, employees, companyId);
-
-    // Check if 1:1 room already exists
-    if (participantIds.length === 2) {
-      const existingRoom = chatRooms.find(r =>
-        !r.isGroup &&
-        r.participantIds.length === 2 &&
-        r.participantIds.every(id => participantIds.includes(id))
-      );
-      if (existingRoom) {
-        setActiveRoomId(existingRoom.id);
-        setIsNewChatModalOpen(false);
-        setSelectedParticipants([]);
-        return;
-      }
-    }
-
-    const newRoom: ChatRoom = {
-      id: `ROOM-${Date.now()}`,
-      companyId,
-      participantIds,
-      participantCompanies,
-      createdBy: currentUser.id,   // 기본 이름을 정할 수 있는 사람
-      lastUpdatedAt: new Date().toISOString(),
-      isGroup: participantIds.length > 2
-    };
-
-    try {
-      await onAddRoom(newRoom);
-      setActiveRoomId(newRoom.id);
-      setIsNewChatModalOpen(false);
-      setSelectedParticipants([]);
-    } catch (err: any) {
-      setFirestoreError(`대화방을 만들지 못했습니다: ${err?.message || '네트워크 오류'}`);
-    }
-  };
-
+  const roomDraft=useOfficeTalkRoomDraft({getUid:()=>auth.currentUser?.uid,currentUser,employees,rooms:chatRooms,add:onAddRoom,select:setActiveRoomId,onError:setFirestoreError});
+  const {isOpen:isNewChatModalOpen,selectedParticipants}=roomDraft;
+  const handleCreateRoom=roomDraft.create;
   /**
    * @param attach 사진 아닌 첨부(문서·엑셀) 하나
    * @param photos 사진 여럿을 묶어 보낼 때 — 어느 칸에 실을지는 [imagePatch](../src/shared/chatUpload.ts) 가 정한다
@@ -391,90 +349,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     } finally {if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){shareSendLock.current = false; setShareSending(false);}}
   };
 
-  const handleSendMessage = async (
-    e?: React.FormEvent,
-    attach?: ChatAttachment,
-    photos?: Pick<ChatMessage, 'imageUrl' | 'images'>,
-  ) => {
-    e?.preventDefault();
-    const 사진있음 = !!(photos?.imageUrl || photos?.images?.length);
-    if ((!messageText.trim() && !attach && !사진있음) || !activeRoomId) return;
-
-    //  누가 불렸나 — 이름 겹침·@관리자까지 shared/mention 이 혼자 판단한다
-    const mentions = mentionedIds(messageText, employees);
-
-    const newMessage: ChatMessage = {
-      id: `MSG-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
-      companyId: companyOf(currentUser),
-      roomId: activeRoomId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      text: messageText,
-      createdAt: new Date().toISOString(),
-      ...(attach?.isImage ? { imageUrl: attach.url } : {}),
-      ...(attach && !attach.isImage ? { fileUrl: attach.url, fileName: attach.name, fileSize: attach.size } : {}),
-      ...(photos ?? {}),
-      ...(mentions.length > 0 ? { mentions } : {}),
-      //  답장이면 그때 보인 글을 같이 담는다 — 원본이 지워져도 무엇에 답한 건지 남는다
-      ...(replyTo ? { replyTo: replySnippet(replyTo) } : {}),
-    };
-
-    const savedText = messageText;
-    // 서버 왕복을 기다린 뒤 목록에 붙이면 모바일망에서는 눌렀는지조차 늦게 보인다.
-    // 같은 id의 서버 스냅샷이 곧 전체 목록을 확정하므로 먼저 화면에만 낙관적으로 붙인다.
-    pendingMessages.current.set(newMessage.id, newMessage);
-    stickToBottomRef.current = true;
-    setLocalMessages(prev => prev.some(message => message.id === newMessage.id) ? prev : [...prev, newMessage]);
-    setMessageText('');
-    setReplyTo(null);
-    try {
-      await (onSendMessage as (_msg: ChatMessage) => Promise<void>)(newMessage);
-    } catch (err: any) {
-      console.error('메시지 전송 오류:', err);
-      pendingMessages.current.delete(newMessage.id);
-      setLocalMessages(prev => prev.filter(message => message.id !== newMessage.id));
-      setMessageText(current => current || (activeRoomIdRef.current === newMessage.roomId ? savedText : current));
-      setFirestoreError(`메시지 전송 실패: ${err?.message || '네트워크 오류'}`);
-    }
-  };
-
-  //  사진·파일 한 길 — Storage 에 올리고 주소만 메시지에 싣는다.
-  //  base64 로 글자에 실으면 Firestore 1MB 한계에 걸려 폰 사진은 아예 안 갔다.
-  //  **고르든 붙여넣든 여기 하나를 지난다.**
-  /**
-   * **여러 장이면 한 말로 묶는다**(2026-09-09 사장님). 사진 다섯 장이 다섯 줄로 오면 대화가 밀린다.
-   *
-   * 사진이 아닌 것(문서·엑셀)은 말 하나에 한 개만 실을 수 있어서 **따로 보낸다** —
-   * 묶어 봐야 첫 장 말고는 표시할 자리가 없다.
-   * 한 장이라도 실패하면 그 장만 건너뛰고 나머지는 보낸다. 통째로 버리는 게 더 나쁘다.
-   */
-  const sendFiles = async (files: File[]) => {
-    if (!activeRoomId || files.length === 0) return;
-    const 사진 = files.filter(f => (f.type || '').startsWith('image/'));
-    const 그밖 = files.filter(f => !(f.type || '').startsWith('image/'));
-    setUploading(true);
-    setUploadCount({ done: 0, total: files.length });
-    const 실패: string[] = [];
-    const 올리기 = async (f: File) => {
-      try { return await uploadChatFile(companyOf(currentUser), activeRoomId, f); }
-      catch (err: any) { 실패.push(`${f.name}: ${err?.message || '네트워크 오류'}`); return null; }
-      finally { setUploadCount(c => ({ ...c, done: c.done + 1 })); }
-    };
-    try {
-      if (사진.length > 0) {
-        const urls = (await Promise.all(사진.map(올리기))).filter(Boolean).map(a => a!.url);
-        if (urls.length > 0) await handleSendMessage(undefined, undefined, imagePatch(urls));
-      }
-      for (const f of 그밖) {
-        const a = await 올리기(f);
-        if (a) await handleSendMessage(undefined, a);
-      }
-      if (실패.length > 0) setFirestoreError(`${실패.length}개를 못 보냈습니다 — ${실패[0]}`);
-    } finally {
-      setUploading(false);
-      setUploadCount({ done: 0, total: 0 });
-    }
-  };
+  const composer=useOfficeTalkComposer({getUid:()=>auth.currentUser?.uid,roomId:activeRoomId,currentUser,employees,send:onSendMessage,
+    add:message=>{pendingMessages.current.set(message.id,message);stickToBottomRef.current=true;setLocalMessages(prev=>prev.some(row=>row.id===message.id)?prev:[...prev,message]);},
+    remove:id=>{pendingMessages.current.delete(id);setLocalMessages(prev=>prev.filter(row=>row.id!==id));},onError:setFirestoreError});
+  const {messageText,setMessageText,replyTo,setReplyTo,uploading,uploadCount,sendFiles}=composer;
+  const handleSendMessage=async(e?:React.FormEvent)=>{e?.preventDefault();await composer.send();};
 
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -556,7 +435,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [찾는글, set찾는글] = useState('');
   const [검색열림, set검색열림] = useState(false);
   /** 답장할 말 — 입력칸 위에 인용으로 뜬다 */
-  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+
   const [알림글, set알림글] = useState('');
 
   /*  **대화방도 꾹 누르면 창이 뜬다**(2026-09-12 사장님: "데스크톱에선 우클릭 핸드폰에선 꾹 눌러서").
@@ -713,7 +592,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 🔔
               </button>
               <button
-                onClick={() => setIsNewChatModalOpen(true)}
+                onClick={() => roomDraft.open()}
                 className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
               >
                 <Plus size={20} />
@@ -1358,7 +1237,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <p className="text-sm font-bold text-slate-400">대화방을 선택하거나 새로운 대화를 시작해보세요.</p>
             </div>
             <button
-              onClick={() => setIsNewChatModalOpen(true)}
+              onClick={() => roomDraft.open()}
               className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center space-x-2"
             >
               <Plus size={20} />
@@ -1438,19 +1317,20 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           <ModalShell
             title="새 대화 시작"
             subtitle="대화에 참여할 직원을 선택하세요."
-            onClose={() => setIsNewChatModalOpen(false)}
+            onClose={() => roomDraft.close()}
             bodyClassName="space-y-2 custom-scrollbar"
             footer={(
               <div className="flex space-x-3">
                 <button
-                  onClick={() => setIsNewChatModalOpen(false)}
+                  onClick={() => roomDraft.close()}
+                  disabled={roomDraft.busy}
                   className="flex-1 py-3 rounded-xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
                 >
                   취소
                 </button>
                 <button
                   onClick={handleCreateRoom}
-                  disabled={selectedParticipants.length === 0}
+                  disabled={roomDraft.busy || selectedParticipants.length === 0}
                   className="flex-1 py-3 rounded-xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50 disabled:shadow-none"
                 >
                   대화 시작하기
@@ -1458,18 +1338,13 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               </div>
             )}
           >
+                {roomDraft.error && <p role="alert" className="text-sm text-rose-600">{roomDraft.error}</p>}
                 {employees
                   .filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id)
                   .map(emp => (
                   <button
                     key={emp.id}
-                    onClick={() => {
-                      if (selectedParticipants.includes(emp.id)) {
-                        setSelectedParticipants(prev => prev.filter(id => id !== emp.id));
-                      } else {
-                        setSelectedParticipants(prev => [...prev, emp.id]);
-                      }
-                    }}
+                    disabled={roomDraft.busy} onClick={() => roomDraft.toggle(emp.id)}
                     className={`w-full flex items-center space-x-4 p-4 rounded-2xl transition-all border ${
                       selectedParticipants.includes(emp.id)
                         ? 'bg-indigo-50 border-indigo-200 shadow-sm'
