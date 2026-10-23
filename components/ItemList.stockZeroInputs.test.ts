@@ -16,7 +16,7 @@ const zeroTitle=source.indexOf('title="재고 0으로"');
 const zeroStart=source.lastIndexOf('onClick={async () => {',zeroTitle)+'onClick={async () => {'.length;
 const zeroEnd=source.lastIndexOf('}}',zeroTitle);
 const code=ts.transpileModule(`${source.slice(commitStart,commitEnd)} return async () => {${source.slice(zeroStart,zeroEnd)}};`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-const makeCallback=new Function('product','items','appConfirm','stocktakeByQty','stocktakeStoredQuantity','stockKg','getBomIndex','getPackIndex','isRawHolder','setToast','stockEdit','disp','cur','unpackMounted = {current:true}','orderUnitInputs','companyOf',code);
+const makeCallback=new Function('product','items','appConfirm','stocktakeByQty','stocktakeStoredQuantity','stockKg','getBomIndex','getPackIndex','isRawHolder','setToast','stockEdit','disp','cur','unpackMounted = {current:true}','orderUnitInputs','companyOf','runClosingStockEdit = async (_product, _value, action) => action(() => unpackMounted.current)',code);
 const make=(...args:unknown[])=>makeCallback(...Array.from({length:15},(_,index)=>args[index]),companyOf);
 const commitCode=ts.transpileModule(`${source.slice(commitStart,commitEnd)} return commitStockEdit;`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 const makeCommitCallback=new Function('items','stocktakeByQty','stocktakeStoredQuantity','stockKg','getBomIndex','getPackIndex','isRawHolder','setToast','orderUnitInputs','companyOf',commitCode);

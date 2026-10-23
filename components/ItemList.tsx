@@ -1,3 +1,4 @@
+import { useClosingStockEditor } from '../src/features/items/hooks/useClosingStockEditor';
 import { useStocktakeEditor } from '../src/features/items/hooks/useStocktakeEditor';
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
@@ -691,8 +692,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
   //  실사 창이 뜬다. 재고 현황 모달 쪽은 아직 그 자리에서 고친다.
   //   (같은 품목이 모달 뒤 목록에도 렌더되면 autoFocus 입력이 둘 생기고, 포커스를 뺏긴 쪽 onBlur가
   //    즉시 편집을 닫아버려서 "눌러도 아무 반응 없음"이 됐다 — 상태를 나눠 둔 까닭이다)
-  const [editingClosingId, setEditingClosingId] = useState<string | null>(null);
-  const [editingClosingVal, setEditingClosingVal] = useState<string>('');
+  const closingStockEditor = useClosingStockEditor({ scope: inventoryScope.current, modalOpen: showClosingModal, view: closingView, getUid: () => auth.currentUser?.uid });
+  const editingClosingId = closingStockEditor.id, editingClosingVal = closingStockEditor.value;
+  const setEditingClosingId = (_id: string | null) => closingStockEditor.cancel();
+  const setEditingClosingVal = closingStockEditor.setValue;
   const stocktakeEditor = useStocktakeEditor({ companyId, actorKey: currentUser?.id, getUid: () => auth.currentUser?.uid });
   const { item: rowEditProduct, form: rowEditForm, lotId: stocktakeLotId, pending: stocktakePending, saving: stocktakeSaving, operationId: stocktakeOperationId } = stocktakeEditor;
   const setRowEditProduct = (_item: Item | null) => stocktakeEditor.close();
@@ -1009,11 +1012,44 @@ const ItemListContent: React.FC<ItemListProps> = ({
     }, activeLot?.id ?? '', pending);
   };
 
+  const runClosingStockEdit = async (product: Item, value: string, action: (isCurrent: () => boolean) => Promise<boolean | 'cancelled'>) => closingStockEditor.execute(product.id, value, async isCurrent => {
+    if (!isCurrent()) return false;
+    if (!isRawHolder(product)) {
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw Error('로그인 후 실사 결과를 확인해 주세요.');
+      const pending = readProductStocktakeAttempt(companyId, uid, product.id);
+      if (pending) {
+        if (!isCurrent()) return false;
+        setShowClosingModal(false);
+        openStocktake(product);
+        return true;
+      }
+    }
+    return action(isCurrent);
+  });
+
+  const submitClosingStockInput = (product: Item, value: string, addStockUnits: number, inputs: OrderUnitInputs) => runClosingStockEdit(product, value, async isCurrent => {
+    let cancelled = false;
+    const ok = await commitStockEdit(product, parseFloat(value), addStockUnits, undefined, { inputs, isCurrent, onCancelled: () => { cancelled = true; } });
+    return cancelled ? 'cancelled' : ok;
+  });
+  const showClosingStocktakeResult = (product: Item) => {
+    if (!closingStockEditor.canAct() || !unpackMounted.current) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid || inventoryScope.current.uid !== uid) return;
+    try {
+      const pending = readProductStocktakeAttempt(companyId, uid, product.id);
+      if (!pending) { setToast({ message: '이 기기에 보관된 실사 원문을 찾지 못했습니다. 저장되지 않았다는 뜻은 아닙니다. 현재 재고와 처리 내역을 확인해 주세요.' }); return; }
+      setShowClosingModal(false);
+      openStocktake(product);
+    } catch (error) { setToast({ message: String(error) }); }
+  };
+
   // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤.
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
-  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs; isCurrent?: () => boolean }): Promise<boolean> => {
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs; isCurrent?: () => boolean; onCancelled?: () => void }): Promise<boolean> => {
     const isCurrent = options?.isCurrent ?? (() => true);
     if (!isCurrent()) return false;
     const inputs = options?.inputs ?? orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
@@ -1025,7 +1061,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       const targetLot = targetLotId ? (product.lots ?? []).find(lot => lot.id === targetLotId) : undefined;
       if (!await appConfirm(targetLot
         ? `[${targetLot.lotNo || targetLot.supplierName}] 로트 잔량을 ${val}${unitLabel}로 맞출까요?\n선택한 로트와 타임라인에 '재고 정정'으로 반영됩니다.`
-        : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return false;
+        : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) { options?.onCancelled?.(); return false; }
       if (!isCurrent()) return false;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
       const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
@@ -3709,6 +3745,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         <ModalShell title="재고 현황" onClose={() => { setEditingClosingId(null); setShowClosingModal(false); }}
           className="h-[92dvh] md:h-[88vh] md:max-w-lg" bodyClassName="!p-0 !overflow-hidden flex flex-col">
 
+{closingStockEditor.error && <p role="alert" className="px-3 py-2 text-sm text-slate-700">{closingStockEditor.error}</p>}
             {/* ── 본문(스크롤) ── */}
             <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
               {/* 검색 — 재고 0인 품목은 검색으로 찾거나 '품목 추가하기'로 만든다 */}
@@ -3901,19 +3938,29 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       {/* 수량 — 작업완료(미출고)분은 아래 '주문수량'으로 따로 적는다(옆 배지는 없앰) */}
                       <span className="shrink-0 flex flex-col items-end leading-tight">
                       {editing ? (
-                        <input autoFocus type="text" inputMode="decimal" value={editingClosingVal}
+                        <>
+                        <input disabled={closingStockEditor.busy} autoFocus type="text" inputMode="decimal" value={editingClosingVal}
                           onChange={e => setEditingClosingVal(e.target.value)}
                           onKeyDown={e => {
                             if (e.key === 'Enter') { closingEditCancelled.current = false; e.currentTarget.blur(); }
                             if (e.key === 'Escape') { closingEditCancelled.current = true; e.currentTarget.blur(); }
                           }}
-                          onBlur={() => {
-                            if (product && !closingEditCancelled.current && editingClosingVal.trim() !== '') commitStockEdit(product, parseFloat(editingClosingVal), stockEdit ? disp : 0);
-                            setEditingClosingId(null); closingEditCancelled.current = false;
+                          onBlur={async () => {
+                            if (closingEditCancelled.current) { closingStockEditor.cancel(); closingEditCancelled.current = false; return; }
+                            if (!product || !editingClosingVal.trim()) return;
+                            const value = editingClosingVal;
+                            const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+                            await submitClosingStockInput(product, value, stockEdit ? disp : 0, inputs);
                           }}
                           className="w-16 shrink-0 border border-indigo-300 rounded-lg px-2 py-1 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
+                        {closingStockEditor.error && <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => {
+                          if (!product) return;
+                          if (!isRawHolder(product)) showClosingStocktakeResult(product);
+                          else { const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() }; void submitClosingStockInput(product, editingClosingVal, stockEdit ? disp : 0, inputs); }
+                        }} className="text-xs underline">{product && !isRawHolder(product) ? '실사 결과 확인' : '같은 입력 다시 시도'}</button>}
+                        </>
                       ) : editable ? (
-                        <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(shownNum)); }}
+                        <button disabled={closingStockEditor.busy} onClick={() => { if (!product) return; closingStockEditor.open(r.itemId, String(shownNum)); }}
                           title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
                           className={`shrink-0 text-xl font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
@@ -3942,9 +3989,15 @@ const ItemListContent: React.FC<ItemListProps> = ({
                               : stockEdit
                                 ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
                                 : `"${product.name}" 현재고를 0으로 만들까요?\n\n⚠ 작업완료(미출고) ${disp}개도 함께 사라집니다. (현재고 ${cur} → 0)\n작업완료분을 남기려면 '재고' 뷰에서 지우세요.`;
-                            if (await appConfirm(msg) && unpackMounted.current) commitStockEdit(product, 0, stockEdit ? disp : 0, undefined, { inputs });
+                            await runClosingStockEdit(product, '0', async isCurrent => {
+                              if (!await appConfirm(msg)) return 'cancelled';
+                              if (!unpackMounted.current || !isCurrent()) return false;
+                              let cancelled = false;
+                              const ok = await commitStockEdit(product, 0, stockEdit ? disp : 0, undefined, { inputs, isCurrent, onCancelled: () => { cancelled = true; } });
+                              return cancelled ? 'cancelled' : ok;
+                            });
                           }}
-                          title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                          disabled={closingStockEditor.busy} title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                           <Trash2 size={13} />
                         </button>
                       )}

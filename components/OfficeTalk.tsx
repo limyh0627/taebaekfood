@@ -1,3 +1,5 @@
+import {useOfficeTalkSelfSend} from '../src/features/chat/hooks/useOfficeTalkSelfSend';
+import {useOfficeTalkRoomActions} from '../src/features/chat/hooks/useOfficeTalkRoomActions';
 import {useOfficeTalkComposer} from '../src/features/chat/hooks/useOfficeTalkComposer';
 import {useOfficeTalkRoomDraft} from '../src/features/chat/hooks/useOfficeTalkRoomDraft';
 import QueryFilterPanel, { QUERY_FILTER_LABEL_CLASS, QUERY_FILTER_CONTROL_CLASS , QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
@@ -99,14 +101,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       onRoomOpened?.();
     }
   }, [initialRoomId]);
-  const [isEditingRoomName, setIsEditingRoomName] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showRoomMenu, setShowRoomMenu] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteSelected, setInviteSelected] = useState<string[]>([]);
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
 
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
@@ -272,13 +269,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
    * 방 이름 저장. **방장이면 모두의 기본이 바뀌고, 아니면 나한테만 바뀐다** —
    * 어느 칸에 쓸지는 [roomName.ts](../src/shared/roomName.ts) 가 정한다.
    */
-  const saveRoomName = () => {
-    const room = chatRooms.find(r => r.id === activeRoomId);
-    if (!room) return;
-    onUpdateRoom(room.id, renameRoomPatch(room, currentUser.id, newRoomName));
-    setIsEditingRoomName(false);
-  };
-
+  const roomActions=useOfficeTalkRoomActions({room:activeRoom,currentUser,employees,getUid:()=>auth.currentUser?.uid,update:onUpdateRoom,onNotice:text=>{if(text==='공지로 올렸습니다')setNoticeOpen(false);알리기(text);}});
+  const {isEditingRoomName,newRoomName,showInviteModal,inviteSelected,error:inviteError}=roomActions;
+  const saveRoomName=roomActions.saveName;
   const roomDraft=useOfficeTalkRoomDraft({getUid:()=>auth.currentUser?.uid,currentUser,employees,rooms:chatRooms,add:onAddRoom,select:setActiveRoomId,onError:setFirestoreError});
   const {isOpen:isNewChatModalOpen,selectedParticipants}=roomDraft;
   const handleCreateRoom=roomDraft.create;
@@ -496,9 +489,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const 알리기 = (t: string) => { set알림글(t); setTimeout(() => set알림글(''), 1600); };
 
   /** 나와의 대화방 — 없으면 만든다. '나에게' 가 쓴다. */
-  const myRoom = useMemo(
-    () => chatRooms.find(r => !r.isGroup && r.participantIds.length === 1 && r.participantIds[0] === currentUser.id),
-    [chatRooms, currentUser.id]);
+  const selfSend=useOfficeTalkSelfSend({currentUser,employees,rooms:chatRooms,getUid:()=>auth.currentUser?.uid,addRoom:onAddRoom,sendMessage:onSendMessage,onSuccess:알리기});
 
   const doAction = async (act: MessageAction, msg: ChatMessage) => {
     setActionMsg(null);
@@ -514,33 +505,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       try { await navigator.clipboard.writeText(msg.text); 알리기('공유를 못 써서 복사했습니다'); } catch { /* 무시 */ }
       return;
     }
-    if (act === '공지 등록' || act === '공지 내리기') {
-      if (!activeRoomId) return;
-      if (act === '공지 내리기') { onUpdateRoom(activeRoomId, unpinPatch()); 알리기('공지를 내렸습니다'); return; }
-      //  글이 없는 말은 띠에 그릴 게 없다. 창에도 안 뜨지만 한 번 더 막는다.
-      if (!canPin(msg)) { 알리기('글이 있는 말만 공지가 됩니다'); return; }
-      onUpdateRoom(activeRoomId, pinPatch(msg, currentUser));
-      setNoticeOpen(false);
-      알리기('공지로 올렸습니다');
-      return;
-    }
-    if (act === '나에게') {
-      let room = myRoom;
-      if (!room) {
-        //  나와의 대화방이 없으면 만든다 — 메모장처럼 쓰는 자리다
-        room = { id: `ROOM-${Date.now()}`, participantIds: [currentUser.id], createdBy: currentUser.id,
-                 lastUpdatedAt: new Date().toISOString(), isGroup: false } as ChatRoom;
-        onAddRoom(room);
-      }
-      await (onSendMessage as (_m: ChatMessage) => Promise<void>)({
-        id: `MSG-${Date.now()}`, roomId: room.id,
-        senderId: currentUser.id, senderName: currentUser.name,
-        text: msg.text, createdAt: new Date().toISOString(),
-        replyTo: replySnippet(msg),
-      } as ChatMessage);
-      알리기('나에게 보냈습니다');
-      return;
-    }
+    if (act === '공지 등록') { await roomActions.pin(msg); return; }
+    if (act === '공지 내리기') { await roomActions.unpin(); return; }
+    if (act === '나에게') { await selfSend.send(msg); return; }
     if (act === '삭제') {
       if (!await appConfirm('이 말을 지울까요?\n(줄은 남고 내용만 지워집니다)')) return;
       onUpdateMessage?.(msg.id, deletePatch(currentUser.id));
@@ -747,25 +714,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     <div className="flex items-center gap-1 min-w-0">
                       <input
                         type="text"
-                        value={newRoomName}
-                        onChange={(e) => setNewRoomName(e.target.value)}
+                        disabled={roomActions.busy} value={newRoomName}
+                        onChange={(e) => roomActions.setName(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') { e.preventDefault(); saveRoomName(); }
-                          if (e.key === 'Escape') setIsEditingRoomName(false);
+                          if (e.key === 'Escape') roomActions.closeName();
                         }}
                         placeholder={isOwner(activeRoom, currentUser.id) ? '모두에게 보일 이름' : '나에게만 보일 이름'}
                         className="min-w-0 flex-1 w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
                       <button
-                        onClick={saveRoomName}
+                        disabled={roomActions.busy} onClick={saveRoomName}
                         aria-label="저장"
                         className="shrink-0 p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                       >
                         <Check size={16} />
                       </button>
                       <button
-                        onClick={() => setIsEditingRoomName(false)}
+                        disabled={roomActions.busy} onClick={() => roomActions.closeName()}
                         aria-label="취소"
                         className="shrink-0 p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
                       >
@@ -778,10 +745,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                       <button
                         onClick={() => {
                           //  내가 고쳐 둔 게 있으면 그걸, 없으면 지금 보이는 이름을 띄운다
-                          setNewRoomName(activeRoom.nameBy?.[currentUser.id] || activeRoom.name || getRoomName(activeRoom));
-                          setIsEditingRoomName(true);
+                          roomActions.openName(activeRoom.nameBy?.[currentUser.id] || activeRoom.name || getRoomName(activeRoom));
                         }}
-                        aria-label="이름 바꾸기"
+                        disabled={roomActions.busy} aria-label="이름 바꾸기"
                         className="shrink-0 p-1 text-slate-300 hover:text-indigo-600 transition-colors"
                       >
                         <Edit2 size={14} />
@@ -824,7 +790,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 {showRoomMenu && (
                   <div className="absolute right-0 top-full mt-1 bg-white rounded-2xl border border-slate-100 shadow-xl z-50 overflow-hidden w-36">
                     <button
-                      onClick={() => { setInviteSelected([]); setInviteError(null); setShowInviteModal(true); setShowRoomMenu(false); }}
+                      disabled={roomActions.busy} onClick={() => { roomActions.openInvite(); setShowRoomMenu(false); }}
                       className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                     >
                       멤버 초대
@@ -872,7 +838,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                       )}
                     </button>
                     <button
-                      onClick={() => onUpdateRoom(activeRoom.id, unpinPatch())}
+                      disabled={roomActions.busy} onClick={() => void roomActions.unpin()}
                       aria-label="공지 내리기"
                       title="공지 내리기"
                       className="shrink-0 p-1 text-slate-300 hover:text-slate-500 transition-colors"
@@ -1247,34 +1213,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         )}
       </div>
 
+      {roomActions.error && !showInviteModal && <p role="alert" className="px-4 py-2 text-sm text-rose-600">{roomActions.error}</p>}
+      {selfSend.source && <div className="rounded-lg border p-3 text-sm"><p>나에게 전달할 원문: {selfSend.source.text}</p>{selfSend.error && <p role="alert">{selfSend.error}</p>}<button className="rounded-lg border bg-white px-3 py-2 text-xs" disabled={selfSend.busy} onClick={()=>void selfSend.retry()}>{selfSend.busy?'전달 중…':'같은 원문 다시 보내기'}</button></div>}
       {/* Invite Modal */}
       {showInviteModal && activeRoom && (
         <ModalShell
           title="멤버 초대"
           subtitle={getRoomName(activeRoom)}
-          onClose={() => setShowInviteModal(false)}
+          onClose={() => roomActions.closeInvite()}
           bodyClassName="space-y-1"
           footer={(
             <div className="flex gap-2">
-              <button onClick={() => setShowInviteModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
+              <button disabled={roomActions.busy} onClick={() => roomActions.closeInvite()} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
               <button
-                disabled={inviteSelected.length === 0}
-                onClick={async () => {
-                  const participantIds = [...new Set([...activeRoom.participantIds, ...inviteSelected])];
-                  try {
-                    await onUpdateRoom(activeRoom.id, {
-                      companyId: companyOf(currentUser),
-                      participantIds,
-                      participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
-                    });
-                    setInviteSelected([]);
-                    setShowInviteModal(false);
-                  } catch (err: any) {
-                    const message = `멤버를 초대하지 못했습니다: ${err?.message || '네트워크 오류'}`;
-                    setInviteError(message);
-                    setFirestoreError(message);
-                  }
-                }}
+                disabled={roomActions.busy || inviteSelected.length === 0}
+                onClick={roomActions.invite}
                 className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm disabled:opacity-40 hover:bg-indigo-700 transition-all"
               >
                 초대 ({inviteSelected.length})
@@ -1293,9 +1246,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   <button
                     key={emp.id}
                     type="button"
-                    onClick={() => setInviteSelected(prev =>
-                      prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
-                    )}
+                    disabled={roomActions.busy} onClick={() => roomActions.toggle(emp.id)}
                     className={`w-full flex items-center space-x-3 p-3 rounded-xl transition-all ${inviteSelected.includes(emp.id) ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'}`}
                   >
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${inviteSelected.includes(emp.id) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
@@ -1417,7 +1368,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               </button>
             )}
             {actionsFor({ msg: actionMsg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, actionMsg) }).map(act => (
-              <button key={act} onClick={() => doAction(act, actionMsg)}
+              <button key={act} disabled={(act==='나에게'&&selfSend.busy)||((act==='공지 등록'||act==='공지 내리기')&&roomActions.busy)} onClick={() => doAction(act, actionMsg)}
                 className={`w-full px-5 py-3.5 text-left text-sm font-black border-b border-slate-50 last:border-0 transition-colors ${
                   act === '삭제' ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}>
                 {act}
