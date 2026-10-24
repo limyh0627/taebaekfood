@@ -1,3 +1,4 @@
+import { planPurchaseOrderBatch, applyPurchaseOrderBatch, type PurchaseOrderBatchRow } from '../../shared/services/purchaseOrderBatchService';
 import {statementEditWrites} from '../../shared/services/statementEditWrites';
 import {partnerEditWrites} from '../../shared/services/partnerEditWrites';
 import {productionRecordWrites} from '../../shared/services/productionRecordWrites';
@@ -1365,36 +1366,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (po) await updateItem('purchaseOrders', id, { confirmedByUser: !po.confirmedByUser });
   };
 
-  // 장바구니 확정 → 발주예정(pending) 생성
-  // 주문카드처럼: 같은 거래처 품목은 묶어서 발주카드 1개(items[]), 제출할 때마다 새 카드 추가(append-only)
-  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, boxQuantity?: number, partnerId?: string }[]) => {
-    if (items.some(item => item.partnerId && (!partners.some(partner => partner.id === item.partnerId) || !partnerIn.some(link => link.itemId === item.id && link.partnerId === item.partnerId)))) throw new Error('선택한 매입 거래처 연결이 변경되었습니다. 다시 선택해 주세요.');
-    const base = Date.now();
-    const createdAt = new Date().toISOString();
-    // 거래처별 묶음 (partnerId 없으면 품목별 개별 카드)
-    const groups = new Map<string, { partnerId?: string; partnerName?: string; items: typeof items }>();
-    items.forEach((item, idx) => {
-      const ps = partnerIn.find(s => s.itemId === item.id || (s as any).itemId === item.id);
-      const partnerId = item.partnerId || ps?.partnerId || (ps as any)?.partnerId;
-      const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-      const key = partnerId || `__none_${idx}`;
-      if (!groups.has(key)) groups.set(key, { partnerId, partnerName, items: [] });
-      groups.get(key)!.items.push(item);
-    });
-    let gi = 0;
-    for (const g of groups.values()) {
-      const poItems = g.items.map(it => {
-        const product = allItems.find(p => p.id === it.id);
-        //  수량은 재고 단위로 이미 풀려 왔다 — 여기서 곱하지 않는다.
-        //  boxQuantity 는 '몇 박스라고 말했는지'만 남긴다(명세서·목록 표시용).
-        return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', ...(it.boxQuantity ? { boxQuantity: it.boxQuantity } : {}) };
-      });
-      await executeEmployeeCommand({ kind: 'create', collection: 'purchaseOrders', data: {
-        id: `po-${base}-${gi++}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: '', itemName: '', quantity: 0,
-        items: poItems, status: 'pending', createdAt,
-        ...(g.partnerId ? { partnerId: g.partnerId, partnerName: g.partnerName } : {}),
-      } });
-    }
+  // 첫 송신 전에 모든 그룹의 ID와 원문을 고정한다. 기존 호출원도 같은 원자 경계를 쓴다.
+  const purchaseBatchScope = () => {
+    const token = orderAskScope.current.token, actorUid = auth.currentUser?.uid ?? '';
+    return { companyId, actorUid, isCurrent: () => orderAskScope.current.token === token
+      && orderAskScope.current.companyId === companyId && auth.currentUser?.uid === actorUid };
+  };
+  const handlePreparePurchaseOrderBatch = (rows: PurchaseOrderBatchRow[]) => {
+    const scope = purchaseBatchScope();
+    return planPurchaseOrderBatch({ scope, rows, operationId: 'po-batch-' + crypto.randomUUID(),
+      createdAt: new Date().toISOString(), date: today(), items: allItems, partners, partnerIn, purchaseOrders });
+  };
+  const handleBulkAddConfirmedOrders = async (items: PurchaseOrderBatchRow[]) => {
+    const scope = purchaseBatchScope();
+    const request = handlePreparePurchaseOrderBatch(items);
+    const result = await applyPurchaseOrderBatch(scope, request);
+    if (result.status !== 'applied') throw new Error('중단된 발주 요청입니다. 새 발주 내용을 작성해 주세요.');
   };
 
   // 발주예정 → 입고대기(invoiced)로 직접 확정 (전표 없이)
@@ -2839,6 +2826,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onConfirmRequest={(id: string) => handleConfirmPendingToInvoiced([{ id, quantity: pendingPurchaseOrders.find(row => row.id === id)?.quantity || 0 }])}
               onConfirmRequests={(ids: string[]) => handleConfirmPendingToInvoiced(pendingPurchaseOrders.filter(r => ids.includes(r.id)).map(r => ({ id: r.id, quantity: r.quantity })))}
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
+              onPreparePurchaseOrderBatch={handlePreparePurchaseOrderBatch}
               onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({ id: r.id, quantity: r.quantity }))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onUpdateConfirmedQty={(id: string, qty: number) => updateItem('purchaseOrders', id, { quantity: qty })}

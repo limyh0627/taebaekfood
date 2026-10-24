@@ -1,3 +1,4 @@
+import type { PreparePurchaseOrderBatch } from '../src/shared/services/purchaseOrderBatchService';
 import { usePurchaseCartDraft } from '../src/features/items/hooks/usePurchaseCartDraft';
 import { useClosingStockEditor } from '../src/features/items/hooks/useClosingStockEditor';
 import { useStocktakeEditor } from '../src/features/items/hooks/useStocktakeEditor';
@@ -177,6 +178,7 @@ interface ItemListProps {
   onConfirmRequest: (id: string) => void;
   onConfirmRequests: (ids: string[]) => void;
   //  수량은 **언제나 재고 단위**다. boxQuantity 는 '몇 박스라고 말했는지'(표시용).
+  onPreparePurchaseOrderBatch?: PreparePurchaseOrderBatch;
   onBulkAddConfirmedOrders: (items: { id: string, quantity: number, boxQuantity?: number, partnerId?: string }[]) => void;
   onConfirmAllRequests: () => Promise<void>;
   onFinishConfirmedOrder: (id: string) => Promise<boolean | void> | void;
@@ -314,6 +316,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   onRequestPoEdit,
   onConfirmRequest,
   onBulkAddConfirmedOrders,
+  onPreparePurchaseOrderBatch,
   onConfirmAllRequests,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
@@ -943,7 +946,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const clearFilters = () => { setActiveSubtype('전체'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
-  const purchaseCart = usePurchaseCartDraft({ companyId, getUid: () => auth.currentUser?.uid, items, inputs: orderUnitInputs, save: onBulkAddConfirmedOrders, onCommitted: () => setActiveTab('inbound') });
+  const purchaseCart = usePurchaseCartDraft({ companyId, getUid: () => auth.currentUser?.uid, items, inputs: orderUnitInputs, save: onBulkAddConfirmedOrders, prepareBatch: onPreparePurchaseOrderBatch, onCommitted: () => setActiveTab('inbound') });
   const { cart, setCart, panel: showCartPanel, setPanel: setShowCartPanel, busy: isConfirming } = purchaseCart;
   const setInlineCartId: typeof writeInlineCartId = value => { if (purchaseCart.canEdit()) writeInlineCartId(value); };
   const setInlineCartQty: typeof writeInlineCartQty = value => { if (purchaseCart.canEdit()) writeInlineCartQty(value); };
@@ -1439,6 +1442,43 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   return (
     <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
+      {onPreparePurchaseOrderBatch && <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+        <button type="button" onClick={purchaseCart.openRecovery}>
+          {purchaseCart.attempt && !['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') ? '발주 확인 필요 1' : '발주 처리 기록'}
+        </button>
+      </div>}
+      {onPreparePurchaseOrderBatch && purchaseCart.recoveryOpen && <ModalShell title="발주 처리 결과 확인" layer={1300} onClose={purchaseCart.closeRecovery}>
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>이 기기에 보관된 요청만 확인합니다. 과거 처리 결과는 현재 발주가 남아 있다는 뜻이 아닙니다.</p>
+          {purchaseCart.loading && <p role="status">보관된 요청을 읽고 있습니다.</p>}
+          {purchaseCart.attempt ? <>
+            {purchaseCart.attempt.request ? <div className="space-y-2">
+              <p>작성: {new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(new Date(purchaseCart.attempt.request.createdAt))}</p>
+              {purchaseCart.attempt.request.orders.map(order => <div key={order.id}>
+                <p>{typeof order.data.partnerName === 'string' ? order.data.partnerName : '거래처 이름 미보관'}</p>
+                {Array.isArray(order.data.items) && order.data.items.map((line: { name?: string; quantity?: number; unit?: string }, index: number) => <p key={index}>
+                  {line.name || '품목 이름 미보관'} · {line.quantity} {line.unit}
+                </p>)}
+              </div>)}
+            </div> : <p>본문이 유실되거나 손상되어 거래처와 품목을 확인할 수 없습니다. 현재 입력으로 추정하지 않습니다.</p>}
+            <details className="text-xs text-slate-500"><summary>요청 식별 정보</summary>{purchaseCart.attempt.reference?.operationId ?? '참조 확인 불가'}</details>
+            {purchaseCart.attempt.problem && <p>{purchaseCart.attempt.problem}</p>}
+            {!['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') && purchaseCart.attempt.lastAttempt && purchaseCart.attempt.lastAttempt !== purchaseCart.error && <p>이전 저장 시도: {purchaseCart.attempt.lastAttempt}</p>}
+            {purchaseCart.recoveryResult?.status === 'applied' && <p role="status">이 요청의 발주 묶음은 처리되었습니다. 이후 수정·삭제 여부와 현재 입력의 저장 여부는 확인하지 않았습니다.</p>}
+            {purchaseCart.recoveryResult?.status === 'cancelled' && <p role="status">이 요청의 미처리 중단을 확인했습니다. 이미 처리된 발주를 되돌리는 작업은 아닙니다.</p>}
+            {purchaseCart.recoveryResult?.status === 'not-found' && <p>처리 기록을 찾지 못했습니다. 아직 처리되지 않았다고 확정할 수 없습니다.</p>}
+            {purchaseCart.attempt.reference && !purchaseCart.attempt.conflicting && <div className="flex flex-wrap gap-3">
+              <button disabled={isConfirming} onClick={() => void purchaseCart.recover('inspect')}>처리 결과 조회</button>
+              {purchaseCart.attempt.request && !['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') && <button disabled={isConfirming} onClick={() => void purchaseCart.recover('apply')}>보관된 같은 내용으로 다시 시도</button>}
+              {!['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') && <button disabled={isConfirming} onClick={() => void purchaseCart.recover('cancel')}>미처리 요청 중단</button>}
+              {['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') && <button disabled={isConfirming} onClick={() => void purchaseCart.recover('discard')}>확인된 보관 사본 정리</button>}
+            </div>}
+          </> : <p>이 기기에 보관된 발주 요청이 없습니다. 서버 미처리 여부를 뜻하지 않습니다.</p>}
+          {purchaseCart.error && <p role="alert">{purchaseCart.error}</p>}
+          {purchaseCart.recoveryError && <p role="status">{purchaseCart.recoveryError}</p>}
+          <button disabled={isConfirming} onClick={() => void purchaseCart.readRecovery()}>이 기기에 보관된 요청 다시 읽기</button>
+        </div>
+      </ModalShell>}
       {inventoryRecoveryOpen&&<ModalShell title={inventorySelection?'재고 실패 작업 상세':'재고 실패 작업 목록'} layer={1300} onClose={()=>{if(!inventoryBusy){if(inventorySelection)setInventorySelection(null);else setInventoryRecoveryOpen(false);}}}>
         {!inventorySelection?<>
           <p>처리 결과를 확인하지 못한 요청입니다. 항목을 선택해 최초 품목과 수량을 확인하세요.</p>
