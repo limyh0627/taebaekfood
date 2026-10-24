@@ -24,12 +24,19 @@ export function usePartnerPortalDraft({ partners, items, partnerItems, onOrderSu
     const run = useRef<object | null>(null);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; run.current = null; }; }, []);
     const [error, setError] = useState('');
-    const edit = (action: () => void) => { if (savingRef.current)
-        return; generation.current++; setError(''); action(); };
+    const edit = (action: () => void) => {
+        if (savingRef.current)
+            return;
+        generation.current++;
+        setError('');
+        action();
+    };
     const changePartnerInput = (value: string) => edit(() => setPartnerIdInput(value));
     const backToAuth = () => edit(() => { setStep('auth'); });
-    const exit = () => { if (!savingRef.current)
-        onExit(); };
+    const exit = () => {
+        if (!savingRef.current)
+            onExit();
+    };
     const orderAgain = () => edit(() => { setStep('order'); setCart({}); setIsSuccess(false); });
     const handleAuth = (e: React.FormEvent) => {
         e.preventDefault();
@@ -83,31 +90,47 @@ export function usePartnerPortalDraft({ partners, items, partnerItems, onOrderSu
         const execution = {};
         run.current = execution;
         const current = () => mounted.current && generation.current === owner && run.current === execution;
-        const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
-            const product = items.find(p => p.id === id)!;
-            return {
-                itemId: id,
-                name: product.name,
-                // Fix: Explicitly cast qty as number to match OrderItem.quantity type
-                quantity: qty as number,
-                price: 단가(id) ?? 0,
-                checked: false
-            };
-        });
-        const newOrder: Order = {
-            id: `WEB-${Date.now()}`,
-            partnerId: selectedClient.id,
-            partnerName: selectedClient.name,
-            items: orderItems,
-            totalAmount,
-            status: OrderStatus.PENDING,
-            createdAt: new Date().toISOString(),
-            deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString(), // 기본 3일 뒤
-            email: selectedClient.email || '',
-            source: selectedClient.type as OrderSource,
-            region: selectedClient.region || '미지정'
-        };
+        let sent = false;
         try {
+            if (!current())
+                return;
+            if (!partners.some(partner => partner.id === selectedClient.id))
+                throw Error('선택한 거래처가 현재 목록에 없습니다. 거래처를 다시 확인해 주세요.');
+            for (const [id, qty] of Object.entries(cart)) {
+                if (!items.some(product => product.id === id))
+                    throw Error('주문할 품목이 현재 목록에 없습니다. 품목을 다시 확인해 주세요.');
+                if (!isLinkedToPartner(partnerItems, selectedClient.id, id))
+                    throw Error('현재 거래처와 연결되지 않은 품목이 있습니다. 품목 연결을 다시 확인해 주세요.');
+                if (typeof qty !== 'number' || !Number.isFinite(qty) || qty <= 0)
+                    throw Error('주문 수량은 0보다 큰 유한한 숫자로 입력해 주세요.');
+            }
+            const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
+                const product = items.find(p => p.id === id)!;
+                return {
+                    itemId: id,
+                    name: product.name,
+                    // Fix: Explicitly cast qty as number to match OrderItem.quantity type
+                    quantity: qty as number,
+                    price: 단가(id) ?? 0,
+                    checked: false
+                };
+            });
+            const newOrder: Order = {
+                id: `WEB-${Date.now()}`,
+                partnerId: selectedClient.id,
+                partnerName: selectedClient.name,
+                items: orderItems,
+                totalAmount,
+                status: OrderStatus.PENDING,
+                createdAt: new Date().toISOString(),
+                deliveryDate: new Date(Date.now() + 86400000 * 3).toISOString(), // 기본 3일 뒤
+                email: selectedClient.email || '',
+                source: selectedClient.type as OrderSource,
+                region: selectedClient.region || '미지정'
+            };
+            if (!current())
+                return;
+            sent = true;
             await onOrderSubmit(newOrder);
             if (!current())
                 return;
@@ -117,7 +140,9 @@ export function usePartnerPortalDraft({ partners, items, partnerItems, onOrderSu
         catch (error) {
             if (!current())
                 return;
-            const message = `주문을 저장하지 못했습니다. ${error instanceof Error ? error.message : '다시 시도해 주세요.'}`;
+            const message = sent
+                ? `주문 저장 결과를 확인하지 못했습니다. ${error instanceof Error ? error.message : '응답을 받지 못했습니다.'} 주문 내역을 먼저 확인해 주세요. 입력은 유지했으며 자동으로 다시 보내지 않았습니다.`
+                : `주문 내용을 확인해 주세요. ${error instanceof Error ? error.message : '입력 내용을 다시 확인해 주세요.'}`;
             setError(message);
             window.alert(message);
         }

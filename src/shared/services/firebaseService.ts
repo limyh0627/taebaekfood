@@ -712,7 +712,7 @@ export { fetchWhere, fetchWhereIn, fetchByIds, subscribeWhere } from './firestor
  * 재고 차감처럼 여러 품목이 같이 움직일 때 쓴다.
  */
 export type CompanyWriteOperation =
-  | { kind: 'set'; collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }
+  | { kind: 'set'; collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean; createOnly?: true }
   | { kind: 'update'; collection: CollectionName; id: string; data: Record<string, unknown>; options?:ItemSaveOptions }
   | { kind: 'delete'; collection: CollectionName; id: string };
 
@@ -740,7 +740,7 @@ function mergeCompanyUpdateOperations(ops:CompanyWriteOperation[]):CompanyWriteO
 
 /** 화면의 전송 전 확인도 실제 writer와 같은 정규화·한도 검사를 쓴다. */
 export function prepareCompanyWriteOperations(input:CompanyWriteOperation[]):CompanyWriteOperation[] {
-  const inventory=input.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders');
+  const inventory=input.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders'||op.kind==='set'&&op.createOnly);
   const ops=inventory?mergeCompanyUpdateOperations(input):input;
   if(inventory&&ops.length+ops.filter(op=>op.kind==='delete'&&op.collection==='items').length>500)throw Error('연결 품목 삭제·저장은 한 거래의 저장 한도를 초과합니다.');
   for(const op of ops){
@@ -751,16 +751,22 @@ export function prepareCompanyWriteOperations(input:CompanyWriteOperation[]):Com
 }
 
 /** 배치 생성도 단건 생성과 같은 claim 회사 경계를 반드시 통과한다. */
-export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise<void> => {
+export type CompanyWriteOptions = { isCurrent?: () => boolean };
+export const commitCompanyWrites = async (ops: CompanyWriteOperation[], options?: CompanyWriteOptions): Promise<void> => {
   if (!ops.length) return;
+  const check = () => { if (options?.isCurrent && !options.isCurrent()) throw Error('회사 또는 품목 작성창이 바뀌어 저장을 중단했습니다.'); };
+  check();
   ops=prepareCompanyWriteOperations(ops);
-  if(ops.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders')){
+  if(ops.some(op=>protocolCollections.has(op.collection)||op.collection==='purchaseOrders'||op.kind==='set'&&op.createOnly)){
     const scoped=await Promise.all(ops.map(op=>companyScopedWriteData(op.collection,op.kind!=='delete'?itemWritePayload(op.collection,stripUndefined(op.data)):{})));
-    const context=await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({ops,scoped}),companyId:String(scoped[0].companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady});
+    check();
+    const context=await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({ops,scoped}),companyId:String(scoped[0].companyId),getCurrentUser:()=>auth?.currentUser,ready:authReady,isStillCurrent:options?.isCurrent});
     if(context&&!await context.isStillCurrent())throw Error('품목 저장 계정이나 회사가 바뀌었습니다.');
     await runInventoryWriterTransaction(db,context,async tx=>{
       const refs=ops.map(op=>doc(db,op.collection,op.id));
       const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
+      // 사전 조회 뒤 별도 저장하지 않는다. 같은 거래의 부재 조건이므로 경합 시 전체를 거절한다.
+      ops.forEach((op,index)=>{if(op.kind==='set'&&op.createOnly&&snaps[index].exists())throw Error('이미 존재하는 품목 또는 구성입니다. 새로 만들지 않았습니다. 기존 자료를 확인해 주세요.');});
       const tombs=await Promise.all(ops.map((op,index)=>op.collection==='items'&&(op.kind==='delete'||!snaps[index].exists())?tx.get(tombstoneRef(db,String(scoped[index].companyId),op.id)):Promise.resolve(undefined)));
       const commits=await Promise.all(ops.map((op,index)=>op.kind!=='delete'&&(op.collection==='orders'||op.collection==='purchaseOrders')?prepareCatalogOrderCommit(db,tx,op.id,snaps[index].exists()?snaps[index].data():undefined,scoped[index],op.kind==='set'&&!(op.merge??false),op.collection):Promise.resolve(scoped[index])));
       const writes:(()=>void)[]=[];
@@ -788,6 +794,7 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
         }
       });
       if(context&&!await context.isStillCurrent())throw Error('품목 저장 계정이나 회사가 바뀌었습니다.');
+      check();
       writes.forEach(write=>write());
     });
     return;
@@ -1020,8 +1027,9 @@ export async function deletePendingPurchaseOrderWithDb(store: Firestore, claim: 
 }
 
 export const writeMany = async (
-  ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }[],
-): Promise<void> => commitCompanyWrites(ops.map(op => ({ kind: 'set' as const, ...op })));
+  ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean; createOnly?: true }[],
+  options?: CompanyWriteOptions,
+): Promise<void> => commitCompanyWrites(ops.map(op => ({ kind: 'set' as const, ...op })), options);
 
 /**
  * 주문 상태·재고 작업을 DB에서 선점한다. 화면별 메모리 잠금만으로는 다른 탭의 동시 승인을

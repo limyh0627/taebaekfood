@@ -38,7 +38,6 @@ import {
   Search,
   LayoutGrid,
   List,
-  ListPlus,
   AlertCircle,
   Tag,
   Building2,
@@ -689,9 +688,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [editingVariantStocks, setEditingVariantStocks] = useState<Record<string, Record<string, number>>>({});
 
   const [searchTerm, setSearchTerm] = useState('');
-  
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [draftOrders, setDraftOrders] = useState<{ id: string, quantity: number }[]>([]);
+
+
+
   //  마스터 목록의 그 자리 편집(`editingStockId`)은 없앴다(2026-09-16) — 수량을 누르면
   //  실사 창이 뜬다. 재고 현황 모달 쪽은 아직 그 자리에서 고친다.
   //   (같은 품목이 모달 뒤 목록에도 렌더되면 autoFocus 입력이 둘 생기고, 포커스를 뺏긴 쪽 onBlur가
@@ -716,7 +715,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [rowEditProduct]);
-  
+
   const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
   const [reqEditQty, setReqEditQty] = useState<number>(0);
   // 발주예정 수량 인라인 편집: key = `${poId}-${lineIdx}`
@@ -1416,26 +1415,11 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
 
 
-  const updateDraftQty = (id: string, qty: number) => {
-    setDraftOrders(prev => prev.map(d => d.id === id ? { ...d, quantity: Math.max(0, qty) } : d));
-  };
 
-  const removeFromDraft = (id: string) => {
-    setDraftOrders(prev => prev.filter(d => d.id !== id));
-    const next = new Set(selectedIds);
-    next.delete(id);
-    setSelectedIds(next);
-  };
 
-  const submitDraftToHistory = () => {
-    if (draftOrders.length > 0) {
-      onBulkAddConfirmedOrders(draftOrders);
-      setDraftOrders([]);
-      setSelectedIds(new Set());
-      setActiveTab('history');
-      alert('발주 확정되어 [발주 내역]으로 이동했습니다.');
-    }
-  };
+
+
+
 
 
 
@@ -2178,74 +2162,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         </div>
       )}
       {activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-        {activeTab === 'requests' && draftOrders.length > 0 && (
-          <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
-            <div className="flex items-center justify-between mb-6 px-2">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
-                  <ListPlus size={18} />
-                </div>
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">발주 확정 대기 리스트</h3>
-                <span className="bg-indigo-200 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-full">{draftOrders.length}</span>
-              </div>
-              <button 
-                onClick={submitDraftToHistory}
-                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
-              >
-                최종 발주 확정
-              </button>
-            </div>
-            <div className="space-y-3">
-              {draftOrders.map(draft => {
-                const product = items.find(p => p.id === draft.id);
-                if (!product) return null;
-                return (
-                  <div key={draft.id} className="bg-white border border-slate-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
-                        <Package size={20} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-slate-800 truncate"><NameSpec p={product} /></p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.type}</p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-4 sm:gap-8 justify-between sm:justify-end">
-                      <div className="text-left sm:text-center">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
-                        <p className="text-sm font-black text-slate-900">
-                          {`${displayStockOf(product)}${product.unit}`}
-                        </p>
-                        <PackLine product={product} stock={product.stock} />
-                      </div>
-
-                      <div className="text-left sm:text-center">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter mb-0.5">발주 예정 수량</p>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={draft.quantity}
-                            onChange={(e) => updateDraftQty(draft.id, parseInt(e.target.value) || 0)}
-                            className="w-16 text-center text-sm font-black text-indigo-600 bg-white border border-indigo-100 rounded-lg py-1 outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-[10px] font-black text-indigo-400">{product.unit}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => removeFromDraft(draft.id)}
-                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shrink-0"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
         {/* ── 재고 현황: 테이블 뷰 ── */}
         {activeTab === 'master' && (
           <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">

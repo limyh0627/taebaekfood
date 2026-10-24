@@ -939,6 +939,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     unit: Item,
     opts: { name: string; count: number; components: { id: string; qty: number }[] },
   ) => {
+    const token = orderAskScope.current.token, user = auth.currentUser, uid = user?.uid;
+    const current = () => !!uid && auth.currentUser === user && auth.currentUser?.uid === uid
+      && orderAskScope.current.companyId === companyId && orderAskScope.current.token === token;
+    if (!current()) throw new Error('현재 회사와 로그인 정보를 확인한 뒤 박스를 만들어 주세요.');
     const componentIds = new Set([unit.id, ...opts.components.map(component => component.id)]);
     const wrongCompany = allItems.filter(item => componentIds.has(item.id) && companyOf(item) !== companyId);
     if (wrongCompany.length > 0) {
@@ -957,17 +961,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
       minStock: 0,
       lots: [],
     } as Item;
-    // addItem을 거쳐야 옛 필드 이름이 DB의 새 이름(type/category/subtype)으로 변환된다
-    await addItem('items', { ...box, id: boxId });
-
     const rows = [
       { child_id: unit.id, quantity: opts.count },
       ...opts.components.map(c => ({ child_id: c.id, quantity: c.qty })),
     ];
-    await writeMany(rows.map(r => {
+    const { id: _boxDocumentId, ...boxData } = box;
+    await writeMany([{ collection: 'items', id: boxId, data: boxData, createOnly: true }, ...rows.map(r => {
       const bid = `bom-${boxId}__${r.child_id}`.replace(/[/#$[\].]/g, '_');
-      return { collection: COL.itemBom, id: bid, data: { parent_id: boxId, child_id: r.child_id, quantity: r.quantity } };
-    }));
+      return { collection: COL.itemBom, id: bid, data: { parent_id: boxId, child_id: r.child_id, quantity: r.quantity }, createOnly: true as const };
+    })], { isCurrent: current });
+    if (!current()) return;
     refreshStaticData();
 
     // 방금 만든 구성으로 원가를 굴려 저장 — 구독 갱신을 기다리지 않는다.
@@ -975,7 +978,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const nextBoms = [...itemBoms, ...rows.map(r => ({
       id: `bom-${boxId}__${r.child_id}`, parent_id: boxId, child_id: r.child_id, quantity: r.quantity,
     }))] as typeof itemBoms;
-    await recomputeAllCosts(nextItems, itemFormulas, nextBoms);
+    try {
+      await recomputeAllCosts(nextItems, itemFormulas, nextBoms, current);
+    } catch {
+      if (current()) await awaitNotice('박스 품목과 구성은 생성되었습니다. 후속 원가 갱신 결과를 확인하지 못했습니다. 박스를 다시 만들지 말고 품목 원가를 확인해 주세요.', '박스 생성 후 원가 확인');
+    }
   }, [allItems, companyId, itemBoms, itemFormulas, recomputeAllCosts, refreshStaticData]);
 
   const cascadeItemCost = useCallback(async (itemId: string, cost: number) => {
