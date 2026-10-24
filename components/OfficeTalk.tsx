@@ -1,3 +1,4 @@
+import {useOfficeTalkDeletion} from '../src/features/chat/hooks/useOfficeTalkDeletion';
 import {useOfficeTalkSelfSend} from '../src/features/chat/hooks/useOfficeTalkSelfSend';
 import {useOfficeTalkRoomActions} from '../src/features/chat/hooks/useOfficeTalkRoomActions';
 import {useOfficeTalkComposer} from '../src/features/chat/hooks/useOfficeTalkComposer';
@@ -65,10 +66,10 @@ interface OfficeTalkProps {
   onRoomOpened?: () => void;
   onAddRoom: (_room: ChatRoom) => void | Promise<unknown>;
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void | Promise<unknown>;
-  onDeleteRoom: (_id: string) => void;
+  onDeleteRoom: (_id: string) => void | Promise<unknown>;
   onSendMessage: (_msg: ChatMessage, _sharedUUID?: string,expectedUid?:string) => void | Promise<unknown>;
   /** 말 지우기 — 줄은 남기고 내용만 비운다(shared/messageActions) */
-  onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void;
+  onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void | Promise<unknown>;
   /** 관리자면 남의 말도 지울 수 있다 */
   isAdmin?: boolean;
   /** 메시지 본문을 복사주문 창으로 바로 넘긴다. */
@@ -103,7 +104,6 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   }, [initialRoomId]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showRoomMenu, setShowRoomMenu] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
 
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
@@ -491,6 +491,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   /** 나와의 대화방 — 없으면 만든다. '나에게' 가 쓴다. */
   const selfSend=useOfficeTalkSelfSend({currentUser,employees,rooms:chatRooms,getUid:()=>auth.currentUser?.uid,addRoom:onAddRoom,sendMessage:onSendMessage,onSuccess:알리기});
 
+  const deletion=useOfficeTalkDeletion({roomId:activeRoomId,rooms:chatRooms,messages:localMessages,currentUser,isAdmin,getUid:()=>auth.currentUser?.uid,confirm:appConfirm,updateMessage:onUpdateMessage,deleteRoom:onDeleteRoom,onNotice:알리기,onRoomDeleted:id=>setActiveRoomId(current=>current===id?null:current)});
+
   const doAction = async (act: MessageAction, msg: ChatMessage) => {
     setActionMsg(null);
     if (act === '복사') {
@@ -508,11 +510,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     if (act === '공지 등록') { await roomActions.pin(msg); return; }
     if (act === '공지 내리기') { await roomActions.unpin(); return; }
     if (act === '나에게') { await selfSend.send(msg); return; }
-    if (act === '삭제') {
-      if (!await appConfirm('이 말을 지울까요?\n(줄은 남고 내용만 지워집니다)')) return;
-      onUpdateMessage?.(msg.id, deletePatch(currentUser.id));
-      알리기('지웠습니다');
-    }
+    if (act === '삭제') { await deletion.removeMessage(msg); return; }
   };
 
   /**
@@ -798,11 +796,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     <button
                       onClick={() => {
                         setShowRoomMenu(false);
-                        setConfirmModal({
-                          message: `'${activeRoom.name}' 대화방을 삭제하시겠습니까?`,
-                          subMessage: '모든 메시지가 삭제되며 복구할 수 없습니다.',
-                          onConfirm: () => { onDeleteRoom(activeRoom.id); setActiveRoomId(null); setConfirmModal(null); },
-                        });
+                        deletion.openRoom(activeRoom);
                       }}
                       className="w-full px-4 py-3 text-left text-sm font-bold text-rose-500 hover:bg-rose-50 transition-colors"
                     >
@@ -1215,6 +1209,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
       {roomActions.error && !showInviteModal && <p role="alert" className="px-4 py-2 text-sm text-rose-600">{roomActions.error}</p>}
       {selfSend.source && <div className="rounded-lg border p-3 text-sm"><p>나에게 전달할 원문: {selfSend.source.text}</p>{selfSend.error && <p role="alert">{selfSend.error}</p>}<button className="rounded-lg border bg-white px-3 py-2 text-xs" disabled={selfSend.busy} onClick={()=>void selfSend.retry()}>{selfSend.busy?'전달 중…':'같은 원문 다시 보내기'}</button></div>}
+      {deletion.messageTarget && deletion.messageError && <div className="rounded-lg border p-3 text-sm"><p>삭제할 메시지: {deletion.messageTarget.text}</p><p role="alert">{deletion.messageError}</p><button disabled={deletion.busy} className="rounded-lg border bg-white px-3 py-2 text-xs" onClick={()=>void deletion.removeMessage(deletion.messageTarget!)}>같은 메시지 삭제 다시 확인</button></div>}
       {/* Invite Modal */}
       {showInviteModal && activeRoom && (
         <ModalShell
@@ -1368,7 +1363,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               </button>
             )}
             {actionsFor({ msg: actionMsg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, actionMsg) }).map(act => (
-              <button key={act} disabled={(act==='나에게'&&selfSend.busy)||((act==='공지 등록'||act==='공지 내리기')&&roomActions.busy)} onClick={() => doAction(act, actionMsg)}
+              <button key={act} disabled={(act==='삭제'&&deletion.busy)||(act==='나에게'&&selfSend.busy)||((act==='공지 등록'||act==='공지 내리기')&&roomActions.busy)} onClick={() => doAction(act, actionMsg)}
                 className={`w-full px-5 py-3.5 text-left text-sm font-black border-b border-slate-50 last:border-0 transition-colors ${
                   act === '삭제' ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}>
                 {act}
@@ -1433,12 +1428,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </button>
         </div>
       )}
-      {confirmModal && (
+      {deletion.roomTarget && (
         <ConfirmModal
-          message={confirmModal.message}
-          subMessage={confirmModal.subMessage}
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
+          message={`'${deletion.roomTarget.name??getRoomName(deletion.roomTarget)}' 대화방을 삭제하시겠습니까?`}
+          subMessage="대화방을 삭제합니다. 메시지 데이터는 함께 삭제되지 않습니다."
+          confirmDisabled={deletion.roomPending}
+          footerNote={deletion.error || (deletion.roomPending?'삭제 결과를 기다리고 있습니다.':undefined)}
+          onConfirm={()=>void deletion.confirmRoom()}
+          onCancel={deletion.closeRoom}
         />
       )}
     </div>

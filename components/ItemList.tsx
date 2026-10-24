@@ -1,3 +1,4 @@
+import { usePurchaseCartDraft } from '../src/features/items/hooks/usePurchaseCartDraft';
 import { useClosingStockEditor } from '../src/features/items/hooks/useClosingStockEditor';
 import { useStocktakeEditor } from '../src/features/items/hooks/useStocktakeEditor';
 import DateRangeFilter, {type DateRangeQuick} from '../src/shared/components/DateRangeFilter';
@@ -703,8 +704,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const stocktakeScope = useRef({companyId,itemId:rowEditProduct?.id});
   stocktakeScope.current={companyId,itemId:rowEditProduct?.id};
   const [detailProduct, setDetailProduct] = useState<Item | null>(null);
-  const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
-  const [detailOrderIsBox, setDetailOrderIsBox] = useState<boolean>(false);
+  const [detailOrderQty, writeDetailOrderQty] = useState<number>(0);
+  const [detailOrderIsBox, writeDetailOrderIsBox] = useState<boolean>(false);
 
   React.useEffect(() => {
     if (!rowEditProduct) return;
@@ -786,13 +787,13 @@ const ItemListContent: React.FC<ItemListProps> = ({
       : <span title="연결 전표를 조회할 수 없습니다." className="text-slate-500">연결 전표 미확인</span>;
   };
   const [reqNote, setReqNote] = useState<string>('');
-  const [inlineCartId, setInlineCartId] = useState<string | null>(null);
-  const [inlineCartQty, setInlineCartQty] = useState<number>(0);
+  const [inlineCartId, writeInlineCartId] = useState<string | null>(null);
+  const [inlineCartQty, writeInlineCartQty] = useState<number>(0);
   /**
    * 담기 칸의 **기본은 박스**다 — 박스로 주문하는 게 흔하고, 낱개로 넣을 때만 바꾼다.
    * 개입수를 모르는 품목(환산표에도 BOM 에도 없는 것)은 토글 자체가 안 뜨므로 이 값이 안 쓰인다.
    */
-  const [inlineCartIsBox, setInlineCartIsBox] = useState<boolean>(true);
+  const [inlineCartIsBox, writeInlineCartIsBox] = useState<boolean>(true);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set()); // 낱개 밑 박스 접기
   // 로트 탭 — 원료 홀더별 로트/수불부 확인 전용
@@ -942,10 +943,14 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const clearFilters = () => { setActiveSubtype('전체'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
-  const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean; partnerId?: string }[]>([]);
-  const [showCartPanel, setShowCartPanel] = useState(false);
+  const purchaseCart = usePurchaseCartDraft({ companyId, getUid: () => auth.currentUser?.uid, items, inputs: orderUnitInputs, save: onBulkAddConfirmedOrders, onCommitted: () => setActiveTab('inbound') });
+  const { cart, setCart, panel: showCartPanel, setPanel: setShowCartPanel, busy: isConfirming } = purchaseCart;
+  const setInlineCartId: typeof writeInlineCartId = value => { if (purchaseCart.canEdit()) writeInlineCartId(value); };
+  const setInlineCartQty: typeof writeInlineCartQty = value => { if (purchaseCart.canEdit()) writeInlineCartQty(value); };
+  const setInlineCartIsBox: typeof writeInlineCartIsBox = value => { if (purchaseCart.canEdit()) writeInlineCartIsBox(value); };
+  const setDetailOrderQty: typeof writeDetailOrderQty = value => { if (purchaseCart.canEdit()) writeDetailOrderQty(value); };
+  const setDetailOrderIsBox: typeof writeDetailOrderIsBox = value => { if (purchaseCart.canEdit()) writeDetailOrderIsBox(value); };
   const [showCartModal, setShowCartModal] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [confirmedChecked, setConfirmedChecked] = useState<Set<string>>(new Set());
   const [showConfirmedModal, setShowConfirmedModal] = useState(false);
 
@@ -959,6 +964,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const supplierIds = (itemId: string) => [...new Set(partnerItems.filter(link => link.Direction === 'in' && link.itemId === itemId && inboundPartners.some(partner => partner.id === link.partnerId)).map(link => link.partnerId))];
   const updateCartPartner = (id: string, partnerId: string) => setCart(rows => rows.map(row => row.id === id ? { ...row, partnerId } : row));
   const addToCart = (itemId: string, defaultQty: number, isBox?: boolean) => {
+    if (!purchaseCart.canEdit()) return;
     if (!cart.some(c => c.id === itemId)) {
       setCart(prev => [...prev, { id: itemId, qty: defaultQty, isBox: isBox ?? false, partnerId: supplierIds(itemId)[0] }]);
     }
@@ -974,16 +980,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
    * **입고할 때 곱했는데**, 그러면 곱하는 코드가 읽는 쪽마다 필요하고 한 곳만 빠뜨려도 어긋난다.
    * 넘기기 전에 풀어 두면 뒤쪽은 quantity 하나만 보면 된다.
    */
-  const submitCart = async () => {
-    await onBulkAddConfirmedOrders(cart.map(c => {
-      const per = unitsPerBoxOf(items.find(p => p.id === c.id), orderUnitInputs);
-      const box = c.isBox && per > 1;
-      return { id: c.id, partnerId: c.partnerId, quantity: box ? c.qty * per : c.qty, ...(box ? { boxQuantity: c.qty } : {}) };
-    }));
-    setCart([]);
-    setShowCartPanel(false);
-    setActiveTab('inbound');
-  };
+  const submitCart = purchaseCart.submit;
 
   /**
    * **실사 창을 여는 문은 하나다**(2026-09-16 사장님: "현재재고 클릭해서 수량 고치는걸
@@ -2409,7 +2406,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                           {purchasableIds.has(product.id) && (
                             inCart ? (
                               <button
-                                onClick={e => { e.stopPropagation(); removeFromCart(product.id); }}
+                                disabled={isConfirming} onClick={e => { e.stopPropagation(); removeFromCart(product.id); }}
                                 className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-sm"
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
@@ -2417,27 +2414,28 @@ const ItemListContent: React.FC<ItemListProps> = ({
                                 <div className="flex items-center gap-1 justify-end">
                                 {canOrderByBox && (
                                   <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
-                                    <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
-                                    <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                                    <button disabled={isConfirming} onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                                    <button disabled={isConfirming} onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
                                   </div>
                                 )}
                                 <input
+                                  disabled={isConfirming}
                                   autoFocus
                                   type="number"
                                   value={inlineCartQty}
                                   onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }
+                                    if (e.key === 'Enter') { if (!purchaseCart.canEdit()) return; addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
                                   }}
                                   className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                 />
                                 <span className="text-[10px] text-slate-400">{canOrderByBox && inlineCartIsBox ? 'BOX' : (product.unit || '개')}</span>
                                 <button
-                                  onClick={() => { addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }}
+                                  disabled={isConfirming} onClick={() => { if (!purchaseCart.canEdit()) return; addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }}
                                   className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
                                 >담기</button>
-                                <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                                <button disabled={isConfirming} onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
                                 </div>
                                 {product.type === 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 1 && inlineCartQty > 0 && (
                                   <span className="pr-5 text-[9px] font-bold text-slate-400">{boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product, orderUnitInputs))}</span>
@@ -2566,12 +2564,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       <p className="mb-2 text-xs font-black text-slate-700">매입 발주 담기</p>
                       <div className="flex items-center gap-2">
                         {canOrderByBox && <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[10px] font-black">
-                          <button onClick={() => setDetailOrderIsBox(false)} className={`px-2 py-2 ${!detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>낱개</button>
-                          <button onClick={() => setDetailOrderIsBox(true)} className={`px-2 py-2 ${detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>BOX</button>
+                          <button disabled={isConfirming} onClick={() => setDetailOrderIsBox(false)} className={`px-2 py-2 ${!detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>낱개</button>
+                          <button disabled={isConfirming} onClick={() => setDetailOrderIsBox(true)} className={`px-2 py-2 ${detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>BOX</button>
                         </div>}
-                        <input type="number" min={1} value={detailOrderQty} onChange={e => setDetailOrderQty(Math.max(0, Number(e.target.value) || 0))} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
+                        <input disabled={isConfirming} type="number" min={1} value={detailOrderQty} onChange={e => setDetailOrderQty(Math.max(0, Number(e.target.value) || 0))} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
                         <span className="text-xs font-bold text-slate-400">{canOrderByBox && detailOrderIsBox ? 'BOX' : product.unit || '개'}</span>
-                        <button onClick={() => { addToCart(product.id, detailOrderQty, canOrderByBox && detailOrderIsBox); setDetailProduct(null); }} disabled={detailOrderQty <= 0} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40">담기</button>
+                        <button onClick={() => { if (!purchaseCart.canEdit()) return; addToCart(product.id, detailOrderQty, canOrderByBox && detailOrderIsBox); setDetailProduct(null); }} disabled={isConfirming || detailOrderQty <= 0} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40">담기</button>
                       </div>
                       {product.type === 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 1 && detailOrderQty > 0 && <p className="mt-1 text-right text-[10px] font-bold text-slate-400">{boxEquivalentLabel(detailOrderQty, unitsPerBoxOf(product, orderUnitInputs))}</p>}
                     </div>
@@ -2782,7 +2780,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
                       <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
                     </div>
-                    <button onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                    <button disabled={isConfirming} onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                   </div>
                   <div className="divide-y divide-slate-50">
                     {cart
@@ -2804,29 +2802,29 @@ const ItemListContent: React.FC<ItemListProps> = ({
                               )}
                             </div>
                           </div>
-                          {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="max-w-40 rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
+                          {supplierIds(product.id).length > 1 && <select disabled={isConfirming} aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="max-w-40 rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
                           {unitsPerBoxOf(product, orderUnitInputs) > 0 && (
                             <button
-                              onClick={() => updateCartIsBox(item.id, !item.isBox)}
+                              disabled={isConfirming} onClick={() => updateCartIsBox(item.id, !item.isBox)}
                               className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
                             >{item.isBox ? 'BOX' : '낱개'}</button>
                           )}
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">-</button>
+                            <button disabled={isConfirming} onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">-</button>
                             <input
-                              type="number"
+                              disabled={isConfirming} type="number"
                               value={item.qty}
                               onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
                               className="w-14 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
-                            <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
+                            <button disabled={isConfirming} onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
                             <span className="text-[11px] text-slate-400 shrink-0">
                               {unitsPerBoxOf(product, orderUnitInputs) > 1
                                 ? (item.isBox ? `B(${unpackQty(item.qty, product, true, orderUnitInputs)}개)` : '개')
                                 : product.unit}
                             </span>
                           </div>
-                          <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                          <button disabled={isConfirming} onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
                         </div>
                       );
                     })}
@@ -2834,7 +2832,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </div>
                 {isAdmin && (
                   <button
-                    onClick={() => setShowCartModal(true)}
+                    disabled={isConfirming} onClick={() => setShowCartModal(true)}
                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                   >
                     <ShoppingCart size={16} />
@@ -3033,7 +3031,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   <p className="text-[11px] text-slate-400 font-medium">{cart.length}개 품목</p>
                 </div>
               </div>
-              <button aria-label="발주 내역 닫기" onClick={() => setShowCartPanel(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
+              <button disabled={isConfirming} aria-label="발주 내역 닫기" onClick={() => setShowCartPanel(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
                 <X size={18} />
               </button>
             </div>
@@ -3052,26 +3050,27 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {`${displayStockOf(product)}${product.unit}`}<PackLine product={product} stock={product.stock} /></p>
-                      {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="mt-1 w-full rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
+                      {supplierIds(product.id).length > 1 && <select disabled={isConfirming} aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="mt-1 w-full rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
                       {unitsPerBoxOf(product, orderUnitInputs) > 0 && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
-                          <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
-                          <button onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                          <button disabled={isConfirming} onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                          <button disabled={isConfirming} onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
                         </div>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">-</button>
+                      <button disabled={isConfirming} onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">-</button>
                       <input
+                        disabled={isConfirming}
                         type="number"
                         value={item.qty}
                         onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
                         className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       />
-                      <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
+                      <button disabled={isConfirming} onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
                       <span className="text-[10px] text-slate-400 w-6">{item.isBox ? 'BOX' : product.unit}</span>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
+                    <button disabled={isConfirming} onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
                       <X size={14} />
                     </button>
                   </div>
@@ -3079,23 +3078,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
               })}
             </div>
 
+            {purchaseCart.error && <p role="alert" className="px-4 py-2 text-sm text-slate-700">{purchaseCart.error}</p>}
             <div className="px-4 pt-4 border-t border-slate-100 space-y-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
               <button
                 type="button"
                 disabled={cart.length === 0 || isConfirming}
-                onClick={async () => {
-                  if (cart.length === 0 || isConfirming) return;
-                  setIsConfirming(true);
-                  try {
-                    await submitCart();
-                  } catch (e) {
-                    console.error('확정 처리 오류:', e);
-                    const msg = e instanceof Error ? e.message : String(e);
-                    alert(`확정 처리 중 오류가 발생했습니다.\n\n${msg}`);
-                  } finally {
-                    setIsConfirming(false);
-                  }
-                }}
+                onClick={() => void submitCart()}
                 className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2"
               >
                 <ClipboardCheck size={16} />
@@ -3103,7 +3091,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setCart([])}
+                disabled={isConfirming} onClick={() => setCart([])}
                 className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
               >전체 비우기</button>
             </div>
