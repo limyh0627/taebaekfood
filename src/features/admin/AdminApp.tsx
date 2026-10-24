@@ -1314,30 +1314,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-
-  // --- 재고 관리 핸들러 (purchaseOrders 기반) ---
-  const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
-    // append-only: 발주할 때마다 새 발주카드 추가
-    const product = allItems.find(p => p.id === id);
-    const ps = partnerIn.find(s => s.itemId === id || (s as any).itemId === id);
-    const partnerId = ps?.partnerId || (ps as any)?.partnerId;
-    const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-    await executeEmployeeCommand({ kind: 'create', collection: 'purchaseOrders', data: {
-      id: `po-${Date.now()}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: id, itemName: product?.name ?? '',
-      //  **수량은 재고 단위로 저장한다.** 박스로 골랐으면 여기서 풀고 '몇 박스'만 따로 남긴다 —
-      //  읽는 쪽마다 곱하면 한 곳만 빠뜨려도 재고가 어긋난다(판매 주문이 이미 이 방식이다).
-      ...(() => {
-        const per = unitsPerBoxOf(product, appData.orderUnitInputs);
-        return isBox && per > 1
-          ? { quantity: quantity * per, boxQuantity: quantity }
-          : { quantity };
-      })(),
-      status: 'pending',
-      confirmedByUser: true, createdAt: new Date().toISOString(),
-      ...(partnerId ? { partnerId, partnerName } : {}),
-    } });
-  };
-
   const handleRemoveOrderRequest = async (id: string) => {
     await deleteItem('purchaseOrders', id);
   };
@@ -2825,8 +2801,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               orderRequests={pendingPurchaseOrders}
               confirmedOrders={invoicedPurchaseOrders}
               dispatchedQtyByItem={dispatchedQtyByItem}
-              onAddOrderRequest={handleAddOrderRequest}
-              onRemoveOrderRequest={handleRemoveOrderRequest}
+
               onUpdateOrderRequestQty={handleUpdateOrderRequestQty}
               onUpdatePoItemQty={handleUpdatePoItemQty}
               onRemovePoItem={handleRemovePoItem}

@@ -15,7 +15,7 @@ const item = { id:'p1', companyId:'taebaek', name:'기름', type:'product', unit
 const po = { id:'po1',companyId:'taebaek',partnerName:'공급업체',createdAt:'2026-10-01T01:00:00Z', items:[{itemId:'p1',name:'기름',quantity:2,unit:'병'}] };
 function view(extra: Partial<React.ComponentProps<typeof ItemList>>, history = false) {
  render(<ItemList companyId="taebaek" items={[item]} partners={[]} orderRequests={[]} confirmedOrders={[]} inboundPartners={[]} rawMaterialLedger={[]}
- onUpdateItem={vi.fn()} onAddItem={vi.fn()} onAddOrderRequest={vi.fn()} onRemoveOrderRequest={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} {...extra} />);
+ onUpdateItem={vi.fn()} onAddItem={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} {...extra} />);
  fireEvent.click(screen.getByRole('button',{name:'입고/반품'}));
  if (history) fireEvent.click(screen.getByRole('button',{name:/^이력$/}));
  return within(screen.getByText('공급업체').closest('tr')!);

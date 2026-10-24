@@ -16,8 +16,7 @@ function view(status: 'invoiced' | 'received', patch: Partial<PurchaseOrder> = {
  const generic=vi.fn(),receive=vi.fn().mockResolvedValue(undefined),fee=vi.fn().mockResolvedValue(undefined);
   const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [],
     orderRequests: [], confirmedOrders: status === 'invoiced' ? [po] : [], inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: vi.fn(), onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: generic, onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),

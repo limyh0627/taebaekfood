@@ -17,8 +17,7 @@ it('거래처 이름으로 검색한 재고 목록은 품목 연결만 추가·�
   const links = [{ id: 'pi1', itemId: 'p1', partnerId: 'c1', Direction: 'out', price: 1000 }] as PartnerItem[];
   const props: React.ComponentProps<typeof ItemList> = { companyId: 'taebaek', items, partners,
     orderRequests: [], confirmedOrders: [], inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: vi.fn(), onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: vi.fn(), onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),

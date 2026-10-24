@@ -166,8 +166,6 @@ interface ItemListProps {
   dispatchedQtyByItem?: Record<string, number>;
   onUpdateItem: (product: Item) => void;
   onAddItem: (product: Item) => void;
-  onAddOrderRequest: (id: string, qty: number, isBox?: boolean) => void;
-  onRemoveOrderRequest: (id: string) => void;
   onUpdateOrderRequestQty: (id: string, qty: number) => void;
   onUpdatePoItemQty?: (poId: string, index: number, qty: number) => void;
   onRemovePoItem?: (poId: string, index: number) => void;
@@ -307,8 +305,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
   dispatchedQtyByItem = {},
   onAddItem,
   onUpdateItem,
-  onAddOrderRequest,
-  onRemoveOrderRequest,
   onUpdateOrderRequestQty,
   onUpdatePoItemQty,
   onRemovePoItem,

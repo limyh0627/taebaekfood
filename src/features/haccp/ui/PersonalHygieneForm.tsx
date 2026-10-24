@@ -1,3 +1,4 @@
+import {useHaccpRecordEditor, type HaccpRecordOwner} from '../hooks/useHaccpRecordEditor';
 import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save, Plus, Trash2, User } from 'lucide-react';
@@ -49,48 +50,61 @@ const emptyPersonalRecord = (cols: string[] = PERSONAL_HYGIENE_COLS): Omit<Perso
 
 export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
-  const [records, setRecords] = useState<PersonalHygieneRecord[]>([]);
-  const [selected, setSelected] = useState<PersonalHygieneRecord | null>(null);
+  const editor = useHaccpRecordEditor<PersonalHygieneRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
+  const {selected, edit: setSelected, busy} = editor;
+  const [recordView, setRecordView] = useState<{owner: HaccpRecordOwner; rows: PersonalHygieneRecord[]} | null>(null);
+  const records = recordView?.owner === editor.ownerToken ? recordView.rows : [];
+  const [templateView, setTemplateView] = useState<{owner: HaccpRecordOwner; cols: string[]} | null>(null);
   const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.checkDate ?? ""}`);
-  const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const saving = busy, confirming = busy;
   const [showHistory, setShowHistory] = useState(false);
-  const [templateCols, setTemplateCols] = useState<string[]>(PERSONAL_HYGIENE_COLS);
+  const templateCols = templateView?.owner === editor.ownerToken ? templateView.cols : PERSONAL_HYGIENE_COLS;
   const printRef = useRef<HTMLDivElement>(null);
   const today = todayStr();
 
   useEffect(() => {
+    const token = editor.ownerToken;
+    let active = true;
+    const current = () => active && editor.isCurrent(token);
     const q = query(collection(db, 'haccp_personal_hygiene'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PersonalHygieneRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
-    });
-  }, [companyId]);
+    const stop = onSnapshot(q, snap => {
+      if (!current()) return;
+      setRecordView({owner: token, rows: snap.docs.map(d => ({id: d.id, ...d.data()} as PersonalHygieneRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate))});
+      editor.readSuccess('records');
+    }, () => { if (current()) editor.readFailure('records'); });
+    return () => { active = false; stop(); };
+  }, [companyId, editor.ownerToken, editor.readRevision]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
-      if (snap.exists()) {
-        const data = snap.data().cols;
-        if (Array.isArray(data) && data.length > 0) setTemplateCols(data);
-      }
-    });
-  }, [companyId]);
+    const token = editor.ownerToken;
+    let active = true;
+    const current = () => active && editor.isCurrent(token);
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
+      if (!current()) return;
+      const data = snap.exists() ? snap.data().cols : undefined;
+      setTemplateView({owner: token, cols: Array.isArray(data) && data.length > 0 ? data : PERSONAL_HYGIENE_COLS});
+      editor.readSuccess('template');
+    }, () => { if (current()) editor.readFailure('template'); });
+    return () => { active = false; stop(); };
+  }, [companyId, editor.ownerToken, editor.readRevision]);
 
   const todayRecord = records.find(r => r.checkDate === today);
 
   const openToday = () => {
+    if (!editor.canEdit()) return;
     const record = todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord;
     if (!isAdmin && currentUser?.name) {
       const byName = record.rows.findIndex(r => r.name === currentUser.name);
       const targetIdx = byName >= 0 ? byName : record.rows.findIndex(r => !r.name.trim());
       if (targetIdx >= 0 && record.rows[targetIdx].name !== currentUser.name) {
-        setSelected({ ...record, rows: record.rows.map((r, i) => i === targetIdx ? { ...r, name: currentUser.name } : r) });
+        editor.select({ ...record, rows: record.rows.map((r, i) => i === targetIdx ? { ...r, name: currentUser.name } : r) });
         return;
       }
     }
-    setSelected(record);
+    editor.select(record);
   };
 
-  const openHistory = (r: PersonalHygieneRecord) => { setSelected(r); setShowHistory(false); };
+  const openHistory = (r: PersonalHygieneRecord) => { editor.select(r); setShowHistory(false); };
   const isReadOnly = selected ? selected.checkDate !== today : false;
   const filledRows = selected?.rows.filter(r => r.name.trim()) ?? [];
   const allChecked = filledRows.length > 0 && filledRows.every(r => templateCols.every(col => r.checks[col] !== ''));
@@ -127,61 +141,74 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 
   const revLabel = (r: PersonalHygieneRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
 
+  const latest = useRef({selected, records, canConfirm, isAdmin, allChecked});
+  latest.current = {selected, records, canConfirm, isAdmin, allChecked};
   const handleSave = async () => {
     if (!selected || isReadOnly) return;
-    setSaving(true);
-    const now = new Date().toISOString();
-    const userName = currentUser?.name ?? '알 수 없음';
-    try {
-      if (!selected.id) {
-        const data: Omit<PersonalHygieneRecord, 'id'> = { ...selected, inspector: selected.inspector || userName, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
-        const id = await addItem('haccp_personal_hygiene', data);
-        setSelected({ ...data, id });
-      } else {
-        const update = { ...selected, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
-        await updateItem('haccp_personal_hygiene', selected.id, update as any);
-        setSelected(prev => prev ? { ...prev, ...update } : prev);
-      }
-    } finally { setSaving(false); }
+    const snapshot = selected;
+    return editor.run('save', snapshot.id,
+      () => latest.current.selected === snapshot && snapshot.checkDate === todayStr() && (!isAdmin || !!latest.current.isAdmin), async isCurrent => {
+        const now = new Date().toISOString();
+        const userName = currentUser?.name ?? '알 수 없음';
+        if (!isCurrent()) return;
+        if (!snapshot.id) {
+          const data: Omit<PersonalHygieneRecord, 'id'> = { ...snapshot, inspector: snapshot.inspector || userName, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
+          const id = await addItem('haccp_personal_hygiene', data);
+          return {...data, id};
+        }
+        const update = { ...snapshot, updatedBy: userName, updatedAt: now, revisionCount: (snapshot.revisionCount ?? 0) + 1 };
+        await updateItem('haccp_personal_hygiene', snapshot.id, update);
+        return update;
+      });
   };
-
   const handleConfirm = async () => {
-    if (!canConfirm || !selected?.id) return;
+    if (!canConfirm || !selected?.id || !editor.canEdit()) return;
     if (!allChecked) { alert('성명이 입력된 모든 작업자의 항목을 완료 후 확인할 수 있습니다.'); return; }
-    setConfirming(true);
-    const now = new Date().toISOString();
-    const userName = currentUser?.name ?? '관리자';
-    try {
-      const update = { confirmedBy: userName, confirmedAt: now };
-      await updateItem('haccp_personal_hygiene', selected.id, update);
-      setSelected(prev => prev ? { ...prev, ...update } : prev);
-    } finally { setConfirming(false); }
+    const snapshot = selected;
+    return editor.run('confirm', snapshot.id,
+      () => !!latest.current.canConfirm && latest.current.selected === snapshot && latest.current.allChecked, async isCurrent => {
+        const now = new Date().toISOString();
+        const userName = currentUser?.name ?? '관리자';
+        const update = {confirmedBy: userName, confirmedAt: now};
+        if (!isCurrent()) return;
+        await updateItem('haccp_personal_hygiene', snapshot.id!, update);
+        return {...snapshot, ...update};
+      });
   };
-
   const handleDelete = async (id: string) => {
-    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteItem('haccp_personal_hygiene', id);
-    if (selected?.id === id) setSelected(null);
+    const target = records.find(record => record.id === id);
+    if (!target) return;
+    return editor.run('delete', id, () => !!latest.current.isAdmin && latest.current.records.some(record =>
+      record.id === id && record.checkDate === target.checkDate && record.revisionCount === target.revisionCount), async isCurrent => {
+      if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
+      if (!isCurrent()) return;
+      await deleteItem('haccp_personal_hygiene', id);
+      return latest.current.selected?.id === id ? null : undefined;
+    });
   };
 
   const pastRecords = records.filter(r => r.checkDate !== today);
 
   return (
-    <div className="flex flex-col gap-4">
+    <fieldset disabled={busy} className="min-w-0 flex flex-col gap-4">
+      {editor.readError && <div role="alert">{editor.readError} <button onClick={editor.retryRead}>다시 조회</button></div>}
+      {editor.error && <p role="alert" className="text-sm text-rose-600">{editor.error}</p>}
       {/* 오늘 점검 버튼 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">
           오늘 점검일 <span className="font-bold text-slate-800 ml-1">{today}</span>
           <span className="ml-2 text-slate-400">· 1일 1회</span>
         </div>
-        <button onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+        <button disabled={busy || !editor.readReady} onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
           selected?.checkDate === today ? 'border-blue-500 bg-blue-50 text-blue-700'
           : todayRecord ? 'border-blue-200 bg-blue-50/50 text-blue-600 hover:border-blue-400'
           : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
         }`}>
           <span className="text-base">🧑‍⚕️</span>
           <span>오늘 개인위생 점검</span>
-          {todayRecord
+          {!editor.readReady
+            ? <span className="text-xs font-normal text-slate-500">조회 필요</span>
+            : todayRecord
             ? <span className="text-xs font-normal text-blue-500">✓ {revLabel(todayRecord)} 저장됨</span>
             : <span className="text-xs font-normal text-slate-400">미작성</span>}
         </button>
@@ -194,7 +221,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
       </button>
       {showHistory && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
+          {editor.readReady && pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
           {pastRecords.map(r => (
             <div key={r.id} onClick={() => openHistory(r)} className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${selected?.id === r.id ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-200 hover:border-slate-400'}`}>
               <div className="font-bold text-slate-700">{r.checkDate}</div>
@@ -237,7 +264,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                     </button>
               )}
               {!isReadOnly && (
-                <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50">
+                <button onClick={handleSave} disabled={saving || !editor.readReady} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50">
                   <Save size={12} /> {saving ? '저장 중...' : '저장'}
                 </button>
               )}
@@ -264,7 +291,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                         ? <span className="flex-1 text-sm font-bold text-blue-700 px-2 py-1.5 bg-blue-100 rounded-lg">{row.name} <span className="text-[10px] font-normal text-blue-400 ml-1">(나)</span></span>
                         : isReadOnly || !isAdmin
                           ? <span className="text-sm font-bold text-slate-800">{row.name || '-'}</span>
-                          : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                          : <input disabled={busy || !editor.readReady} value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />
                       }
                     </div>
                     <div className="grid grid-cols-4 gap-1.5 mb-2">
@@ -273,7 +300,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                           <span className="text-[9px] text-slate-500 font-bold leading-tight text-center">{col}</span>
                           <div className="flex gap-0.5">
                             {(['O', 'X'] as const).map(val => (
-                              <button key={val} onClick={() => toggleCheck(rowIdx, col, val)} disabled={!rowEditable}
+                              <button key={val} onClick={() => toggleCheck(rowIdx, col, val)} disabled={busy || !rowEditable}
                                 className={`w-6 h-6 rounded text-[10px] font-black border transition-colors ${row.checks[col] === val ? (val === 'O' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-rose-500 text-white border-rose-500') : rowEditable ? 'bg-white text-slate-400 border-slate-200 hover:border-slate-400' : 'bg-slate-50 text-slate-200 border-slate-100 cursor-not-allowed'}`}>
                                 {val}
                               </button>
@@ -284,7 +311,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                     </div>
                     {!rowEditable
                       ? <span className="text-xs text-slate-600">{row.note}</span>
-                      : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none" />}
+                      : <input disabled={busy || !editor.readReady} value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none" />}
                   </div>
                 );
               })}
@@ -326,7 +353,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                           ? <span className="font-bold text-blue-700">{row.name}<span className="text-[9px] text-blue-400 ml-1">(나)</span></span>
                           : isReadOnly || !isAdmin
                             ? row.name
-                            : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />
+                            : <input disabled={busy || !editor.readReady} value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />
                         }
                       </td>
                       {templateCols.map(col => (
@@ -346,7 +373,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                       ))}
                       <td className={TDL}>
                         {!rowEditable ? row.note
-                          : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full text-xs border-none outline-none bg-transparent" />}
+                          : <input disabled={busy || !editor.readReady} value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full text-xs border-none outline-none bg-transparent" />}
                       </td>
                     </tr>
                     );
@@ -369,7 +396,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                 <div className="h-10 flex items-center justify-center">
                   {isReadOnly
                     ? <span className="text-slate-700 font-semibold">{selected.inspector || '-'}</span>
-                    : <input value={selected.inspector} onChange={e => setSelected(prev => prev ? { ...prev, inspector: e.target.value } : prev)} placeholder={currentUser?.name ?? '이름'} className="w-full text-xs text-center border-none outline-none bg-transparent font-semibold" />}
+                    : <input disabled={busy || !editor.readReady} value={selected.inspector} onChange={e => setSelected(prev => prev ? { ...prev, inspector: e.target.value } : prev)} placeholder={currentUser?.name ?? '이름'} className="w-full text-xs text-center border-none outline-none bg-transparent font-semibold" />}
                 </div>
               </div>
               <div className="border border-slate-400 text-center md:w-28">
@@ -396,6 +423,6 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
           </div>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 };

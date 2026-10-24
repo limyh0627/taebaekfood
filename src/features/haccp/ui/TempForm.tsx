@@ -11,6 +11,7 @@ import {todayStr} from '../domain/haccpDate';
 import {STORAGE_ZONES,type StorageZone} from '../domain/tempZones';
 import {TH,TD,TDL} from './ChecklistFormParts';
 import {downloadAsPDF} from '../infrastructure/downloadAsPDF';
+import {useHaccpRecordEditor} from '../hooks/useHaccpRecordEditor';
 
 interface TempRow {
   zone: string;
@@ -37,48 +38,65 @@ const defaultTempRows = (zones: StorageZone[] = STORAGE_ZONES): TempRow[] =>
 export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
   const today = todayStr();
-  const [records, setRecords] = useState<TempRecord[]>([]);
-  const [selected, setSelected] = useState<TempRecord | null>(null);
+  const editor = useHaccpRecordEditor<TempRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
+  const {selected, edit: setSelected, busy} = editor;
+  const [recordState, setRecordState] = useState({owner: editor.ownerToken, rows: [] as TempRecord[]});
+  const records = recordState.owner === editor.ownerToken ? recordState.rows : [];
+  const latest = useRef({selected, records, isAdmin, canConfirm});
+  latest.current = {selected, records, isAdmin, canConfirm};
   const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.date ?? ""}`);
-  const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+
   const [showHistory, setShowHistory] = useState(false);
-  const [templateZones, setTemplateZones] = useState<StorageZone[]>(STORAGE_ZONES);
+  const [zoneState, setZoneState] = useState({owner: editor.ownerToken, rows: STORAGE_ZONES});
+  const templateZones = zoneState.owner === editor.ownerToken ? zoneState.rows : STORAGE_ZONES;
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const owner = editor.ownerToken;
+    let active = true;
     const q = query(collection(db, 'haccp_temp'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord)).filter(row => typeof row.date === 'string').sort((a, b) => b.date.localeCompare(a.date))));
-  }, [companyId]);
+    const stop = onSnapshot(q, snap => {
+      if (!active || !editor.isCurrent(owner)) return;
+      setRecordState({owner, rows: snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord)).filter(row => typeof row.date === 'string').sort((a, b) => b.date.localeCompare(a.date))});
+      editor.readSuccess('records');
+    }, () => { if (active && editor.isCurrent(owner)) editor.readFailure('records'); });
+    return () => { active = false; stop(); };
+  }, [editor.ownerToken, editor.readRevision]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
+    const owner = editor.ownerToken;
+    let active = true;
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
+      if (!active || !editor.isCurrent(owner)) return;
       if (snap.exists()) {
         const data = snap.data().zones;
-        if (Array.isArray(data) && data.length > 0) setTemplateZones(data);
+        if (Array.isArray(data) && data.length > 0) setZoneState({owner, rows: data});
       }
-    });
-  }, [companyId]);
+      editor.readSuccess('template');
+    }, () => { if (active && editor.isCurrent(owner)) editor.readFailure('template'); });
+    return () => { active = false; stop(); };
+  }, [editor.ownerToken, editor.readRevision]);
 
   const todayRecord = records.find(r => r.date === today);
   const isReadOnly = selected ? selected.date !== today : false;
 
   const openToday = () => {
-    if (todayRecord) { setSelected(todayRecord); return; }
+    if (!editor.canEdit()) return;
+    if (todayRecord) { editor.select(todayRecord); return; }
     const rows = defaultTempRows(templateZones).map(r => ({ ...r, inspector: currentUser?.name ?? '' }));
-    setSelected({ date: today, measureTime: '12:30', rows, createdBy: '', createdAt: '', updatedBy: '', updatedAt: '', revisionCount: -1 } as TempRecord);
+    editor.select({ date: today, measureTime: '12:30', rows, createdBy: '', createdAt: '', updatedBy: '', updatedAt: '', revisionCount: -1 } as TempRecord);
   };
 
-  const openHistory = (r: TempRecord) => { setSelected(r); setShowHistory(false); };
+  const openHistory = (r: TempRecord) => { if (!editor.canEdit()) return; editor.select(r); setShowHistory(false); };
 
   const update = (idx: number, field: keyof TempRow, value: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly || !editor.canEdit()) return;
     if (field === 'temp') value = value.replace(/[^-\d]/g, '');
     setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: value } : r) } : prev);
   };
 
   const addRow = () => {
-    if (isReadOnly || !isAdmin) return;
+    if (isReadOnly || !isAdmin || !editor.canEdit()) return;
     setSelected(prev => prev ? {
       ...prev,
       rows: [...prev.rows, { zone: templateZones[0]?.name ?? '', temp: '', result: '' as '', corrective: '', inspector: currentUser?.name ?? '' }],
@@ -87,36 +105,39 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
 
   const handleSave = async () => {
     if (!selected || isReadOnly) return;
-    setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
-    try {
+    return editor.run('save', selected.id, () => latest.current.selected?.date === todayStr(), async isCurrent => {
+      if (!isCurrent()) return;
       if (!selected.id) {
         const data = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
         const id = await addItem('haccp_temp', data);
-        setSelected({ ...data, id });
+        return { ...data, id };
       } else {
         const upd = { rows: selected.rows, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
         await updateItem('haccp_temp', selected.id, upd as any);
-        setSelected(prev => prev ? { ...prev, ...upd } : prev);
+        return { ...selected, ...upd };
       }
-    } finally { setSaving(false); }
+    });
   };
 
   const handleConfirm = async () => {
     if (!canConfirm || !selected?.id) return;
-    setConfirming(true);
-    try {
+    return editor.run('confirm', selected.id, () => !!latest.current.canConfirm && latest.current.selected?.id === selected.id, async isCurrent => {
+      if (!isCurrent()) return;
       const upd = { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() };
-      await updateItem('haccp_temp', selected.id, upd);
-      setSelected(prev => prev ? { ...prev, ...upd } : prev);
-    } finally { setConfirming(false); }
+      await updateItem('haccp_temp', selected.id!, upd);
+      return { ...selected, ...upd };
+    });
   };
 
   const handleDelete = async (id: string) => {
-    if (!await appConfirm('이 기록을 삭제하시겠습니까?')) return;
-    await deleteItem('haccp_temp', id);
-    if (selected?.id === id) setSelected(null);
+    return editor.run('delete', id, () => !!latest.current.isAdmin && latest.current.records.some(row => row.id === id), async isCurrent => {
+      if (!await appConfirm('이 기록을 삭제하시겠습니까?')) return;
+      if (!isCurrent()) return;
+      await deleteItem('haccp_temp', id);
+      if (selected?.id === id) return null;
+    });
   };
 
   const revLabel = (r: TempRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
@@ -124,20 +145,27 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
 
   return (
     <div className="flex flex-col gap-4">
+      {(editor.error || editor.readError) && <div role="alert" className="text-sm text-slate-700">{editor.error || editor.readError}
+        {editor.readError && <button type="button" disabled={busy} onClick={editor.retryRead} className="ml-2 underline">다시 조회</button>}
+      </div>}
+      {!editor.readReady && !editor.readError && <p role="status" className="text-sm text-slate-500">기록과 점검 항목을 조회하는 중입니다.</p>}
+      <fieldset disabled={busy || !editor.readReady} className="min-w-0 flex flex-col gap-4">
       {/* 오늘 날짜 카드 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">
           오늘 측정일 <span className="font-bold text-slate-800 ml-1">{today}</span>
           <span className="ml-2 text-slate-400">· 측정시간 12:30 · 1일 1회</span>
         </div>
-        <button onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+        <button disabled={busy || !editor.readReady} onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
           selected?.date === today ? 'border-teal-500 bg-teal-50 text-teal-700'
           : todayRecord ? 'border-teal-200 bg-teal-50/50 text-teal-600 hover:border-teal-400'
           : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
         }`}>
           <span className="text-base">🌡️</span>
           <span>오늘 온도 측정 기록</span>
-          {todayRecord
+          {!editor.readReady
+            ? <span className="text-xs font-normal text-slate-400">조회 필요</span>
+            : todayRecord
             ? <span className="text-xs font-normal text-teal-500">✓ {revLabel(todayRecord)} 저장됨</span>
             : <span className="text-xs font-normal text-slate-400">미작성</span>}
         </button>
@@ -150,7 +178,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
       </button>
       {showHistory && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
+          {editor.readReady && pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
           {pastRecords.map(r => (
             <div key={r.id} onClick={() => openHistory(r)} className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${selected?.id === r.id ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-200 hover:border-slate-400'}`}>
               <div className="font-bold text-slate-700">{r.date}</div>
@@ -188,15 +216,15 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
               {canConfirm && (
                 selected.confirmedBy
                   ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold"><BadgeCheck size={13} /> {selected.confirmedBy} 확인완료</span>
-                  : <button onClick={handleConfirm} disabled={confirming || !selected.id}
+                  : <button onClick={handleConfirm} disabled={busy || !editor.readReady || !selected.id}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
+                      <BadgeCheck size={13} /> {busy ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
                     </button>
               )}
               {!isReadOnly && (
-                <button onClick={handleSave} disabled={saving}
+                <button onClick={handleSave} disabled={busy || !editor.readReady}
                   className="flex items-center gap-1 px-3 py-2 bg-teal-600 text-white rounded-lg text-xs font-bold hover:bg-teal-700 disabled:opacity-50">
-                  <Save size={12} /> {saving ? '저장 중...' : '저장'}
+                  <Save size={12} /> {busy ? '저장 중...' : '저장'}
                 </button>
               )}
             </div>
@@ -246,28 +274,28 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
                     <td className={TDL}>
                       {isReadOnly
                         ? row.zone
-                        : <select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} className="text-xs border-none outline-none bg-transparent w-full">
+                        : <select disabled={busy || !editor.readReady} value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} className="text-xs border-none outline-none bg-transparent w-full">
                             {templateZones.map(z => <option key={z.name} value={z.name}>{z.name}</option>)}
                             {row.zone && !templateZones.find(z => z.name === row.zone) && <option value={row.zone}>{row.zone}</option>}
                           </select>
                       }
                     </td>
                     <td className={TD}>
-                      <input value={row.temp} onChange={e => update(idx, 'temp', e.target.value)} disabled={isReadOnly}
+                      <input value={row.temp} onChange={e => update(idx, 'temp', e.target.value)} disabled={isReadOnly || busy || !editor.readReady}
                         placeholder="예: 5" className="w-14 text-xs border-none outline-none bg-transparent text-center disabled:text-slate-500" />
                     </td>
                     <td className={TD}>
-                      <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly}
+                      <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly || busy || !editor.readReady}
                         className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option><option value="O">O</option><option value="X">X</option>
                       </select>
                     </td>
                     <td className={TDL}>
-                      <input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly}
+                      <input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly || busy || !editor.readReady}
                         className="w-full text-xs border-none outline-none bg-transparent" />
                     </td>
                     <td className={TD}>
-                      <input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly}
+                      <input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly || busy || !editor.readReady}
                         className="w-16 text-xs border-none outline-none bg-transparent text-center" />
                     </td>
                   </tr>
@@ -295,9 +323,9 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
                   {selected.confirmedBy
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
                     : canConfirm && selected.id
-                      ? <button onClick={handleConfirm} disabled={confirming}
+                      ? <button onClick={handleConfirm} disabled={busy || !editor.readReady}
                           className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
-                          <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
+                          <BadgeCheck size={11} /> {busy ? '처리 중...' : '확인'}
                         </button>
                       : canConfirm && !selected.id
                         ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
@@ -318,6 +346,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
           </div>
         </div>
       )}
+      </fieldset>
     </div>
   );
 };

@@ -11,7 +11,7 @@ afterEach(()=>{cleanup();fixture.history=false;});
 HTMLElement.prototype.scrollIntoView=vi.fn();
 function view(extra: Partial<React.ComponentProps<typeof ItemList>> = {}) {
  return render(<ItemList companyId="taebaek" items={[]} partners={[]} orderRequests={[]} confirmedOrders={[]} receivedOrders={[]} returnRequests={[]} inboundPartners={[]} rawMaterialLedger={[]}
- onUpdateItem={vi.fn()} onAddItem={vi.fn()} onAddOrderRequest={vi.fn()} onRemoveOrderRequest={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} {...extra} />);
+ onUpdateItem={vi.fn()} onAddItem={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} {...extra} />);
 }
 function slot(container: HTMLElement, name: string) { const node=container.querySelector(`[data-page-header-slot="${name}"]`); expect(node).not.toBeNull(); return node as HTMLElement; }
 it('제목 다음 탭·행동·독립 복구를 두고 검색은 헤더 뒤에 둔다', () => {

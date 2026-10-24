@@ -18,8 +18,7 @@ it('담긴 품목의 매입 거래처를 바꾸면 선택한 거래처로 발주
  const issue=vi.fn().mockResolvedValue(undefined);
   const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [],
     orderRequests: [], confirmedOrders: [], inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: issue, onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: vi.fn(), onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),
@@ -53,8 +52,7 @@ it('확정 대기에는 수량과 닫기를 잠가 제출한 초안을 보존한
  let finish!:(value:unknown)=>void;const issue=vi.fn(()=>new Promise(resolve=>{finish=resolve;}));
   const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [],
     orderRequests: [], confirmedOrders: [], inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: issue, onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: vi.fn(), onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),
@@ -71,8 +69,7 @@ it('확정 실패는 부분생성가능 이유와 원수량을 표시하고 자�
  const issue=vi.fn().mockRejectedValueOnce(Error('일부그룹 거절')).mockResolvedValue(undefined);
   const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [],
     orderRequests: [], confirmedOrders: [], inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: issue, onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: vi.fn(), onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),
@@ -84,7 +81,7 @@ function durableFixture(){
  const companyId='taebaek' as const,item={id:'p1',companyId,name:'복구 상품',type:'goods',unit:'개',stock:10,minStock:0} as Item;
  const supplier={id:'s1',name:'합성 매입처'} as Partner;
  const request=batch.preparePurchaseOrderBatch({companyId,actorUid:'cart-qa',isCurrent:()=>true},[{id:'po-batch-ui-po',data:{companyId,createdAt:'2026-10-24T01:00:00.000Z',status:'pending',partnerName:supplier.name,items:[{itemId:item.id,name:item.name,quantity:1,unit:'개'}]}}],{operationId:'po-batch-ui',createdAt:'2026-10-24T01:00:00.000Z'});
- const props:React.ComponentProps<typeof ItemList>={companyId,items:[item],partners:[],orderRequests:[],confirmedOrders:[],inboundPartners:[supplier],partnerItems:[{id:'link',itemId:item.id,partnerId:supplier.id,Direction:'in'} as PartnerItem],rawMaterialLedger:[],onUpdateItem:vi.fn(),onAddItem:vi.fn(),onAddOrderRequest:vi.fn(),onRemoveOrderRequest:vi.fn(),onUpdateOrderRequestQty:vi.fn(),onToggleConfirmRequestQty:vi.fn(),onConfirmRequest:vi.fn(),onConfirmRequests:vi.fn(),onBulkAddConfirmedOrders:vi.fn(),onPreparePurchaseOrderBatch:vi.fn(()=>request),onConfirmAllRequests:vi.fn(),onFinishConfirmedOrder:vi.fn(),onUpdateConfirmedQty:vi.fn(),onRemoveConfirmedOrder:vi.fn(),onEditProduct:vi.fn(),onDeleteItem:vi.fn(),onAddAdjustmentRequest:vi.fn(),onAddRawMaterialEntry:vi.fn(),onDeleteRawMaterialEntry:vi.fn()};
+ const props:React.ComponentProps<typeof ItemList>={companyId,items:[item],partners:[],orderRequests:[],confirmedOrders:[],inboundPartners:[supplier],partnerItems:[{id:'link',itemId:item.id,partnerId:supplier.id,Direction:'in'} as PartnerItem],rawMaterialLedger:[],onUpdateItem:vi.fn(),onAddItem:vi.fn(),onUpdateOrderRequestQty:vi.fn(),onToggleConfirmRequestQty:vi.fn(),onConfirmRequest:vi.fn(),onConfirmRequests:vi.fn(),onBulkAddConfirmedOrders:vi.fn(),onPreparePurchaseOrderBatch:vi.fn(()=>request),onConfirmAllRequests:vi.fn(),onFinishConfirmedOrder:vi.fn(),onUpdateConfirmedQty:vi.fn(),onRemoveConfirmedOrder:vi.fn(),onEditProduct:vi.fn(),onDeleteItem:vi.fn(),onAddAdjustmentRequest:vi.fn(),onAddRawMaterialEntry:vi.fn(),onDeleteRawMaterialEntry:vi.fn()};
  return {props,request};
 }
 async function enterDurableCart(){

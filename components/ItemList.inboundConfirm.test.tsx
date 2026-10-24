@@ -15,8 +15,7 @@ const order = { id: 'po1', companyId: 'taebaek', status: 'invoiced', createdAt: 
 function view(orders = [order], issue = vi.fn().mockResolvedValue(true), companyId: CompanyId = 'taebaek', items = [item]) {
   const props: React.ComponentProps<typeof ItemList> = { companyId, items, partners: [],
     orderRequests: [], confirmedOrders: orders, inboundPartners: [], rawMaterialLedger: [],
-    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onAddOrderRequest: vi.fn(), onRemoveOrderRequest: vi.fn(),
-    onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
+    onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: vi.fn(), onConfirmAllRequests: vi.fn(),
     onFinishConfirmedOrder: issue, onUpdateConfirmedQty: vi.fn(), onRemoveConfirmedOrder: vi.fn(),
     onEditProduct: vi.fn(), onDeleteItem: vi.fn(), onAddAdjustmentRequest: vi.fn(),
