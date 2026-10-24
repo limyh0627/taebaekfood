@@ -2679,6 +2679,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <div className="flex-1 overflow-y-auto pt-4">
                 {currentView === 'dashboard' && (
                   <Dashboard
+                    companyId={companyId}
+                    isAdmin={isAdmin}
                     orders={allOrders}
                     items={allItems}
                     partners={partners}

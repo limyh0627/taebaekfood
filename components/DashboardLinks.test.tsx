@@ -1,0 +1,57 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import DashboardLinks from './DashboardLinks';
+const mocks = vi.hoisted(() => ({ read: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), prompt: vi.fn(), confirm: vi.fn(), auth: { currentUser: { uid: 'actor' }, onAuthStateChanged: vi.fn(() => () => { }) } }));
+vi.mock('../src/shared/firebase', () => ({ auth: mocks.auth }));
+vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: mocks.read, fetchWhere: mocks.read, addItem: mocks.add, updateItem: mocks.update, deleteItem: mocks.remove }));
+vi.mock('../src/shared/components/appDialog', () => ({ appPrompt: mocks.prompt, appConfirm: mocks.confirm }));
+beforeEach(() => { vi.clearAllMocks(); mocks.read.mockResolvedValue([]); mocks.add.mockResolvedValue(undefined); mocks.auth.currentUser = { uid: 'actor' }; });
+it('저장 중 입력과 Enter·드롭 중복 저장을 막는다', async () => {
+    let finish!: () => void;
+    mocks.add.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    render(<DashboardLinks {...({ companyId: 'taebaek', isAdmin: true } as any)}/>);
+    await act(async () => { });
+    fireEvent.click(screen.getByText('편집'));
+    const url = screen.getByPlaceholderText('주소 (끌어다 놓아도 됩니다)');
+    fireEvent.change(url, { target: { value: 'example.com' } });
+    fireEvent.keyDown(url, { key: 'Enter' });
+    expect(url).toBeDisabled();
+    fireEvent.keyDown(url, { key: 'Enter' });
+    expect(mocks.add).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+});
+it('조회 오류와 정상 빈 목록을 구분하고 재조회 후에만 작성한다', async () => {
+    mocks.read.mockRejectedValueOnce(new Error('권한 오류'));
+    render(<DashboardLinks companyId="punghoe" isAdmin/>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('목록을 읽지 못했습니다');
+    expect(screen.queryByText(/끌어다 놓으면/)).not.toBeInTheDocument();
+    expect(screen.getByText('편집')).toBeDisabled();
+    fireEvent.click(screen.getByText('다시 조회'));
+    await act(async () => { });
+    expect(mocks.read).toHaveBeenCalledWith('dashboardLinks', 'companyId', 'punghoe');
+    expect(screen.getByText('편집')).toBeEnabled();
+});
+it('현재 목록을 보여주면서 저장 실패 초안과 모든 수정 버튼 잠금을 유지한다', async () => {
+    let reject!: (error: unknown) => void;
+    mocks.read.mockResolvedValue([{ id: 'one', label: '기존 주소', url: 'https://old.example' }]);
+    mocks.add.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+    render(<DashboardLinks companyId="taebaek" isAdmin/>);
+    await screen.findByText('기존 주소');
+    fireEvent.click(screen.getByText('편집'));
+    const label = screen.getByPlaceholderText('이름 (비우면 주소에서 따옴)');
+    const url = screen.getByPlaceholderText('주소 (끌어다 놓아도 됩니다)');
+    fireEvent.change(label, { target: { value: '초안' } });
+    fireEvent.change(url, { target: { value: 'draft.example' } });
+    fireEvent.click(screen.getByText('추가'));
+    expect(label).toBeDisabled();
+    expect(screen.getByTitle('이름 바꾸기')).toBeDisabled();
+    expect(screen.getByTitle('지우기')).toBeDisabled();
+    expect(screen.getByText('완료')).toBeDisabled();
+    await act(async () => reject(new Error('연결 끊김')));
+    expect(screen.getByRole('alert')).toHaveTextContent('결과를 확인하지 못했습니다');
+    expect(url).toHaveValue('draft.example');
+    expect(label).toHaveValue('초안');
+    expect(url).toBeEnabled();
+});

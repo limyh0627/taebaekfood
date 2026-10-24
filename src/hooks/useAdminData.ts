@@ -8,7 +8,7 @@
  * Firebase에서 전혀 내려오지 않아 보안과 속도 모두 개선됩니다.
  *
  * ─ 포함 데이터 ─
- *   fixedCosts       → 비용관리 (CostManager, ProfitAnalysis)
+ *   fixedCosts       → 비용관리 (ProfitAnalysis)
  *   productionRecords → 생산 실적 (ProductionManager, ProfitAnalysis)
  *
  * ─ 회사 잠금 ─

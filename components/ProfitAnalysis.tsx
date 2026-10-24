@@ -22,7 +22,6 @@ import PageHeader from './PageHeader';
 import ActionButton from '../src/shared/components/ActionButton';
 import PeriodPicker from '../src/shared/ui/PeriodPicker';
 import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/ui/LedgerCard';
-import CostManager from './CostManager';
 import { makeCodeToGroup, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { partnerMonthlySettlement } from '../src/features/admin/partnerMonthlySettlement';
