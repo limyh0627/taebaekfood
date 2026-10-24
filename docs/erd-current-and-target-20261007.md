@@ -1,5 +1,14 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+## 2026-10-24 발주 묶음 처리 기록 · 배포 반영
+
+검수 소스 `eefad4c`를 관리자·직원 Hosting에 반영했다. `purchaseOrderBatchAudits/{operationId}`는 `kind:purchase-order-batch`, `companyId`, `reference`, `request`, `status:applied|cancelled`를 저장한다. `reference`는 version·companyId·actorUid·operationId·requestHash, 전체 `request`는 version·companyId·actorUid·operationId·createdAt·orders로 구성된다. orders의 각 원문은 고정된 `{id,data}`이며 정상 준비 요청은 최대5개 발주를 포함한다.
+
+`request.orders[].id`는 같은 회사 `purchaseOrders.id`의 과거 처리 대상을 가리킨다. 원문의 data.partnerId와 data.items[].itemId는 거래처·품목의 당시 참조이며 현재 문서가 남았다는 보장은 아니다. 발주 전체와 applied 기록은 같은 클라이언트 트랜잭션으로 저장한다. 참조만 남은 요청의 미처리 중단은 `request:null`인 cancelled 기록을 만들 수 있으므로 발주 관계가 없을 수 있다. 기존 처리 결과를 먼저 반환하므로 이후 삭제된 발주를 재생성하지 않는다. 이는 현행 일반 Rules의 클라이언트 기록으로 서버 전용 불변 영수증이 아니며 조회 부재도 늦은 쓰기의 미처리 확정은 아니다. 아래 관계는 논리 참조이며 Firestore의 강제 외래키가 아니다.
+
+기존 `deliveryScheduleAudits`에는 날짜 변경 요청 외에 `kind:delivery-settings` 분기도 추가됐다. 이 분기의 원문은 version·kind·companyId·actorUid·auditId·changedAt·changedBy·settingsExists·change·before를 포함한다. change는 날짜별 순서(day-ordering), 주문 시간대(slot), 날짜별 차량 묶음(day-groups)을 구분하며 회사별 settings의 deliveryOrdering 필드와 처리 결과를 같은 거래로 저장한다. slot만 orderId를 요구하므로 모든 배송 감사 문서에 orderId가 있다고 해석하지 않는다. 아래 10월23일 절의 orderId와 날짜 변경 원문은 그 날짜 변경 분기에 대한 설명이다.
+
+박스 생성은 기존 items와 item_bom의 저장 원자성과 생성 충돌 검사를 보완했으며 새 컬렉션은 없다. 템플릿 여섯 종류 단일 선택도 기존 dir·statementType 저장 계약을 유지한다. 원본 Claude ERD의 화면 양식·운영 컬렉션 수와 문서 수 기준일은 변경하지 않았다. 원본 게시물은 편집 접근이 없어 이 문서는 기존 형식을 유지한 반영 명세이며 원본 직접 갱신을 주장하지 않는다.
 ## 2026-10-23 배송 일정 원자 변경 · 배포 반영
 
 검수 소스 `9b1faa5`를 관리자·직원 Hosting에 반영했다. 새 컬렉션을 추가하지 않고 기존 `deliveryScheduleAudits`의 신규 일정 변경 기록에 최초 `request` 전체와 종결 상태를 저장한다. `request`는 version·companyId·actorUid·auditId·orderId·previousDeliveryDate·previousStatus·previousTimeSlot·nextDeliveryDate·nextTimeSlot·changedBy·changedAt을 고정한다.
@@ -223,6 +232,7 @@ erDiagram
   items ||--o{ item_bom : parent_id_and_child_id
   items ||--o{ itemReceipts : itemId
   purchaseOrders ||--o{ itemReceipts : poId
+  purchaseOrderBatchAudits |o..o{ purchaseOrders : request_orders_id
   items ||--o{ rawInventories : rawItemId
   rawInventories ||--o{ rawMaterialLedger : companyId_and_rawItemId
   orders ||--o{ rawInventoryJobs : source_id
