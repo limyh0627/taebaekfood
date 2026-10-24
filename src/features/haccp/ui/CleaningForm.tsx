@@ -1,11 +1,10 @@
 import { useOutputScope } from '../../../shared/hooks/useOutputScope';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { FileDown, BadgeCheck, Save } from 'lucide-react';
 import { TH, TD, TDL, FormHeader, SignBox } from './ChecklistFormParts';
 import { useHaccpCompany } from '../context/HaccpCompanyContext';
 import { downloadAsPDF } from '../infrastructure/downloadAsPDF';
-import { db } from '../../../shared/firebase';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useHaccpMonthlyRecord } from '../hooks/useHaccpMonthlyRecord';
 import { addItem, updateItem } from '../../../shared/services/firebaseService';
 
 const MACHINES = [
@@ -87,29 +86,21 @@ const defaultAreaRows = (): AreaCleanRow[] =>
 export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [month, setMonth] = useState(currentMonth);
+  const monthly = useHaccpMonthlyRecord<CleaningRecord, {machineRows: MachineCleanRow[]; areaRows: AreaCleanRow[]}>({
+    companyId, currentUserId: currentUser?.id, isAdmin, canConfirm, currentMonth, collectionName: 'haccp_cleaning',
+    createDraft: () => ({machineRows: defaultMachineRows(), areaRows: defaultAreaRows()}),
+    readDraft: record => ({machineRows: record.machineRows, areaRows: record.areaRows}),
+  });
+  const {month, records, currentRecord} = monthly;
+  const setMonth = monthly.selectMonth;
   const outputSignal = useOutputScope(companyId, month);
-  const [records, setRecords] = useState<CleaningRecord[]>([]);
-  const [machineRows, setMachineRows] = useState<MachineCleanRow[]>(defaultMachineRows());
-  const [areaRows, setAreaRows] = useState<AreaCleanRow[]>(defaultAreaRows());
-  const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const {machineRows, areaRows} = monthly.draft;
+  const setMachineRows = (update: (rows: MachineCleanRow[]) => MachineCleanRow[]) => monthly.editDraft(draft => ({...draft, machineRows: update(draft.machineRows)}));
+  const setAreaRows = (update: (rows: AreaCleanRow[]) => AreaCleanRow[]) => monthly.editDraft(draft => ({...draft, areaRows: update(draft.areaRows)}));
   const machineRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const q = query(collection(db, 'haccp_cleaning'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CleaningRecord)).filter(row => typeof row.month === 'string').sort((a, b) => b.month.localeCompare(a.month))));
-  }, [companyId]);
-
-  const currentRecord = records.find(r => r.month === month);
+  const saving = monthly.action === 'save', confirming = monthly.action === 'confirm';
   const isReadOnly = month < currentMonth && !isAdmin;
-
-  useEffect(() => {
-    const rec = records.find(r => r.month === month);
-    setMachineRows(rec ? rec.machineRows : defaultMachineRows());
-    setAreaRows(rec ? rec.areaRows : defaultAreaRows());
-  }, [month, records]);
 
   const addMachineRow = () => { if (!isReadOnly) setMachineRows(prev => [...prev, { date: '', machine: MACHINE_NAMES[0], used: '' as '', cleanMethod: MACHINES[0].method, sanitizer: '', result: '' as '', cleaner: '', verifier: '', note: '' }]); };
   const updateMachine = (idx: number, field: keyof MachineCleanRow, value: string) => {
@@ -123,29 +114,30 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
     setAreaRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   };
 
-  const handleSave = async () => {
-    if (isReadOnly) return;
-    setSaving(true);
+  const handleSave = () => monthly.runSave(async ({month, draft, currentRecord}) => {
+    const {machineRows, areaRows} = draft;
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
-    try {
-      if (!currentRecord?.id) {
-        await addItem('haccp_cleaning', { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
-      } else {
-        await updateItem('haccp_cleaning', currentRecord.id, { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
-      }
-    } finally { setSaving(false); }
-  };
+    if (!currentRecord?.id) {
+      const data = { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
+      const id = await addItem('haccp_cleaning', data);
+      return {id, record: {...data, id}};
+    }
+    const update = { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 };
+    await updateItem('haccp_cleaning', currentRecord.id, update);
+    return {id: currentRecord.id, record: {...currentRecord, ...update}};
+  });
 
-  const handleConfirm = async () => {
-    if (!canConfirm || !currentRecord?.id) return;
-    setConfirming(true);
-    try {
-      await updateItem('haccp_cleaning', currentRecord.id, { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
-    } finally { setConfirming(false); }
-  };
+  const handleConfirm = () => monthly.runConfirm(async ({currentRecord}) => {
+    const record = currentRecord!;
+    const update = { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() };
+    await updateItem('haccp_cleaning', record.id!, update);
+    return {id: record.id!, record: {...record, ...update}};
+  });
 
-  const statusEl = currentRecord?.confirmedBy
+  const statusEl = monthly.readState !== 'ready'
+    ? <span className="text-xs text-slate-500">{currentRecord?.id ? '저장 완료 · 목록 조회 필요' : '조회 필요'}</span>
+    : currentRecord?.confirmedBy
     ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><BadgeCheck size={13}/>{currentRecord.confirmedBy} 확인완료</span>
     : currentRecord
     ? <span className="text-xs text-blue-600 font-bold">저장됨 · 수정 {currentRecord.revisionCount}회 · {currentRecord.updatedBy}</span>
@@ -153,10 +145,14 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
 
   return (
     <div className="relative pb-16 space-y-8">
+      {(monthly.readState === 'loading' || monthly.readState === 'cache') && <p role="status" className="text-xs text-slate-600">기존 기록을 조회 중입니다. 입력할 수 있으며 서버 조회가 끝난 뒤 저장할 수 있습니다.</p>}
+      {(monthly.readError || monthly.error) && <div role="alert" className="border border-slate-200 bg-white rounded p-3 text-xs"><p>{monthly.error}</p><p>{monthly.readError}</p><button type="button" disabled={monthly.busy} onClick={monthly.retryRead} className="mt-2 rounded border px-3 py-1.5">다시 조회</button></div>}
+      {(monthly.collision || monthly.targetMissing) && <p role="alert" className="text-xs text-slate-700">현재 목록에서 선택 기록을 확인하지 못했거나 같은 월의 다른 기록이 있습니다. 입력은 보존했습니다. 다시 조회하거나 조회된 기록을 열어 진행해 주세요.</p>}
+      {monthly.hasObservedRecord && (monthly.collision || monthly.targetMissing || monthly.recovery === 'unknown') && <button type="button" disabled={monthly.busy} onClick={monthly.openObservedRecord} className="rounded border px-3 py-1.5 text-xs">조회된 기록 열기</button>}
       {/* 컨트롤 바 */}
       <div className="flex gap-3 flex-wrap items-center">
         <label className="text-xs text-slate-600 flex items-center gap-1">
-          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
+          관리월: <input type="month" value={month} disabled={monthly.busy} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
         </label>
         {statusEl}
         {isReadOnly && (
@@ -166,6 +162,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
           <select
             className="ml-auto text-xs border border-slate-300 rounded px-2 py-1"
             value={month}
+            disabled={monthly.busy}
             onChange={e => setMonth(e.target.value)}
           >
             {records.map(r => (
@@ -192,7 +189,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
         <div className="flex gap-3 mb-3 flex-wrap items-center">
           <span className="text-sm font-bold text-slate-700">기계·설비 세척소독 일지</span>
           {!isReadOnly && (
-            <button onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+            <button disabled={monthly.busy} onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
           )}
           <button
             onClick={() => machineRef.current && downloadAsPDF(machineRef.current, `HACCP_기계세척소독일지_${month}.pdf`, outputSignal())}
@@ -225,39 +222,39 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
                 {machineRows.map((row, idx) => (
                   <tr key={idx}>
                     <td className={TD}>
-                      <input type="date" value={row.date} onChange={e => updateMachine(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
+                      <input type="date" value={row.date} onChange={e => updateMachine(idx, 'date', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
                     </td>
                     <td className={TD}>
-                      <select value={row.machine} onChange={e => updateMachine(idx, 'machine', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
+                      <select value={row.machine} onChange={e => updateMachine(idx, 'machine', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         {MACHINE_NAMES.map(m => <option key={m}>{m}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.used} onChange={e => updateMachine(idx, 'used', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.used === 'X' ? 'text-slate-400' : row.used === 'O' ? 'text-slate-700' : ''}`}>
+                      <select value={row.used} onChange={e => updateMachine(idx, 'used', e.target.value)} disabled={isReadOnly || monthly.busy} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.used === 'X' ? 'text-slate-400' : row.used === 'O' ? 'text-slate-700' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O(사용)</option>
                         <option value="X">X(미사용)</option>
                       </select>
                     </td>
                     <td className={TDL}>
-                      <input value={row.cleanMethod} onChange={e => updateMachine(idx, 'cleanMethod', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" placeholder="세척방법 기재" />
+                      <input value={row.cleanMethod} onChange={e => updateMachine(idx, 'cleanMethod', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" placeholder="세척방법 기재" />
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitizer} onChange={e => updateMachine(idx, 'sanitizer', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
+                      <select value={row.sanitizer} onChange={e => updateMachine(idx, 'sanitizer', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         <option value="">선택</option>
                         {SANITIZERS.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.result} onChange={e => updateMachine(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.result} onChange={e => updateMachine(idx, 'result', e.target.value)} disabled={isReadOnly || monthly.busy} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O</option>
                         <option value="X">X</option>
                       </select>
                     </td>
-                    <td className={TD}><input value={row.cleaner} onChange={e => updateMachine(idx, 'cleaner', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
-                    <td className={TD}><input value={row.verifier} onChange={e => updateMachine(idx, 'verifier', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
-                    <td className={TDL}><input value={row.note} onChange={e => updateMachine(idx, 'note', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateMachine(idx, 'cleaner', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TD}><input value={row.verifier} onChange={e => updateMachine(idx, 'verifier', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateMachine(idx, 'note', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -272,7 +269,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
         <div className="flex gap-3 mb-3 flex-wrap items-center">
           <span className="text-sm font-bold text-slate-700">작업구역 청소·소독 일지</span>
           {!isReadOnly && (
-            <button onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+            <button disabled={monthly.busy} onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
           )}
           <button
             onClick={() => areaRef.current && downloadAsPDF(areaRef.current, `HACCP_구역청소일지_${month}.pdf`, outputSignal())}
@@ -303,22 +300,22 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
                 {areaRows.map((row, idx) => (
                   <tr key={idx}>
                     <td className={TD}>
-                      <input type="date" value={row.date} onChange={e => updateArea(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
+                      <input type="date" value={row.date} onChange={e => updateArea(idx, 'date', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
                     </td>
                     <td className={TD}>
-                      <select value={row.area} onChange={e => updateArea(idx, 'area', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
+                      <select value={row.area} onChange={e => updateArea(idx, 'area', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         {CLEAN_AREAS.map(a => <option key={a}>{a}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.result} onChange={e => updateArea(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.result} onChange={e => updateArea(idx, 'result', e.target.value)} disabled={isReadOnly || monthly.busy} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O</option>
                         <option value="X">X</option>
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitized} onChange={e => updateArea(idx, 'sanitized', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.sanitized === 'X' ? 'text-rose-600' : row.sanitized === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.sanitized} onChange={e => updateArea(idx, 'sanitized', e.target.value)} disabled={isReadOnly || monthly.busy} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.sanitized === 'X' ? 'text-rose-600' : row.sanitized === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O(실시)</option>
                         <option value="X">X(미실시)</option>
@@ -326,13 +323,13 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitizer} onChange={e => updateArea(idx, 'sanitizer', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
+                      <select value={row.sanitizer} onChange={e => updateArea(idx, 'sanitizer', e.target.value)} disabled={isReadOnly || monthly.busy} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         <option value="">선택</option>
                         {SANITIZERS.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
-                    <td className={TD}><input value={row.cleaner} onChange={e => updateArea(idx, 'cleaner', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
-                    <td className={TDL}><input value={row.note} onChange={e => updateArea(idx, 'note', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateArea(idx, 'cleaner', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateArea(idx, 'note', e.target.value)} disabled={isReadOnly || monthly.busy} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -347,7 +344,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
         {canConfirm && currentRecord?.id && !currentRecord.confirmedBy && (
           <button
             onClick={handleConfirm}
-            disabled={confirming}
+            disabled={!monthly.canConfirm}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold disabled:opacity-50"
           >
             <BadgeCheck size={12} /> {confirming ? '처리 중…' : '관리자 확인'}
@@ -356,7 +353,7 @@ export const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }
         {!isReadOnly && (
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={!monthly.canSave}
             className="ml-auto flex items-center gap-1.5 text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold disabled:opacity-50"
           >
             <Save size={12} /> {saving ? '저장 중…' : '저장'}
