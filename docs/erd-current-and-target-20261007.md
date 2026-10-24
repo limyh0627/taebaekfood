@@ -1,5 +1,11 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+## 2026-10-25 HACCP 작성 수명 · 데이터 구조 대조
+
+2026-10-25 02:33:33 KST 관리자·직원 Hosting에 반영한 검수 소스 `23aed58`은 점검 양식·개인위생·온도·위생·주기·마감·월별 입고/청소 기록과 회사 바로가기의 조회·초안·저장 수명을 보완했다. 실제 Auth UID·회사·선택·실행 잠금, 초안과 실시간 조회 정본 분리, 정상 ACK의 ID 보존은 클라이언트 제어다. 기존 컬렉션·저장 필드·관계·writer payload와 도메인 계산은 유지하며 새 처리 영수증 컬렉션이나 서버 CAS를 추가하지 않았다. 사용하지 않는 CostManager·발주 콜백 제거도 새 데이터 구조를 만들지 않는다.
+
+월별 기록의 ACK 메타·미확인 요청 보관은 현재 owner 메모리 범위이며 Firestore에 새 복구 문서로 저장하지 않는다. MEMORY 분리는 로컬 문서 정리이고 Firebase 데이터베이스 이관이 아니다. 이번 배포의 ERD 구조 변경은 없으며 기존 양식·배치·스타일·운영 컬렉션/문서 수 기준일을 유지한다. 원본 Claude 게시물 직접 편집은 하지 않았고, 기존 대조 문서에 변경 없음의 근거를 기록했다.
+
 ## 2026-10-24 발주 묶음 처리 기록 · 배포 반영
 
 검수 소스 `eefad4c`를 관리자·직원 Hosting에 반영했다. `purchaseOrderBatchAudits/{operationId}`는 `kind:purchase-order-batch`, `companyId`, `reference`, `request`, `status:applied|cancelled`를 저장한다. `reference`는 version·companyId·actorUid·operationId·requestHash, 전체 `request`는 version·companyId·actorUid·operationId·createdAt·orders로 구성된다. orders의 각 원문은 고정된 `{id,data}`이며 정상 준비 요청은 최대5개 발주를 포함한다.
