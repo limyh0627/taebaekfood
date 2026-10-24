@@ -8,12 +8,22 @@ import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDi
 import React, { useMemo, useState, useRef } from 'react';
 import { X, Check, BarChart2, FolderPlus, Pencil, Copy, Eye, EyeOff, Star } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
-import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
+import { isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
 import { useLoanContracts } from '../src/shared/useLoanContracts';
 import { matchingLoan } from '../src/shared/loanLedger';
 import type { CompanyId } from '../src/shared/types';
 import ModalShell from '../src/shared/components/ModalShell';
 import TemplateAccountSummary from '../src/features/statements/ui/TemplateAccountSummary';
+
+/** 표시는 여섯 종류로 통일하되 옛 dir 원문은 사용자가 직접 선택할 때까지 바꾸지 않는다. */
+const templateKindOf = (template: Pick<FixedCostTemplate, 'dir' | 'statementType' | 'partnerId' | 'transferLines'>) => {
+  const dir = template.dir ?? '출금';
+  if (dir === '줄돈') return '매입';
+  if (dir === '받을돈') return '매출';
+  if (isCashDir(dir) || dir === '회사이체') return dir;
+  const type = templateStatementType(template);
+  return type === '비용' ? '대체' : type;
+};
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
 const splitValOf = (t: { mode?: string } & Record<string, any>, which: 'a' | 'b'): string => {
@@ -89,6 +99,7 @@ function VoucherTemplateManagerForScope({
     dir: '출금' as VoucherDir, statementType: '비용' as TemplateStatementType, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? '출금';
+  const formKind = templateKindOf(form);
   // 거래처는 이름만 적으면 소용없다 — id가 붙어야 미지급금이 그 거래처로 잡힌다
   const [partnerQuery, setPartnerQuery] = useState('');
   const [partnerOpen, setPartnerOpen] = useState(false);
@@ -203,7 +214,7 @@ function VoucherTemplateManagerForScope({
                       <span className="block mt-2 text-xs text-slate-600 break-words"><span className="text-slate-400">거래처</span> {t.partnerName || '선택 안 함'}</span>
                       {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).length > 0 && <span className="block mt-1 text-xs text-rose-600"><b>계정 없음</b> · <span>현재 회사 계정표에 {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).join(', ')} 없음</span></span>}
                       <span className="block mt-1 text-[11px] text-slate-500">
-                        {dirOf(t)} · {t.autoIssue ? '매월 ' + ((t.issueDay ?? 1) === 31 ? '말일' : (t.issueDay ?? 1) + '일') + ' 자동' : '수동'}
+                        {templateKindOf(t)} · {t.autoIssue ? '매월 ' + ((t.issueDay ?? 1) === 31 ? '말일' : (t.issueDay ?? 1) + '일') + ' 자동' : '수동'}
                         {t.hidden && ' · 숨김'}{t.builtin && ' · 기본'}{t.favorite && ' · 즐겨찾기'}
                       </span>
                     </span>
@@ -226,7 +237,7 @@ function VoucherTemplateManagerForScope({
             <div className="mt-4"><TemplateAccountSummary template={detailTpl} accountCodes={accountCodes}/></div>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <div><dt className="text-xs text-slate-400">묶음</dt><dd className="mt-1">{detailTpl.group?.trim() || NO_GROUP}</dd></div>
-              <div><dt className="text-xs text-slate-400">발행 갈래</dt><dd className="mt-1">{dirOf(detailTpl)} · {detailTpl.mode || '일반'}</dd></div>
+              <div><dt className="text-xs text-slate-400">전표종류</dt><dd className="mt-1">{templateKindOf(detailTpl)} · {detailTpl.mode || '일반'}</dd></div>
               <div><dt className="text-xs text-slate-400">거래처</dt><dd className="mt-1">{detailTpl.partnerName || '선택 안 함'}</dd></div>
               <div><dt className="text-xs text-slate-400">자동 발행</dt><dd className="mt-1">{detailTpl.autoIssue ? '매월 ' + ((detailTpl.issueDay ?? 1) === 31 ? '말일' : (detailTpl.issueDay ?? 1) + '일') : '사용 안 함'}</dd></div>
               <div><dt className="text-xs text-slate-400">목록 표시</dt><dd className="mt-1">{detailTpl.hidden ? '숨김' : '표시'}{detailTpl.favorite && ' · 즐겨찾기'}{detailTpl.builtin && ' · 기본 템플릿'}</dd></div>
@@ -423,30 +434,24 @@ function VoucherTemplateManagerForScope({
             })()}
 
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                갈래 <span className="normal-case text-slate-300">(돈이 언제 움직이나)</span>
-              </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {VOUCHER_DIRS.map(d => (
-                  <button key={d} type="button" onClick={() => setForm(f => ({ ...f, dir: d }))}
-                    title={DIR_HINT[d]}
-                    className={`px-2 py-2 rounded-xl border text-center text-xs font-black transition-all ${form.dir === d
-                      ? `${DIR_CHIP[d]} border-transparent` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
-                    {d}
+              <p className="text-[10px] font-black text-slate-400 block mb-1.5">전표종류</p>
+              <div role="group" aria-label="전표종류" className="grid grid-cols-3 gap-1.5">
+                {(['매입', '매출', '입금', '출금', '대체', '회사이체'] as const).map(kind => (
+                  <button key={kind} type="button" disabled={busy} aria-pressed={formKind === kind}
+                    onClick={() => setForm(f => kind === '매입' || kind === '매출'
+                      ? { ...f, dir: '대체', statementType: kind }
+                      : kind === '대체' ? { ...f, dir: '대체', statementType: '비용' } : { ...f, dir: kind })}
+                    className={`px-2 py-2 rounded-xl border text-center text-xs font-black transition-all ${formKind === kind
+                      ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
+                    {kind}
                   </button>
                 ))}
               </div>
               {!isCashDir(form.dir) && form.dir !== '회사이체' && (
-                <div className="mt-3">
-                  <label htmlFor="template-statement-type" className="block text-xs font-bold text-slate-500 mb-1">전표종류</label>
-                  <select id="template-statement-type" value={form.statementType}
-                    onChange={e => setForm(f => ({ ...f, statementType: e.target.value as TemplateStatementType }))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold">
-                    <option value="매입">매입전표</option><option value="매출">매출전표</option><option value="비용">일반(대체)전표</option>
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1">거래처를 변경해도 선택한 전표종류는 유지됩니다.</p>
-                  {!editTpl.statementType && <p className="text-xs text-amber-600 mt-1">기존 템플릿의 발행 종류입니다. 확인 후 저장해 주세요.</p>}
-                </div>
+                <p className="text-xs text-slate-400 mt-1">거래처를 변경해도 선택한 전표종류는 유지됩니다.</p>
+              )}
+              {!isCashDir(form.dir) && form.dir !== '회사이체' && !editTpl.statementType && (
+                <p className="text-xs text-amber-600 mt-1">기존 템플릿의 발행 종류입니다. 확인 후 저장해 주세요.</p>
               )}
             </div>
 
