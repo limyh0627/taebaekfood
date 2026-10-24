@@ -1,14 +1,16 @@
 import { useOutputScope } from '../../../shared/hooks/useOutputScope';
 import { previewRasterPdf, snapshotOutputElement, type RasterPdfPage } from '../../../shared/rasterPdfOutput';
-import React, {useState,useRef,useEffect} from 'react';
+import React, {useState,useRef,useEffect,useLayoutEffect} from 'react';
 import {FileDown,ShieldAlert,Save,Trash2,BadgeCheck} from 'lucide-react';
 import {collection,doc,onSnapshot,query,where} from 'firebase/firestore';
 import {db} from '../../../shared/firebase';
 import {addItem,updateItem,deleteItem} from '../../../shared/services/firebaseService';
 import {appConfirm} from '../../../shared/components/appDialog';
 import {haccpTemplateDocId} from '../../../shared/haccpTemplateId';
+import {useHaccpRecordActor, type HaccpRecordActorAction} from '../hooks/useHaccpRecordActor';
 import {useHaccpCompany} from '../context/HaccpCompanyContext';
 import {todayStr} from '../domain/haccpDate';
+import {createHaccpRecordKnowledge} from '../domain/haccpRecordKnowledge';
 import {SANITATION_ITEMS} from '../domain/sanitationItems';
 import type {SlotTime,SanitationRow,SanitationRecord} from '../domain/sanitationTypes';
 import {TH,TD,TDL} from './ChecklistFormParts';
@@ -30,6 +32,15 @@ const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationR
 
 export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
+  const actor = useHaccpRecordActor({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
+  const owner = actor.ownerToken;
+  const runRef = useRef<object | null>(null), selection = useRef(0);
+  const [knowledge] = useState(createHaccpRecordKnowledge);
+  const [deleting, setDeleting] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [recordsReady, setRecordsReady] = useState(false), [templateReady, setTemplateReady] = useState(false);
+  const [recordsError, setRecordsError] = useState(''), [templateError, setTemplateError] = useState('');
+  const readRef = useRef({records: false, template: false, blocked: false, rows: [] as SanitationRecord[]});
   const [records, setRecords] = useState<SanitationRecord[]>([]);
   const [selected, setSelected] = useState<SanitationRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -41,21 +52,77 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
 
   const today = todayStr();
 
-  useEffect(() => {
-    const q = query(collection(db, 'haccp_sanitation'), where('companyId', '==', companyId));
-    return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
-    });
-  }, [companyId]);
+  useLayoutEffect(() => {
+    runRef.current = null; selection.current++; knowledge.resetOwner();
+    readRef.current = {records: false, template: false, blocked: false, rows: []};
+    setSelected(null); setRecords([]); setTemplateItems(SANITATION_ITEMS);
+    setSaving(false); setConfirming(false); setDeleting(false); setSaveError('');
+    setRecordsReady(false); setTemplateReady(false); setRecordsError(''); setTemplateError('');
+  }, [owner]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), snap => {
+    let active = true, serverConfirmed = false;
+    readRef.current.records = false; setRecordsReady(false); setRecordsError('');
+    const q = query(collection(db, 'haccp_sanitation'), where('companyId', '==', companyId));
+    const stop = onSnapshot(q, {includeMetadataChanges: true}, snap => {
+      if (!active || !actor.isCurrent(owner)) return;
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
+      knowledge.observe(rows.map(row => row.id).filter(Boolean));
+      if (snap.metadata.fromCache === false) serverConfirmed = true;
+      const ready = serverConfirmed && !readRef.current.blocked;
+      readRef.current.records = ready; readRef.current.rows = rows;
+      setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
+    }, () => {
+      if (!active || !actor.isCurrent(owner)) return;
+      active = false; readRef.current.records = false; setRecordsReady(false);
+      setRecordsError('기존 기록을 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회해 주세요.');
+    });
+    return () => {active = false; stop();};
+  }, [owner, readAttempt]);
+
+  useEffect(() => {
+    let active = true, serverConfirmed = false;
+    readRef.current.template = false; setTemplateReady(false); setTemplateError('');
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), {includeMetadataChanges: true}, snap => {
+      if (!active || !actor.isCurrent(owner)) return;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
       }
+      if (snap.metadata.fromCache === false) serverConfirmed = true;
+      readRef.current.template = serverConfirmed; setTemplateReady(serverConfirmed);
+    }, () => {
+      if (!active || !actor.isCurrent(owner)) return;
+      active = false; readRef.current.template = false; setTemplateReady(false);
+      setTemplateError('점검 항목을 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회해 주세요.');
     });
-  }, [companyId]);
+    return () => {active = false; stop();};
+  }, [owner, readAttempt]);
+
+  const retryRead = () => {
+    if (runRef.current || !actor.isCurrent(owner)) return;
+    readRef.current.records = false; readRef.current.template = false; readRef.current.blocked = false;
+    setRecordsReady(false); setTemplateReady(false); setReadAttempt(value => value + 1);
+  };
+  const canSend = (kind: HaccpRecordActorAction, id?: string) => {
+    if (!actor.canAct(kind, owner) || !readRef.current.records || (kind !== 'delete' && !readRef.current.template)) return false;
+    if (id && !readRef.current.rows.some(row => row.id === id) && !(kind !== 'delete' && knowledge.allowsUnobservedAck(id))) {
+      setSaveError('현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 위의 점검 시간이나 다른 기록을 선택해 다시 진행해 주세요.');
+      return false;
+    }
+    return true;
+  };
+  const begin = (kind: HaccpRecordActorAction, id?: string) => {
+    if (runRef.current || !canSend(kind, id)) return null;
+    const run = {}; runRef.current = run; setSaveError('');
+    const generation = selection.current;
+    const owns = () => actor.isCurrent(owner) && runRef.current === run && selection.current === generation;
+    return {owns, allowed: () => owns() && actor.canAct(kind, owner), beforeSend: () => owns() && canSend(kind, id),
+      finish: () => {if (owns()) {runRef.current = null; setSaving(false); setConfirming(false); setDeleting(false);}}};
+  };
+  const editSelected = (update: React.SetStateAction<SanitationRecord | null>) => {
+    if (!runRef.current && actor.isCurrent(owner)) setSelected(update);
+  };
 
   // ── 월별 심사자료 PDF 다운로드 (관리자) ──────────────────────────────
   const bulkRef = useRef<HTMLDivElement>(null);
@@ -117,12 +184,20 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const todayAfternoon = records.find(r => r.checkDate === today && r.checkTime === '15:00');
 
   const openSlot = (slot: SlotTime) => {
+    if (runRef.current || !actor.isCurrent(owner)) return;
+    // 같은 슬롯의 확정 ID는 목록이 도착하기 전에 다시 신규 초안으로 바꾸지 않는다.
+    if (selected?.id && selected.checkDate === today && selected.checkTime === slot && knowledge.allowsUnobservedAck(selected.id)) return;
     const existing = slot === '08:30' ? todayMorning : todayAfternoon;
+    if (selected?.id !== existing?.id || selected?.checkDate !== today || selected?.checkTime !== slot) knowledge.clearSelection();
+    selection.current++;
     setSelected(existing ?? { ...emptyRecord(slot, templateItems) } as SanitationRecord);
     setSaveError('');
   };
 
   const openHistory = (r: SanitationRecord) => {
+    if (runRef.current || !actor.isCurrent(owner)) return;
+    if (selected?.id !== r.id || selected?.checkDate !== r.checkDate || selected?.checkTime !== r.checkTime) knowledge.clearSelection();
+    selection.current++;
     setSelected(r);
     setSaveError('');
     setShowHistory(false);
@@ -139,7 +214,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       : [...rows, ...templateItems.slice(rows.length).map((): SanitationRow => ({ result: '', note: '', inspector: '' }))];
 
   const setRow = (idx: number, field: keyof SanitationRow, val: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly || runRef.current || !actor.isCurrent(owner)) return;
     setSelected(prev => prev ? {
       ...prev,
       rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r),
@@ -147,7 +222,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
 
   const toggleResult = (idx: number, val: 'pass' | 'fail') => {
-    if (isReadOnly) return;
+    if (isReadOnly || runRef.current || !actor.isCurrent(owner)) return;
     const userName = currentUser?.name ?? '';
     setSelected(prev => {
       if (!prev) return prev;
@@ -166,7 +241,11 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
 
   const handleSave = async () => {
-    if (!selected || isReadOnly) return;
+    if (!selected || isReadOnly || runRef.current) return;
+    if (!canSend('save', selected.id)) return;
+    if (!selected.id && readRef.current.rows.some(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime)) {
+      setSaveError('같은 날짜와 시간에 저장된 기록이 있습니다. 초안을 유지했으니 저장된 기록을 확인해 주세요.'); return;
+    }
     // 부적합 행은 비고사항(조치) 필수
     const missingNote = selected.rows
       .map((r, i) => r.result === 'fail' && !r.note.trim() ? (templateItems[i]?.item ?? `항목 ${i + 1}`) : null)
@@ -175,6 +254,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       setSaveError(`부적합 항목의 비고사항(조치)을 입력해주세요: ${missingNote.join(', ')}`);
       return;
     }
+    const action = begin('save', selected.id); if (!action) return;
     setSaveError('');
     setSaving(true);
     const now = new Date().toISOString();
@@ -190,7 +270,10 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           revisionCount: 0,
         };
         const id = await addItem('haccp_sanitation', data);
-        setSelected({ ...data, id });
+        if (action.allowed()) {
+          knowledge.rememberAck(id);
+          setSelected({ ...data, id });
+        }
       } else {
         const newRev = (selected.revisionCount ?? 0) + 1;
         const update: Partial<SanitationRecord> = {
@@ -200,15 +283,15 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           revisionCount: newRev,
         };
         await updateItem('haccp_sanitation', selected.id, update as any);
-        setSelected(prev => prev ? { ...prev, ...update } : prev);
+        if (action.allowed()) setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
-    } finally {
-      setSaving(false);
-    }
+    } catch {
+      if (action.allowed()) { readRef.current.blocked = true; readRef.current.records = false; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
+    } finally { action.finish(); }
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (!canConfirm || runRef.current) return;
     if (!selected?.id) {
       alert('점검표를 먼저 저장해주세요.');
       return;
@@ -217,24 +300,33 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       alert('모든 점검 항목을 확인(적합/부적합) 완료 후 확인할 수 있습니다.');
       return;
     }
+    const action = begin('confirm', selected.id); if (!action) return;
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
       await updateItem('haccp_sanitation', selected.id, update);
+      if (!action.allowed()) return;
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
-    } finally {
-      setConfirming(false);
-    }
+    } catch {
+      if (action.allowed()) { readRef.current.blocked = true; readRef.current.records = false; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { action.finish(); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteItem('haccp_sanitation', id);
-    if (selected?.id === id) setSelected(null);
+    const action = begin('delete', id); if (!action) return;
+    setDeleting(true);
+    try {
+      if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
+      if (!action.beforeSend()) return;
+      await deleteItem('haccp_sanitation', id);
+      if (action.allowed() && selected?.id === id) { knowledge.clearSelection(); setSelected(null); }
+    } catch {
+      if (action.allowed()) { readRef.current.blocked = true; readRef.current.records = false; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { action.finish(); }
   };
 
   const revLabel = (r: SanitationRecord) =>
@@ -283,8 +375,12 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <fieldset disabled={saving || confirming || deleting} className="flex min-w-0 flex-col gap-4 border-0 p-0 m-0">
+      {(!recordsReady || !templateReady) && !recordsError && !templateError && <p role="status" className="text-xs text-slate-600">기록과 점검 항목을 조회 중입니다. 초안을 작성할 수 있으며 조회가 끝난 뒤 저장할 수 있습니다.</p>}
+      {(recordsError || templateError) && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError || templateError}</p><button type="button" onClick={retryRead} className="mt-2 rounded border border-slate-300 px-3 py-1.5">다시 조회</button></div>}
+      {selected && !selected.id && recordsReady && records.some(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime) && <div role="alert" className="text-xs"><p>같은 날짜와 시간의 저장된 기록이 있습니다. 초안은 유지했습니다.</p><button type="button" onClick={() => { const existing = readRef.current.rows.find(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime); if (existing) openHistory(existing); }}>저장된 기록 열기</button></div>}
 
+      {saveError && actor.isCurrent(owner) && <div role="alert" className="border border-slate-200 bg-white text-xs rounded-lg px-3 py-2">{saveError}</div>}
       {/* ── 오늘 날짜 + 슬롯 선택 ────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">
@@ -309,7 +405,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
               >
                 <span className="text-base">{slot === '08:30' ? '🌅' : '🌇'}</span>
                 <span>{slotLabel(slot)}</span>
-                {existing
+                {!recordsReady ? <span className="text-xs font-normal text-slate-500">조회 필요</span> : existing
                   ? <span className="text-xs font-normal text-emerald-500">✓ {revLabel(existing)} 저장됨</span>
                   : <span className="text-xs font-normal text-slate-400">미작성</span>
                 }
@@ -442,7 +538,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                     </span>
                   : <button
                       onClick={handleConfirm}
-                      disabled={confirming || !selected.id || !allChecked}
+                      disabled={confirming || !selected.id || !allChecked || !recordsReady || !templateReady}
                       title={!selected.id ? '저장 후 확인할 수 있습니다' : !allChecked ? '모든 항목 체크 완료 후 확인 가능' : ''}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -450,7 +546,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                     </button>
               )}
               {!isReadOnly && (
-                <button onClick={handleSave} disabled={saving}
+                <button onClick={handleSave} disabled={saving || !recordsReady || !templateReady || (!selected.id && records.some(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime))}
                   className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
                 >
                   <Save size={12} /> {saving ? '저장 중...' : '저장'}
@@ -458,13 +554,6 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
               )}
             </div>
           </div>
-
-          {/* 부적합 오류 메시지 */}
-          {saveError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">
-              ⚠️ {saveError}
-            </div>
-          )}
 
           {/* 인쇄 영역 */}
           <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
@@ -491,7 +580,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                   {isReadOnly
                     ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
                     : <input value={selected.checkZone}
-                        onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                        onChange={e => editSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
                         placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
                   }
                 </div>
@@ -607,7 +696,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
             {isReadOnly
               ? <div className="border border-slate-200 rounded-lg p-2 text-xs min-h-[60px] text-slate-700">{selected.specialNotes || '-'}</div>
               : <textarea value={selected.specialNotes}
-                  onChange={e => setSelected(p => p ? { ...p, specialNotes: e.target.value } : p)}
+                  onChange={e => editSelected(p => p ? { ...p, specialNotes: e.target.value } : p)}
                   rows={3} className="w-full border border-slate-300 rounded-lg p-2 text-xs resize-none"
                   placeholder="특이사항 및 개선조치 내용을 입력하세요" />
             }
@@ -639,7 +728,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                     : canConfirm && selected.id && allChecked
                       ? <button
                           onClick={handleConfirm} title="확인 결과만 저장합니다. PDF는 별도 PDF 버튼에서 미리보고 저장합니다."
-                          disabled={confirming}
+                          disabled={confirming || !recordsReady || !templateReady}
                           className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
                         >
                           <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
@@ -666,6 +755,6 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           </div>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 };

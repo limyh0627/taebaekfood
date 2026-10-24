@@ -1,8 +1,10 @@
 import { useOutputScope } from '../../../shared/hooks/useOutputScope';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save } from 'lucide-react';
 import { TH, TD, TDL } from './ChecklistFormParts';
 import { useHaccpCompany } from '../context/HaccpCompanyContext';
+import { createHaccpRecordKnowledge } from '../domain/haccpRecordKnowledge';
+import { useHaccpRecordActor } from '../hooks/useHaccpRecordActor';
 import { useChecklistDraftControl } from '../hooks/useChecklistDraftControl';
 import { downloadAsPDF } from '../infrastructure/downloadAsPDF';
 import { db } from '../../../shared/firebase';
@@ -30,6 +32,8 @@ const emptyPeriodRecord = (cycle: PeriodCycle, period: string, items: { item: st
 
 export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
+  const actor = useHaccpRecordActor({ companyId, currentUserId: currentUser?.id, isAdmin, canConfirm });
+  const ownerToken = actor.ownerToken;
   const [cycle, setCycle] = useState<PeriodCycle>('weekly');
   const [weekPeriod, setWeekPeriod] = useState(currentWeekStr());
   const [monthPeriod, setMonthPeriod] = useState(new Date().toISOString().slice(0, 7));
@@ -49,6 +53,33 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
   const [readAttempt, setReadAttempt] = useState(0);
   const readRef = useRef({ ready: false, blocked: false, rows: [] as PeriodRecord[] });
 
+  const [knowledge] = useState(createHaccpRecordKnowledge);
+  const templateRead = useRef({"weekly":false,"monthly":false});
+  const [templateReady, setTemplateReady] = useState({"weekly":false,"monthly":false});
+  const [templateErrors, setTemplateErrors] = useState({"weekly":"","monthly":""});
+  const [templateAttempt, setTemplateAttempt] = useState({"weekly":0,"monthly":0});
+  useLayoutEffect(() => {
+    // 계정이 교체되면 이전 finally와 조회가 새 초안의 잠금을 건드릴 수 없다.
+    control.generation.current++; control.busy.current = false; control.dirty.current = false;
+    knowledge.resetOwner();
+    readRef.current = { ready: false, blocked: false, rows: [] }; setRecords([]); setRecordsReady(false); setRecordsError('');
+    templateRead.current = {"weekly":false,"monthly":false}; setTemplateReady({"weekly":false,"monthly":false}); setTemplateErrors({"weekly":"","monthly":""});
+    setWeekItems(WEEKLY_ITEMS_DEFAULT); setMonthItems(MONTHLY_ITEMS_DEFAULT);
+    setSaving(false); setConfirming(false); setDeleting(false); setShowHistory(false); setSaveError('');
+  }, [ownerToken]);
+  const changeSelection = (action: () => void) => control.change(() => {
+    if (actor.isCurrent(ownerToken)) { knowledge.clearSelection(); action(); }
+  });
+  const canSend = (kind: 'save' | 'confirm' | 'delete', id?: string) => {
+    if (!actor.canAct(kind, ownerToken) || !readRef.current.ready || (kind !== 'delete' && !templateRead.current[cycle])) return false;
+    if (id && !readRef.current.rows.some(row => row.id === id) && !(kind !== 'delete' && knowledge.allowsUnobservedAck(id))) {
+      setSaveError('현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다른 기간이나 기록을 선택해 다시 진행해 주세요.');
+      return false;
+    }
+    return true;
+  };
+
+
   const period = cycle === 'weekly' ? weekPeriod : monthPeriod;
   const items = cycle === 'weekly' ? weekItems : monthItems;
   const cycleName = cycle === 'weekly' ? '주간' : '월간';
@@ -58,56 +89,71 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
     readRef.current.ready = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_periodic_sanitation'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
-      if (!active || !control.active.current) return;
+      if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as PeriodRecord)).filter(row => typeof row.period === 'string').sort((a, b) => b.period.localeCompare(a.period));
+      knowledge.observe(rows.map(row => row.id!).filter(Boolean));
       if (snap.metadata?.fromCache === false) serverConfirmed = true;
       const ready = serverConfirmed && !readRef.current.blocked;
       readRef.current = { ready, blocked: readRef.current.blocked, rows }; setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
     }, () => {
-      if (!active || !control.active.current) return;
+      if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       active = false; serverConfirmed = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
       setRecordsError('기존 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 저장해 주세요.');
     });
     return () => { active = false; unsubscribe(); };
-  }, [companyId, readAttempt]);
+  }, [companyId, ownerToken, readAttempt]);
 
   useEffect(() => {
-    let active = true;
-    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), snap => {
-      if (!active) return;
+    let active = true, serverConfirmed = false;
+    templateRead.current.weekly = false; setTemplateReady(value => ({ ...value, weekly: false })); setTemplateErrors(value => ({ ...value, weekly: '' }));
+    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), { includeMetadataChanges: true }, snap => {
+      if (!active || !actor.isCurrent(ownerToken)) return;
+      if (snap.metadata?.fromCache === false) serverConfirmed = true;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setWeekItems(data);
       }
+      templateRead.current.weekly = serverConfirmed; setTemplateReady(value => ({ ...value, weekly: serverConfirmed }));
+    }, () => {
+      if (!active || !actor.isCurrent(ownerToken)) return;
+      active = false; templateRead.current.weekly = false; setTemplateReady(value => ({ ...value, weekly: false }));
+      setTemplateErrors(value => ({ ...value, weekly: '점검 양식을 확인하지 못했습니다. 입력을 유지했습니다. 양식을 다시 조회해 주세요.' }));
     });
     return () => { active = false; unsubscribe(); };
-  }, [companyId]);
+  }, [companyId, ownerToken, templateAttempt.weekly]);
 
   useEffect(() => {
-    let active = true;
-    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), snap => {
-      if (!active) return;
+    let active = true, serverConfirmed = false;
+    templateRead.current.monthly = false; setTemplateReady(value => ({ ...value, monthly: false })); setTemplateErrors(value => ({ ...value, monthly: '' }));
+    const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), { includeMetadataChanges: true }, snap => {
+      if (!active || !actor.isCurrent(ownerToken)) return;
+      if (snap.metadata?.fromCache === false) serverConfirmed = true;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setMonthItems(data);
       }
+      templateRead.current.monthly = serverConfirmed; setTemplateReady(value => ({ ...value, monthly: serverConfirmed }));
+    }, () => {
+      if (!active || !actor.isCurrent(ownerToken)) return;
+      active = false; templateRead.current.monthly = false; setTemplateReady(value => ({ ...value, monthly: false }));
+      setTemplateErrors(value => ({ ...value, monthly: '점검 양식을 확인하지 못했습니다. 입력을 유지했습니다. 양식을 다시 조회해 주세요.' }));
     });
     return () => { active = false; unsubscribe(); };
-  }, [companyId]);
+  }, [companyId, ownerToken, templateAttempt.monthly]);
 
   const currentRecord = records.find(r => r.cycle === cycle && r.period === period);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     control.generation.current++; control.dirty.current = false;
     const existing = readRef.current.ready ? readRef.current.rows.find(r => r.cycle === cycle && r.period === period) : undefined;
     setSelected(existing ?? ({ ...emptyPeriodRecord(cycle, period, items) } as PeriodRecord)); setSaveError('');
-  }, [cycle, period]);
+  }, [cycle, period, ownerToken]);
   useEffect(() => {
     const existing = records.find(r => r.cycle === cycle && r.period === period);
     if (readRef.current.ready && existing && !selected?.id && !control.dirty.current && !control.busy.current) setSelected(existing);
   }, [records, recordsReady, cycle, period, selected?.id]);
 
-  const openHistory = (r: PeriodRecord) => { void control.change(() => {
+  const openHistory = (r: PeriodRecord) => { void changeSelection(() => {
     setCycle(r.cycle); if (r.cycle === 'weekly') setWeekPeriod(r.period); else setMonthPeriod(r.period);
     setSelected(r); setSaveError(''); setShowHistory(false);
   }); };
@@ -117,7 +163,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
   const isReadOnly = period !== actualCurrentPeriod;
 
   const editSelected = (update: React.SetStateAction<PeriodRecord | null>) => {
-    if (isReadOnly || control.busy.current) return;
+    if (isReadOnly || control.busy.current || !actor.isCurrent(ownerToken)) return;
     control.dirty.current = true; setSelected(update);
   };
   // 템플릿 항목이 추가돼 rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
@@ -147,7 +193,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
   };
 
   const handleSave = async () => {
-    if (!selected || isReadOnly || control.busy.current) return;
+    if (!selected || isReadOnly || control.busy.current || !canSend('save', selected.id)) return;
     if (!readRef.current.ready) { setSaveError('기존 기록 조회가 끝나야 저장할 수 있습니다. 입력을 유지한 채 다시 조회해 주세요.'); return; }
     if (!selected.id && readRef.current.rows.some(r => r.cycle === cycle && r.period === period)) { setSaveError('같은 기간에 저장된 기록이 있습니다. 저장된 기록을 열어 확인해 주세요.'); return; }
     const missingNote = selected.rows
@@ -155,7 +201,7 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
       .filter(Boolean) as string[];
     if (missingNote.length > 0) { setSaveError(`부적합 항목의 비고사항을 입력해주세요: ${missingNote.join(', ')}`); return; }
     setSaveError('');
-    control.busy.current = true; const token = control.generation.current;
+    control.busy.current = true; const token = control.generation.current; const requestOwner = ownerToken;
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
@@ -163,46 +209,46 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
       if (!selected.id) {
         const data: Omit<PeriodRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
         const id = await addItem('haccp_periodic_sanitation', data);
-        if (!control.current(token)) return;
-        control.dirty.current = false; setSelected({ ...data, id });
+        if (!(control.current(token) && actor.canAct('save', requestOwner))) return;
+        knowledge.rememberAck(id); control.dirty.current = false; setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateItem('haccp_periodic_sanitation', selected.id, update as any);
-        if (!control.current(token)) return;
+        if (!(control.current(token) && actor.canAct('save', requestOwner))) return;
         control.dirty.current = false; setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
-    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
-    } finally { if (control.current(token)) { control.busy.current = false; setSaving(false); } }
+    } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
+    } finally { if ((control.current(token) && actor.isCurrent(requestOwner))) { control.busy.current = false; setSaving(false); } }
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm || control.busy.current || !readRef.current.ready) return;
+    if (control.busy.current || !canSend('confirm', selected?.id)) return;
     if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
-    control.busy.current = true; const token = control.generation.current;
+    control.busy.current = true; const token = control.generation.current; const requestOwner = ownerToken;
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
       await updateItem('haccp_periodic_sanitation', selected.id, update);
-      if (!control.current(token)) return;
+      if (!(control.current(token) && actor.canAct('confirm', requestOwner))) return;
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
-    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
-    } finally { if (control.current(token)) { control.busy.current = false; setConfirming(false); } }
+    } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if ((control.current(token) && actor.isCurrent(requestOwner))) { control.busy.current = false; setConfirming(false); } }
   };
 
   const handleDelete = async (id: string) => {
-    if (control.busy.current || !control.active.current) return;
-    control.busy.current = true; const token = control.generation.current; setDeleting(true);
+    if (control.busy.current || !canSend('delete', id)) return;
+    control.busy.current = true; const token = control.generation.current; const requestOwner = ownerToken; setDeleting(true);
     try {
       if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-      if (!control.current(token)) return;
+      if (!(control.current(token) && actor.isCurrent(requestOwner)) || !canSend('delete', id)) return;
       await deleteItem('haccp_periodic_sanitation', id);
-      if (control.current(token) && selected?.id === id) { control.dirty.current = false; setSelected(null); }
-    } catch { if (control.current(token)) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안은 유지했습니다. 다시 조회해 주세요.'); }
-    } finally { if (control.current(token)) { control.busy.current = false; setDeleting(false); } }
+      if ((control.current(token) && actor.canAct('delete', requestOwner)) && selected?.id === id) { control.dirty.current = false; knowledge.clearSelection(); setSelected(null); }
+    } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안은 유지했습니다. 다시 조회해 주세요.'); }
+    } finally { if ((control.current(token) && actor.isCurrent(requestOwner))) { control.busy.current = false; setDeleting(false); } }
   };
 
   const resultBadge = (result: PeriodRow['result']) => {
@@ -215,16 +261,20 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
 
   return (
     <fieldset disabled={saving || confirming || deleting} className="flex min-w-0 flex-col gap-4 border-0 p-0 m-0">
+      {saveError && <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">⚠️ {saveError}</div>}
+      {!templateReady[cycle] && !templateErrors[cycle] && <p role="status" className="text-xs text-slate-600">점검 양식을 조회 중입니다. 입력은 유지되며 조회 후 저장할 수 있습니다.</p>}
+      {templateErrors[cycle] && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{templateErrors[cycle]}</p><button type="button" className="mt-2 rounded border border-slate-300 px-3 py-1.5" onClick={() => { templateRead.current[cycle] = false; setTemplateReady(value => ({ ...value, [cycle]: false })); setTemplateAttempt(value => ({ ...value, [cycle]: value[cycle] + 1 })); }}>양식 다시 조회</button></div>}
+
       {!recordsReady && !recordsError && <p role="status" className="text-xs text-slate-600">기존 기록을 조회 중입니다. 입력할 수 있으며 조회가 끝난 뒤 저장할 수 있습니다.</p>}
       {recordsError && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError}</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { readRef.current.ready = false; setRecordsReady(false); setReadAttempt(value => value + 1); }}>다시 조회</button></div>}
-      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { void control.change(() => { const existing = readRef.current.rows.find(r => r.cycle === cycle && r.period === period); if (existing) { setSelected(existing); setSaveError(''); } }); }}>저장된 기록 열기</button></div>}
+      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { void changeSelection(() => { const existing = readRef.current.rows.find(r => r.cycle === cycle && r.period === period); if (existing) { setSelected(existing); setSaveError(''); } }); }}>저장된 기록 열기</button></div>}
       {/* 주간/월간 서브 탭 + 기간 선택 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex gap-2 mb-4">
           {(['weekly', 'monthly'] as PeriodCycle[]).map(c => (
             <button
               key={c}
-              onClick={() => { if (c !== cycle) void control.change(() => { setCycle(c); setSaveError(''); }); }}
+              onClick={() => { if (c !== cycle) void changeSelection(() => { setCycle(c); setSaveError(''); }); }}
               className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
                 cycle === c ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
@@ -236,9 +286,9 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500">{cycleName} 기간:</span>
           {cycle === 'weekly' ? (
-            <input type="week" value={weekPeriod} onChange={e => { const value = e.target.value; if (value !== weekPeriod) void control.change(() => setWeekPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input type="week" value={weekPeriod} onChange={e => { const value = e.target.value; if (value !== weekPeriod) void changeSelection(() => setWeekPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
           ) : (
-            <input type="month" value={monthPeriod} onChange={e => { const value = e.target.value; if (value !== monthPeriod) void control.change(() => setMonthPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input type="month" value={monthPeriod} onChange={e => { const value = e.target.value; if (value !== monthPeriod) void changeSelection(() => setMonthPeriod(value)); }} className="border border-slate-300 rounded px-2 py-1 text-xs" />
           )}
           {currentRecord && (
             <span className="text-xs text-emerald-600 font-bold">✓ 저장된 기록</span>
@@ -303,14 +353,14 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
                     </span>
                   : <button
                       onClick={handleConfirm} title="확인 결과만 저장합니다. PDF는 별도 PDF 버튼에서 미리보고 저장합니다."
-                      disabled={confirming || !selected.id}
+                      disabled={confirming || !selected.id || !templateReady[cycle]}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
                     >
                       <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
                     </button>
               )}
               {!isReadOnly && (
-                <button onClick={handleSave} disabled={saving || !recordsReady || !!recordsError || (!selected.id && !!currentRecord)}
+                <button onClick={handleSave} disabled={saving || !templateReady[cycle] || !recordsReady || !!recordsError || (!selected.id && !!currentRecord)}
                   className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
                 >
                   <Save size={12} /> {saving ? '저장 중...' : '저장'}
@@ -318,12 +368,6 @@ export const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name
               )}
             </div>
           </div>
-
-          {saveError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">
-              ⚠️ {saveError}
-            </div>
-          )}
 
           {/* 인쇄 영역 */}
           <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
