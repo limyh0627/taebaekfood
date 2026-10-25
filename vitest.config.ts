@@ -18,7 +18,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     // Node 전용 시험은 node --test로 별도 실행하고 Vitest의 0-test 실패로 섞지 않는다.
-    exclude: [...configDefaults.exclude, 'scripts/dummyOrderExclusionPlan.test.mjs'],
+    exclude: [...configDefaults.exclude, 'scripts/dummyOrderExclusionPlan.test.mjs', 'work/**', 'privatework/**', 'records/**'],
     setupFiles: ['./src/test/setup.ts'],
     //  한 번 켠 화면이 다음 테스트로 새면 원인을 못 찾는다
     restoreMocks: true,
