@@ -1,3 +1,4 @@
+import RawManualCorrectionForm from '../items/components/RawManualCorrectionForm';
 import { planPurchaseOrderBatch, applyPurchaseOrderBatch, type PurchaseOrderBatchRow } from '../../shared/services/purchaseOrderBatchService';
 import {statementEditWrites} from '../../shared/services/statementEditWrites';
 import {partnerEditWrites} from '../../shared/services/partnerEditWrites';
@@ -640,9 +641,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [rawUsageDetail, setRawUsageDetail] = useState<RawDocUsageSelection | null>(null);
   useEffect(() => { setRawUsageDetail(null); }, [companyId, docYearMonth, rmActiveMaterial, currentView, docTab]);
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
-  // mode: 'neg'|'pos' = 사용량 정정, 'stocktake' = 실사(잔량을 입력값으로 리셋). 수불부 전용 — 로트·재고는 안 건드림.
-  const [rmCorrectionForm, setRmCorrectionForm] = useState<{ date: string; amount: string; isNegative: boolean; note: string; mode?: 'neg' | 'pos' | 'stocktake' }>(
-    { date: today(), amount: '', isNegative: true, note: '', mode: 'neg' });
+  const [rmCorrectionTargetMaterial, setRmCorrectionTargetMaterial] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
@@ -3937,7 +3936,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       //   특히 targetKg가 서류 잔량을 앵커해버려서, 관청에 내는 수불부가 창고 실사에 끌려다녔다.
                       //   (참깨 8월: 실사 줄이 서류 입고로 1,990kg 새어 들어와 있었다)
                       //   서류 쪽 정정이 필요하면 원료수불부 화면에서 따로 넣는다 — 재고 정정과 서류 정정은 별개다.
-                      .filter(e => !/^rm-stocktake-/.test(e.id ?? ''))
+                      .filter(e => {
+                        const manual = e as typeof e & {kind?:string;operationId?:string;source?:{type?:string}};
+                        return !/^rm-stocktake-/.test(e.id ?? '') && !(manual.kind === 'stocktake' && /^raw-manual-v1-/.test(manual.operationId ?? '') && manual.source?.type === 'stocktake');
+                      })
                       .map(e => {
                         const evidence = e as RawDocLedgerRecord;
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
@@ -4062,6 +4064,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <input type="month" aria-label="원료수불부 조회 월" value={docYearMonth} onChange={e => setDocYearMonth(e.target.value)} className={QUERY_FILTER_CONTROL_CLASS}/>
                         </label>
 </>} />
+                      <RawManualCorrectionForm companyId={companyId} employeeId={currentUser.id} actorName={currentUser.name}
+                        material={rmActiveMaterial} originalId={rmCorrectionTargetMaterial === rmActiveMaterial ? rmCorrectionTargetId : null} items={allItems}
+                        onClose={() => setRmCorrectionTargetId(null)}
+                        onOpenDraft={(material, originalId) => { setRmActiveMaterial(material); setRmCorrectionTargetMaterial(material); setRmCorrectionTargetId(originalId); }}
+                        onApplied={() => { setRmCorrectionTargetId(null); setLedgerReloadKey(k => k + 1); }}
+                        onBackdated={() => awaitNotice('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.')} />
                       {/* 헤더 */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -4136,7 +4144,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     <div className="flex items-center justify-end gap-1">
                                       {row.id && (
                                         <button
-                                          onClick={() => { setRmCorrectionTargetId(rmCorrectionTargetId === row.id ? null : row.id!); setRmCorrectionForm({ date: today(), amount: '', isNegative: true, note: '' }); }}
+                                          onClick={() => { setRmCorrectionTargetId(rmCorrectionTargetId === row.id ? null : row.id!); setRmCorrectionTargetMaterial(rmActiveMaterial); }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
                                         >정정</button>
                                       )}
@@ -4154,98 +4162,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     </div>
                                   </td>
                                 </tr>
-                                {rmCorrectionTargetId === row.id && (
-                                  <tr className="bg-amber-50 border-t border-amber-200">
-                                    <td colSpan={9} className="px-4 py-3">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-[11px] font-black text-amber-700">정정 추가</span>
-                                        <input type="date" value={rmCorrectionForm.date}
-                                          onChange={e => setRmCorrectionForm(f => ({ ...f, date: e.target.value }))}
-                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500" />
-                                        {/* 실사 = 잔량을 실물 값으로 그대로 리셋(앵커). 과거 장부 오차를 따지지 않고 끊는다.
-                                            수불부 전용 — 재고·로트는 안 건드린다(재고관리 화면에서 따로 맞춘다). */}
-                                        <select value={rmCorrectionForm.mode ?? (rmCorrectionForm.isNegative ? 'neg' : 'pos')}
-                                          onChange={e => setRmCorrectionForm(f => ({ ...f, mode: e.target.value as 'neg'|'pos'|'stocktake', isNegative: e.target.value !== 'pos' }))}
-                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500">
-                                          <option value="neg">사용량 감소 (−)</option>
-                                          <option value="pos">사용량 증가 (+)</option>
-                                          <option value="stocktake">실사 — 잔량을 이 값으로</option>
-                                        </select>
-                                        <input type="number" min="0" step="0.001"
-                                          placeholder={rmCorrectionForm.mode === 'stocktake' ? `실사 잔량(${unitOf(rmActiveMaterial)})` : `수량(${unitOf(rmActiveMaterial)})`}
-                                          value={rmCorrectionForm.amount}
-                                          onChange={e => setRmCorrectionForm(f => ({ ...f, amount: e.target.value }))}
-                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] w-24 outline-none focus:border-amber-500" />
-                                        <input type="text" placeholder="비고" value={rmCorrectionForm.note}
-                                          onChange={e => setRmCorrectionForm(f => ({ ...f, note: e.target.value }))}
-                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] flex-1 min-w-32 outline-none focus:border-amber-500" />
-                                        <button
-                                          onClick={async () => {
-                                            const amt = parseFloat(rmCorrectionForm.amount);
-                                            if (!amt || amt <= 0) return;
-                                            // L 입력은 kg으로 환산해서 저장 (수불부 canonical 단위)
-                                            const inputUnit = unitOf(rmActiveMaterial);
-                                            const density = DENSITY[rmActiveMaterial] ?? 1.0;
-                                            const amtKg = inputUnit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
-                                            const isStocktake = rmCorrectionForm.mode === 'stocktake';
-                                            const correctionUsed = rmCorrectionForm.isNegative ? -amtKg : amtKg;
-                                            const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
-                                            const baseNote = rmCorrectionForm.note
-                                              || (isStocktake ? '수불부 실사정정' : `정정 (원본: ${row.id})`);
-                                            /**
-                                             * **정정·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
-                                             *
-                                             * 예전엔 원장 줄을 먼저 쓰고 `mutateRawMaterialLots` 로 로트를 따로 맞췄다.
-                                             * 뒤가 실패하면 원장만 남았다. 이제 둘이 같이 성공하거나 같이 실패한다.
-                                             *
-                                             * 소급 판정(앵커보다 앞선 날짜)도 명령 안에서 한다 — 화면이 든 배열이 아니라
-                                             * **트랜잭션에서 읽은 상태**의 실사 정보로 본다(§10).
-                                             */
-                                            const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial, companyId);
-                                            if (!정정홀더) { alert(`원료 홀더를 못 찾았다: ${rmActiveMaterial}`); return; }
-                                            const opId = isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`;
-                                            const 공통정정 = {
-                                              operationId: opId,
-                                              ...rawLedgerKeys(정정홀더),
-                                              materialSnapshot: rmActiveMaterial,
-                                              effectiveAt: isStocktake
-                                                ? new Date().toISOString()
-                                                : (rmCorrectionForm.date === today() ? new Date().toISOString() : `${rmCorrectionForm.date}T12:00:00+09:00`),
-                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
-                                            };
-                                            const 정정옛칸 = {
-                                              note: baseNote + inputTag,
-                                              type: 'correction' as const,
-                                              ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
-                                              originalAmount: amt,
-                                              originalUnit: inputUnit as 'kg' | 'L',
-                                            };
-                                            //  실사는 목표 절대값으로 맞추는 앵커, 정정은 그 수량만큼 증감(used 양수 = 재고 감소).
-                                            const 정정명령 = isStocktake
-                                              ? { ...공통정정, source: { type: 'stocktake' as const, id: opId }, kind: 'stocktake' as const, targetKg: amtKg }
-                                              : correctionUsed > 0
-                                                ? { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'consume' as const, kg: correctionUsed }
-                                                : { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'receive' as const, kg: -correctionUsed, lot: { supplierName: '정정', qtyIn: 0 } };
-                                            const cr = await executeRawInventoryCommand(정정명령, {
-                                              newLotId: `lot-${opId}`, carryOverLotId: `carry-${opId}`, legacy: 정정옛칸,
-                                            });
-                                            if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.message}`); return; }
-                                            if (cr.status === 'conflict') { alert('정정 실패 — 같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
-                                            if (cr.status === 'applied' && cr.movement.backdatedBeforeStocktake) {
-                                              await awaitNotice('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
-                                            }
-                                            setRmCorrectionTargetId(null);
-                                            setLedgerReloadKey(k => k + 1);
-                                          }}
-                                          className="px-3 py-1 rounded-lg text-[11px] font-black bg-amber-600 text-white hover:bg-amber-700 transition-colors"
-                                        >저장</button>
-                                        <button onClick={() => setRmCorrectionTargetId(null)}
-                                          className="px-3 py-1 rounded-lg text-[11px] font-black bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors"
-                                        >취소</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
+
                               </React.Fragment>
                             ))}
                             {/* 합계 — 당월 총 입고·사용 */}
