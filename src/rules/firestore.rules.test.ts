@@ -1,16 +1,53 @@
+
+import {createEmulatorTestPolicy,cleanupOwnedResources,type EmulatorTestPolicy} from '../test/emulatorTestPolicy';
+let initializeApp: typeof import('firebase/app').initializeApp;
+let deleteApp: typeof import('firebase/app').deleteApp;
+let connectAuthEmulator: typeof import('firebase/auth').connectAuthEmulator;
+let getAuth: typeof import('firebase/auth').getAuth;
+let signInWithEmailAndPassword: typeof import('firebase/auth').signInWithEmailAndPassword;
+let initAdmin: typeof import('firebase-admin/app').initializeApp;
+let deleteAdmin: typeof import('firebase-admin/app').deleteApp;
+let adminAuth: typeof import('firebase-admin/auth').getAuth;
+let adminFirestore: typeof import('firebase-admin/firestore').getFirestore;
+let initializeTestEnvironment: typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let assertSucceeds: typeof import('@firebase/rules-unit-testing').assertSucceeds;
+let assertFails: typeof import('@firebase/rules-unit-testing').assertFails;
+let doc: typeof import('firebase/firestore').doc;
+let getDoc: typeof import('firebase/firestore').getDoc;
+let setDoc: typeof import('firebase/firestore').setDoc;
+let updateDoc: typeof import('firebase/firestore').updateDoc;
+let deleteDoc: typeof import('firebase/firestore').deleteDoc;
+let getDocs: typeof import('firebase/firestore').getDocs;
+let collection: typeof import('firebase/firestore').collection;
+let query: typeof import('firebase/firestore').query;
+let where: typeof import('firebase/firestore').where;
+let runTransaction: typeof import('firebase/firestore').runTransaction;
+let writeBatch: typeof import('firebase/firestore').writeBatch;
+let getFirestore: typeof import('firebase/firestore').getFirestore;
+let connectFirestoreEmulator: typeof import('firebase/firestore').connectFirestoreEmulator;
+async function loadRuntime(policy:EmulatorTestPolicy){
+  policy.assertCurrentEnvironment(process.env); policy.assertOwned(policy.projectId);
+  ({ initializeApp, deleteApp } = await import('firebase/app'));
+  ({ connectAuthEmulator, getAuth, signInWithEmailAndPassword } = await import('firebase/auth'));
+  ({ initializeApp: initAdmin, deleteApp: deleteAdmin } = await import('firebase-admin/app'));
+  ({ getAuth: adminAuth } = await import('firebase-admin/auth'));
+  ({ getFirestore: adminFirestore } = await import('firebase-admin/firestore'));
+  ({ initializeTestEnvironment, assertSucceeds, assertFails } = await import('@firebase/rules-unit-testing'));
+  ({ doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction, writeBatch, getFirestore, connectFirestoreEmulator } = await import('firebase/firestore'));
+  policy.assertCurrentEnvironment(process.env);
+}
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
-import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { initializeApp as initAdmin, deleteApp as deleteAdmin } from 'firebase-admin/app';
-import { getAuth as adminAuth } from 'firebase-admin/auth';
-import { getFirestore as adminFirestore } from 'firebase-admin/firestore';
-import {
-  initializeTestEnvironment, assertSucceeds, assertFails,
-  type RulesTestEnvironment,
-} from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction, writeBatch, getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import type { FirebaseApp } from 'firebase/app';
+
+
+
+
+
+import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
+
+
 
 /**
  * **회사별·메뉴별 권한을 규칙이 실제로 막는가.**
@@ -36,22 +73,21 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, 
  * 안 켜져 있으면 이 파일은 통째로 건너뛴다(`describe.skipIf`) — 다른 시험까지 막지 않는다.
  */
 
-const documentRulesPort = Number((process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8082').split(':')[1]);
-const 에뮬있나 = async () => {
-  try {
-    const r = await fetch(`http://127.0.0.1:${documentRulesPort}/`, { signal: AbortSignal.timeout(1500) });
-    return r.status < 500;
-  } catch { return false; }
-};
-
-const 켜짐 = await 에뮬있나();
+const mainPolicy=createEmulatorTestPolicy(process.env,'rules',randomUUID);
+const leavePolicy=createEmulatorTestPolicy(process.env,'leave-rules',randomUUID);
+const companyPolicy=createEmulatorTestPolicy(process.env,'company-rules',randomUUID);
+const 켜짐=mainPolicy.enabled;
+const documentRulesPort=mainPolicy.port;
 let env: RulesTestEnvironment;
-const ownRulesProject = 'demo-rules-' + randomUUID().slice(0,8);
+const ownRulesProject = mainPolicy.projectId;
 let ownRulesAdmin: ReturnType<typeof initAdmin>;
 async function clearOwnRulesFixtures() {
   if (!ownRulesAdmin) return;
+  mainPolicy.assertCurrentEnvironment(process.env); mainPolicy.assertOwned(ownRulesAdmin.options.projectId!); mainPolicy.assertOwned(env.projectId);
   const database = adminFirestore(ownRulesAdmin);
-  for (const collection of await database.listCollections()) for (const row of (await collection.get()).docs) await database.recursiveDelete(row.ref);
+  await cleanupOwnedResources((await database.listCollections()).map(collection=>async()=>{
+    await cleanupOwnedResources((await collection.get()).docs.map(row=>()=>database.recursiveDelete(row.ref)));
+  }));
 }
 
 //  주체 넷 — claim 모양은 `functions/src/employeeLogin.ts` 가 발급하는 것 그대로다.
@@ -88,19 +124,23 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     await assertSucceeds(deleteDoc(target));
   });
   it.skipIf(process.env.CASH_WRITE_RULES_AUTH_TEST !== 'true')('현금·전표·기초 감사 서버 저장: 실제 로그인·양사 조회·직접 쓰기 거절·원문 보존', async () => {
-    if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8082' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099') throw new Error('격리 에뮬레이터 주소를 확인하세요.');
+    mainPolicy.assertCurrentEnvironment(process.env); mainPolicy.assertOwned(env.projectId);
     const prefix = `cash-rules-${randomUUID()}`;
-    const admin = initAdmin({ projectId: 'demo-taebaekfood-local' }, prefix);
-    const database = adminFirestore(admin), users: string[] = [], apps: FirebaseApp[] = [], paths: string[] = [];
+    const admin = initAdmin({ projectId: ownRulesProject }, prefix);
+    const users: string[] = [], apps: FirebaseApp[] = [], paths: string[] = [];
+    let primaryError:unknown;
     try {
+      mainPolicy.assertOwned(admin.options.projectId!);
+      const database = adminFirestore(admin);
       const clients = [];
       for (const companyId of ['taebaek', 'punghoe'] as const) {
         const uid = `${prefix}-${companyId}`, employeeId = `${uid}-employee`, email = `${uid}@example.invalid`, password = `${randomUUID()}Aa1!`;
         await adminAuth(admin).createUser({ uid, email, password }); users.push(uid);
         await adminAuth(admin).setCustomUserClaims(uid, { employeeId, companyId, isAdmin: true });
-        const app = initializeApp({ projectId: 'demo-taebaekfood-local', apiKey: 'local-emulator-only' }, uid); apps.push(app);
-        const auth = getAuth(app); connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-        const db = getFirestore(app); connectFirestoreEmulator(db, '127.0.0.1', 8082);
+        mainPolicy.assertCurrentEnvironment(process.env);
+        const app = initializeApp({ projectId: ownRulesProject, apiKey: 'local-emulator-only' }, uid); apps.push(app); mainPolicy.assertOwned(app.options.projectId!);
+        const auth = getAuth(app); connectAuthEmulator(auth, mainPolicy.authURL, { disableWarnings: true });
+        const db = getFirestore(app); connectFirestoreEmulator(db, mainPolicy.host, mainPolicy.port);
         await signInWithEmailAndPassword(auth, email, password);
         expect(auth.currentUser!.uid).not.toBe(employeeId);
         expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({ employeeId, companyId, isAdmin: true });
@@ -118,9 +158,10 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
         const uid = `${prefix}-${companyId}-staff`, employeeId = `${uid}-employee`, email = `${uid}@example.invalid`, password = `${randomUUID()}Aa1!`;
         await adminAuth(admin).createUser({ uid, email, password }); users.push(uid);
         if (companyId !== 'no-claim') await adminAuth(admin).setCustomUserClaims(uid, { employeeId, companyId, isAdmin: false });
-        const app = initializeApp({ projectId: 'demo-taebaekfood-local', apiKey: 'local-emulator-only' }, uid); apps.push(app);
-        const auth = getAuth(app); connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-        const db = getFirestore(app); connectFirestoreEmulator(db, '127.0.0.1', 8082);
+        mainPolicy.assertCurrentEnvironment(process.env);
+        const app = initializeApp({ projectId: ownRulesProject, apiKey: 'local-emulator-only' }, uid); apps.push(app); mainPolicy.assertOwned(app.options.projectId!);
+        const auth = getAuth(app); connectAuthEmulator(auth, mainPolicy.authURL, { disableWarnings: true });
+        const db = getFirestore(app); connectFirestoreEmulator(db, mainPolicy.host, mainPolicy.port);
         await signInWithEmailAndPassword(auth, email, password);
         expect(auth.currentUser!.uid).not.toBe(employeeId);
         const claims = (await auth.currentUser!.getIdTokenResult(true)).claims;
@@ -218,14 +259,12 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
           expect((await database.doc(newPath).get()).exists).toBe(false);
         }
       }
-    } finally {
-      for (const path of paths) {
-        if (!path.includes(prefix)) throw new Error('자기 문서가 아닌 정리 경로입니다.');
-        await database.doc(path).delete(); expect((await database.doc(path).get()).exists).toBe(false);
-      }
-      for (const uid of users) await adminAuth(admin).deleteUser(uid);
-      for (const app of apps) await deleteApp(app);
-      await deleteAdmin(admin);
+    } catch(error) { primaryError=error; throw error; } finally {
+      await cleanupOwnedResources([
+        ...paths.map(path=>async()=>{ mainPolicy.assertCurrentEnvironment(process.env); mainPolicy.assertOwned(admin.options.projectId!); if(!path.includes(prefix))throw new Error('자기 문서가 아닌 정리 경로입니다.'); const database=adminFirestore(admin); await database.doc(path).delete(); expect((await database.doc(path).get()).exists).toBe(false); }),
+        ...users.map(uid=>async()=>{ mainPolicy.assertCurrentEnvironment(process.env); mainPolicy.assertOwned(admin.options.projectId!); await adminAuth(admin).deleteUser(uid); }),
+        ...apps.map(app=>()=>deleteApp(app)),()=>deleteAdmin(admin),
+      ],primaryError);
     }
   }, 90_000);
   describe('OEM 취소 가공비 부재 단건 조회', () => {
@@ -321,14 +360,17 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     for(const name of ['noticeOperations','noticePhotoUploads','noticeStoragePaths']) { const own=doc(관리자(),name,'notice-protected'); await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),name,'notice-protected'),{companyId:'taebaek'}));await assertFails(getDoc(own));await assertFails(setDoc(own,{companyId:'taebaek'}));await assertFails(deleteDoc(own)); }
   });
   beforeAll(async () => {
+    await loadRuntime(mainPolicy);
+    mainPolicy.assertOwned(ownRulesProject);
     env = await initializeTestEnvironment({
       projectId: ownRulesProject,
-      firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: documentRulesPort },
+      firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: mainPolicy.host, port: documentRulesPort },
     });
   });
-  afterAll(async () => { await clearOwnRulesFixtures(); await env?.cleanup(); if(ownRulesAdmin) await deleteAdmin(ownRulesAdmin); });
+  afterAll(async () => { await cleanupOwnedResources([clearOwnRulesFixtures,()=>env?.cleanup(),()=>ownRulesAdmin&&deleteAdmin(ownRulesAdmin)]); });
 
   beforeEach(async () => {
+    mainPolicy.assertCurrentEnvironment(process.env); mainPolicy.assertOwned(env.projectId);
     if(!ownRulesAdmin) ownRulesAdmin = initAdmin({projectId:ownRulesProject},ownRulesProject);
     await clearOwnRulesFixtures();
     //  규칙을 끄고 밑자료를 깐다 — 시험하려는 건 **읽고 쓰는 쪽**이지 심는 쪽이 아니다.
@@ -978,11 +1020,11 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
 });
 
 
-const leaveReceiptHost = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+const leaveReceiptHost = leavePolicy.enabled && leavePolicy.port === 8182;
 describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙', () => {
  let isolated:RulesTestEnvironment;
- beforeAll(async()=>{isolated=await initializeTestEnvironment({projectId:'demo-leave-rules-'+randomUUID().slice(0,8),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
- afterAll(async()=>{if(!isolated)return;await isolated.withSecurityRulesDisabled(async context=>{await deleteDoc(doc(context.firestore(),'leaveRequestOperations','receipt'));});await isolated.cleanup();});
+ beforeAll(async()=>{await loadRuntime(leavePolicy);isolated=await initializeTestEnvironment({projectId:leavePolicy.projectId,firestore:{host:leavePolicy.host,port:leavePolicy.port,rules:readFileSync('firestore.rules','utf8')}});leavePolicy.assertCurrentEnvironment(process.env);leavePolicy.assertOwned(isolated.projectId);await isolated.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'leaveRequestOperations','receipt'),{companyId:'taebaek',status:'applied'});});});
+ afterAll(async()=>{if(!isolated)return;await cleanupOwnedResources([async()=>{leavePolicy.assertCurrentEnvironment(process.env);leavePolicy.assertOwned(isolated.projectId);await isolated.clearFirestore();},()=>isolated.cleanup()]);});
  it('계정 등록 삭제 영수증은 generic 경로까지 서버 전용이며 기존 관리자 직접 권한은 유지한다',async()=>{
   const manager=isolated.authenticatedContext('account-manager',{employeeId:'account-manager',companyId:'taebaek',isAdmin:true}).firestore();
   const staff=isolated.authenticatedContext('account-staff',{employeeId:'account-staff',companyId:'taebaek',isAdmin:false}).firestore();
@@ -1124,12 +1166,15 @@ describe.skipIf(!leaveReceiptHost)('휴가 명령 영수증 서버 전용 규칙
  },30000);
 });
 
-describe.skipIf(!켜짐)('회사정보 요청 전용 Rules',()=>{
+describe.skipIf(!companyPolicy.enabled)('회사정보 요청 전용 Rules',()=>{
  it('같은회사 직원 settings 직접 권한은 유지하고 회사정보 receipt는 직접 접근할 수 없다',async()=>{
-  const projectId='demo-company-rules-'+randomUUID().slice(0,8);
-  const isolated=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8'),host:'127.0.0.1',port:documentRulesPort}});
+  await loadRuntime(companyPolicy);
+  const projectId=companyPolicy.projectId;
+  const isolated=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync('firestore.rules','utf8'),host:companyPolicy.host,port:companyPolicy.port}});
   const paths=['settings/taebaek','companyInfoOperations/own'];
+  let primaryError:unknown;
   try{
+   companyPolicy.assertCurrentEnvironment(process.env);companyPolicy.assertOwned(isolated.projectId);
    const employee=isolated.authenticatedContext('u',{employeeId:'e',companyId:'taebaek',isAdmin:false}).firestore();
    const foreign=isolated.authenticatedContext('p',{employeeId:'p',companyId:'punghoe',isAdmin:true}).firestore();
    await assertSucceeds(setDoc(doc(employee,'settings','taebaek'),{companyId:'taebaek',name:'회사'}));
@@ -1141,6 +1186,6 @@ describe.skipIf(!켜짐)('회사정보 요청 전용 Rules',()=>{
    await assertFails(getDoc(doc(employee,'companyInfoOperations','own')));
    await assertFails(setDoc(doc(employee,'companyInfoOperations','own'),{companyId:'taebaek'}));
    await assertFails(deleteDoc(doc(employee,'companyInfoOperations','own')));
-  }finally{await isolated.withSecurityRulesDisabled(async ctx=>{for(const path of paths)await deleteDoc(doc(ctx.firestore(),path));});await isolated.cleanup();}
+  }catch(error){primaryError=error;throw error;}finally{await cleanupOwnedResources([async()=>{companyPolicy.assertCurrentEnvironment(process.env);companyPolicy.assertOwned(isolated.projectId);await isolated.withSecurityRulesDisabled(async ctx=>{await cleanupOwnedResources(paths.map(path=>()=>deleteDoc(doc(ctx.firestore(),path))));});},()=>isolated.cleanup()],primaryError);}
  },30000);
 });

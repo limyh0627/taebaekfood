@@ -1,18 +1,42 @@
+import {randomUUID} from 'node:crypto';
+
+import {createEmulatorTestPolicy,cleanupOwnedResources,type EmulatorTestPolicy} from '../test/emulatorTestPolicy';
+let initializeTestEnvironment: typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let assertFails: typeof import('@firebase/rules-unit-testing').assertFails;
+let assertSucceeds: typeof import('@firebase/rules-unit-testing').assertSucceeds;
+let collection: typeof import('firebase/firestore').collection;
+let deleteDoc: typeof import('firebase/firestore').deleteDoc;
+let doc: typeof import('firebase/firestore').doc;
+let getDoc: typeof import('firebase/firestore').getDoc;
+let getDocs: typeof import('firebase/firestore').getDocs;
+let query: typeof import('firebase/firestore').query;
+let setDoc: typeof import('firebase/firestore').setDoc;
+let updateDoc: typeof import('firebase/firestore').updateDoc;
+let where: typeof import('firebase/firestore').where;
+async function loadRuntime(policy:EmulatorTestPolicy){
+  policy.assertCurrentEnvironment(process.env); policy.assertOwned(policy.projectId);
+  ({ initializeTestEnvironment, assertFails, assertSucceeds } = await import('@firebase/rules-unit-testing'));
+  ({ collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } = await import('firebase/firestore'));
+  policy.assertCurrentEnvironment(process.env);
+}
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
-const address = process.env.FIRESTORE_EMULATOR_HOST;
+import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
+
+
+const policy=createEmulatorTestPolicy(process.env,'purchase-rules',randomUUID);
 let env: RulesTestEnvironment;
 const context = (admin: boolean, companyId = 'taebaek') => env.authenticatedContext(`${companyId}-${admin}`, { employeeId: 'e', companyId, isAdmin: admin }).firestore();
 const catalog = { id: 'u', companyId: 'taebaek', itemId: 'raw', partnerId: 'partner', purchaseUnit: '자루', unitKg: 22.5, isDefault: false, active: true, createdAt: '2026-10-11T00:00:00Z', updatedAt: '2026-10-11T00:00:00Z' };
-describe.skipIf(!address)('매입 단위 등록표 실제 보안 규칙', () => {
+describe.skipIf(!policy.enabled)('매입 단위 등록표 실제 보안 규칙', () => {
   beforeAll(async () => {
-    const [host, port] = address!.split(':');
-    env = await initializeTestEnvironment({ projectId: process.env.GCLOUD_PROJECT || 'demo-taebaekfood-local', firestore: { host, port: Number(port), rules: readFileSync('firestore.rules', 'utf8') } });
+    await loadRuntime(policy);
+    const {host,port,projectId}=policy;
+    env = await initializeTestEnvironment({ projectId, firestore: { host, port, rules: readFileSync('firestore.rules', 'utf8') } });
   });
-  afterAll(async () => { await env?.cleanup(); });
+  afterAll(async () => { await cleanupOwnedResources([async()=>{if(env){policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);await env.clearFirestore();}},()=>env?.cleanup()]); });
   beforeEach(async () => {
+    policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
     await env.clearFirestore();
     await env.withSecurityRulesDisabled(async ctx => {
       const db = ctx.firestore();

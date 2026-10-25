@@ -1,23 +1,57 @@
+import {randomUUID} from 'node:crypto';
+
+import {createEmulatorTestPolicy,cleanupOwnedResources,type EmulatorTestPolicy} from '../../test/emulatorTestPolicy';
+let initializeAdminApp: typeof import('firebase-admin/app').initializeApp;
+let deleteAdminApp: typeof import('firebase-admin/app').deleteApp;
+let getAdminFirestore: typeof import('firebase-admin/firestore').getFirestore;
+let createInventoryOpening: typeof import('../../../functions/src/inventoryOpeningCommand').createInventoryOpening;
+let executeFinancialOpening: typeof import('../../../functions/src/financialOpeningCommand').executeFinancialOpening;
+let initializeTestEnvironment: typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let doc: typeof import('firebase/firestore').doc;
+let getDoc: typeof import('firebase/firestore').getDoc;
+let setDoc: typeof import('firebase/firestore').setDoc;
+let operationDocId: typeof import('../rawInventoryCore').operationDocId;
+let buildJournals: typeof import('../buildJournals').buildJournals;
+let trialBalance: typeof import('../journal').trialBalance;
+async function loadRuntime(policy:EmulatorTestPolicy){
+  policy.assertCurrentEnvironment(process.env); policy.assertOwned(policy.projectId);
+  ({ initializeApp: initializeAdminApp, deleteApp: deleteAdminApp } = await import('firebase-admin/app'));
+  ({ getFirestore: getAdminFirestore } = await import('firebase-admin/firestore'));
+  ({ createInventoryOpening } = await import('../../../functions/src/inventoryOpeningCommand'));
+  ({ executeFinancialOpening } = await import('../../../functions/src/financialOpeningCommand'));
+  ({ initializeTestEnvironment } = await import('@firebase/rules-unit-testing'));
+  ({ doc, getDoc, setDoc } = await import('firebase/firestore'));
+  ({ operationDocId } = await import('../rawInventoryCore'));
+  ({ buildJournals } = await import('../buildJournals'));
+  ({ trialBalance } = await import('../journal'));
+  policy.assertCurrentEnvironment(process.env);
+}
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
-import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import { createInventoryOpening } from '../../../functions/src/inventoryOpeningCommand';
-import { executeFinancialOpening, type FinancialOpeningInput } from '../../../functions/src/financialOpeningCommand';
-import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
-import { operationDocId } from '../rawInventoryCore';
-import { buildJournals } from '../buildJournals';
-import { trialBalance } from '../journal';
+
+
+
+import type { FinancialOpeningInput } from '../../../functions/src/financialOpeningCommand';
+
+import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
+
+import type { Firestore } from 'firebase/firestore';
+
+
+
+
 import type { CashAccount, IssuedStatement, AccountCode } from '../types';
 import type { LoanContract } from '../loanLedger';
 
-vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-const { saveOpeningBalancesWithDb, createOpeningAccountCodeWithDb } = await import('./firebaseService');
-const ready = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(r => r.status < 500).catch(() => false);
+vi.mock('../firebase', () => ({ db: null, functions: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>{throw new Error('이 시험은 callable 경로를 사용하지 않습니다.');}}));
+let saveOpeningBalancesWithDb:typeof import('./firebaseService').saveOpeningBalancesWithDb;
+let createOpeningAccountCodeWithDb:typeof import('./firebaseService').createOpeningAccountCodeWithDb;
+const policy=createEmulatorTestPolicy(process.env,'inventory-opening',randomUUID);
 let env: RulesTestEnvironment;
 let admin: ReturnType<typeof initializeAdminApp>;
 let adminDb: ReturnType<typeof getAdminFirestore>;
+async function clearOwned(){policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);if(admin)policy.assertOwned(admin.options.projectId!);await env.clearFirestore();}
 const releaseId='mixed-opening-test';
 const inventory=(_store:Firestore,companyId:'taebaek'|'punghoe',date:string,itemId:string,quantity:number,value:number)=>createInventoryOpening(adminDb,{uid:'inventory-admin',token:{companyId,isAdmin:true}},{companyId,date,itemId,quantity,value,releaseId});
 const financial=(input:Omit<FinancialOpeningInput,'companyId'|'operationId'|'releaseId'>)=>executeFinancialOpening(adminDb,'punghoe','inventory-admin',{...input,companyId:'punghoe',operationId:'mixed-'+input.kind,releaseId} as FinancialOpeningInput);
@@ -26,15 +60,20 @@ const createOpeningPartnerBalanceWithDb=(_store:Firestore,_company:string,date:s
 const createLoanWithOpeningWithDb=(_store:Firestore,_company:string,loan:LoanContract)=>financial({kind:'loan-create',loan} as any);
 const date = '2026-07-31';
 
-describe.skipIf(!ready)('품목별 기초 재고 (Firestore Emulator)', () => {
+describe.skipIf(!policy.enabled)('품목별 기초 재고 (Firestore Emulator)', () => {
   beforeAll(async () => {
-    env = await initializeTestEnvironment({ projectId: 'demo-inventory-opening', firestore: {
-      rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8082,
+    await loadRuntime(policy);
+    ({saveOpeningBalancesWithDb,createOpeningAccountCodeWithDb}=await import('./firebaseService'));
+    policy.assertCurrentEnvironment(process.env);
+    env = await initializeTestEnvironment({ projectId: policy.projectId, firestore: {
+      rules: readFileSync('firestore.rules', 'utf8'), host: policy.host, port: policy.port,
     } });
-    admin=initializeAdminApp({projectId:'demo-inventory-opening'},'mixed-opening-admin');adminDb=getAdminFirestore(admin);
+    policy.assertCurrentEnvironment(process.env);
+    policy.assertOwned(env.projectId);
+    admin=initializeAdminApp({projectId:policy.projectId},policy.appName);adminDb=getAdminFirestore(admin);
   }, 90_000);
   beforeEach(async () => {
-    await env.clearFirestore();
+    await clearOwned();
     await adminDb.doc('appMeta/releaseCutover').set({status:'active',releaseId});
     await env.withSecurityRulesDisabled(async ctx => {
       await setDoc(doc(ctx.firestore(), 'openingBalances', 'main-punghoe'), {
@@ -48,11 +87,11 @@ describe.skipIf(!ready)('품목별 기초 재고 (Firestore Emulator)', () => {
       });
     });
   });
-  afterAll(async () => { await env?.cleanup();if(admin)await deleteAdminApp(admin); });
+  afterAll(async () => { await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup(),()=>admin&&deleteAdminApp(admin)]); });
   const store = () => env.authenticatedContext('inventory-admin', { employeeId: 'admin', companyId: 'punghoe', isAdmin: true }).firestore() as unknown as Firestore;
 
   it('빈 회사의 명시 계정 등록·재시도·충돌·권한과 실제 122 기초 장부를 연결한다', async () => {
-    await env.clearFirestore();
+    await clearOwned();
     const account: AccountCode = { id: 'opening-account-punghoe-122', code: '122', name: '비품', type: '자산', normalBalance: 'debit' };
     expect(await createOpeningAccountCodeWithDb(store(), 'punghoe', account)).toBe('created');
     await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'accountCodes', account.id), { auditNote: '보존' }, { merge: true }); });
@@ -114,7 +153,7 @@ describe.skipIf(!ready)('품목별 기초 재고 (Firestore Emulator)', () => {
   });
 
   it('빈 회사에서 계좌·거래처·대출·재고 기초를 앱 명령으로 연결하면 장부 차대가 일치한다', async () => {
-    await env.clearFirestore();
+    await clearOwned();
     await adminDb.doc('appMeta/releaseCutover').set({status:'active',releaseId});
     await env.withSecurityRulesDisabled(async ctx => {
       await setDoc(doc(ctx.firestore(), 'partners', 'p1'), { id: 'p1', companyId: 'punghoe', name: '기초 거래처' });
