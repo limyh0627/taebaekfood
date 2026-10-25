@@ -50,7 +50,7 @@ export function buildRawManualCorrection(context:RawManualContext,rmCorrectionFo
      : { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'receive' as const, kg: -correctionUsed, lot: { supplierName: '정정', qtyIn: 0 } };
  return{version:1,companyId,actorUid:uid,employeeId:context.employeeId,operationId:opId,command:정정명령,options:{now,newLotId:`lot-${opId}`,carryOverLotId:`carry-${opId}`,legacy:정정옛칸},display:{originalId:row.id,material:rmActiveMaterial,amount:rmCorrectionForm.amount,unit:inputUnit as 'kg'|'L',date:rmCorrectionForm.date,note:rmCorrectionForm.note,mode:isStocktake?'stocktake':rmCorrectionForm.isNegative?'neg':'pos'}};
 }
-type Handle={actor:{uid:string|undefined;companyId:CompanyId;employeeId:string};owner:RawManualOwner|null;draft:RawManualDraft;copy:RawManualCopy|null;error:string;queue:Promise<void>};
+type Handle={actor:{uid:string|undefined;companyId:CompanyId;employeeId:string};owner:RawManualOwner|null;draft:RawManualDraft;copy:RawManualCopy|null;error:string;queue:Promise<void>;preSendEpoch:number};
 export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>void;onBackdated?:()=>Promise<unknown>;onOpenDraft?:(material:string,originalId:string)=>void}){
  const [,paint]=useState(0),mounted=useRef(true),uid=auth.currentUser?.uid;
  const getSignal=useOutputScope(context.companyId,'raw-manual:'+context.employeeId);
@@ -66,7 +66,7 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
  const handleRef=useRef<{key:string;value:Handle}|null>(null);
  const readInitial=():Handle=>{
   const owner=holder&&uid?{companyId:context.companyId,actorUid:uid,employeeId:context.employeeId,rawItemId:holder.id}:null;
-  const h:Handle={actor:{uid,companyId:context.companyId,employeeId:context.employeeId},owner,draft:initialRawManualDraft(context.originalId??'',context.material),copy:null,error:'',queue:Promise.resolve()};
+  const h:Handle={actor:{uid,companyId:context.companyId,employeeId:context.employeeId},owner,draft:initialRawManualDraft(context.originalId??'',context.material),copy:null,error:'',queue:Promise.resolve(),preSendEpoch:0};
   try{if(owner){h.copy=readRawManualAttempt(owner);if(h.copy)h.draft=structuredClone(h.copy.entry.draft);}}catch(error){h.error=String(error);}return h;
  };
  if(!handleRef.current||handleRef.current.key!==holderKey)handleRef.current={key:holderKey,value:readInitial()};
@@ -76,6 +76,7 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
  useEffect(()=>{if(!actorScope.uid)return;return registerSessionWork({uid:actorScope.uid,companyId:actorScope.companyId,employeeId:actorScope.employeeId},{name:'원료 수동정정',flush:async retry=>{
   const failures:string[]=[];
   await Promise.all([...handles.current].filter(handle=>handle.actor.uid===actorScope.uid&&handle.actor.companyId===actorScope.companyId&&handle.actor.employeeId===actorScope.employeeId).map(async handle=>{
+   handle.preSendEpoch++;
    await handle.queue;
    if(retry&&handle.error&&handle.owner){try{handle.copy=await checkpointRawManualDraft(handle.owner,handle.copy?.encoded??null,structuredClone(handle.draft));handle.error='';}catch(error){handle.error=String(error);}}
    if(handle.error)failures.push(handle.error);
@@ -109,24 +110,28 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
   const owner=Symbol(),signal=getSignal();if(signal.aborted)return;runOwner.current=owner;setBusy(true);setNotice('');
   const targetHandle=h,runScope=actorScope,runSelection=selection;
   const current=()=>mounted.current&&scope.current===runScope&&selectionRef.current===runSelection&&handleRef.current?.value===targetHandle&&auth.currentUser?.uid===runScope.uid&&!signal.aborted;
+  const preSendEpoch=h.preSendEpoch,canSend=()=>current()&&!checkpointBlocked()&&h.preSendEpoch===preSendEpoch;
+  const blockedNotice=()=>{if(current()){setNotice('로그아웃 보관 확인이 시작되어 새 정정 요청을 전송하지 않았습니다. 입력과 보관 원문은 유지했습니다. '+(!h.copy||h.copy.entry.state==='draft'?'작업으로 돌아간 뒤 명시적으로 다시 저장할 수 있습니다.':'보관된 요청의 결과 조회 또는 명시 작업을 선택해 주세요.'));setRecoveryOpen(true);refresh();}};
+  const beforeSend=()=>{if(action==='inspect'?current():canSend())return true;blockedNotice();return false;};
+  let sent=false;
   try{
-   await h.queue;if(!current())return;if(h.error&&!source)throw Error(h.error);
+   await h.queue;if(!beforeSend())return;if(h.error&&!source)throw Error(h.error);
    let copy=source??h.copy;
-   if(!copy){if(action!=='apply')throw Error('보관된 최초 요청을 먼저 선택해 주세요.');await checkpoint(h.draft);if(!current())return;if(h.error)throw Error(h.error);copy=h.copy;}
+   if(!copy){if(action!=='apply')throw Error('보관된 최초 요청을 먼저 선택해 주세요.');await checkpoint(h.draft);if(!beforeSend())return;if(h.error)throw Error(h.error);copy=h.copy;}
    if(!copy)throw Error('요청 보관을 확인하지 못했습니다.');
    if(copy.entry.owner.actorUid!==runScope.uid||copy.entry.owner.companyId!==runScope.companyId||copy.entry.owner.employeeId!==runScope.employeeId)throw Error('현재 계정의 보관 요청을 선택해 주세요.');
    if(copy.entry.state==='draft'){
     if(action!=='apply')throw Error('전송 전 초안입니다. 저장하거나 입력을 계속할 수 있습니다.');
     if(copy.entry.owner.rawItemId===h.owner?.rawItemId&&JSON.stringify(copy.entry.draft)!==JSON.stringify(h.draft))throw Error('현재 입력과 보관된 초안이 다릅니다. 현재 입력을 다시 보관한 뒤 저장해 주세요.');
     const request=buildRawManualCorrection(latest.current,copy.entry.draft,runScope.uid!);
-    copy=await prepareRawManualAttempt(copy.entry.owner,copy,request,current);if(!current())return;h.copy=copy;
+    copy=await prepareRawManualAttempt(copy.entry.owner,copy,request,canSend);if(!beforeSend())return;h.copy=copy;
    }
    if(copy.entry.state==='terminal'&&action==='apply')throw Error('이미 처리 결과를 확인했습니다. 새 정정은 명시적으로 새 작업을 시작해 주세요.');
    const packet=copy.entry.request;if(!packet)throw Error('최초 송신 원문이 없습니다.');
-   if((action==='apply'||action==='cancel')&&copy.entry.state!=='terminal')copy=await submitRawManualAttempt(copy.entry.owner,copy,current);
-   if(!current())return;if(copy.entry.owner.rawItemId===h.owner?.rawItemId)h.copy=copy;
+   if((action==='apply'||action==='cancel')&&copy.entry.state!=='terminal')copy=await submitRawManualAttempt(copy.entry.owner,copy,canSend);
+   if(!beforeSend())return;if(copy.entry.owner.rawItemId===h.owner?.rawItemId)h.copy=copy;
    setSelected(copy);refresh();
-   const result=await rawManualCorrection(action,packet,{signal,isCurrent:current});if(!current())return;
+   const result=await rawManualCorrection(action,packet,{signal,isCurrent:current,beforeSend:()=>{if(!current()||action!=='inspect'&&!canSend())throw Error('로그아웃 보관 확인 또는 화면 변경으로 아직 요청을 전송하지 않았습니다.');sent=true;}});if(!current())return;
    let saved:RawManualCopy;
    try{saved=await recordRawManualResult(copy.entry.owner,copy,result,current);}
    catch(error){if(!current())return;if(!(error instanceof RawManualCasConflict)&&['applied','cancelled','rejected'].includes(result.status)){setConfirmed({copy,result});setSelected(copy);setNotice(result.message+' 서버 처리 결과는 확인했지만 기기 기록을 갱신하지 못했습니다. 원문은 보존했습니다. 결과 조회 또는 확인 결과 다시 보관을 선택해 주세요.');setRecoveryOpen(true);return;}throw error;}
@@ -137,7 +142,7 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
     if(result.movement?.backdatedBeforeStocktake){await latest.current.onBackdated?.();if(!current())return;}
     if(!latest.current.originalId||latest.current.originalId===packet.display.originalId)latest.current.onApplied?.();
    }
-  }catch(error){if(current()){setNotice(String(error));setRecoveryOpen(true);refresh();}}
+  }catch(error){if(current()){if(!sent&&action!=='inspect'&&!canSend())blockedNotice();else{setNotice(sent?'정정 요청의 처리 결과를 확인하지 못했습니다. '+String(error)+' 입력과 최초 요청 번호는 보존했습니다. 보관된 요청에서 결과 조회를 선택해 주세요.':String(error));setRecoveryOpen(true);refresh();}}}
   finally{if(runOwner.current===owner){runOwner.current=null;if(mounted.current&&scope.current===runScope)setBusy(false);}}
  };
  const startNew=async(copy:RawManualCopy)=>{

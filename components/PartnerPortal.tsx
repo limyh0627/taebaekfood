@@ -36,8 +36,9 @@ interface PartnerPortalProps {
 
 const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getUid,readOrder,partners, items, partnerItems, onOrderSubmit, onExit }) => {
   const getSignal=useOutputScope(companyId,employeeId);
-  const { pending,readPending,startNewOrder, step, partnerIdInput, selectedClient, cart, isSuccess, saving, error, associatedProducts, updateCart, 단가, totalAmount, handleSubmit, handleAuth, changePartnerInput, backToAuth, exit, orderAgain } = usePartnerPortalDraft({companyId,employeeId,getUid,getSignal,readOrder,partners, items, partnerItems, onOrderSubmit, onExit });
+  const { storageError,confirmedLocally,retryCheckpoint,readCheckpoint,restoreCheckpoint,checkpointText,pending,readPending,startNewOrder, step, partnerIdInput, selectedClient, cart, isSuccess, saving, error, associatedProducts, updateCart, 단가, totalAmount, handleSubmit, handleAuth, changePartnerInput, backToAuth, exit, orderAgain } = usePartnerPortalDraft({companyId,employeeId,getUid,getSignal,readOrder,partners, items, partnerItems, onOrderSubmit, onExit });
 
+  const storageCard=storageError&&<section role="alert" className="m-4 space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm"><p>{confirmedLocally?'주문 접수는 확인했지만 이 기기의 기록을 갱신하지 못했습니다. 최초 요청은 보존했습니다.':'현재 입력의 기기 보관을 확인하지 못했습니다. 입력은 화면에 보존했습니다.'}</p><p>{storageError}</p><button type="button" disabled={saving} onClick={()=>void retryCheckpoint()} className="rounded border px-3 py-2">다시 보관</button><button type="button" disabled={saving} onClick={readCheckpoint} className="ml-2 rounded border px-3 py-2">기기 기록 다시 읽기</button><button type="button" disabled={saving} onClick={()=>void restoreCheckpoint()} className="ml-2 rounded border px-3 py-2">보관본 열기</button><label className="block">입력 원문 복사<textarea readOnly value={checkpointText} className="mt-1 w-full rounded border p-2"/></label></section>;
   const recoveryCard=pending&&<section aria-label="원주문 결과 확인" className="m-4 break-words rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
     <p>확인할 주문 번호: {pending.order.id}</p><p>최초 주문: {pending.order.partnerName} · {pending.order.totalAmount.toLocaleString()}원</p>
     <ul>{pending.order.items.map((row,index)=><li key={index}>{row.name} {row.quantity}개 · {row.price.toLocaleString()}원</li>)}</ul>
@@ -46,7 +47,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getU
     {pending.result?.kind==='found'&&<div aria-label="현재 등록된 주문"><p>현재 주문 번호: {pending.result.record.id}</p><p>현재 상태: {STATUS_LABEL[String(pending.result.record.status)]??'상태 확인 필요'}</p><p>현재 금액: {Number(pending.result.record.totalAmount??0).toLocaleString()}원</p><p>현재 배송일: {String(pending.result.record.deliveryDate??'').slice(0,10)}</p><ul>{(Array.isArray(pending.result.record.items)?pending.result.record.items:[]).map((row,index)=><li key={index}>{row.name} {row.quantity}개 · {Number(row.price??0).toLocaleString()}원</li>)}</ul></div>}
     <button type="button" disabled={!!pending.readRun||saving} onClick={()=>void readPending()} className="mt-2 rounded border px-3 py-2 disabled:opacity-40">{pending.readRun?'확인 중…':pending.result?'주문 다시 조회':'주문 저장 여부 확인'}</button>
     {pending.matches&&<button type="button" disabled={!!pending.readRun||saving} onClick={startNewOrder} className="ml-2 rounded border px-3 py-2">확인 후 새 주문 작성</button>}
-    <p className="mt-2 text-xs">조회 결과가 없거나 다르면 다시 조회해 주세요. 화면을 닫거나 새로고침해도 서버 요청은 취소되지 않으며, 이 화면의 원문은 이후 복구를 보장하지 않습니다.</p>
+    <p className="mt-2 text-xs">조회 결과가 없거나 다르면 다시 조회해 주세요. 화면을 닫거나 새로고침해도 서버 요청은 취소되지 않으며, 이 기기에 보관된 원문은 같은 계정으로 다시 확인할 수 있습니다. 보관 오류가 있으면 원문 복사 또는 다시 보관으로 확인해 주세요.</p>
   </section>;
 
   if (step === 'auth') {
@@ -57,7 +58,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getU
             <ShoppingBag size={40} />
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-2">거래처 주문 포털</h2>
-          {recoveryCard}
+          {storageCard}{recoveryCard}
           <p className="text-slate-500 font-medium mb-10">귀사의 거래처 코드를 입력하여<br/>상품 주문을 시작하세요.</p>
           
           <form onSubmit={handleAuth} className="space-y-4">
@@ -93,7 +94,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getU
            <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
               <CheckCircle2 size={56} />
            </div>
-           <h3 className="text-3xl font-black text-slate-900 mb-4">주문이 접수되었습니다!</h3>
+           <h3 className="text-3xl font-black text-slate-900 mb-4">주문이 접수되었습니다!</h3>{storageCard}
            <p className="text-slate-500 font-medium leading-relaxed mb-10">
               {selectedClient?.name}님의 주문이 성공적으로 전송되었습니다.<br/>
               관리자가 확인 후 발송 처리를 시작합니다.
@@ -129,7 +130,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getU
          </button>
       </header>
 
-      {recoveryCard}
+      {storageCard}{recoveryCard}
       {error && <p role="alert" className="px-6 py-2 text-sm text-slate-700">{error}</p>}
       <main className="flex-1 p-6 space-y-8 max-w-4xl mx-auto w-full">
          <div className="bg-indigo-600 rounded-[32px] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">

@@ -4,7 +4,7 @@ import {inventoryWriterSame} from '../../../functions/src/shared/inventoryWriter
 import type {RawManualCorrectionRequest,RawManualCorrectionResult} from '../../../functions/src/rawManualCorrectionCommand';
 export type {RawManualCorrectionRequest,RawManualCorrectionResult};
 export type RawManualCorrectionAction='apply'|'inspect'|'cancel';
-type Scope={signal:AbortSignal;isCurrent?:()=>boolean};
+type Scope={signal:AbortSignal;isCurrent?:()=>boolean;beforeSend?:()=>void};
 /** 서버가 직렬화한 원문을 검증한다. 클라이언트에 별도 canonical 직렬화 규칙을 만들지 않는다. */
 export async function verifyRawManualCorrectionResult(value:unknown,request:RawManualCorrectionRequest):Promise<RawManualCorrectionResult>{
  const row=value as RawManualCorrectionResult;
@@ -26,6 +26,6 @@ export async function rawManualCorrection(action:RawManualCorrectionAction,reque
  const token=await user.getIdTokenResult();check();
  if(token.claims.companyId!==fixed.companyId||token.claims.employeeId!==fixed.employeeId)throw Error('최초 정정과 같은 회사·직원 계정으로 확인해 주세요. 요청은 보존했습니다.');
  const call=httpsCallable<{action:RawManualCorrectionAction;request:RawManualCorrectionRequest},RawManualCorrectionResult>(functions,'rawManualCorrectionCommand');
- check();const response=await call({action,request:fixed});check();
+ check();scope.beforeSend?.();const response=await call({action,request:fixed});check();
  const result=await verifyRawManualCorrectionResult(response.data,fixed);check();return result;
 }

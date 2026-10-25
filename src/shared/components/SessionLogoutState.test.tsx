@@ -3,6 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import SessionLogoutState from './SessionLogoutState';
+it('중앙 보관 안내는 등록된 업무만 확인하며 전체 업무 복구를 보장하지 않는다',()=>{render(<SessionLogoutState state="checking" error="" onRetry={vi.fn()}/>);expect(screen.getByRole('status')).toHaveTextContent('등록된 작업 입력');expect(screen.getByRole('status')).toHaveTextContent('아직 로그아웃하지 않았습니다');expect(screen.queryByText(/모든 업무/)).toBeNull();});
 it('보관 확인 실패는 아직 로그아웃 전임을 구분하고 재보관과 작업 복귀를 제공한다',()=>{const retry=vi.fn(),back=vi.fn();render(<SessionLogoutState state="checkpoint-failed" error="원료 입력 기기 보관 실패" onRetry={retry} onReturn={back}/>);expect(screen.getByRole('alert')).toHaveTextContent('기기 보관 실패');fireEvent.click(screen.getByRole('button',{name:'다시 보관하고 로그아웃'}));fireEvent.click(screen.getByRole('button',{name:'작업으로 돌아가기'}));expect(retry).toHaveBeenCalledOnce();expect(back).toHaveBeenCalledOnce();});
 
 it('진행 중에는 확인 상태만 표시하고 재시도나 다른 로그인 진입을 제공하지 않는다', () => {
