@@ -61,14 +61,14 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   }, [owner]);
 
   useEffect(() => {
-    let active = true, serverConfirmed = false;
+    let active = true;
     readRef.current.records = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_sanitation'), where('companyId', '==', companyId));
     const stop = onSnapshot(q, {includeMetadataChanges: true}, snap => {
       if (!active || !actor.isCurrent(owner)) return;
       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
       knowledge.observe(rows.map(row => row.id).filter(Boolean));
-      if (snap.metadata.fromCache === false) serverConfirmed = true;
+      const serverConfirmed = snap.metadata?.fromCache === false;
       const ready = serverConfirmed && !readRef.current.blocked;
       readRef.current.records = ready; readRef.current.rows = rows;
       setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
@@ -81,7 +81,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   }, [owner, readAttempt]);
 
   useEffect(() => {
-    let active = true, serverConfirmed = false;
+    let active = true;
     readRef.current.template = false; setTemplateReady(false); setTemplateError('');
     const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), {includeMetadataChanges: true}, snap => {
       if (!active || !actor.isCurrent(owner)) return;
@@ -89,7 +89,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
       }
-      if (snap.metadata.fromCache === false) serverConfirmed = true;
+      const serverConfirmed = snap.metadata?.fromCache === false;
       readRef.current.template = serverConfirmed; setTemplateReady(serverConfirmed);
     }, () => {
       if (!active || !actor.isCurrent(owner)) return;

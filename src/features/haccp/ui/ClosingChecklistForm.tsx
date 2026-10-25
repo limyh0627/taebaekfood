@@ -72,30 +72,30 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
 
 
   useEffect(() => {
-    let active = true, serverConfirmed = false;
+    let active = true;
     readRef.current.ready = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_closing_checklist'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
       knowledge.observe(rows.map(row => row.id!).filter(Boolean));
-      if (snap.metadata?.fromCache === false) serverConfirmed = true;
+      const serverConfirmed = snap.metadata?.fromCache === false;
       const ready = serverConfirmed && !readRef.current.blocked;
       readRef.current = { ready, blocked: readRef.current.blocked, rows }; setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
     }, () => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
-      active = false; serverConfirmed = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
+      active = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
       setRecordsError('기존 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 저장해 주세요.');
     });
     return () => { active = false; unsubscribe(); };
   }, [companyId, ownerToken, readAttempt]);
 
   useEffect(() => {
-    let active = true, serverConfirmed = false;
+    let active = true;
     templateRead.current.closing = false; setTemplateReady(value => ({ ...value, closing: false })); setTemplateErrors(value => ({ ...value, closing: '' }));
     const unsubscribe = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), { includeMetadataChanges: true }, snap => {
       if (!active || !actor.isCurrent(ownerToken)) return;
-      if (snap.metadata?.fromCache === false) serverConfirmed = true;
+      const serverConfirmed = snap.metadata?.fromCache === false;
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
