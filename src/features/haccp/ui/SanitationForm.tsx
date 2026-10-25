@@ -17,6 +17,10 @@ import {TH,TD,TDL} from './ChecklistFormParts';
 import {SanitationPrintable,SanitationMonthlyCover} from './SanitationPrint';
 import {downloadAsPDF} from '../infrastructure/downloadAsPDF';
 
+const isSanitationComplete = (rows: SanitationRow[], requiredCount: number): boolean =>
+  Array.from({length: Math.max(requiredCount, rows.length)}, (_, index) => rows[index])
+    .every(row => !!row && (row.result === 'pass' || row.result === 'fail'));
+
 const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationRecord, 'id'> => ({
   checkDate: todayStr(),
   checkZone: '',
@@ -49,6 +53,8 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const [confirming, setConfirming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const currentItems = useRef({owner, items: SANITATION_ITEMS});
+  if (currentItems.current.owner !== owner) currentItems.current = {owner, items: SANITATION_ITEMS};
   const [templateItems, setTemplateItems] = useState<{ item: string; standard: string }[]>(SANITATION_ITEMS);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +95,10 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       if (!active || !actor.isCurrent(owner)) return;
       if (snap.exists()) {
         const data = snap.data().items;
-        if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
+        if (Array.isArray(data) && data.length > 0) {
+          // React 반영 전 확인 처리도 현재 필수 항목을 검사해야 한다.
+          currentItems.current = {owner, items: data}; setTemplateItems(data);
+        }
       }
       const serverConfirmed = snap.metadata?.fromCache === false;
       readRef.current.template = serverConfirmed; setTemplateReady(serverConfirmed);
@@ -207,7 +216,16 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
 
   const isToday = selected ? selected.checkDate === today : false;
   const isReadOnly = selected ? !isToday : false;
-  const allChecked = selected ? selected.rows.every(r => r.result === 'pass' || r.result === 'fail') : false;
+  const allChecked = selected ? isSanitationComplete(selected.rows, templateItems.length) : false;
+  const completionNow = (record: SanitationRecord) => currentItems.current.owner === owner && isSanitationComplete(record.rows, currentItems.current.items.length);
+  const persistedCompletionNow = (record: SanitationRecord) => {
+    const saved = acknowledgements.known(sanitationKey(record), readRef.current.records);
+    return !!record.id && !!saved && saved.id === record.id && saved.checkDate === record.checkDate && saved.checkTime === record.checkTime && completionNow(saved);
+  };
+  const persistedComplete = selected ? persistedCompletionNow(selected) : false;
+  const persistedCompletionMessage = isReadOnly
+    ? '저장된 과거 점검 기록의 항목이 미완료입니다. 다시 조회하거나 위의 오늘 점검 시간을 선택해 주세요.'
+    : '저장된 점검 기록의 항목이 미완료입니다. 입력은 보존했습니다. 먼저 저장한 뒤 확인해 주세요.';
 
   // 템플릿 항목이 추가돼 rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
   const padRows = (rows: SanitationRow[]): SanitationRow[] =>
@@ -299,16 +317,21 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       alert('점검표를 먼저 저장해주세요.');
       return;
     }
-    if (!allChecked) {
+    if (!canSend('confirm', selected.id)) return;
+    if (!completionNow(selected)) {
       alert('모든 점검 항목을 확인(적합/부적합) 완료 후 확인할 수 있습니다.');
       return;
     }
+    if (!persistedCompletionNow(selected)) { setSaveError(persistedCompletionMessage); return; }
     const action = begin('confirm', selected.id); if (!action) return;
     const captured = acknowledgements.captureConfirm(sanitationKey(selected), selected.id);
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
     try {
+      if (!action.beforeSend()) return;
+      if (!completionNow(selected)) { setSaveError('현재 양식의 모든 점검 항목을 완료해 주세요. 입력은 보존했습니다.'); return; }
+      if (!persistedCompletionNow(selected)) { setSaveError(persistedCompletionMessage); return; }
       const update = { confirmedBy: userName, confirmedAt: now };
       await updateItem('haccp_sanitation', selected.id, update);
       if (!action.allowed()) return;
@@ -392,6 +415,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       {(recordsError || templateError) && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError || templateError}</p><button type="button" onClick={retryRead} className="mt-2 rounded border border-slate-300 px-3 py-1.5">다시 조회</button></div>}
       {selected && !selected.id && recordsReady && records.some(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime) && <div role="alert" className="text-xs"><p>같은 날짜와 시간의 저장된 기록이 있습니다. 초안은 유지했습니다.</p><button type="button" onClick={() => { const existing = readRef.current.rows.find(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime); if (existing) openHistory(existing); }}>저장된 기록 열기</button></div>}
 
+      {canConfirm && selected?.id && recordsReady && templateReady && !persistedComplete && <p role="status" className="text-sm text-slate-600">{persistedCompletionMessage} <button type="button" disabled={saving || confirming || deleting} onClick={retryRead}>기록 다시 조회</button></p>}
       {saveError && actor.isCurrent(owner) && <div role="alert" className="border border-slate-200 bg-white text-xs rounded-lg px-3 py-2">{saveError}<button type="button" className="ml-2 underline" onClick={retryRead}>기록 다시 조회</button>{serverCandidate && <button type="button" className="ml-2 underline" onClick={openServerRecord}>저장된 기록 열기</button>}</div>}
       {/* ── 오늘 날짜 + 슬롯 선택 ────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -550,11 +574,11 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                     </span>
                   : <button
                       onClick={handleConfirm}
-                      disabled={confirming || !selected.id || !allChecked || !recordsReady || !templateReady}
-                      title={!selected.id ? '저장 후 확인할 수 있습니다' : !allChecked ? '모든 항목 체크 완료 후 확인 가능' : ''}
+                      disabled={confirming || !selected.id || !allChecked || !persistedComplete || !recordsReady || !templateReady}
+                      title={!selected.id ? '저장 후 확인할 수 있습니다' : !allChecked ? '모든 항목 체크 완료 후 확인 가능' : !persistedComplete ? persistedCompletionMessage : ''}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : '관리자 확인'}
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : !persistedComplete ? (isReadOnly ? '저장본 미완료' : '먼저 저장') : '관리자 확인'}
                     </button>
               )}
               {!isReadOnly && (
@@ -737,7 +761,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                 <div className="h-10 flex items-center justify-center">
                   {selected.confirmedBy
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
-                    : canConfirm && selected.id && allChecked
+                    : canConfirm && selected.id && allChecked && persistedComplete
                       ? <button
                           onClick={handleConfirm} title="확인 결과만 저장합니다. PDF는 별도 PDF 버튼에서 미리보고 저장합니다."
                           disabled={confirming || !recordsReady || !templateReady}
