@@ -241,15 +241,14 @@ const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
 import { db, auth } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
+import { DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
+import { docPumok, docOilKg, docSpec, addOilByRaw, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { buildPaymentEntry } from '../../shared/payment';
 import { nextOrderNo, nextPoNo, cardNoLabel } from '../../shared/cardNo';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, unpackComponent, unitsPerBoxOf, type OrderUnitInputs } from '../../shared/orderUnits';
-import { boxSpecUpdates } from '../../shared/boxSpec';
 import {
   addItem,
   createOpeningAccountCode,
@@ -2297,30 +2296,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const readPendingDirectoryDeletes=()=>{const scope=currentEmployeeEditScope();return scope?pendingDirectoryDeletes(scope):[];};
   const readDirectoryDeleteReferences=()=>{const scope=currentEmployeeEditScope();return scope?directoryDeleteReferences(scope):[];};
   const directoryDeleteBindings={onPrepareDirectoryDelete:handlePrepareDirectoryDelete,onConfirmDirectoryDelete:handleConfirmDirectoryDelete,onInspectDirectoryDelete:handleInspectDirectoryDelete,onCancelDirectoryDelete:handleCancelDirectoryDelete,onReadPendingDirectoryDeletes:readPendingDirectoryDeletes,onReadDirectoryDeleteReferences:readDirectoryDeleteReferences};
-
-  // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
-  const seedItemFormulas = async () => {
-    if (itemFormulas.length > 0) {
-      alert(`이미 item_formula에 ${itemFormulas.length}개 항목이 있습니다.`);
-      return;
-    }
-    const writes: { collection: typeof COL.itemFormula; id: string; data: Record<string, unknown> }[] = [];
-    let count = 0;
-    for (const [parentKey, rows] of Object.entries(PRODUCT_FORMULA)) {
-      for (const row of rows) {
-        const id = `formula-${parentKey}-${row.raw}`.replace(/\s/g, '_');
-        writes.push({ collection: COL.itemFormula, id, data: {
-          parent_key: parentKey,
-          child_name: row.raw,
-          ratio: row.ratio,
-          yield_rate: 1.0,
-        } });
-        count++;
-      }
-    }
-    await writeMany(writes);
-    alert(`item_formula 시딩 완료: ${count}개 항목`);
-  };
 
   /** 정기 고정비 → 자금(출금) 전표로 생성 (계정코드·기간 지정된 것만, id로 중복 방지).
    *  임대료·전기·통신 등 대부분 자동이체로 돈이 나가는 비용이라 자금(현금 출금)으로 잡는다.

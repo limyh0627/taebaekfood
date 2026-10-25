@@ -134,54 +134,6 @@ const EditableDeliveryDate: React.FC<{ label: string; value: string; onChange: (
   <DateChipButton block label={label} value={value} text={fmtYYMMDD(new Date(value))} onChange={onChange} />
 );
 
-
-interface CardDatePickerButtonProps {
-  label: string;
-  value?: string;
-  onChange: (value: string) => void;
-  className: string;
-  children: React.ReactNode;
-  disabled?: boolean;
-}
-
-/**
- * 카드의 짧은 날짜 텍스트는 버튼으로 동작하고, 숨겨진 네이티브 입력은 값 선택만 담당한다.
- * 투명 input을 텍스트 위에 덮으면 브라우저별 클릭 영역 차이로 선택기가 열리지 않을 수 있다.
- */
-const CardDatePickerButton: React.FC<CardDatePickerButtonProps> = ({ label, value = '', onChange, className, children, disabled = false }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const openPicker = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    const input = inputRef.current;
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    try {
-      input.showPicker?.();
-    } catch {
-      input.click();
-    }
-  };
-
-  return (
-    <span className="relative inline-flex">
-      <button type="button" onClick={openPicker} disabled={disabled} className={className} aria-label={label} title="제조일을 선택하면 소비기한이 365일 뒤로 자동 계산됩니다">
-        {children}
-      </button>
-      <input
-        ref={inputRef}
-        type="date"
-        value={value.slice(0, 10)}
-        disabled={disabled}
-        aria-label={`${label} 날짜 선택`}
-        className="pointer-events-none absolute bottom-0 left-1/2 h-px w-px -translate-x-1/2 opacity-0"
-        tabIndex={-1}
-        onClick={event => event.stopPropagation()}
-        onChange={event => { if (event.target.value) onChange(event.target.value); }}
-      />
-    </span>
-  );
-};
-
 /**
  * 카드 안 칩 공통 모양 — 테두리·패딩·모서리는 전부 같고 색만 다르다.
  * 전엔 어떤 칩은 테두리가 있고(부자재·라벨) 어떤 건 없었으며(주문·진행률·팔레트)

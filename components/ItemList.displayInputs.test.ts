@@ -18,7 +18,8 @@ it.each(['unitsPerBoxOf','itemKg','unpackQty'])('실제 %s 잔여 호출은 명�
  const parsed=ts.createSourceFile('ItemList.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const calls:string[]=[];
  const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===name)calls.push(node.getText(parsed));ts.forEachChild(node,visit);};
- visit(parsed);expect(calls).toHaveLength(name==='unitsPerBoxOf'?11:name==='itemKg'?2:1);
+ visit(parsed);expect(calls.length).toBeGreaterThan(0);
+
  setBomIndex(b.bom);setPackIndex(b.pack);
  const empty={bom:buildBomIndex([],[]),pack:buildPackIndex([])};
  for(const call of calls){
@@ -29,6 +30,7 @@ it.each(['unitsPerBoxOf','itemKg','unpackQty'])('실제 %s 잔여 호출은 명�
   expect(evaluate(empty)).toBe(name==='unitsPerBoxOf'?0:name==='itemKg'?1:2);
   expect(evaluate()).toBe(name==='unitsPerBoxOf'?0:name==='itemKg'?1:2);
  }
+ for(const expression of calls){const call=ts.createSourceFile('call.ts',expression,ts.ScriptTarget.Latest,true).statements[0] as ts.ExpressionStatement;expect(ts.isCallExpression(call.expression)).toBe(true);const args=(call.expression as ts.CallExpression).arguments;const input=args[name==='unpackQty'?3:1];expect(input).toBeDefined();expect(['orderUnitInputs','inputs']).toContain(input.getText());}
  expect(getBomIndex()).toBe(b.bom);expect(getPackIndex()).toBe(b.pack);
 });
 const start=source.indexOf('  const groupedRows ='),end=source.indexOf('  const visibleRows =',start);

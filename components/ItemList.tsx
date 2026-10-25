@@ -83,7 +83,7 @@ import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVol
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
-import { addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
+import { fetchCollection } from '../src/shared/services/firebaseService';
 import { durableBoxUnpack } from '../src/shared/services/boxUnpackService';
 import { durableItemStockAdd } from '../src/shared/services/itemStockAddService';
 import { beginNewItemInventoryAttempt, listItemInventoryAttempts, assertItemInventoryAttempt, cancelPreparedItemInventoryAttempt, deleteItemInventoryAttempt, bindItemInventoryAttemptScope, ItemInventoryConflictError, type ItemInventoryRequest, type ItemInventoryRetained, type ItemInventoryOutcome } from '../src/shared/itemInventoryAttempt';
@@ -141,10 +141,6 @@ const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; classN
 // 초성열(ㄱ~ㅎ)은 통째로 남겨 초성 검색을 유지. 각 토큰은 모두 매칭돼야 한다(AND).
 const parseSearchTokens = (kw: string): string[] =>
   (kw ?? '').split('+').flatMap(seg => seg.match(/[가-힣ㄱ-ㅎ]+|[a-zA-Z0-9]+/g) ?? []);
-
-// 재고 마감(재고 현황판) — 완제품 실물 카운트 스냅샷
-interface StockClosingRow { itemId: string; name: string; spec?: string; boxSize: number; boxes: number; loose: number; total: number; }
-interface StockClosing { id: string; date: string; closedBy: string; createdAt: string; items: StockClosingRow[]; totalStock: number; }
 
 /**
  * 목록의 갈래 딱지 — **카테고리**(참기름·들기름·참깨…).
@@ -457,18 +453,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
   };
 
   const [showClosingModal, setShowClosingModal] = useState(false);
-  const closingRef = useRef<HTMLDivElement>(null);
-  // 재고 현황 — 재고 마감·만들기를 하나로 합친 편집 화면(showClosingModal)
-
-  // ── 재고 마감(완제품 실물 카운트) ──
-  const [editClosingId, setEditClosingId] = useState<string | null>(null); // 실사 수정 중인 품목
-  const [editClosingQty, setEditClosingQty] = useState('');
-  const [closingDate, setClosingDate] = useState(() => today());
-  const [closingSaving, setClosingSaving] = useState(false);
-  const [closingSavedAt, setClosingSavedAt] = useState('');
-  const [pastClosings, setPastClosings] = useState<StockClosing[]>([]);
-  const [showClosingHistory, setShowClosingHistory] = useState(false);
-  const [viewingClosing, setViewingClosing] = useState<StockClosing | null>(null);
   const [closingSearch, setClosingSearch] = useState('');
   const [closingPage, setClosingPage] = useState(0);
   // 재고 현황 모달 필터 — 구분(전체/작업완료/재고) + 분류(전체/참기름/들기름/가루)
@@ -553,13 +537,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
     [allClosingItems],
   );
 
-  useEffect(() => subscribeToCollection<StockClosing>('stockClosings', setPastClosings, [where('companyId', '==', companyId)]), [companyId]);
-
   // 마감 모달 열 때: 초기화 + 앱 계산 재고로 미리 채움(직원은 실물과 다른 것만 수정)
   useEffect(() => {
     if (!showClosingModal) return;
-    setViewingClosing(null);
-    setClosingSavedAt('');
     setClosingSearch('');
     setClosingPage(0);
     setClosingView('all');
@@ -567,49 +547,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     setClosingSpecSel(new Set());
     setClosingPartner('');
     setClosingGrade('');
-
-    setEditClosingId(null);
-    setEditClosingQty('');
-  }, [showClosingModal]); // eslint-disable-line react-hooks/exhaustive-deps
-
-
-  // 숨김 보드(closingRef)를 PNG blob으로 캡처 — 공유·문서함 업로드 공용
-  const captureClosingBlob = async (): Promise<Blob | null> => {
-    if (!closingRef.current) return null;
-    const { default: html2canvas } = await import('html2canvas') as any;
-    const canvas = await html2canvas(closingRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    return await new Promise<Blob | null>(res => canvas.toBlob((b: Blob | null) => res(b), 'image/png'));
-  };
-
-  // 문서함 대분류/중분류 보장 (없으면 생성)
-  const ensureCabinetPath = async (cat: string, sub: string) => {
-    const companyConstraint = [where('companyId', '==', companyId)];
-    const cats = await fetchCollection<{ id: string; name: string }>('fileCabinetCategories', companyConstraint);
-    if (!cats.some(c => c.name === cat)) await addItem('fileCabinetCategories', { name: cat, order: cats.length, createdAt: new Date().toISOString(), companyId });
-    const subs = await fetchCollection<{ id: string; category: string; name: string }>('fileCabinetSubCategories', companyConstraint);
-    if (!subs.some(s => s.category === cat && s.name === sub)) {
-      await addItem('fileCabinetSubCategories', { category: cat, name: sub, order: subs.filter(s => s.category === cat).length, createdAt: new Date().toISOString(), companyId });
-    }
-  };
-
-  // 입력한(값 넣은) 품목만 대상 — 안 건드린 품목은 그대로 둔다
-  // 실사 반영 — 입력값을 재고로 SET(맞춤)
-  // 만들기 — 입력값만큼 재고에 ADD(생산분 추가)
-  // 실사 수정 — 선택 품목의 재고를 입력값으로 SET(맞춤)
-  const applyEditClosing = async () => {
-    if (!editClosingId) return;
-    const p = items.find(x => x.id === editClosingId);
-    if (!p) return;
-    const q = parseInt(editClosingQty || '', 10);
-    if (isNaN(q) || q < 0) { alert('수량을 입력하세요.'); return; }
-    setClosingSaving(true);
-    try {
-      await onUpdateItem({ ...p, stock: q });
-      setEditClosingId(null); setEditClosingQty('');
-    } catch (e) {
-      alert('반영 실패: ' + ((e as any)?.message ?? ''));
-    } finally { setClosingSaving(false); }
-  };
+  }, [showClosingModal]);
   // 품목 추가하기 — 만들기 모달(검색·수량·확정으로 재고 ADD) 열기
   const makeTrigger = useRef<{node:HTMLButtonElement;scope:typeof inventoryScope.current}|null>(null);
   const closeMakeModal = () => {
@@ -620,21 +558,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
     setIsAddModalOpen(false);
   };
   const openMakeModal = (event:React.MouseEvent<HTMLButtonElement>) => { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; makeTrigger.current = {node:event.currentTarget,scope:inventoryScope.current}; setMakeBusy(false); setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setMakeVessel(''); setMakeGrade(''); setIsAddModalOpen(true); };
-
-  const shareClosingImage = async () => {
-    try {
-      const blob = await captureClosingBlob();
-      if (!blob) return;
-      const file = new File([blob], `재고현황_${viewingClosing?.date || closingDate}.png`, { type: 'image/png' });
-      const nav = navigator as any;
-      if (nav.canShare && nav.canShare({ files: [file] })) {
-        try { await nav.share({ files: [file], title: `재고 현황 ${viewingClosing?.date || closingDate}` }); return; } catch { /* 취소 시 다운로드로 폴백 */ }
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* noop */ }
-  };
 
   const [topTab, setTopTab] = useState<TopTab>('product');
   const [activeTab, setActiveTab] = useState<MainTab>(mode === 'lots' ? 'lots' : 'master');
@@ -3607,27 +3530,11 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
     {/* ── 재고 마감 모달 ───────────────────────────────────────────── */}
     {showClosingModal && (() => {
-      const src = viewingClosing;
-      const displayDate = src ? src.date : closingDate;
       // 그리드 행: 조회면 저장값, 신규면 완제품 목록(입력)
       //  실사는 **그 품목의 재고 단위**로 한 칸에 센다 — 박스 품목은 박스로, 낱개 품목은 개로.
       //  박스와 낱개는 별개 품목이라(BOM 으로 연결만 돼 있다) 한 품목에 둘이 섞일 일이 없다.
       //  예전엔 boxes·loose 두 칸에 개입수를 곱했는데, 그 개입수가 **무조건 12** 였다.
       type GridRow = { itemId: string; label: string; spec?: string; editable: boolean; isChild?: boolean; group?: string };
-      // label은 **이름만**(끝의 용량은 뗀다) — 규격은 옆 칩(ProductSpecChip)이 '350ml * 20'으로 보여준다.
-      // withSpec을 쓰면 이름 속 '/350ml'과 칩이 겹쳐 규격이 두 번 뜬다.
-      const toRows = (arr: Item[]): GridRow[] => arr.map(p => ({ itemId: p.id, label: splitNameVolume(p).base, spec: p.spec, editable: true }));
-      // 저장·보드·합계 대상 = 재고있는+입력한 완제품 (조회모드면 저장된 항목)
-      const rowsForGrid: GridRow[] = src
-        ? src.items.map(r => ({ itemId: r.itemId, label: splitNameVolume({ name: r.name }).base, spec: r.spec, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
-        : toRows(closingItems);
-      const totalStock = src ? src.totalStock : closingItems.reduce((s, p) => s + (p.stock ?? 0), 0);
-      // 3열 그리드
-      const cols: GridRow[][] = [[], [], []];
-      rowsForGrid.forEach((r, i) => cols[i % 3].push(r));
-      const nRows = Math.max(cols[0].length, cols[1].length, cols[2].length);
-      const bTd: React.CSSProperties = { border: '1px solid #94a3b8', padding: '5px 7px', textAlign: 'center', fontSize: '12px' };
-      const bTh: React.CSSProperties = { ...bTd, background: '#f1f5f9', fontWeight: 700, fontSize: '11px' };
       // 화면 리스트: 검색(품목명·규격·거래처, '+'로 여러 키워드 AND) + 낱개 밑에 박스 묶어 표시
       const term = closingSearch.trim();
       const tokens = parseSearchTokens(term);
@@ -3647,9 +3554,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       const specMatch = (p: Item) => closingSpecSel.size === 0 || closingSpecSel.has(volOf(p));
       const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : closingItems)
         .filter(catMatch).filter(specMatch).filter(partnerMatch).filter(gradeMatch);
-      let listRows: GridRow[] = src
-        ? rowsForGrid
-        : (() => {
+      let listRows: GridRow[] = (() => {
             // 분류로 묶는다 — 필터와 같은 stockGroupOf를 쓴다.
             // 박스는 자기 분류가 아니라 **낱개(부모)의 분류**를 따라간다(짝이 떨어지면 안 된다).
             let lastGroup = '기타';
@@ -3673,10 +3578,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
             return blocks.flat();
           })();
       // 구분=작업완료: 작업완료분이 있는 품목만 남긴다.
-      if (!src && closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
+      if (closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
       // 구분=재고: 현재고 > 작업완료분(남은 재고>0)인 품목만. 작업완료로 다 빠진 품목은 목록에서 제거.
       // 단 검색 중이거나 '0포함'이면 남긴다 — 이 뷰에서 실사 수정을 하므로 0으로 적은 행이 사라지면 다시 못 고친다.
-      if (!src && closingView === 'stock' && !term && !showAllClosing) listRows = listRows.filter(r => Math.round(((productMap.get(r.itemId)?.stock ?? 0) - dispatchedOf(r.itemId)) * 1000) / 1000 > 0);
+      if (closingView === 'stock' && !term && !showAllClosing) listRows = listRows.filter(r => Math.round(((productMap.get(r.itemId)?.stock ?? 0) - dispatchedOf(r.itemId)) * 1000) / 1000 > 0);
       // 페이지 나눔(모바일)
       const pageCount = Math.max(1, Math.ceil(listRows.length / CLOSING_PAGE_SIZE));
       const page = Math.min(closingPage, pageCount - 1);
@@ -3701,7 +3606,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
               {/* 구분·분류·용량을 따로 세운다 — 버튼 하나에 담아 두면 무엇으로 걸렀는지 열어봐야 안다.
                   거래처는 위 검색창이 이미 훑는다. '품목 추가하기'도 같은 크기로 옆에 둔다. */}
-              {!src && (
+              {(
                 <div className="flex items-center gap-2 flex-wrap mb-2.5">
                   {/* 구분 — 셋뿐이고 늘 하나가 켜져 있다. 드롭다운을 열 것 없이 눌러서 바꾼다. */}
                   <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
@@ -3828,17 +3733,17 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 {pageRows.map(r => {
                   const product = productMap.get(r.itemId);
                   const cur = product?.stock ?? 0;
-                  const disp = src ? 0 : (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
+                  const disp = (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
                   const base = Math.round((cur - disp) * 1000) / 1000;              // 재고(작업완료 제외)
-                  const shownKg = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
+                  const shownKg = (closingView === 'dispatched') ? disp : (closingView === 'stock') ? base : cur;
                   // 저장은 kg — 밀도 있는 품목(기름)만 나눠서 L로 보여준다. 단위도 품목 것을 쓴다.
                   const shownNum = product?.density ? Math.round((shownKg / product.density) * 1000) / 1000 : shownKg;
                   //  실사는 그 품목의 재고 단위로 센다 — 향미유 재고 단위는 '개'다(박스가 아니다)
                   const unitLbl = product?.unit || '개';
                   // 재고 뷰 실사 수정 — 입력값은 작업완료를 뺀 순수 재고. 저장 시 작업완료분을 다시 얹어야
                   //   전체 뷰가 '재고 + 작업완료' 합계로 보인다. 작업완료 뷰는 주문에서 파생된 값이라 읽기전용.
-                  const stockEdit = !src && closingView === 'stock';
-                  const editable = src ? true : closingView !== 'dispatched';
+                  const stockEdit = closingView === 'stock';
+                  const editable = closingView !== 'dispatched';
                   const editing = editable && editingClosingId === r.itemId;
                   return (
                     <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-200/70" : ""}`}>

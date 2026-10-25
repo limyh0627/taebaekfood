@@ -1,12 +1,10 @@
 /** @vitest-environment jsdom */
-import {afterEach,expect,it} from 'vitest';
+import {afterEach,expect,it,vi} from 'vitest';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {buildBomIndex,bomOf,getBomIndex,setBomIndex} from '../../shared/bomIndex';
 import {buildPackIndex,getPackIndex,setPackIndex} from '../../shared/packIndex';
 import {unpackComponent,stockUnits,unitsPerBoxOf,type OrderUnitInputs} from '../../shared/orderUnits';
-import {docSaleLines} from '../../shared/docOil';
-import {boxSpecUpdates} from '../../shared/boxSpec';
 import type {Item} from '../../shared/types';
 const source=readFileSync('src/features/admin/AdminApp.tsx','utf8');
 const parsed=ts.createSourceFile('AdminApp.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
@@ -17,7 +15,7 @@ const inputs=(count:number,pack:number):OrderUnitInputs=>({bom:buildBomIndex(all
 const own=inputs(20,12),other=inputs(6,4),empty={bom:buildBomIndex([],[]),pack:buildPackIndex([])};
 const originalBom=getBomIndex(),originalPack=getPackIndex();
 afterEach(()=>{setBomIndex(originalBom);setPackIndex(originalPack);});
-const names=['unpackComponent','stockUnits','unitsPerBoxOf','bomOf','docSaleLines','boxSpecUpdates'];
+const names=['unpackComponent','stockUnits','unitsPerBoxOf','bomOf'];
 const calls=(name:string)=>{
  const found:string[]=[];
  const visit=(node:ts.Node)=>{
@@ -32,11 +30,11 @@ it.each(names)('실제 호스트 %s 호출은 회사 입력·빈 구성·fallbac
  setBomIndex(other.bom);setPackIndex(other.pack);
  const rows=calls(name);expect(rows.length).toBeGreaterThan(0);
  for(const expression of rows){
-  const p=name==='boxSpecUpdates'?loose:box;
-  const scope={ds:{docPumokAt:undefined},id:'box',unpackComponent,stockUnits,unitsPerBoxOf,bomOf,docSaleLines,boxSpecUpdates,allItems,boxItem:box,product:box,p,품목:box,푸는품목:box,완료품목:box,it:{quantity:40,boxQuantity:2},item:{quantity:40,boxQuantity:2},완료줄:{quantity:40,boxQuantity:2}};
+  const p=box;
+  const scope={ds:{docPumokAt:undefined},id:'box',unpackComponent,stockUnits,unitsPerBoxOf,bomOf,allItems,boxItem:box,product:box,p,품목:box,푸는품목:box,완료품목:box,it:{quantity:40,boxQuantity:2},item:{quantity:40,boxQuantity:2},완료줄:{quantity:40,boxQuantity:2}};
   const run=new Function(...Object.keys(scope),'appData',`return (${expression});`);
   const evaluate=(provided?:OrderUnitInputs)=>run(...Object.values(scope),{orderUnitInputs:provided});
-  const expected=(count:number|undefined)=>name==='unpackComponent'?(count?{itemId:'loose',count}:null):name==='stockUnits'?(count?2:40):name==='unitsPerBoxOf'?(count??0):name==='bomOf'?(count?[{childId:'loose',qty:count,child:loose}]:[]):name==='boxSpecUpdates'?(count?[{id:'box',name:box.name,from:box.spec,spec:`350ml * ${count}`}]:[]):[{품목:'참기름',spec:count?'350ml':box.spec,qty:count?2*count:40}];
+  const expected=(count:number|undefined)=>name==='unpackComponent'?(count?{itemId:'loose',count}:null):name==='stockUnits'?(count?2:40):name==='unitsPerBoxOf'?(count??0):name==='bomOf'?(count?[{childId:'loose',qty:count,child:loose}]:[]):[];
   expect(evaluate(own)).toEqual(expected(20));
   expect(evaluate(empty)).toEqual(expected(undefined));
   expect(evaluate()).toEqual(expected(6));
@@ -91,4 +89,24 @@ it('호스트 원료 사용 줄 memo는 회사 BOM 갱신을 반영한다',()=>{
  const order={items:[{itemId:'box'},{itemId:'unknown'}]};
  expect(view.result.current(order,'깨분')).toEqual([{itemId:'box'}]);
  view.rerender({input:empty});expect(view.result.current(order,'깨분')).toBeUndefined();
+});
+
+import {collectRawDocOilUsage} from '../../shared/rawDocUsageDetail';
+import type {Order,ProductionRecord} from '../../shared/types';
+const oilInitializer=()=>{let expression:ts.Expression|undefined;const visit=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(parsed)==='oilUsageDetail')expression=node.initializer;ts.forEachChild(node,visit);};visit(parsed);expect(expression).toBeDefined();return ts.transpileModule('return ('+expression!.getText(parsed)+');',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;};
+const oilMemo=new Function('useMemo','collectRawDocOilUsage','allOrders','allItems','appData','productionRecords','companyId',oilInitializer());
+it('실제 원료사용 memo는 회사입력과 원문 다섯 인자를 identity로 전달하고 재렌더에 반영한다',()=>{
+ const orders:Order[]=[],records:ProductionRecord[]=[],nextRecords:ProductionRecord[]=[];const collector=vi.fn(()=>({totals:{},contributions:{}}));
+ const view=renderHook(({input,company,rows})=>oilMemo(useMemo,collector,orders,allItems,{orderUnitInputs:input},rows,company),{initialProps:{input:own,company:'taebaek',rows:records}});
+ const check=(input:OrderUnitInputs,company:string,rows:ProductionRecord[])=>{const args=collector.mock.calls.at(-1)! as unknown as unknown[];expect(args).toHaveLength(5);[orders,allItems,input,rows,company].forEach((value,i)=>expect(args[i]).toBe(value));};
+ check(own,'taebaek',records);view.rerender({input:empty,company:'taebaek',rows:records});check(empty,'taebaek',records);view.rerender({input:empty,company:'punghoe',rows:records});check(empty,'punghoe',records);view.rerender({input:empty,company:'punghoe',rows:nextRecords});check(empty,'punghoe',nextRecords);expect(collector).toHaveBeenCalledTimes(4);
+});
+it('실제 원료사용 memo의 회사 BOM은 박스와 낱개 전표수량을 계산하고 빈구성과 fallback을 구분한다',()=>{
+ const child={...loose,품목:'시골향참기름1',spec:'0.6kg'},parent={...box,품목:'',spec:''},items=[parent,child];
+ const make=(id:string,itemId:string,quantity:number,boxQuantity?:number)=>({id,companyId:'taebaek',status:OrderStatus.DELIVERED,deliveredAt:'2026-10-15T00:00:00Z',deliveryDate:'2026-10-15',createdAt:'2026-10-15',items:[{itemId,name:id,quantity,boxQuantity,lineId:id+'-line'}]} as unknown as Order);
+ const orders=[make('box-order','box',40,2),make('loose-order','loose',3)];setBomIndex(other.bom);setPackIndex(other.pack);
+ const run=(input?:OrderUnitInputs)=>oilMemo((fn:()=>unknown)=>fn(),collectRawDocOilUsage,orders,items,{orderUnitInputs:input},[],'taebaek') as ReturnType<typeof collectRawDocOilUsage>;
+ const sources=(input?:OrderUnitInputs)=>Object.values(run(input).contributions['2026-10-15']??{}).flatMap(rows=>rows.flatMap(row=>row.sources));
+ const assert=(input:OrderUnitInputs|undefined,boxQuantity:number|null)=>{const rows=sources(input);const b=rows.find(row=>row.orderId==='box-order'),l=rows.find(row=>row.orderId==='loose-order');if(boxQuantity===null)expect(b).toBeUndefined();else{expect(b?.stockUnits).toBe(2);expect(b?.documentQuantity).toBe(boxQuantity);}expect(l?.stockUnits).toBe(3);expect(l?.documentQuantity).toBe(3);};
+ assert(own,40);assert(empty,null);assert(undefined,12);setBomIndex(empty.bom);setPackIndex(empty.pack);assert(own,40);expect(getBomIndex()).toBe(empty.bom);expect(getPackIndex()).toBe(empty.pack);
 });
