@@ -1,6 +1,5 @@
 import {createItemEditorProgress,type ItemEditorProgress,type ItemEditorSaveResult} from '../src/features/items/application/itemEditorSave';
 import {saveOutcomeMessage} from '../src/shared/saveOutcome';
-import type {ItemPhotoProduct} from '../src/features/items/hooks/useItemPhotoSave';
 import {itemEditorOpeningMatches,type ItemEditorOpening,type PendingItemEditorPlan,type ItemEditorSaveInput,type ItemEditorRecoveryResult,type ItemEditorCopyDiscardResult} from '../src/features/items/infrastructure/itemEditorWrites';
 import {ITEM_EDITOR_METADATA_FIELDS,itemEditorStageLabel,type ItemEditorDraft,type ItemEditorReference} from '../src/shared/itemEditorCommand';
 import { useItemPhotoSave, PHOTO_TYPES } from '../src/features/items/hooks/useItemPhotoSave';
@@ -9,12 +8,12 @@ import { appConfirm,appNotice } from '../src/shared/components/appDialog';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { where } from 'firebase/firestore';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
-import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, PartnerItem, SubmaterialComponent } from '../types';
+import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
-import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
+import { TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { bomOf, buildBomIndex, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
-import { buysFrom, sellsTo } from '../src/shared/partnerRole';
+import { buysFrom } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
 import { 묶음갈래of, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
@@ -56,7 +55,7 @@ const CAT_NORM: Record<string, string> = {
 };
 const normCat = (c?: string) => c ? (CAT_NORM[c] || c) : '';
 
-const CATEGORY_LABELS: Record<string, string> = DEFAULT_CATEGORY_LABELS;
+
 
 const PRESET_PUMOK = [
   '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
@@ -84,7 +83,7 @@ const normUnit = (u: string | undefined): SpecUnit =>
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 
-const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}> = ({ companyId,requestScopeKey, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onAddSubmaterial, rawItems = [], itemFormulas = [], rollupCostOf,opening,onInspectItemEditor,onContinueItemEditor,onCancelItemEditor }) => {
+const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}> = ({ companyId,requestScopeKey, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], onClose, onSave, onAddSubmaterial, rawItems = [], itemFormulas = [], rollupCostOf,opening,onInspectItemEditor,onContinueItemEditor,onCancelItemEditor }) => {
   const closeModalRef=useRef<()=>void>(()=>{});
   const recoveryBusy=useRef(false);
   const newItemId=useRef(opening.targetId);
@@ -108,7 +107,7 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
     setPhotoFile(file);
     setPhotoRemoved(false);
   };
-  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+
   const openingBom = useMemo(()=>buildBomIndex(
     opening.documents.items.map(row=>({...row.data,id:row.id}) as Item),
     opening.documents.boms.map(row=>row.data as {parent_id:string;child_id:string;quantity?:number}),
@@ -193,12 +192,12 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
   /** 서류에서 든 것으로 풀리므로 자기 서류용 품목이 필요 없다 */
   const 서류에서풀림 = 묶음 !== null;
 
-  const [partnerSearch, setPartnerSearch] = useState('');
+
   const [inboundPartnerSearch, setInboundPartnerSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
-  const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
-  const [boxClientSearch, setBoxClientSearch] = useState('');
+
+
   //  지금 규격을 그 자리에 그대로 띄운다 — 칩을 눌러 고르는 게 아니라 숫자를 고쳐 쓰는 칸이다
   /*
    * 열 때 박스였던 품목의 낱개 id. 개입수를 지우는 도중(빈 칸 → 0)에도 박스 칸을 유지하려고
@@ -214,7 +213,7 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
   const [bomPickerOpen, setBomPickerOpen] = useState(false);
   const [bomCatFilter, setBomCatFilter] = useState<string>('all');
   const [expandedBom, setExpandedBom] = useState<Set<string>>(new Set()); // 구성품 완제품 BOM 드릴다운
-  const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
+
 
   // 원료 배합·수율 (완제품·반제품·원료) — item_formula 편집.
   //   완제품 parent_key = 품목(규격 공유), 반제품/원료 parent_key = base 이름.
@@ -236,7 +235,7 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
   const formulaPickerRef = useRef<HTMLDivElement>(null);
 
   // 거래처별 포장 설정(shipping_rule)은 폐기 — 겉박스·테이프는 박스 품목 BOM으로만 관리한다.
-  const boxClientSearchRef = useRef<HTMLDivElement>(null);
+
   const pumokRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -245,14 +244,7 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (boxClientSearchRef.current && !boxClientSearchRef.current.contains(e.target as Node))
-        setShowBoxClientDrop(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -289,9 +281,7 @@ const ProductModalForm: React.FC<ProductModalProps & {opening:ItemEditorOpening}
   const inboundPartners = partners.filter(c =>
     buysFrom(c)
   );
-  const salesClients = partners.filter(c =>
-    sellsTo(c)
-  );
+
 
   // 타입 목록 — 분류 관리(itemTaxonomy)에서 정한 것. 숨긴 타입(배송·선물세트 등)은 빠진다.
   // 편집 중 품목의 타입이 숨김이어도 선택이 보이게 포함한다.

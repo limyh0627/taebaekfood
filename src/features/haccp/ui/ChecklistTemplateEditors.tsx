@@ -13,7 +13,7 @@ export const DRAG_HANDLE_CLASS = 'cursor-grab active:cursor-grabbing text-slate-
 
 const TemplateReadStatus = ({editor}: {editor: {ready: boolean; error: string; retry: () => void}}) => (
   <>
-    {!editor.ready && !editor.error && <p className="text-xs text-slate-500">항목 확인 중...</p>}
+    {!editor.ready && !editor.error && <p role="status" className="text-xs text-slate-500">현재 서버의 점검 항목을 확인 중입니다. 입력은 유지했습니다. <button type="button" onClick={editor.retry} className="ml-2 underline">다시 조회</button></p>}
     {editor.error && <div role="alert" className="mb-2 text-xs text-rose-600">{editor.error}
       {!editor.ready && <button type="button" onClick={editor.retry} className="ml-2 underline">다시 조회</button>}
     </div>}
@@ -327,7 +327,7 @@ export const SanitationTemplateEditor: React.FC = () => {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !editor.ready}
             className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50"
           >
             <Save size={11} /> {saving ? '저장 중...' : '저장'}

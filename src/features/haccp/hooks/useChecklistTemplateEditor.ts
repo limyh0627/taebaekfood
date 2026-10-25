@@ -37,28 +37,28 @@ export function useChecklistTemplateEditor<T>(options: Options<T>) {
   const canEdit = () => current() && owner.ready && !owner.saving;
   useEffect(() => {
     owner.alive = true;
-    let observing = true;
+    let authActive = true, observing = true;
     const stopAuth = onAuthStateChanged(auth, user => {
-      if (!observing || !owner.alive || ref.current !== owner) return;
+      if (!authActive || !owner.alive || ref.current !== owner) return;
       if ((user?.uid ?? '') !== owner.uid) { owner.alive = false; notify(); }
     });
     owner.ready = false;
     owner.readError = '';
-    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(owner.companyId, owner.key)), snap => {
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(owner.companyId, owner.key)), {includeMetadataChanges: true}, snap => {
       if (!observing || !current()) return;
       const value = snap.exists() ? snap.data()[latest.current.field] : undefined;
       owner.snapshot = copy(Array.isArray(value) && value.length > 0 ? value : latest.current.defaults);
-      owner.ready = true;
+      owner.ready = snap.metadata?.fromCache === false;
       owner.readError = '';
       if (!owner.editing) owner.rows = copy(owner.snapshot);
       paint();
     }, () => {
       if (!observing || !current()) return;
-      owner.ready = false;
+      observing = false; owner.ready = false;
       owner.readError = '점검 항목을 확인하지 못했습니다. 다시 조회한 뒤 편집해주세요.';
       paint();
     });
-    return () => { observing = false; owner.alive = false; stop(); stopAuth(); };
+    return () => { observing = false; authActive = false; owner.alive = false; stop(); stopAuth(); };
   }, [owner, owner.revision]);
   const change = (action: T[] | ((rows: T[]) => T[])) => {
     if (!canEdit() || !owner.editing) return;
@@ -92,5 +92,5 @@ export function useChecklistTemplateEditor<T>(options: Options<T>) {
   return {rows: owner.rows, change, open, cancel, save, canEdit, editing: owner.editing,
     saving: owner.saving, ready: owner.ready, error: owner.error || owner.readError,
     newText: owner.newText, setNewText: (value: string) => { if (canEdit() && owner.editing) { owner.newText = value; paint(); } },
-    retry: () => { if (current() && !owner.saving) { owner.revision++; paint(); } }};
+    retry: () => { if (current() && !owner.saving) { owner.ready = false; owner.revision++; paint(); } }};
 }
