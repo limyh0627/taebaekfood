@@ -33,6 +33,11 @@ interface PersonalHygieneRecord {
   confirmedAt?: string;
 }
 
+const isPersonalComplete = (rows: PersonalHygieneRow[], cols: string[]): boolean => {
+  const namedRows = rows.filter(row => row.name.trim());
+  return namedRows.length > 0 && namedRows.every(row => cols.every(col => row.checks[col] === 'O' || row.checks[col] === 'X'));
+};
+
 const emptyPersonalRecord = (cols: string[] = PERSONAL_HYGIENE_COLS): Omit<PersonalHygieneRecord, 'id'> => ({
   checkDate: todayStr(),
   rows: Array.from({ length: 8 }, () => ({
@@ -56,6 +61,8 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   const [recordView, setRecordView] = useState<{owner: HaccpRecordOwner; rows: PersonalHygieneRecord[]} | null>(null);
   const records = recordView?.owner === editor.ownerToken ? recordView.rows.filter(row => !editor.isDeleted(row.id ?? '')) : [];
   const [templateView, setTemplateView] = useState<{owner: HaccpRecordOwner; cols: string[]} | null>(null);
+  const currentTemplate = useRef({owner: editor.ownerToken, cols: PERSONAL_HYGIENE_COLS});
+  if (currentTemplate.current.owner !== editor.ownerToken) currentTemplate.current = {owner: editor.ownerToken, cols: PERSONAL_HYGIENE_COLS};
   const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.checkDate ?? ""}`);
   const saving = busy, confirming = busy;
   const [showHistory, setShowHistory] = useState(false);
@@ -83,7 +90,10 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), {includeMetadataChanges: true}, snap => {
       if (!current()) return;
       const data = snap.exists() ? snap.data().cols : undefined;
-      setTemplateView({owner: token, cols: Array.isArray(data) && data.length > 0 ? data : PERSONAL_HYGIENE_COLS});
+      const cols = Array.isArray(data) && data.length > 0 ? data : PERSONAL_HYGIENE_COLS;
+      // 같은 tick의 확인 처리도 새 양식으로 검사하도록 React 반영보다 먼저 갱신한다.
+      currentTemplate.current = {owner: token, cols};
+      setTemplateView({owner: token, cols});
       if (snap.metadata?.fromCache === false) editor.readSuccess('template'); else editor.readPending('template');
     }, () => { if (current()) { active = false; editor.readFailure('template'); } });
     return () => { active = false; stop(); };
@@ -108,8 +118,17 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 
   const openHistory = (r: PersonalHygieneRecord) => { editor.select(r); setShowHistory(false); };
   const isReadOnly = selected ? selected.checkDate !== today : false;
-  const filledRows = selected?.rows.filter(r => r.name.trim()) ?? [];
-  const allChecked = filledRows.length > 0 && filledRows.every(r => templateCols.every(col => r.checks[col] !== ''));
+  const allChecked = isPersonalComplete(selected?.rows ?? [], templateCols);
+  const completionNow = (record: PersonalHygieneRecord) => currentTemplate.current.owner === editor.ownerToken && isPersonalComplete(record.rows, currentTemplate.current.cols);
+
+  const persistedCompletionNow = (record: PersonalHygieneRecord) => {
+    const saved = editor.knownRecord(record.checkDate);
+    return !!record.id && !!saved && saved.id === record.id && saved.checkDate === record.checkDate && completionNow(saved);
+  };
+  const persistedComplete = selected ? persistedCompletionNow(selected) : false;
+  const persistedCompletionMessage = isReadOnly
+    ? '저장된 과거 기록의 항목이 미완료입니다. 기록을 다시 조회하거나 위의 오늘 기록을 선택해 주세요.'
+    : '저장된 기록의 항목이 미완료입니다. 입력은 보존했습니다. 먼저 저장한 뒤 확인해 주세요.';
 
   // 비관리자: 본인 행 인덱스 (이름 일치 → 없으면 첫 빈 행)
   const myRowIdx: number = (!isAdmin && selected && currentUser?.name)
@@ -143,8 +162,8 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 
   const revLabel = (r: PersonalHygieneRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
 
-  const latest = useRef({selected, records, canConfirm, isAdmin, allChecked});
-  latest.current = {selected, records, canConfirm, isAdmin, allChecked};
+  const latest = useRef({selected, records, canConfirm, isAdmin});
+  latest.current = {selected, records, canConfirm, isAdmin};
   const handleSave = async () => {
     if (!selected || isReadOnly) return;
     const snapshot = selected;
@@ -165,10 +184,11 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   };
   const handleConfirm = async () => {
     if (!canConfirm || !selected?.id || !editor.canEdit()) return;
-    if (!allChecked) { alert('성명이 입력된 모든 작업자의 항목을 완료 후 확인할 수 있습니다.'); return; }
+    if (!completionNow(selected)) { alert('성명이 입력된 모든 작업자의 항목을 완료 후 확인할 수 있습니다.'); return; }
+    if (!persistedCompletionNow(selected)) { alert(persistedCompletionMessage); return; }
     const snapshot = selected;
     return editor.run('confirm', snapshot.id,
-      () => !!latest.current.canConfirm && latest.current.selected === snapshot && latest.current.allChecked, async isCurrent => {
+      () => !!latest.current.canConfirm && latest.current.selected === snapshot && completionNow(snapshot) && persistedCompletionNow(snapshot), async isCurrent => {
         const now = new Date().toISOString();
         const userName = currentUser?.name ?? '관리자';
         const update = {confirmedBy: userName, confirmedAt: now};
@@ -197,6 +217,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
       {!editor.readReady && !editor.readError && <p role="status">기록과 점검 항목을 확인 중입니다. <button type="button" disabled={busy} onClick={editor.retryRead}>다시 조회</button></p>}
       {editor.hasServerRecord && editor.error && <button type="button" onClick={editor.openServerRecord}>조회된 기록 열기</button>}
       {editor.error && <p role="alert" className="text-sm text-rose-600">{editor.error} <button type="button" disabled={busy} onClick={editor.retryRead}>다시 조회</button></p>}
+      {canConfirm && selected?.id && !persistedComplete && <p role="status" className="text-sm text-slate-600">{persistedCompletionMessage} <button type="button" disabled={busy} onClick={editor.retryRead}>기록 다시 조회</button></p>}
       {/* 오늘 점검 버튼 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">
@@ -261,10 +282,10 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
               {canConfirm && (
                 selected.confirmedBy
                   ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold"><BadgeCheck size={13} /> {selected.confirmedBy} 확인완료</span>
-                  : <button onClick={handleConfirm} disabled={confirming || !selected.id || !allChecked}
-                      title={!selected.id ? '저장 후 확인' : !allChecked ? '모든 항목 완료 후 확인 가능' : ''}
+                  : <button onClick={handleConfirm} disabled={confirming || !selected.id || !allChecked || !persistedComplete}
+                      title={!selected.id ? '저장 후 확인' : !allChecked ? '모든 항목 완료 후 확인 가능' : !persistedComplete ? persistedCompletionMessage : ''}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : '관리자 확인'}
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : !persistedComplete ? (isReadOnly ? '저장본 미완료' : '먼저 저장') : '관리자 확인'}
                     </button>
               )}
               {!isReadOnly && (
@@ -408,7 +429,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                 <div className="h-10 flex items-center justify-center">
                   {selected.confirmedBy
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
-                    : canConfirm && selected.id && allChecked
+                    : canConfirm && selected.id && allChecked && persistedComplete
                       ? <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
                           <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
                         </button>
