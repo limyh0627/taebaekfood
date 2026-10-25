@@ -1,30 +1,61 @@
+import {randomUUID} from 'node:crypto';
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../../test/emulatorTestPolicy';
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let doc:typeof import('firebase/firestore').doc;
+let getDoc:typeof import('firebase/firestore').getDoc;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let cashOpeningStatement:typeof import('../cashOpening').cashOpeningStatement;
+let loanOpeningStatement:typeof import('../financialOpening').loanOpeningStatement;
+let initializeApp:typeof import('firebase-admin/app').initializeApp;
+let deleteApp:typeof import('firebase-admin/app').deleteApp;
+let getFirestore:typeof import('firebase-admin/firestore').getFirestore;
+let executeFinancialOpeningForActor:typeof import('../../../functions/src/financialOpeningCommand').executeFinancialOpeningForActor;
+const policy=createEmulatorTestPolicy(process.env,'financialOpeningEdit',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeTestEnvironment}=await import('@firebase/rules-unit-testing'));
+  ({doc,getDoc,setDoc}=await import('firebase/firestore'));
+  ({cashOpeningStatement}=await import('../cashOpening'));
+  ({loanOpeningStatement}=await import('../financialOpening'));
+  ({initializeApp,deleteApp}=await import('firebase-admin/app'));
+  ({getFirestore}=await import('firebase-admin/firestore'));
+  ({executeFinancialOpeningForActor}=await import('../../../functions/src/financialOpeningCommand'));
+  policy.assertCurrentEnvironment(process.env);
+}
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  if(app)policy.assertOwned(app.options.projectId!);
+  await env.clearFirestore();
+}
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
+import type {Firestore} from 'firebase/firestore';
 import type { CashAccount, CashEntry } from '../types';
 import type { LoanContract } from '../loanLedger';
-import { cashOpeningStatement } from '../cashOpening';
-import { loanOpeningStatement } from '../financialOpening';
-vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-import {initializeApp,deleteApp,type App} from 'firebase-admin/app';
-import {getFirestore} from 'firebase-admin/firestore';
-import {executeFinancialOpeningForActor,type FinancialOpeningInput} from '../../../functions/src/financialOpeningCommand';
+
+
+vi.mock('../firebase', () => ({ db: null, functions: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>{throw new Error('이 시험은 callable 경로를 사용하지 않습니다.');}}));
+import type {App} from 'firebase-admin/app';
+
+import type {FinancialOpeningInput} from '../../../functions/src/financialOpeningCommand';
 let app:App;
 const actors=new WeakMap<Firestore,{uid:string;token:{companyId:string;isAdmin:boolean}}>();
 const execute=(store:Firestore,companyId:'taebaek'|'punghoe',body:Omit<Extract<FinancialOpeningInput,{kind:'loan-update'}>,'companyId'|'operationId'|'releaseId'>|Omit<Extract<FinancialOpeningInput,{kind:'account-update'}>,'companyId'|'operationId'|'releaseId'>)=>executeFinancialOpeningForActor(getFirestore(app),actors.get(store),{...body,companyId,operationId:crypto.randomUUID(),releaseId:'release'});
 const updateLoanOpeningWithDb=(store:Firestore,companyId:'taebaek'|'punghoe',original:LoanContract,newDate:string,targetBalance:number)=>execute(store,companyId,{kind:'loan-update',original,newDate,targetBalance});
 const updateCashAccountOpeningWithDb=(store:Firestore,companyId:'taebaek'|'punghoe',original:CashAccount,name:string,newDate:string,targetBalance:number,asOf='2026-10-09')=>execute(store,companyId,{kind:'account-update',original,name,newDate,targetBalance,asOf});
 let env: RulesTestEnvironment;
-const ready = process.env.FIRESTORE_EMULATOR_HOST==='127.0.0.1:8082' && await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(response => response.status < 500).catch(() => false);
-describe.skipIf(!ready)('계좌·대출 수정 실제 Firestore 저장', () => {
+describe.skipIf(!policy.enabled)('계좌·대출 수정 실제 Firestore 저장', () => {
 beforeAll(async () => {
- env = await initializeTestEnvironment({ projectId: 'demo-financial-opening-edit', firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8082 } });
- await env.clearFirestore();
- app=initializeApp({projectId:'demo-financial-opening-edit'},`financial-edit-${crypto.randomUUID()}`);
+ await loadRuntime();
+ env = await initializeTestEnvironment({ projectId:policy.projectId, firestore: { rules: readFileSync('firestore.rules', 'utf8'), host:policy.host, port:policy.port } });
+ policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+ app=initializeApp({projectId:policy.projectId},policy.appName);policy.assertOwned(app.options.projectId!);
+ await clearOwned();
  await getFirestore(app).doc('appMeta/releaseCutover').set({status:'active',releaseId:'release'});
 }, 30000);
-afterAll(async () => { await env?.cleanup();if(app)await deleteApp(app); });
+afterAll(async () => {await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup(),()=>app&&deleteApp(app)]);});
 const store = (companyId = 'punghoe', isAdmin = true) => {const store=env.authenticatedContext(`${companyId}-${isAdmin}`, { employeeId: 'editor', companyId, isAdmin }).firestore() as unknown as Firestore;actors.set(store,{uid:`${companyId}-${isAdmin}`,token:{companyId,isAdmin}});return store;};
 const account = (id: string): CashAccount => ({ id, companyId: 'punghoe', name: '농협', type: '통장', openingDate: '2026-07-31', openingBalance: 1000, active: true, createdAt: '2026-08-01T00:00:00Z' });
 const loan = (id: string): LoanContract => ({ id, companyId: 'punghoe', name: '중진공', lenderName: '중진공', accountCode: '293', openingDate: '2026-07-31', openingPrincipal: 1000, createdAt: '2026-08-01T00:00:00Z' });

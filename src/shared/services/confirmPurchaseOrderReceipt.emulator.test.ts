@@ -1,26 +1,51 @@
+import {randomUUID} from 'node:crypto';
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../../test/emulatorTestPolicy';
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let collection:typeof import('firebase/firestore').collection;
+let doc:typeof import('firebase/firestore').doc;
+let getDoc:typeof import('firebase/firestore').getDoc;
+let getDocs:typeof import('firebase/firestore').getDocs;
+let query:typeof import('firebase/firestore').query;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let deleteDoc:typeof import('firebase/firestore').deleteDoc;
+let where:typeof import('firebase/firestore').where;
+const policy=createEmulatorTestPolicy(process.env,'confirmPurchaseOrderReceipt',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeTestEnvironment}=await import('@firebase/rules-unit-testing'));
+  ({collection,doc,getDoc,getDocs,query,setDoc,deleteDoc,where}=await import('firebase/firestore'));
+  ({confirmUnitPurchaseOrderReceiptWithDb, deletePendingPurchaseOrderWithDb}=await import('./firebaseService'));
+  policy.assertCurrentEnvironment(process.env);
+}
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  await env.clearFirestore();
+}
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import {randomUUID} from 'node:crypto';
-import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, deleteDoc, where, type Firestore } from 'firebase/firestore';
+import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
+import type {Firestore} from 'firebase/firestore';
 /** 바리어가 없는 기존 시험은 그대로 실제 SDK transaction을 실행한다. */
 const raceRuntime=vi.hoisted(()=>({gate:null as null|{path:string;kind:'delete'|'receive';attempts:number;reached:()=>void;release:Promise<void>}}));
 vi.mock('firebase/firestore',async original=>{const actual=await original<typeof import('firebase/firestore')>();return {...actual,runTransaction:(database:any,callback:any,options:any)=>actual.runTransaction(database,async tx=>{const kind=callback.toString().includes('tx.delete(')?'delete':'receive';const wrapped=new Proxy(tx,{get(target,key){if(key==='get')return async(ref:any)=>{const snap=await target.get(ref);const gate=raceRuntime.gate;if(gate&&ref.path===gate.path&&kind===gate.kind){gate.attempts++;if(gate.attempts===1){gate.reached();await gate.release;}}return snap;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});return callback(wrapped);},options)};});
-vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-const { confirmUnitPurchaseOrderReceiptWithDb, deletePendingPurchaseOrderWithDb } = await import('./firebaseService');
+vi.mock('../firebase', () => ({ db: null, functions: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>{throw new Error('이 시험은 callable 경로를 사용하지 않습니다.');}}));
+let confirmUnitPurchaseOrderReceiptWithDb:typeof import('./firebaseService').confirmUnitPurchaseOrderReceiptWithDb;
+let deletePendingPurchaseOrderWithDb:typeof import('./firebaseService').deletePendingPurchaseOrderWithDb;
 
-const ready = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(r => r.status < 500).catch(() => false);
 let env: RulesTestEnvironment;
 const company = 'taebaek' as const;
 
-describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', () => {
+describe.skipIf(!policy.enabled)('발주 입고확정 원자성 (Firestore Emulator)', () => {
   beforeAll(async () => {
-    env = await initializeTestEnvironment({ projectId: 'demo-po-atomic-receipt', firestore: {
-      rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8082,
+ await loadRuntime();
+    env = await initializeTestEnvironment({ projectId:policy.projectId, firestore: {
+      rules: readFileSync('firestore.rules', 'utf8'), host:policy.host, port:policy.port,
     } });
-    await env.clearFirestore();
+    policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+    await clearOwned();
   }, 20_000);
-  afterAll(async () => { await env?.cleanup(); });
+  afterAll(async () => {await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup()]);});
 
   const userDb = () => env.authenticatedContext('po-admin', { employeeId: 'admin', companyId: company, isAdmin: true }).firestore() as unknown as Firestore;
   const seed = async (id: string, lines: { itemId: string; quantity: number }[], options: { missing?: string; foreign?: string; raw?: string; goods?: string } = {}) => {

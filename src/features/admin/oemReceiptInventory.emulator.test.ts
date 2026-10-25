@@ -1,14 +1,28 @@
+import {randomUUID} from 'node:crypto';
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../../test/emulatorTestPolicy';
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let doc:typeof import('firebase/firestore').doc;
+let getDoc:typeof import('firebase/firestore').getDoc;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let applyOemReceiptInventory:typeof import('./oemReceiptInventory').applyOemReceiptInventory;
+const policy=createEmulatorTestPolicy(process.env,'oemReceiptInventory',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeTestEnvironment}=await import('@firebase/rules-unit-testing'));
+  ({doc,getDoc,setDoc}=await import('firebase/firestore'));
+  ({applyOemReceiptInventory}=await import('./oemReceiptInventory'));
+  policy.assertCurrentEnvironment(process.env);
+}
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  await env.clearFirestore();
+}
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
-import { applyOemReceiptInventory, type OemReceiptInventoryInput } from './oemReceiptInventory';
+import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
+import type {Firestore} from 'firebase/firestore';
+import type {OemReceiptInventoryInput} from './oemReceiptInventory';
 
-const emulatorReady = async () => {
-  try { return (await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) })).status < 500; }
-  catch { return false; }
-};
-const ready = await emulatorReady();
 let env: RulesTestEnvironment;
 
 const input = (poId: string): OemReceiptInventoryInput => ({
@@ -22,14 +36,16 @@ const input = (poId: string): OemReceiptInventoryInput => ({
   },
 });
 
-describe.skipIf(!ready)('OEM 가공입고 실제 Firestore 규칙', () => {
+describe.skipIf(!policy.enabled)('OEM 가공입고 실제 Firestore 규칙', () => {
   beforeAll(async () => {
-    env = await initializeTestEnvironment({ projectId: 'demo-oem-receipt-test', firestore: {
-      rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: 8082,
+ await loadRuntime();
+    env = await initializeTestEnvironment({ projectId:policy.projectId, firestore: {
+      rules: readFileSync('firestore.rules', 'utf-8'), host:policy.host, port:policy.port,
     } });
-    await env.clearFirestore();
+    policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+    await clearOwned();
   }, 20_000);
-  afterAll(async () => { await env?.cleanup(); });
+  afterAll(async () => {await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup()]);});
 
   const adminDb = () => env.authenticatedContext('u-admin', {
     employeeId: 'admin', companyId: 'taebaek', isAdmin: true,
