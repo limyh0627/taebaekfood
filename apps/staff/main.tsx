@@ -1,3 +1,5 @@
+import {auth} from '../../src/shared/firebase';
+import {readPendingOrder} from '../../src/shared/services/pendingSubmissionRead';
 import { useEmployeeAuthSession } from '../../src/shared/hooks/useEmployeeAuthSession';
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
@@ -72,6 +74,10 @@ const StaffSessionRoot: React.FC<{currentUser:Employee;onSessionLogout:()=>Promi
   if (currentUser && currentView === 'partner-portal') {
     return (
       <PartnerPortal
+        companyId={companyId}
+        employeeId={currentUser.id}
+        getUid={()=>auth.currentUser?.uid}
+        readOrder={(id,partnerId,signal)=>readPendingOrder({id,partnerId,signal,companyId,employeeId:currentUser.id,uid:auth.currentUser?.uid??''})}
         partners={appData.partners}
         items={appData.items}
         partnerItems={appData.partnerItems}

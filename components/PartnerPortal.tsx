@@ -1,5 +1,9 @@
+import {STATUS_LABEL} from '../src/shared/orderStatusStyle';
 
 import React from 'react';
+import {useOutputScope} from '../src/shared/hooks/useOutputScope';
+import type {CompanyId} from '../src/shared/types';
+import type {PendingSubmissionRead} from '../src/shared/services/pendingSubmissionRead';
 import { usePartnerPortalDraft } from '../src/features/orders/hooks/usePartnerPortalDraft';
 import { 
   ShoppingBag, 
@@ -17,6 +21,8 @@ import { Partner, Item, PartnerItem, Order, OrderStatus, OrderSource, OrderItem 
 import { isLinkedToPartner, salePriceOf } from '../src/shared/partnerPrice';
 
 interface PartnerPortalProps {
+  companyId:CompanyId;employeeId:string;getUid:()=>string|undefined;
+  readOrder:(id:string,partnerId:string,signal:AbortSignal)=>Promise<PendingSubmissionRead<Order>>;
   partners: Partner[];
   items: Item[];
   /**
@@ -28,8 +34,20 @@ interface PartnerPortalProps {
   onExit: () => void;
 }
 
-const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerItems, onOrderSubmit, onExit }) => {
-  const { step, partnerIdInput, selectedClient, cart, isSuccess, saving, error, associatedProducts, updateCart, 단가, totalAmount, handleSubmit, handleAuth, changePartnerInput, backToAuth, exit, orderAgain } = usePartnerPortalDraft({ partners, items, partnerItems, onOrderSubmit, onExit });
+const PartnerPortal: React.FC<PartnerPortalProps> = ({ companyId,employeeId,getUid,readOrder,partners, items, partnerItems, onOrderSubmit, onExit }) => {
+  const getSignal=useOutputScope(companyId,employeeId);
+  const { pending,readPending,startNewOrder, step, partnerIdInput, selectedClient, cart, isSuccess, saving, error, associatedProducts, updateCart, 단가, totalAmount, handleSubmit, handleAuth, changePartnerInput, backToAuth, exit, orderAgain } = usePartnerPortalDraft({companyId,employeeId,getUid,getSignal,readOrder,partners, items, partnerItems, onOrderSubmit, onExit });
+
+  const recoveryCard=pending&&<section aria-label="원주문 결과 확인" className="m-4 break-words rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+    <p>확인할 주문 번호: {pending.order.id}</p><p>최초 주문: {pending.order.partnerName} · {pending.order.totalAmount.toLocaleString()}원</p>
+    <ul>{pending.order.items.map((row,index)=><li key={index}>{row.name} {row.quantity}개 · {row.price.toLocaleString()}원</li>)}</ul>
+    <p>최초 배송일: {pending.order.deliveryDate.slice(0,10)}</p>
+    <p role="status">{pending.notice||'저장 결과를 아직 확인하지 못했습니다. 입력을 보존했으며 다시 보내지 않았습니다.'}</p>
+    {pending.result?.kind==='found'&&<div aria-label="현재 등록된 주문"><p>현재 주문 번호: {pending.result.record.id}</p><p>현재 상태: {STATUS_LABEL[String(pending.result.record.status)]??'상태 확인 필요'}</p><p>현재 금액: {Number(pending.result.record.totalAmount??0).toLocaleString()}원</p><p>현재 배송일: {String(pending.result.record.deliveryDate??'').slice(0,10)}</p><ul>{(Array.isArray(pending.result.record.items)?pending.result.record.items:[]).map((row,index)=><li key={index}>{row.name} {row.quantity}개 · {Number(row.price??0).toLocaleString()}원</li>)}</ul></div>}
+    <button type="button" disabled={!!pending.readRun||saving} onClick={()=>void readPending()} className="mt-2 rounded border px-3 py-2 disabled:opacity-40">{pending.readRun?'확인 중…':pending.result?'주문 다시 조회':'주문 저장 여부 확인'}</button>
+    {pending.matches&&<button type="button" disabled={!!pending.readRun||saving} onClick={startNewOrder} className="ml-2 rounded border px-3 py-2">확인 후 새 주문 작성</button>}
+    <p className="mt-2 text-xs">조회 결과가 없거나 다르면 다시 조회해 주세요. 화면을 닫거나 새로고침해도 서버 요청은 취소되지 않으며, 이 화면의 원문은 이후 복구를 보장하지 않습니다.</p>
+  </section>;
 
   if (step === 'auth') {
     return (
@@ -39,6 +57,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
             <ShoppingBag size={40} />
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-2">거래처 주문 포털</h2>
+          {recoveryCard}
           <p className="text-slate-500 font-medium mb-10">귀사의 거래처 코드를 입력하여<br/>상품 주문을 시작하세요.</p>
           
           <form onSubmit={handleAuth} className="space-y-4">
@@ -110,6 +129,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
          </button>
       </header>
 
+      {recoveryCard}
       {error && <p role="alert" className="px-6 py-2 text-sm text-slate-700">{error}</p>}
       <main className="flex-1 p-6 space-y-8 max-w-4xl mx-auto w-full">
          <div className="bg-indigo-600 rounded-[32px] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
@@ -182,7 +202,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
             <div className="max-w-md mx-auto pointer-events-auto">
                <button 
                   onClick={handleSubmit}
-                  disabled={saving}
+                  disabled={saving||!!pending}
                   className="w-full bg-slate-900 text-white p-6 rounded-[32px] shadow-2xl flex items-center justify-between hover:bg-black hover:scale-[1.02] transition-all group"
                >
                   <div className="flex items-center space-x-4">
