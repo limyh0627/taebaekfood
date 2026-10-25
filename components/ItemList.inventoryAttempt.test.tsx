@@ -15,7 +15,7 @@ async function recoveryAction(name:string){
  }
  return screen.getByRole('button',{name});
 }
-const state=vi.hoisted(()=>({auth:{currentUser:{uid:'employee'} as {uid:string}|null},confirm:vi.fn(),stock:vi.fn(),can:vi.fn(),box:vi.fn(),actor:vi.fn()}));
+const state=vi.hoisted(()=>({auth:{currentUser:{uid:'employee'} as {uid:string}|null,onAuthStateChanged:(_listener:(user:{uid:string}|null)=>void)=>()=>{}},confirm:vi.fn(),stock:vi.fn(),can:vi.fn(),box:vi.fn(),actor:vi.fn()}));
 vi.mock('../src/shared/firebase',()=>({db:{},storage:{},functions:{},auth:state.auth,authReady:Promise.resolve()}));
 vi.mock('../src/shared/services/firebaseService',()=>({fetchCollection:vi.fn().mockResolvedValue([]),subscribeToCollection:vi.fn(()=>()=>{}),addItem:vi.fn()}));
 vi.mock('../src/shared/components/appDialog',()=>({appConfirm:state.confirm}));
