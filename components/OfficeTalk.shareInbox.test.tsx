@@ -7,10 +7,12 @@ import type { ChatRoom, Employee } from '../types';
 const mocks = vi.hoisted(() => ({
   upload: vi.fn(), discard: vi.fn(), send: vi.fn(), missing: false, shareId: '123e4567-e89b-42d3-a456-426614174000' as string | null,
 }));
-vi.mock('../src/firebase', () => ({ db: {}, auth: { currentUser: { uid: 'firebase-user' } } }));
+const firebaseFixture=vi.hoisted(()=>({db:{},storage:{},authReady:Promise.resolve(),auth:{currentUser:{uid:'firebase-user'},onAuthStateChanged:vi.fn(()=>()=>{})}}));
+vi.mock('../src/firebase',()=>firebaseFixture);
+vi.mock('../src/shared/firebase',()=>firebaseFixture);
+vi.mock('firebase/storage',()=>({ref:vi.fn(),uploadBytes:vi.fn(),getDownloadURL:vi.fn()}));
 vi.mock('../src/shared/services/sharedChatMessageService', () => ({ sharedChatActor: async () => 'firebase-user' }));
-vi.mock('firebase/firestore', async original => ({
-  ...(await original<typeof import('firebase/firestore')>()),
+vi.mock('firebase/firestore',()=>({doc:vi.fn(),runTransaction:vi.fn(),getDocFromServer:vi.fn(),
   collection: vi.fn(() => ({})), query: vi.fn(() => ({})), where: vi.fn(() => ({})),
   onSnapshot: vi.fn((_query, next) => { next({ docs: [] }); return vi.fn(); }),
 }));

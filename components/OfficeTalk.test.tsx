@@ -7,9 +7,11 @@ const messages = vi.hoisted(() => [
   { id: 'm2', roomId: 'r1', senderId: 'other', senderName: '동료', text: '자정 뒤', createdAt: '2026-09-24T15:01:00Z' },
   { id: 'm1', roomId: 'r1', senderId: 'other', senderName: '동료', text: '자정 전', createdAt: '2026-09-24T14:59:00Z' },
 ]);
-vi.mock('../src/firebase', () => ({ db: {}, auth:{currentUser:{uid:'firebase-user'}} }));
-vi.mock('firebase/firestore', async importOriginal => ({
-  ...(await importOriginal<typeof import('firebase/firestore')>()),
+const firebaseFixture=vi.hoisted(()=>({db:{},storage:{},authReady:Promise.resolve(),auth:{currentUser:{uid:'firebase-user'},onAuthStateChanged:vi.fn(()=>()=>{})}}));
+vi.mock('../src/firebase',()=>firebaseFixture);
+vi.mock('../src/shared/firebase',()=>firebaseFixture);
+vi.mock('firebase/storage',()=>({ref:vi.fn(),uploadBytes:vi.fn(),getDownloadURL:vi.fn()}));
+vi.mock('firebase/firestore',()=>({doc:vi.fn(),runTransaction:vi.fn(),getDocFromServer:vi.fn(),
   collection: vi.fn(() => ({})), query: vi.fn(() => ({})), where: vi.fn(() => ({})),
   onSnapshot: vi.fn((_query, onNext) => {
     onNext({ docs: messages.map(message => ({ id: message.id, data: () => message })) });

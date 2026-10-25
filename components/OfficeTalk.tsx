@@ -1,3 +1,6 @@
+import AttachmentSubmissionRecovery from '../src/features/chat/components/AttachmentSubmissionRecovery';
+import {useOutputScope} from '../src/shared/hooks/useOutputScope';
+import {readPendingChatMessage} from '../src/shared/services/pendingSubmissionRead';
 import {useOfficeTalkDeletion} from '../src/features/chat/hooks/useOfficeTalkDeletion';
 import {useOfficeTalkSelfSend} from '../src/features/chat/hooks/useOfficeTalkSelfSend';
 import {useOfficeTalkRoomActions} from '../src/features/chat/hooks/useOfficeTalkRoomActions';
@@ -342,7 +345,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     } finally {if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){shareSendLock.current = false; setShareSending(false);}}
   };
 
-  const composer=useOfficeTalkComposer({getUid:()=>auth.currentUser?.uid,roomId:activeRoomId,currentUser,employees,send:onSendMessage,
+  const getComposerSignal=useOutputScope(currentCompanyId,currentUser.id);
+  const composer=useOfficeTalkComposer({getSignal:getComposerSignal,readMessage:(message,signal)=>readPendingChatMessage({companyId:currentCompanyId,uid:auth.currentUser?.uid??'',employeeId:currentUser.id,signal,id:message.id,roomId:message.roomId,senderId:message.senderId}),getUid:()=>auth.currentUser?.uid,roomId:activeRoomId,currentUser,employees,send:onSendMessage,
     add:message=>{pendingMessages.current.set(message.id,message);stickToBottomRef.current=true;setLocalMessages(prev=>prev.some(row=>row.id===message.id)?prev:[...prev,message]);},
     remove:id=>{pendingMessages.current.delete(id);setLocalMessages(prev=>prev.filter(row=>row.id!==id));},onError:setFirestoreError});
   const {messageText,setMessageText,replyTo,setReplyTo,uploading,uploadCount,sendFiles}=composer;
@@ -1078,6 +1082,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 )}
               </AnimatePresence>
 
+              <AttachmentSubmissionRecovery attempts={composer.attachmentAttempts} open={composer.attachmentRecoveryOpen} onOpen={composer.openAttachmentRecovery} onClose={composer.closeAttachmentRecovery} onRead={composer.readAttachment} onDismissConfirmed={composer.dismissConfirmedAttachment}/>
               {/*  답장할 말 — 카톡처럼 입력칸 위에 인용으로 붙는다 */}
               {replyTo && (
                 <div className="flex items-start gap-2 mb-2 px-3 py-2 bg-slate-50 border-l-2 border-indigo-400 rounded-r-xl">

@@ -822,3 +822,17 @@ receiveUnitStock의 기존 top-level hook과 업무시험2개를 describe.skipIf
 Node22 최종 관련69통과(앞59+EXIT 신규10), 유효 의미변이3종 검출 후 원문 복원·활성0이다. 포털/훅/read service/기존 OutputScope의69개이며 중간 실행과 타입 보완 재검을 더하지 않는다. 최초 소계 오기는 실제 report로 정정했다. mock generic 타입 보완은 erased JS 동치로 확인했고, 새 비동기 EXIT를 포함한 최종 전체 타입85560과 실제 환경 관리자·직원 빌드33749 모두 종료0이다. 이전 타입/빌드와 준비 오류는 별도 근거로 보관한다.
 
 root 실제 컴포넌트+외부 인증/SDK 합성 검수에서 PC의 캐시→부재→오류→타회사→불일치→삭제→일치 조회7회 동안 송신1회를 유지했고 일치 때만 명시 새 업무 버튼을 확인했다. 모바일375 client/scroll375로 가로 넘침이 없었으며, 일치→명시 새 주문→정상 ACK는 송신1→2/조회1 유지였다. 이 근거는 EXIT 전 v3의 조회·송신 경로로 한정해 승계하고, EXIT에서는 해당 경로의 원문 보존을 대조했다. 이전 native 확인창으로 tab10 제어가 멈췄고 새 tab11도 입력 검수가 불안정해 새 앱 나가기 모달의 실제 브라우저 동선은 미검수로 남긴다. 실 AppDialogHost 컴포넌트의 취소·재확인·나가기 및 수명 시험과 구분한다. 실제 SDK·운영자료·서버/Rules·배포·푸시는 변경하지 않았다.
+
+### 첨부 전송 원문 보존·확인 모달 · CODE-CHAT-ATTACHMENT phase2
+
+업로드가 끝나고 메시지는 저장됐지만 응답만 유실된 뒤 최초 MSG ID·파일 URL 보관 경로가 없는 반례를 먼저 확인했다. 사진 묶음과 문서별 최초 ID·createdAt·본문·mentions·답장·확정 URL을 owner/room-key 메모리에 보존한다. 방을 옮긴 뒤 정상 ACK도 해당 시도를 종결하고, 아직 송신 전인 업로드의 방 이동 차단은 유지한다. 새 본문·답장 revision과 연속 텍스트 전송, 사진 병렬 묶음·문서 순차·20MB·원래 payload를 보존했다.
+
+기존 strict read 서비스로 원 ID의 회사·방·발신자와 고정 본문 projection을 확인하며 읽음·삭제 등 후속 서버 메타를 덮지 않는다. 부재·캐시·오류·타대상·불일치·삭제는 원문을 유지하고 재조회하며 새 set/재업로드는 하지 않는다. 조회 시작에는 옛 일치 판단을 해제하고 동기 readRun으로 중복·역순 결과를 막는다. 일치 확인 뒤 명시 닫기는 로컬 보관 시도만 해제하고 서버 메시지·파일은 지우지 않는다.
+
+OfficeTalk에는 작은 첨부 전송 확인 N 진입과 연결만 추가하고 실제 ModalShell 조합은 feature 표시 모듈로 분리했다. 상태·검증·읽기는 composer가 소유한다. 기존 fileSizeLabel/officeTalkStamp 표시를 재사용하며 큰 설명 패널을 상시 추가하지 않는다. 첨부 미확인 안내는 해당 보관 시도의 notice에만 두어 확인 후 옛 실패 배너가 남지 않고, 별도 현재 글 전송 오류는 확인·닫기 뒤에도 보존한다.
+
+공통 인증 수명 연결로 실제 소비시험6곳의 legacy/canonical auth mock이 갈리는 경계를 정합했다. 같은 hoisted fake auth와 SDK 포트를 공급하고 실제 SDK importOriginal을 제거했으며 기존 업무 assertion·구독/조회 fake body를 유지했다. Node22 관련78통과·실패/건너뜀0(기존57+신규21, 훅25/UI5/추가 기존회귀23/read22/scope3)이며 반복 실행은 더하지 않는다. 불일치 기록을 일치로 허용하는 변이는 명시 닫기 후 로컬 원문 목록0대1의 실제 matcher 실패로 검출했고 원문 복원·활성0을 확인했다. payload/도메인9 AST, OfficeTalk 허용 wiring 역치환, 범위 밖9핀과 추가6시험의 mock 외 전체 AST·기존4포트의 동일성을 대조했다.
+
+최종 전체 타입14853과 실제 환경 관리자·직원 빌드68829는 모두 종료0이며 독립 코드 검수 CLEAR다. 원문/동작의 실 Modal 컴포넌트 시험과 별도로 root는 실제 표시 모듈·공통 ModalShell의 고정 합성 일치/미확인 화면을 시각 확인했다. PC1280x720·모바일390x844 이미지와 client/scroll1280/1280·390/390을 확인했다. 이 표시는 초기 props를 합성한 read-only 상태로 업로드·조회·클릭 동선 검수가 아니며, 이전 native IAB 제어 문제로 실제 OfficeTalk 상호작용 검수는 마지막 통합 검증 대기로 남긴다. 새 탭12·viewport와 로컬 서버48723을 정리했다.
+
+Auth signal abort 뒤 옛 첨부 반영을 막고 새 mount에서 새 송신/조회 재개를 시험했다. 동일 mount의 abort된 controller 자동회복은 보장하지 않으며, Root의 UID/직원/회사/역할 문자열 key와 중간 null 상태만으로 React 배치 중 실제 remount를 보장한다고 쓰지 않는다. 이는 INV-SELF-SEND-ABA 연결 조사로 남기고 공통 helper/Root를 임의 변경하지 않았다. 미확인 종결·안전 재송신·영속 복구·Storage 고아/원자성은 INV-CHAT-ATTACHMENT-TERMINAL 별도다. 실제 SDK 접속·운영자료·서버/Rules·배포·푸시 변경은 없다.

@@ -4,8 +4,11 @@ import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import type {Employee,ChatRoom,ChatMessage} from '../types';
 const m=vi.hoisted(()=>({upload:vi.fn(),confirm:vi.fn(),messages:[{id:'source',roomId:'r1',senderId:'other',senderName:'동료',text:'전달 원문',createdAt:'2026-10-23T00:00:00Z'}]}));
-vi.mock('../src/firebase',()=>({db:{},auth:{currentUser:{uid:'qa'}}}));
-vi.mock('firebase/firestore',async original=>({...await original<typeof import('firebase/firestore')>(),collection:vi.fn(()=>({})),query:vi.fn(()=>({})),where:vi.fn(()=>({})),onSnapshot:vi.fn((_q,cb)=>{cb({docs:m.messages.map(message=>({id:message.id,data:()=>message}))});return()=>{};})}));
+const firebaseFixture=vi.hoisted(()=>({db:{},storage:{},authReady:Promise.resolve(),auth:{currentUser:{uid:'qa'},onAuthStateChanged:vi.fn(()=>()=>{})}}));
+vi.mock('../src/firebase',()=>firebaseFixture);
+vi.mock('../src/shared/firebase',()=>firebaseFixture);
+vi.mock('firebase/storage',()=>({ref:vi.fn(),uploadBytes:vi.fn(),getDownloadURL:vi.fn()}));
+vi.mock('firebase/firestore',()=>({doc:vi.fn(),runTransaction:vi.fn(),getDocFromServer:vi.fn(),collection:vi.fn(()=>({})),query:vi.fn(()=>({})),where:vi.fn(()=>({})),onSnapshot:vi.fn((_q,cb)=>{cb({docs:m.messages.map(message=>({id:message.id,data:()=>message}))});return()=>{};})}));
 vi.mock('../src/shared/chatUpload',async original=>({...await original<typeof import('../src/shared/chatUpload')>(),uploadChatFile:(...a:unknown[])=>m.upload(...a)}));
 vi.mock('../src/shared/components/appDialog',()=>({appConfirm:(...a:unknown[])=>m.confirm(...a)}));
 import OfficeTalk from './OfficeTalk';
