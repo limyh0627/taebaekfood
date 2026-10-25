@@ -4,6 +4,7 @@ import { auth, authReady } from '../firebase';
 import { employeeSession, readEmployeeSession } from '../employeeSession';
 import { capturePushActor, unregisterPush } from '../push';
 import type { Employee } from '../types';
+import {beginSessionWorkCheckpoint} from '../sessionWorkCheckpoint';
 
 const LOGOUT_INTENT_KEY = 'tb_logout_intent_v1';
 type LogoutIntent = { version: 1; attemptId: string; uid: string; companyId: string; employeeId: string };
@@ -43,20 +44,26 @@ export function useEmployeeAuthSession() {
     const [authChecked, setAuthChecked] = useState(false);
     const [logoutState, setLogoutState] = useState<'idle' | 'pending' | 'failed'>(initialIntent.raw !== null || initialIntent.readFailed ? 'pending' : 'idle');
     const [logoutError, setLogoutError] = useState('');
+    const [checkpointState,setCheckpointState]=useState<'idle'|'checking'|'failed'>('idle');
+    const [checkpointError,setCheckpointError]=useState('');
+    const checkpointRun=useRef<{release:()=>void;current:()=>boolean;failed:boolean}|null>(null);
     const logoutRun = useRef<LogoutRun | null>(null);
     const sessionRef = useRef(session);
     sessionRef.current = session;
+    useEffect(()=>{const run=checkpointRun.current;if(run&&!run.current()){run.release();checkpointRun.current=null;setCheckpointState('idle');setCheckpointError('');}},[session]);
     const generation = useRef(0);
     // token 검증 순서와 별개로 실제 UID 경계를 기억해 배치된 왕복도 자료 수명을 교대한다.
     const uidLifetime=useRef({uid:auth.currentUser&&!auth.currentUser.isAnonymous?auth.currentUser.uid:null,epoch:0});
     const mounted = useRef(false);
     const verifiedUid = useRef<string | null>(null);
+    const verifiedActorKey=useRef('');
     const candidate = useRef<Employee | null>(null);
     const freshLoginAfterNull = useRef(false);
     const clearSession = useCallback(() => {
         uidLifetime.current.epoch++;
         generation.current++;
         verifiedUid.current = null;
+        verifiedActorKey.current='';
         candidate.current = null;
         setSession(null);
         removeSavedEmployee();
@@ -72,7 +79,7 @@ export function useEmployeeAuthSession() {
         if (!user && auth.currentUser !== null) return;
         if(user&&auth.currentUser?.uid!==user.uid)return;
         const observedUid=user&&!user.isAnonymous?user.uid:null;
-        if(uidLifetime.current.uid!==observedUid){uidLifetime.current.uid=observedUid;uidLifetime.current.epoch++;}
+        if(uidLifetime.current.uid!==observedUid){uidLifetime.current.uid=observedUid;uidLifetime.current.epoch++;checkpointRun.current?.release();checkpointRun.current=null;setCheckpointState('idle');setCheckpointError('');}
         const epoch=uidLifetime.current.epoch;
         const pending = logoutRun.current;
         if (pending && !user && pending.running) {
@@ -139,6 +146,7 @@ export function useEmployeeAuthSession() {
             setLogoutError('');
             candidate.current = safe;
             verifiedUid.current = user.uid;
+            verifiedActorKey.current=key;
             localStorage.setItem('tb_user', JSON.stringify(safe));
             localStorage.removeItem('tb_company');
             setSession(previous => previous?.key === key && previous.epoch===epoch ? previous : { user: safe, key, epoch, mountKey:key+':'+epoch });
@@ -176,7 +184,7 @@ export function useEmployeeAuthSession() {
                 setLogoutError('');
                 setAuthChecked(true);
             });
-        return () => { live = false; mounted.current = false; generation.current++; logoutRun.current = null; stop?.(); };
+        return () => { live = false; mounted.current = false; generation.current++; logoutRun.current = null;checkpointRun.current?.release();checkpointRun.current=null; stop?.(); };
     }, [verify, clearSession, initialIntent, restoreLogoutCheckFailure]);
     const performLogout = useCallback(async (retry = false): Promise<void> => {
         if (!mounted.current || logoutRun.current && (!retry || logoutRun.current.running)) return;
@@ -245,8 +253,23 @@ export function useEmployeeAuthSession() {
             setLogoutState('failed');
         }
     }, [clearSession]);
-    const logout = useCallback(() => performLogout(), [performLogout]);
-    const retryLogout = useCallback(() => performLogout(true), [performLogout]);
+    const checkpointLogout=useCallback((retry=false):Promise<void>=>{
+        if(checkpointRun.current){if(!retry||!checkpointRun.current.failed||!checkpointRun.current.current())return Promise.resolve();checkpointRun.current.release();checkpointRun.current=null;}if(logoutRun.current)return Promise.resolve();
+        const selected=sessionRef.current,uid=auth.currentUser?.uid,epoch=uidLifetime.current.epoch;
+        if(!selected||!uid)return performLogout();
+        if(uid!==verifiedUid.current)return Promise.resolve();
+        const companyId=selected.user.companyId;
+        if(companyId!=='taebaek'&&companyId!=='punghoe'){setCheckpointState('failed');setCheckpointError('현재 로그인 회사 정보를 확인하지 못했습니다. 입력은 보존했습니다. 로그인 상태를 다시 확인해 주세요.');return Promise.resolve();}
+        const current=()=>mounted.current&&sessionRef.current===selected&&verifiedUid.current===uid&&verifiedActorKey.current===selected.key&&auth.currentUser?.uid===uid&&uidLifetime.current.epoch===epoch;
+        const gate=beginSessionWorkCheckpoint({uid,companyId,employeeId:selected.user.id},current,retry);
+        if(!gate)return performLogout();
+        const run={release:gate.release,current,failed:false};checkpointRun.current=run;setCheckpointState('checking');setCheckpointError('');
+        return gate.done.then(async()=>{if(checkpointRun.current!==run||!current())return;setCheckpointState('idle');await performLogout();}).catch(error=>{if(checkpointRun.current===run&&current()){run.failed=true;setCheckpointState('failed');setCheckpointError(String(error));}}).finally(()=>{if(run.failed&&current())return;run.release();if(checkpointRun.current===run){checkpointRun.current=null;if(!current()){setCheckpointState('idle');setCheckpointError('');}}});
+    },[performLogout]);
+    const logout = useCallback(() => checkpointLogout(), [checkpointLogout]);
+    const retryCheckpointLogout=useCallback(()=>checkpointLogout(true),[checkpointLogout]);
+    const returnToWork=useCallback(()=>{if(logoutRun.current||!sessionRef.current||auth.currentUser?.uid!==verifiedUid.current||checkpointRun.current&&!checkpointRun.current.failed)return;if(checkpointRun.current&&!checkpointRun.current.current())return;checkpointRun.current?.release();checkpointRun.current=null;setCheckpointState('idle');setCheckpointError('');},[]);
+    const retryLogout = useCallback(() => checkpointRun.current?checkpointLogout(true):performLogout(true), [performLogout,checkpointLogout]);
     const onLogin = useCallback((employee: Employee) => { void verify(auth.currentUser, employeeSession(employee)); }, [verify]);
-    return { currentUser: session?.user ?? null, sessionKey: session?.mountKey ?? '', authChecked, onLogin, clearSession, logout, retryLogout, logoutState, logoutError };
+    return { currentUser: session?.user ?? null, sessionKey: session?.mountKey ?? '', authChecked, onLogin, clearSession, logout, retryLogout, logoutState, logoutError,checkpointState,checkpointError,retryCheckpointLogout,returnToWork };
 }

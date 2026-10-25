@@ -6,6 +6,7 @@ vi.mock('../../../shared/firebase',()=>({auth:fake.auth}));
 vi.mock('../../../shared/services/rawManualCorrectionService',()=>({rawManualCorrection:fake.call}));
 import {useRawManualCorrection} from './useRawManualCorrection';
 import {readRawManualAttempt,rawManualAttemptKey} from '../rawManualCorrectionAttempt';
+import {beginSessionWorkCheckpoint} from '../../../shared/sessionWorkCheckpoint';
 const item={id:'raw',name:'참깨',subtype:'벌크',companyId:'taebaek',type:'raw'} as any;
 const context={companyId:'taebaek' as const,employeeId:'employee',actorName:'직원',material:'참깨',originalId:'original',items:[item],onApplied:fake.applied};
 const owner={companyId:'taebaek' as const,actorUid:'uid',employeeId:'employee',rawItemId:'raw'};
@@ -15,6 +16,17 @@ function emit(uid:string|null){fake.auth.currentUser=uid?{uid}:null;for(const fn
 async function setup(){const h=renderHook((props:typeof context)=>useRawManualCorrection(props),{initialProps:context});await act(async()=>{h.result.current.updateDraft({amount:'10',note:'입력 원문',mode:'pos',isNegative:false});await h.result.current.flushDraft();});return h;}
 beforeEach(()=>{localStorage.clear();fake.listeners.clear();fake.auth.currentUser={uid:'uid'};vi.clearAllMocks();fake.call.mockImplementation(async(_action,r)=>result(r));Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async(_key:string,_options:unknown,fn:()=>unknown)=>fn()}});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it('holder없는 옛 actor handle 오류를 다른 계정의 보관 실패나 원문으로 노출하지 않는다',async()=>{
+ const h=renderHook(()=>useRawManualCorrection({...context,items:[]}));await act(async()=>{h.result.current.updateDraft({amount:'81'});await expect(h.result.current.flushDraft()).rejects.toThrow('원료 홀더');});
+ act(()=>emit('other'));h.rerender();expect(h.result.current.draft.amount).toBe('');expect(h.result.current.storageError).toBe('');const gate=beginSessionWorkCheckpoint({uid:'other',companyId:'taebaek',employeeId:'employee'},()=>true)!;await expect(gate.done).resolves.toBeUndefined();gate.release();expect(fake.call).not.toHaveBeenCalled();
+});
+it('중앙 보관은 현재 holder뿐 아니라 이전 holder의 대기 queue와 삼킨 실패까지 검사한다',async()=>{
+ const both={...context,items:[item,{...item,id:'other-raw',name:'콩'}]};const h=renderHook((props:typeof context)=>useRawManualCorrection(props),{initialProps:both});const pending=deferred<void>();
+ Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async(_key:any,_opts:any,fn:any)=>{await pending.promise;return fn();}}});const real=Storage.prototype.setItem;const spy=vi.spyOn(Storage.prototype,'setItem').mockImplementation(function(this:Storage,key,value){if(key===rawManualAttemptKey(owner))throw Error('이전 참깨 입력 보관 실패');return real.call(this,key,value);});
+ act(()=>h.result.current.updateDraft({amount:'77'}));h.rerender({...both,material:'콩',originalId:'bean-row'});let settled=false;const gate=beginSessionWorkCheckpoint({uid:'uid',companyId:'taebaek',employeeId:'employee'},()=>true)!;const checked=gate.done.catch(error=>{settled=true;return error;});await act(async()=>{await Promise.resolve();});expect(settled).toBe(false);
+ await act(async()=>{pending.resolve(undefined);});expect(String(await checked)).toContain('이전 참깨 입력 보관 실패');expect(h.result.current.draft.amount).toBe('');expect(fake.call).not.toHaveBeenCalled();gate.release();spy.mockRestore();
+ const retry=beginSessionWorkCheckpoint({uid:'uid',companyId:'taebaek',employeeId:'employee'},()=>true,true)!;await act(async()=>retry.done);retry.release();expect(readRawManualAttempt(owner)!.entry.draft.amount).toBe('77');
+});
 it('보관10 뒤 입력20 checkpoint 실패와 다시읽기는 현재20을 묵시적으로10으로 송신하지 않는다',async()=>{
  const h=await setup();const spy=vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw Error('기기 보관 실패');});
  await act(async()=>{h.result.current.updateDraft({amount:'20'});await expect(h.result.current.flushDraft()).rejects.toThrow('기기 보관 실패');});spy.mockRestore();

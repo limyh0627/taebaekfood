@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {auth} from '../../../shared/firebase';
 import {useOutputScope} from '../../../shared/hooks/useOutputScope';
+import {registerSessionWork,isSessionWorkChecking} from '../../../shared/sessionWorkCheckpoint';
 import {today} from '../../../shared/day';
 import {DENSITY,unitOf} from '../../../constants/formula';
 import {rawHolderByName,rawLedgerKeys} from '../../../shared/rawHolder';
@@ -49,7 +50,7 @@ export function buildRawManualCorrection(context:RawManualContext,rmCorrectionFo
      : { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'receive' as const, kg: -correctionUsed, lot: { supplierName: '정정', qtyIn: 0 } };
  return{version:1,companyId,actorUid:uid,employeeId:context.employeeId,operationId:opId,command:정정명령,options:{now,newLotId:`lot-${opId}`,carryOverLotId:`carry-${opId}`,legacy:정정옛칸},display:{originalId:row.id,material:rmActiveMaterial,amount:rmCorrectionForm.amount,unit:inputUnit as 'kg'|'L',date:rmCorrectionForm.date,note:rmCorrectionForm.note,mode:isStocktake?'stocktake':rmCorrectionForm.isNegative?'neg':'pos'}};
 }
-type Handle={owner:RawManualOwner|null;draft:RawManualDraft;copy:RawManualCopy|null;error:string;queue:Promise<void>};
+type Handle={actor:{uid:string|undefined;companyId:CompanyId;employeeId:string};owner:RawManualOwner|null;draft:RawManualDraft;copy:RawManualCopy|null;error:string;queue:Promise<void>};
 export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>void;onBackdated?:()=>Promise<unknown>;onOpenDraft?:(material:string,originalId:string)=>void}){
  const [,paint]=useState(0),mounted=useRef(true),uid=auth.currentUser?.uid;
  const getSignal=useOutputScope(context.companyId,'raw-manual:'+context.employeeId);
@@ -65,11 +66,22 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
  const handleRef=useRef<{key:string;value:Handle}|null>(null);
  const readInitial=():Handle=>{
   const owner=holder&&uid?{companyId:context.companyId,actorUid:uid,employeeId:context.employeeId,rawItemId:holder.id}:null;
-  const h:Handle={owner,draft:initialRawManualDraft(context.originalId??'',context.material),copy:null,error:'',queue:Promise.resolve()};
+  const h:Handle={actor:{uid,companyId:context.companyId,employeeId:context.employeeId},owner,draft:initialRawManualDraft(context.originalId??'',context.material),copy:null,error:'',queue:Promise.resolve()};
   try{if(owner){h.copy=readRawManualAttempt(owner);if(h.copy)h.draft=structuredClone(h.copy.entry.draft);}}catch(error){h.error=String(error);}return h;
  };
  if(!handleRef.current||handleRef.current.key!==holderKey)handleRef.current={key:holderKey,value:readInitial()};
  const h=handleRef.current.value;
+ const handles=useRef(new Set<Handle>());handles.current.add(h);
+ const checkpointBlocked=()=>!!actorScope.uid&&isSessionWorkChecking({uid:actorScope.uid,companyId:actorScope.companyId,employeeId:actorScope.employeeId});
+ useEffect(()=>{if(!actorScope.uid)return;return registerSessionWork({uid:actorScope.uid,companyId:actorScope.companyId,employeeId:actorScope.employeeId},{name:'원료 수동정정',flush:async retry=>{
+  const failures:string[]=[];
+  await Promise.all([...handles.current].filter(handle=>handle.actor.uid===actorScope.uid&&handle.actor.companyId===actorScope.companyId&&handle.actor.employeeId===actorScope.employeeId).map(async handle=>{
+   await handle.queue;
+   if(retry&&handle.error&&handle.owner){try{handle.copy=await checkpointRawManualDraft(handle.owner,handle.copy?.encoded??null,structuredClone(handle.draft));handle.error='';}catch(error){handle.error=String(error);}}
+   if(handle.error)failures.push(handle.error);
+  }));
+  if(failures.length)throw Error(failures.join('\n'));
+ }});},[actorScope]);
  if(!h.copy&&!h.draft.originalId&&context.originalId)h.draft={...h.draft,originalId:context.originalId};
  const runOwner=useRef<symbol|null>(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const [recoveryOpen,setRecoveryOpen]=useState(false),[selected,setSelected]=useState<RawManualCopy|null>(null),[damagedText,setDamagedText]=useState('');
@@ -86,14 +98,14 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
   h.queue=h.queue.catch(()=>{}).then(async()=>{if(!h.owner)throw Error('원료 홀더와 로그인 계정을 확인한 뒤 다시 보관해 주세요.');const saved=await checkpointRawManualDraft(h.owner,h.copy?.encoded??null,fixed);h.copy=saved;h.error='';}).catch(error=>{h.error=String(error);}).then(()=>{if(activeActor()&&handleRef.current?.value===h)refresh();});
   refresh();return h.queue;
  };
- const updateDraft=(patch:Partial<RawManualDraft>)=>{if(!activeActor()||runOwner.current||h.copy&&h.copy.entry.state!=='draft')return;void checkpoint({...h.draft,...patch});};
+ const updateDraft=(patch:Partial<RawManualDraft>)=>{if(checkpointBlocked()||!activeActor()||runOwner.current||h.copy&&h.copy.entry.state!=='draft')return;void checkpoint({...h.draft,...patch});};
  const flushDraft=async()=>{await h.queue;if(h.error)throw Error(h.error);};
  const readAgain=()=>{
-  if(runOwner.current||!activeActor())return;
+  if(checkpointBlocked()||runOwner.current||!activeActor())return;
   try{if(h.owner){const copy=readRawManualAttempt(h.owner);h.copy=copy;const differs=copy?JSON.stringify(copy.entry.draft)!==JSON.stringify(h.draft):true;if(!h.error&&copy)h.draft=structuredClone(copy.entry.draft);else if(differs){h.error='현재 입력과 기기에 보관된 초안이 다릅니다. 입력은 보존했습니다. 현재 입력을 다시 보관한 뒤 저장해 주세요.';}else h.error='';}if(selected)setSelected(readRawManualAttempt(selected.entry.owner));setNotice('기기에 보관된 요청을 다시 읽었습니다. 현재 입력의 보관 상태와 처리 결과 조회는 별도로 확인해 주세요.');}catch(error){h.error=String(error);}refresh();
  };
  const run=async(action:'apply'|'inspect'|'cancel',source?:RawManualCopy)=>{
-  if(runOwner.current||!activeActor())return;
+  if(checkpointBlocked()||runOwner.current||!activeActor())return;
   const owner=Symbol(),signal=getSignal();if(signal.aborted)return;runOwner.current=owner;setBusy(true);setNotice('');
   const targetHandle=h,runScope=actorScope,runSelection=selection;
   const current=()=>mounted.current&&scope.current===runScope&&selectionRef.current===runSelection&&handleRef.current?.value===targetHandle&&auth.currentUser?.uid===runScope.uid&&!signal.aborted;
@@ -129,13 +141,13 @@ export function useRawManualCorrection(context:RawManualContext&{onApplied?:()=>
   finally{if(runOwner.current===owner){runOwner.current=null;if(mounted.current&&scope.current===runScope)setBusy(false);}}
  };
  const startNew=async(copy:RawManualCopy)=>{
-  if(runOwner.current||!activeActor())return;
+  if(checkpointBlocked()||runOwner.current||!activeActor())return;
   const owner=Symbol();runOwner.current=owner;setBusy(true);
   const signal=getSignal(),capturedSelection=selection,current=()=>activeActor()&&selectionRef.current===capturedSelection&&!signal.aborted;
   try{const draft={...copy.entry.draft,originalId:context.originalId??copy.entry.draft.originalId};const saved=await newRawManualDraft(copy.entry.owner,copy,draft,current);if(!current())return;if(h.owner?.rawItemId===saved.entry.owner.rawItemId){h.copy=saved;h.draft=structuredClone(saved.entry.draft);}latest.current.onOpenDraft?.(saved.entry.draft.material,saved.entry.draft.originalId);setSelected(saved);setRecoveryOpen(false);setNotice('보관된 입력을 새 초안으로 열었습니다. 다음 저장은 새 정정 요청입니다.');refresh();}catch(error){if(current())setNotice(String(error));}
   finally{if(runOwner.current===owner){runOwner.current=null;if(activeActor())setBusy(false);}}
  };
- const retryConfirmed=async()=>{if(!confirmed||runOwner.current||!activeActor())return;const symbol=Symbol();runOwner.current=symbol;setBusy(true);const signal=getSignal(),capturedSelection=selection,current=()=>activeActor()&&selectionRef.current===capturedSelection&&!signal.aborted;try{const actual=readRawManualAttempt(confirmed.copy.entry.owner);if(!actual?.entry.request||JSON.stringify(actual.entry.request)!==JSON.stringify(confirmed.copy.entry.request))throw new RawManualCasConflict('다른 창의 새 요청을 덮지 않았습니다. 보관 요청을 다시 읽어 주세요.');const saved=await recordRawManualResult(actual.entry.owner,actual,confirmed.result,current);if(!current())return;if(h.owner?.rawItemId===saved.entry.owner.rawItemId)h.copy=saved;setSelected(saved);setConfirmed(null);setNotice('확인된 서버 결과를 이 기기에 보관했습니다.');refresh();}catch(error){if(current()){if(error instanceof RawManualCasConflict)setConfirmed(null);setNotice(String(error));}}finally{if(runOwner.current===symbol){runOwner.current=null;if(activeActor())setBusy(false);}}};
+ const retryConfirmed=async()=>{if(checkpointBlocked()||!confirmed||runOwner.current||!activeActor())return;const symbol=Symbol();runOwner.current=symbol;setBusy(true);const signal=getSignal(),capturedSelection=selection,current=()=>activeActor()&&selectionRef.current===capturedSelection&&!signal.aborted;try{const actual=readRawManualAttempt(confirmed.copy.entry.owner);if(!actual?.entry.request||JSON.stringify(actual.entry.request)!==JSON.stringify(confirmed.copy.entry.request))throw new RawManualCasConflict('다른 창의 새 요청을 덮지 않았습니다. 보관 요청을 다시 읽어 주세요.');const saved=await recordRawManualResult(actual.entry.owner,actual,confirmed.result,current);if(!current())return;if(h.owner?.rawItemId===saved.entry.owner.rawItemId)h.copy=saved;setSelected(saved);setConfirmed(null);setNotice('확인된 서버 결과를 이 기기에 보관했습니다.');refresh();}catch(error){if(current()){if(error instanceof RawManualCasConflict)setConfirmed(null);setNotice(String(error));}}finally{if(runOwner.current===symbol){runOwner.current=null;if(activeActor())setBusy(false);}}};
  const showUI=uiScope.current===actorScope&&uiSelection.current===selection;
  const sameOwner=(copy:RawManualCopy)=>copy.entry.owner.companyId===actorScope.companyId&&copy.entry.owner.actorUid===actorScope.uid&&copy.entry.owner.employeeId===actorScope.employeeId;
  return{draft:h.draft,busy:showUI&&busy,notice:showUI?notice:'',storageError:h.error,copy:h.copy,entries,recoveryOpen:showUI&&recoveryOpen,selected:showUI&&selected&&sameOwner(selected)?selected:null,damagedText:showUI?damagedText:'',confirmed:showUI&&confirmed&&sameOwner(confirmed.copy)?confirmed:null,retryConfirmed,

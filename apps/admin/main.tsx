@@ -135,7 +135,7 @@ const AdminRoot: React.FC = () => {
  if(session.logoutState!=='idle')return <SessionLogoutState state={session.logoutState} error={session.logoutError} onRetry={session.retryLogout}/>;
  if(!session.authChecked)return <div className="min-h-screen bg-slate-50"/>;
  if(!session.currentUser)return <AuthPage app="admin" onLogin={session.onLogin}/>;
- return <AdminSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.logout}/>;
+ return <><AdminSessionRoot key={session.sessionKey} currentUser={session.currentUser} onSessionLogout={session.logout}/>{session.checkpointState!=='idle'&&<SessionLogoutState state={session.checkpointState==='checking'?'checking':'checkpoint-failed'} error={session.checkpointError} onRetry={session.retryCheckpointLogout} onReturn={session.returnToWork}/>}</>;
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
