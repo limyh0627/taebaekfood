@@ -38,10 +38,11 @@ const defaultTempRows = (zones: StorageZone[] = STORAGE_ZONES): TempRow[] =>
 export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
   const today = todayStr();
-  const editor = useHaccpRecordEditor<TempRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
+  const editor = useHaccpRecordEditor<TempRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm, getKey: record => record.date, getRevision: record => record.revisionCount ?? -1,
+    mergeConfirmed: (base, result) => ({...base, confirmedBy: result.confirmedBy, confirmedAt: result.confirmedAt})});
   const {selected, edit: setSelected, busy} = editor;
   const [recordState, setRecordState] = useState({owner: editor.ownerToken, rows: [] as TempRecord[]});
-  const records = recordState.owner === editor.ownerToken ? recordState.rows : [];
+  const records = recordState.owner === editor.ownerToken ? recordState.rows.filter(row => !editor.isDeleted(row.id ?? '')) : [];
   const latest = useRef({selected, records, isAdmin, canConfirm});
   latest.current = {selected, records, isAdmin, canConfirm};
   const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.date ?? ""}`);
@@ -55,29 +56,29 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
     const owner = editor.ownerToken;
     let active = true;
     const q = query(collection(db, 'haccp_temp'), where('companyId', '==', companyId));
-    const stop = onSnapshot(q, snap => {
+    const stop = onSnapshot(q, {includeMetadataChanges: true}, snap => {
       if (!active || !editor.isCurrent(owner)) return;
       setRecordState({owner, rows: snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord)).filter(row => typeof row.date === 'string').sort((a, b) => b.date.localeCompare(a.date))});
-      editor.readSuccess('records');
-    }, () => { if (active && editor.isCurrent(owner)) editor.readFailure('records'); });
+      editor.observeRecords(snap.docs.map(d => ({id: d.id, ...d.data()} as TempRecord)).filter(row => typeof row.date === 'string'), snap.metadata?.fromCache === false);
+    }, () => { if (active && editor.isCurrent(owner)) { active = false; editor.readFailure('records'); } });
     return () => { active = false; stop(); };
   }, [editor.ownerToken, editor.readRevision]);
 
   useEffect(() => {
     const owner = editor.ownerToken;
     let active = true;
-    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), {includeMetadataChanges: true}, snap => {
       if (!active || !editor.isCurrent(owner)) return;
       if (snap.exists()) {
         const data = snap.data().zones;
         if (Array.isArray(data) && data.length > 0) setZoneState({owner, rows: data});
       }
-      editor.readSuccess('template');
-    }, () => { if (active && editor.isCurrent(owner)) editor.readFailure('template'); });
+      if (snap.metadata?.fromCache === false) editor.readSuccess('template'); else editor.readPending('template');
+    }, () => { if (active && editor.isCurrent(owner)) { active = false; editor.readFailure('template'); } });
     return () => { active = false; stop(); };
   }, [editor.ownerToken, editor.readRevision]);
 
-  const todayRecord = records.find(r => r.date === today);
+  const todayRecord = editor.knownRecord(today) ?? records.find(r => r.date === today);
   const isReadOnly = selected ? selected.date !== today : false;
 
   const openToday = () => {
@@ -136,7 +137,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
       if (!await appConfirm('이 기록을 삭제하시겠습니까?')) return;
       if (!isCurrent()) return;
       await deleteItem('haccp_temp', id);
-      if (selected?.id === id) return null;
+      return {deletedId: id, selected: selected?.id === id ? null : undefined};
     });
   };
 
@@ -146,9 +147,10 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
   return (
     <div className="flex flex-col gap-4">
       {(editor.error || editor.readError) && <div role="alert" className="text-sm text-slate-700">{editor.error || editor.readError}
-        {editor.readError && <button type="button" disabled={busy} onClick={editor.retryRead} className="ml-2 underline">다시 조회</button>}
+        {<button type="button" disabled={busy} onClick={editor.retryRead} className="ml-2 underline">다시 조회</button>}
       </div>}
-      {!editor.readReady && !editor.readError && <p role="status" className="text-sm text-slate-500">기록과 점검 항목을 조회하는 중입니다.</p>}
+      {!editor.readReady && !editor.readError && <p role="status" className="text-sm text-slate-500">기록과 점검 항목을 조회하는 중입니다. <button type="button" disabled={busy} onClick={editor.retryRead}>다시 조회</button></p>}
+      {editor.hasServerRecord && editor.error && <button type="button" onClick={editor.openServerRecord}>조회된 기록 열기</button>}
       <fieldset disabled={busy || !editor.readReady} className="min-w-0 flex flex-col gap-4">
       {/* 오늘 날짜 카드 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">

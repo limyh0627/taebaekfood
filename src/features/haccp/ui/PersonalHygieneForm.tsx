@@ -50,10 +50,11 @@ const emptyPersonalRecord = (cols: string[] = PERSONAL_HYGIENE_COLS): Omit<Perso
 
 export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
-  const editor = useHaccpRecordEditor<PersonalHygieneRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
+  const editor = useHaccpRecordEditor<PersonalHygieneRecord>({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm, getKey: record => record.checkDate, getRevision: record => record.revisionCount ?? -1,
+    mergeConfirmed: (base, result) => ({...base, confirmedBy: result.confirmedBy, confirmedAt: result.confirmedAt})});
   const {selected, edit: setSelected, busy} = editor;
   const [recordView, setRecordView] = useState<{owner: HaccpRecordOwner; rows: PersonalHygieneRecord[]} | null>(null);
-  const records = recordView?.owner === editor.ownerToken ? recordView.rows : [];
+  const records = recordView?.owner === editor.ownerToken ? recordView.rows.filter(row => !editor.isDeleted(row.id ?? '')) : [];
   const [templateView, setTemplateView] = useState<{owner: HaccpRecordOwner; cols: string[]} | null>(null);
   const outputSignal = useOutputScope(companyId, `${selected?.id ?? "new"}:${selected?.checkDate ?? ""}`);
   const saving = busy, confirming = busy;
@@ -67,11 +68,11 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     let active = true;
     const current = () => active && editor.isCurrent(token);
     const q = query(collection(db, 'haccp_personal_hygiene'), where('companyId', '==', companyId));
-    const stop = onSnapshot(q, snap => {
+    const stop = onSnapshot(q, {includeMetadataChanges: true}, snap => {
       if (!current()) return;
       setRecordView({owner: token, rows: snap.docs.map(d => ({id: d.id, ...d.data()} as PersonalHygieneRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate))});
-      editor.readSuccess('records');
-    }, () => { if (current()) editor.readFailure('records'); });
+      editor.observeRecords(snap.docs.map(d => ({id: d.id, ...d.data()} as PersonalHygieneRecord)).filter(row => typeof row.checkDate === 'string'), snap.metadata?.fromCache === false);
+    }, () => { if (current()) { active = false; editor.readFailure('records'); } });
     return () => { active = false; stop(); };
   }, [companyId, editor.ownerToken, editor.readRevision]);
 
@@ -79,29 +80,30 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     const token = editor.ownerToken;
     let active = true;
     const current = () => active && editor.isCurrent(token);
-    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
+    const stop = onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), {includeMetadataChanges: true}, snap => {
       if (!current()) return;
       const data = snap.exists() ? snap.data().cols : undefined;
       setTemplateView({owner: token, cols: Array.isArray(data) && data.length > 0 ? data : PERSONAL_HYGIENE_COLS});
-      editor.readSuccess('template');
-    }, () => { if (current()) editor.readFailure('template'); });
+      if (snap.metadata?.fromCache === false) editor.readSuccess('template'); else editor.readPending('template');
+    }, () => { if (current()) { active = false; editor.readFailure('template'); } });
     return () => { active = false; stop(); };
   }, [companyId, editor.ownerToken, editor.readRevision]);
 
-  const todayRecord = records.find(r => r.checkDate === today);
+  const todayRecord = editor.knownRecord(today) ?? records.find(r => r.checkDate === today);
 
   const openToday = () => {
     if (!editor.canEdit()) return;
-    const record = todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord;
-    if (!isAdmin && currentUser?.name) {
-      const byName = record.rows.findIndex(r => r.name === currentUser.name);
-      const targetIdx = byName >= 0 ? byName : record.rows.findIndex(r => !r.name.trim());
-      if (targetIdx >= 0 && record.rows[targetIdx].name !== currentUser.name) {
-        editor.select({ ...record, rows: record.rows.map((r, i) => i === targetIdx ? { ...r, name: currentUser.name } : r) });
-        return;
+    const record = editor.resolveRecord(todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord);
+    editor.select(record, resolved => {
+      if (!isAdmin && currentUser?.name) {
+        const byName = resolved.rows.findIndex(r => r.name === currentUser.name);
+        const targetIdx = byName >= 0 ? byName : resolved.rows.findIndex(r => !r.name.trim());
+        if (targetIdx >= 0 && resolved.rows[targetIdx].name !== currentUser.name) {
+          return { ...resolved, rows: resolved.rows.map((r, i) => i === targetIdx ? { ...r, name: currentUser.name } : r) };
+        }
       }
-    }
-    editor.select(record);
+      return resolved;
+    });
   };
 
   const openHistory = (r: PersonalHygieneRecord) => { editor.select(r); setShowHistory(false); };
@@ -183,7 +185,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
       if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
       if (!isCurrent()) return;
       await deleteItem('haccp_personal_hygiene', id);
-      return latest.current.selected?.id === id ? null : undefined;
+      return {deletedId: id, selected: latest.current.selected?.id === id ? null : undefined};
     });
   };
 
@@ -192,7 +194,9 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   return (
     <fieldset disabled={busy} className="min-w-0 flex flex-col gap-4">
       {editor.readError && <div role="alert">{editor.readError} <button onClick={editor.retryRead}>다시 조회</button></div>}
-      {editor.error && <p role="alert" className="text-sm text-rose-600">{editor.error}</p>}
+      {!editor.readReady && !editor.readError && <p role="status">기록과 점검 항목을 확인 중입니다. <button type="button" disabled={busy} onClick={editor.retryRead}>다시 조회</button></p>}
+      {editor.hasServerRecord && editor.error && <button type="button" onClick={editor.openServerRecord}>조회된 기록 열기</button>}
+      {editor.error && <p role="alert" className="text-sm text-rose-600">{editor.error} <button type="button" disabled={busy} onClick={editor.retryRead}>다시 조회</button></p>}
       {/* 오늘 점검 버튼 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">

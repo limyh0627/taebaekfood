@@ -2,7 +2,7 @@
 const withoutOutput = (text: string) => text.replace(/\r\n/g, '\n').replace(/\n  const outputSignal = useOutputScope[^\n]*;/g, '').replace(/, outputSignal\(\)/g, '').replace(/  useEffect\(\(\) => \{\n    if \(!bulkList\) return;[\s\S]*?\n  \}, \[bulkList\]\);/g, '').replace(/      if \(await appConfirm\('확인 처리되었습니다\.[^\n]*\)\) \{[\s\S]*?\n      \}/g, '').replace(/      alert\('확인 결과를 저장했습니다\.[^\n]*\);/g, '').replace(/ title="확인 결과만 저장합니다\.[^"]*"/g, '');
 /** @vitest-environment jsdom */
 import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -14,7 +14,8 @@ vi.mock('../../../shared/firebase', () => ({ db: {}, auth: { get currentUser() {
 vi.mock('firebase/auth', () => ({ onAuthStateChanged: (_: unknown, fn: any) => { state.listeners.push(fn); return () => { }; } }));
 vi.mock('../../../shared/components/appDialog', () => ({ appConfirm: state.confirm }));
 vi.mock('../../../shared/services/firebaseService', () => ({ addItem: state.add, updateItem: state.update, deleteItem: state.remove, setDocument: vi.fn() }));
-vi.mock('firebase/firestore', () => ({ collection: (_: unknown, name: string) => ({ collection: name }), doc: (_: unknown, name: string, id: string) => ({ collection: name, id }), where: (field: string, op: string, value: unknown) => ({ field, op, value }), query: (ref: object, ...clauses: unknown[]) => ({ ...ref, clauses }), onSnapshot: (ref: any, next: any, error: any) => {
+vi.mock('firebase/firestore', () => ({ collection: (_: unknown, name: string) => ({ collection: name }), doc: (_: unknown, name: string, id: string) => ({ collection: name, id }), where: (field: string, op: string, value: unknown) => ({ field, op, value }), query: (ref: object, ...clauses: unknown[]) => ({ ...ref, clauses }), onSnapshot: (ref: any, ...args: any[]) => {
+        const raw=typeof args[0]==='function'?args[0]:args[1], error=typeof args[0]==='function'?args[1]:args[2], next=(snapshot:any)=>raw({metadata:{fromCache:false},...snapshot});
         const stop = vi.fn();
         state.subscriptions.push({ ref, next, error, stop });
         if (ref.collection === 'haccp_temp')
@@ -102,7 +103,7 @@ it('새 기록 실패는 입력과 이유를 보존하고 잠금 해제 후 명�
     expect(screen.getAllByPlaceholderText('예: 5')[0]).toHaveValue('-187');
     expect(screen.getAllByPlaceholderText('예: 5')[0]).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
-    await screen.findByText(/Rev.0/);
+    await screen.findByText(/^✏️ Rev\.0$/);
     expect(state.add).toHaveBeenCalledTimes(2);
     expect(state.add.mock.calls[1][1]).toMatchObject({ date: todayStr(), measureTime: '12:30', createdBy: '측정자', revisionCount: 0, rows: expect.arrayContaining([expect.objectContaining({ temp: '-187' })]) });
 });
@@ -218,3 +219,31 @@ it('신규 ACK와 조회 오류가 겹치면 상단 카드는 미작성이 아�
  expect(screen.getByRole('button',{name:/오늘 온도 측정 기록/})).not.toHaveTextContent('미작성');
  expect(screen.getByText(/Rev.0/)).toBeInTheDocument();expect(state.add).toHaveBeenCalledTimes(1);
 });
+
+it.each(['haccp_temp','haccp_templates'])('현재cache%s는송신을막는다',collection=>{state.add.mockResolvedValue('new');render(<TempForm isAdmin currentUser={{id:'u',name:'작성자'}}/>);fireEvent.click(screen.getByRole('button',{name:/오늘 온도 측정 기록/}));act(()=>{const sub=state.subscriptions.find(s=>s.ref.collection===collection);sub.next(collection==='haccp_temp'?{docs:[],metadata:{fromCache:true}}:{exists:()=>false,metadata:{fromCache:true}});});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(state.add).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();});
+it('정상ACK뒤오늘재선택은확정ID로수정한다',async()=>{state.add.mockResolvedValue('new');render(<TempForm isAdmin currentUser={{id:'u',name:'작성자'}}/>);const open=()=>fireEvent.click(screen.getByRole('button',{name:/오늘 온도 측정 기록/}));open();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(state.add).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());expect(screen.getByRole('button',{name:/오늘 온도 측정 기록/})).toHaveTextContent('Rev.0 저장됨');open();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(state.update).toHaveBeenCalledWith('haccp_temp','new',expect.objectContaining({revisionCount:1})));expect(state.add).toHaveBeenCalledOnce();});
+it('cache안내retry는실구독을교체하고옛callback·누락metadata를정본으로쓰지않는다',()=>{
+ render(<TempForm isAdmin/>);const old=state.subscriptions.find(s=>s.ref.collection==='haccp_temp');act(()=>old.next({docs:[],metadata:{fromCache:true}}));fireEvent.click(screen.getByRole('button',{name:'다시 조회'}));expect(old.stop).toHaveBeenCalledOnce();act(()=>old.next({docs:[],metadata:{fromCache:true}}));expect(screen.getByRole('button',{name:/오늘 온도 측정 기록/})).toBeEnabled();const current=state.subscriptions.filter(s=>s.ref.collection==='haccp_temp').at(-1);act(()=>current.next({docs:[],metadata:undefined}));expect(screen.getByRole('button',{name:/오늘 온도 측정 기록/})).toBeDisabled();act(()=>current.next({docs:[],metadata:{fromCache:false,hasPendingWrites:true}}));expect(screen.getByRole('button',{name:/오늘 온도 측정 기록/})).toBeEnabled();
+});
+
+const editorDomainPreserved=(text:string)=>{
+ const file=ts.createSourceFile('form.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),out:Record<string,string>={};
+ const names=new Set(['emptyPersonalRecord','defaultTempRows','filledRows','allChecked','myRowIdx','canEditRow','toggleCheck','setRowField','addRow','revLabel','isReadOnly','pastRecords','update']);
+ const hash=(key:string,node:ts.Node)=>{out[key]=createHash('sha256').update(node.getText(file).replace(/\r\n/g,'\n')).digest('hex');};
+ const visit=(node:ts.Node,scope='')=>{if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){const name=node.name.text;if(names.has(name))hash(name,node.initializer);if(['handleSave','handleConfirm'].includes(name))scope=name;if(['handleSave','handleConfirm'].includes(scope)&&['data','update','upd','now','userName'].includes(name))hash(scope+':'+name,node.initializer);}if(ts.isJsxElement(node)&&node.openingElement.attributes.properties.some(a=>ts.isJsxAttribute(a)&&a.name.getText(file)==='ref'&&a.initializer?.getText(file)==='{printRef}'))hash('printRefPDF',node);ts.forEachChild(node,c=>visit(c,scope));};visit(file);return out;
+};
+it('허용editor연결밖도메인·payload·PDFoldAST보존',()=>expect(editorDomainPreserved(readFileSync('src/features/haccp/ui/TempForm.tsx','utf8'))).toEqual({
+  "defaultTempRows": "163abc3178b721404981356ed1b6370db66ee86cc004246c35e58449c7cf99ac",
+  "isReadOnly": "ba802c639f96ad01460350158e1def4957d3b73b34aae9a3c071a1b9bec54719",
+  "update": "f3f7556522489813323e7f7dec6e93003c019d3840ff4c98bbe560841d731605",
+  "addRow": "533ee8f7f67a4541857cffca16aebbf5d61e11e41678e854221e99635e27a090",
+  "handleSave:now": "c3b9a00586a0c69c38799a013a999abea28ca2bccd7793a4b699be0ca103b3c4",
+  "handleSave:userName": "2b1992e6ddcd85779420d239aa027eceee0f9ac628bd341312f87d7b42043060",
+  "handleSave:data": "f5cdbad6bfc17ed958a63a69ce2ca032a79ece777399eea851829bd2a286b34e",
+  "handleSave:upd": "f38a8037aec1616f20959c390dcda8175eadc0689b55cb712fa302094482e17a",
+  "handleConfirm:upd": "db6dd5fb8730978b8fc7d999f800ad39b0996b605d49990b1a129f2bf498a89d",
+  "revLabel": "546c5249b0da3c9814d0b125d68e43782d16d24db22b50b8a471b19252708359",
+  "pastRecords": "58094abeb10dcc360efad79e4fee54e0bb54f0131a0253af791217f41cf227eb",
+  "printRefPDF": "6f3a824b80fc23dd3709c22aa8c9131ccc7fbb957929b8b20e3d7b06c2fea1b2"
+}));
+
