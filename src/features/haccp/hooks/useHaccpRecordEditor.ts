@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react';
-import { createHaccpRecordKnowledge } from '../domain/haccpRecordKnowledge';
+import { createHaccpRecordAcknowledgements } from '../domain/haccpRecordAcknowledgements';
 import { auth } from '../../../shared/firebase';
 import type { CompanyId } from '../../../shared/types';
 export type HaccpRecordOwner = object;
@@ -24,7 +24,7 @@ export function useHaccpRecordEditor<T extends {
     const getUid = () => latest.current.getUid ? latest.current.getUid() ?? '' : auth.currentUser?.uid ?? '';
     const make = () => ({ companyId: options.companyId, employee: options.currentUserId ?? '', uid: getUid(),
         alive: true, selected: null as T | null, selection: 0, run: null as object | null,
-        rawRecords: [] as T[], records: [] as T[], serverRecords: [] as T[], saved: new Map<string, T>(), confirmations: new Map<string, T>(), deleted: new Set<string>(), knowledge: createHaccpRecordKnowledge(),
+        acknowledgements: createHaccpRecordAcknowledgements<T>({getKey: record => latest.current.getKey(record), strategy: {kind: 'numeric', getRevision: record => latest.current.getRevision(record)}, mergeConfirmed: (base, result) => latest.current.mergeConfirmed(base, result)}),
         error: '', reads: { records: false, template: false }, readErrors: { records: '', template: '' }, readRevision: 0 });
     const ref = useRef<ReturnType<typeof make> | null>(null);
     if (!ref.current || !ref.current.alive || ref.current.companyId !== options.companyId ||
@@ -55,47 +55,30 @@ export function useHaccpRecordEditor<T extends {
         return () => { active = false; state.alive = false; stop(); };
     }, [state]);
     const keyOf = (record: T) => latest.current.getKey(record);
-    const revisionOf = (record: T) => latest.current.getRevision(record);
-    const merge = (base: T, result: T) => latest.current.mergeConfirmed(base, result);
-    const confirmedJoined = (server: T, saved: T) => JSON.stringify(merge({id: server.id} as T, server)) === JSON.stringify(merge({id: saved.id} as T, saved));
-    const bestConfirmedBase = (key: string, id?: string, includeServer = true): T | undefined => {
-        const saved = state.saved.get(key);
-        const validSaved = saved && !state.deleted.has(saved.id ?? '') && (!id || saved.id === id) ? saved : undefined;
-        const server = includeServer ? state.serverRecords.find(row => keyOf(row) === key && (!id || row.id === id) && !state.deleted.has(row.id ?? '')) : undefined;
-        if (validSaved) {
-            if (server && server.id === validSaved.id && revisionOf(server) >= revisionOf(validSaved) && confirmedJoined(server, validSaved)) return server;
-            return validSaved;
-        }
-        if (server) { const confirmed = state.confirmations.get(server.id ?? ''); return confirmed ? merge(server, confirmed) : server; }
-        return undefined;
-    };
-    const resolveRecord = (fallback: T): T => bestConfirmedBase(keyOf(fallback), undefined, state.reads.records) ?? fallback;
+    const resolveRecord = (fallback: T): T => state.acknowledgements.resolve(fallback, state.reads.records);
     const select = (next: T | null, prepare?: (record: T) => T) => {
-        if (!canEdit() || (next?.id && state.deleted.has(next.id))) return;
-        state.knowledge.clearSelection();
-        const resolved = next ? resolveRecord(next) : null;
+        if (!canEdit() || (next?.id && state.acknowledgements.isDeleted(next.id))) return;
+        const resolved = state.acknowledgements.select(next, state.reads.records);
         state.selected = resolved && prepare ? prepare(resolved) : resolved;
-        if (resolved?.id && state.saved.get(keyOf(resolved))?.id === resolved.id) state.knowledge.rememberAck(resolved.id);
         state.selection++;
         state.error = '';
         notify();
     };
     const openServerRecord = () => {
         if (!canEdit() || !state.selected) return;
-        const row = state.serverRecords.find(row => keyOf(row) === keyOf(state.selected!) && !state.deleted.has(row.id ?? ''));
+        const candidate = state.acknowledgements.serverRecord(keyOf(state.selected));
+        if (!candidate?.id) return;
+        const row = state.acknowledgements.openServerRecord(keyOf(state.selected), candidate.id, state.reads.records);
         if (!row) return;
-        state.knowledge.clearSelection(); state.saved.delete(keyOf(row));
         state.selected = row; state.selection++; state.error = ''; notify();
     };
-    const targetAllowed = (kind: HaccpRecordAction, id?: string) => {
-        if (kind === 'delete') return !!id && !state.deleted.has(id) && state.records.some(row => row.id === id);
-        if (!state.selected) return false;
-        const key = keyOf(state.selected);
-        if (id) return !state.deleted.has(id) && (state.records.some(row => row.id === id && keyOf(row) === key) ||
-            (!state.records.some(row => keyOf(row) === key) && state.knowledge.allowsUnobservedAck(id)));
-        return !state.rawRecords.some(row => keyOf(row) === key);
+    const targetAllowed = (kind: HaccpRecordAction, id?: string) => (kind === 'delete' || !!state.selected) && state.acknowledgements.canTarget(kind, id, state.selected ? keyOf(state.selected) : '');
+    const targetError = (kind: HaccpRecordAction, id?: string) => {
+        const issue = state.acknowledgements.targetIssue(kind, id, state.selected ? keyOf(state.selected) : '');
+        if (!issue) return;
+        const messages = {'body-mismatch': '마지막 저장 내용과 조회된 내용이 다릅니다. 입력은 보존했습니다. 다시 조회하거나 저장된 기록을 열어 확인해 주세요.', 'duplicate-key': '같은 점검 기록이 여러 개입니다. 입력은 보존했습니다. 관리자 확인 후 기존 이력에서 중복 기록을 정리하고 다시 조회해 주세요.', 'existing-key': '같은 날짜의 저장된 기록이 있습니다. 입력은 보존했습니다. 조회된 기록을 열어 확인해 주세요.', 'missing-record': '현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회하거나 다른 기록을 선택해 주세요.'};
+        state.error = messages[issue]; notify();
     };
-    const targetError = () => { state.error = '현재 목록에서 선택 기록을 확인하지 못했거나 같은 날짜의 다른 기록이 있습니다. 입력은 보존했습니다. 다시 조회하거나 조회된 기록을 열어 진행해 주세요.'; notify(); };
     const edit = (action: T | null | ((previous: T | null) => T | null)) => {
         if (!canEdit())
             return;
@@ -108,40 +91,31 @@ export function useHaccpRecordEditor<T extends {
         const permission = () => (kind !== 'confirm' || !!latest.current.canConfirm) && (kind !== 'delete' || !!latest.current.isAdmin);
         const authorized = () => current() && generation === state.selection && allowed() && permission();
         const actionAllowed = () => ready() && authorized() && targetAllowed(kind, targetId);
-        if (!actionAllowed()) { if (current() && ready() && permission() && !targetAllowed(kind, targetId)) targetError(); return; }
+        if (!actionAllowed()) { if (current() && ready() && permission() && !targetAllowed(kind, targetId)) targetError(kind, targetId); return; }
         // 선택은 처리 중 바꿀 수 없고, ACK는 이 실행이 예약한 선택에만 적용한다.
         if (kind !== 'delete' && state.selected?.id !== targetId)
             return;
         const confirmationBase = kind === 'confirm' && state.selected ?
-            bestConfirmedBase(keyOf(state.selected), targetId) : undefined;
+            state.acknowledgements.captureConfirm(keyOf(state.selected), targetId!) : undefined;
+        const saveObservation = state.acknowledgements.captureSave();
         const token = {};
         state.run = token;
         state.error = '';
         notify();
         const owns = () => current() && state.run === token && state.selection === generation;
-        const permitted = () => { const valid = owns() && actionAllowed(); if (!valid && owns() && ready() && permission() && !targetAllowed(kind, targetId)) targetError(); return valid; };
+        const permitted = () => { const valid = owns() && actionAllowed(); if (!valid && owns() && ready() && permission() && !targetAllowed(kind, targetId)) targetError(kind, targetId); return valid; };
         try {
             const result = await work(permitted);
             if (!owns() || !permission())
                 return;
             if (kind === 'delete' && result && typeof (result as {deletedId?: unknown}).deletedId === 'string' && Object.hasOwn(result, 'selected')) {
                 const deletion = result as {deletedId: string; selected: T | null | undefined};
-                const id = deletion.deletedId, clearingSelected = state.selected?.id === id;
-                state.deleted.add(id); state.confirmations.delete(id);
-                for (const [key, saved] of state.saved) if (saved.id === id) state.saved.delete(key);
-                state.records = state.records.filter(row => row.id !== id); state.serverRecords = state.serverRecords.filter(row => row.id !== id);
+                state.acknowledgements.rememberDelete(deletion.deletedId, state.selected?.id);
                 if (deletion.selected !== undefined) state.selected = deletion.selected;
-                if (clearingSelected) state.knowledge.clearSelection();
             } else if (result !== undefined) {
                 const recordResult = result as T | null;
-                if (recordResult && kind === 'save' && recordResult.id) { state.saved.set(keyOf(recordResult), recordResult); state.knowledge.rememberAck(recordResult.id); }
-                if (recordResult && kind === 'confirm' && recordResult.id) {
-                    const key = keyOf(recordResult);
-                    const latestBase = bestConfirmedBase(key, recordResult.id);
-                    const base = confirmationBase && (!latestBase || revisionOf(confirmationBase) > revisionOf(latestBase)) ? confirmationBase : latestBase;
-                    const metadata = merge({id: recordResult.id} as T, recordResult); state.confirmations.set(recordResult.id, metadata);
-                    if (base) state.saved.set(key, merge(base, metadata));
-                }
+                if (recordResult && kind === 'save') state.acknowledgements.rememberSave(recordResult, saveObservation);
+                if (recordResult && kind === 'confirm' && confirmationBase) state.acknowledgements.rememberConfirm(recordResult, confirmationBase);
                 state.selected = recordResult;
             }
         }
@@ -160,13 +134,12 @@ export function useHaccpRecordEditor<T extends {
             }
         }
     };
-    return { selected: state.selected, select, edit, run, resolveRecord, knownRecord: (key: string) => { const saved = state.saved.get(key); return saved && !state.deleted.has(saved.id ?? '') ? resolveRecord(saved) : undefined; }, openServerRecord, isDeleted: (id: string) => state.deleted.has(id),
-        hasServerRecord: !!state.selected && state.serverRecords.some(row => keyOf(row) === keyOf(state.selected!)), busy: !!state.run, error: state.error, canEdit,
+    return { selected: state.selected, select, edit, run, resolveRecord, knownRecord: (key: string) => state.acknowledgements.known(key, state.reads.records), openServerRecord, isDeleted: state.acknowledgements.isDeleted,
+        hasServerRecord: !!state.selected && !!state.acknowledgements.serverRecord(keyOf(state.selected)), busy: !!state.run, error: state.error, canEdit,
         ownerToken: state as HaccpRecordOwner, isCurrent, readRevision: state.readRevision,
         readReady: ready(), readPending: (kind: HaccpRecordRead) => { if (current()) { state.reads[kind] = false; state.readErrors[kind] = ''; notify(); } },
         observeRecords: (rows: T[], serverReady: boolean) => { if (current()) {
-            state.rawRecords = rows; state.records = rows.filter(row => !state.deleted.has(row.id ?? '')); state.knowledge.observe(rows.map(row => row.id));
-            if (serverReady) state.serverRecords = state.records;
+            state.acknowledgements.observe(rows, serverReady);
             state.reads.records = serverReady; state.readErrors.records = ''; notify();
         } }, readError: state.readErrors.records || state.readErrors.template,
         readSuccess: (kind: HaccpRecordRead) => { if (current()) {

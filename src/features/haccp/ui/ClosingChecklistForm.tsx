@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FileDown, BadgeCheck, Save } from 'lucide-react';
 import { TH, TD, TDL } from './ChecklistFormParts';
 import { useHaccpCompany } from '../context/HaccpCompanyContext';
-import { createHaccpRecordKnowledge } from '../domain/haccpRecordKnowledge';
+import { createHaccpRecordAcknowledgements } from '../domain/haccpRecordAcknowledgements';
 import { useHaccpRecordActor } from '../hooks/useHaccpRecordActor';
 import { useChecklistDraftControl } from '../hooks/useChecklistDraftControl';
 import { downloadAsPDF } from '../infrastructure/downloadAsPDF';
@@ -23,6 +23,9 @@ const emptyClosingRecord = (date: string, items: { item: string; standard: strin
   specialNotes: '',
   createdBy: '', createdAt: '', updatedBy: '', updatedAt: '',
 });
+
+const closingKey = (record: Pick<ClosingRecord, 'checkDate'>) => record.checkDate;
+const savedBody = (record: ClosingRecord) => JSON.stringify([record.checkDate, record.checkZone, record.rows.map(row => [row.result, row.note, row.inspector]), record.specialNotes, record.createdBy, record.createdAt, record.updatedBy, record.updatedAt]);
 
 export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
@@ -44,7 +47,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
   const [readAttempt, setReadAttempt] = useState(0);
   const readRef = useRef({ ready: false, blocked: false, rows: [] as ClosingRecord[] });
 
-  const [knowledge] = useState(createHaccpRecordKnowledge);
+  const [acknowledgements] = useState(() => createHaccpRecordAcknowledgements<ClosingRecord>({getKey: closingKey, strategy: {kind: 'echo', sameSavedBody: (server, ack) => savedBody(server) === savedBody(ack)}, mergeConfirmed: (base, result) => ({...base, confirmedBy: result.confirmedBy, confirmedAt: result.confirmedAt})}));
   const templateRead = useRef({"closing":false});
   const [templateReady, setTemplateReady] = useState({"closing":false});
   const [templateErrors, setTemplateErrors] = useState({"closing":""});
@@ -52,19 +55,21 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
   useLayoutEffect(() => {
     // 계정이 교체되면 이전 finally와 조회가 새 초안의 잠금을 건드릴 수 없다.
     control.generation.current++; control.busy.current = false; control.dirty.current = false;
-    knowledge.resetOwner();
+    acknowledgements.resetOwner();
     readRef.current = { ready: false, blocked: false, rows: [] }; setRecords([]); setRecordsReady(false); setRecordsError('');
     templateRead.current = {"closing":false}; setTemplateReady({"closing":false}); setTemplateErrors({"closing":""});
     setTemplateItems(CLOSING_ITEMS_DEFAULT);
     setSaving(false); setConfirming(false); setDeleting(false); setShowHistory(false); setSaveError('');
   }, [ownerToken]);
   const changeSelection = (action: () => void) => control.change(() => {
-    if (actor.isCurrent(ownerToken)) { knowledge.clearSelection(); action(); }
+    if (actor.isCurrent(ownerToken)) { action(); }
   });
   const canSend = (kind: 'save' | 'confirm' | 'delete', id?: string) => {
     if (!actor.canAct(kind, ownerToken) || !readRef.current.ready || (kind !== 'delete' && !templateRead.current['closing'])) return false;
-    if (id && !readRef.current.rows.some(row => row.id === id) && !(kind !== 'delete' && knowledge.allowsUnobservedAck(id))) {
-      setSaveError('현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다른 기간이나 기록을 선택해 다시 진행해 주세요.');
+    const issue = acknowledgements.targetIssue(kind, id, selected ? closingKey(selected) : '');
+    if (issue) {
+      const messages = {'body-mismatch': '마지막 저장 내용과 조회된 내용이 다릅니다. 입력은 보존했습니다. 다시 조회하거나 저장된 기록을 열어 확인해 주세요.', 'duplicate-key': '같은 점검 기록이 여러 개입니다. 입력은 보존했습니다. 관리자 확인 후 기존 이력에서 중복 기록을 정리하고 다시 조회해 주세요.', 'existing-key': '같은 날짜에 저장된 기록이 있습니다. 입력은 보존했습니다. 저장된 기록을 열어 확인해 주세요.', 'missing-record': '현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다른 기간이나 기록을 선택하거나 다시 조회해 주세요.'};
+      setSaveError(messages[issue]);
       return false;
     }
     return true;
@@ -78,10 +83,10 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
-      knowledge.observe(rows.map(row => row.id!).filter(Boolean));
       const serverConfirmed = snap.metadata?.fromCache === false;
       const ready = serverConfirmed && !readRef.current.blocked;
-      readRef.current = { ready, blocked: readRef.current.blocked, rows }; setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
+      acknowledgements.observe(rows, ready);
+      readRef.current = { ready, blocked: readRef.current.blocked, rows: acknowledgements.visibleRecords() }; setRecords(acknowledgements.visibleRecords()); setRecordsReady(ready); if (ready) setRecordsError('');
     }, () => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       active = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
@@ -112,11 +117,11 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
   useLayoutEffect(() => {
     control.generation.current++; control.dirty.current = false;
     const existing = readRef.current.ready ? readRef.current.rows.find(r => r.checkDate === checkDate) : undefined;
-    setSelected(existing ?? ({ ...emptyClosingRecord(checkDate, templateItems) } as ClosingRecord)); setSaveError('');
+    setSelected(acknowledgements.select(existing ?? ({ ...emptyClosingRecord(checkDate, templateItems) } as ClosingRecord), readRef.current.ready)); setSaveError('');
   }, [checkDate, ownerToken]);
   useEffect(() => {
-    const existing = records.find(r => r.checkDate === checkDate);
-    if (readRef.current.ready && existing && !selected?.id && !control.dirty.current && !control.busy.current) setSelected(existing);
+    const existing = acknowledgements.known(checkDate, readRef.current.ready) ?? records.find(r => r.checkDate === checkDate);
+    if (readRef.current.ready && existing && !selected?.id && !control.dirty.current && !control.busy.current) setSelected(acknowledgements.resolve(existing, true));
   }, [records, recordsReady, checkDate, selected?.id]);
 
   const isReadOnly = checkDate !== todayStr();
@@ -164,17 +169,18 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
+    const saveObservation = acknowledgements.captureSave();
     try {
       if (!selected.id) {
         const data: Omit<ClosingRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
         const id = await addItem('haccp_closing_checklist', data);
         if (!(control.current(token) && actor.canAct('save', requestOwner))) return;
-        knowledge.rememberAck(id); control.dirty.current = false; setSelected({ ...data, id });
+        acknowledgements.rememberSave({ ...data, id }, saveObservation); control.dirty.current = false; setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateItem('haccp_closing_checklist', selected.id, update as any);
         if (!(control.current(token) && actor.canAct('save', requestOwner))) return;
-        control.dirty.current = false; setSelected(prev => prev ? { ...prev, ...update } : prev);
+        acknowledgements.rememberSave({ ...selected, ...update }, saveObservation); control.dirty.current = false; setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
     } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
     } finally { if ((control.current(token) && actor.isCurrent(requestOwner))) { control.busy.current = false; setSaving(false); } }
@@ -184,6 +190,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
     if (control.busy.current || !canSend('confirm', selected?.id)) return;
     if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
     control.busy.current = true; const token = control.generation.current; const requestOwner = ownerToken;
+    const captured = acknowledgements.captureConfirm(closingKey(selected), selected.id);
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
@@ -192,6 +199,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
       await updateItem('haccp_closing_checklist', selected.id, update);
       if (!(control.current(token) && actor.canAct('confirm', requestOwner))) return;
       const confirmed = { ...selected, ...update };
+      acknowledgements.rememberConfirm(confirmed, captured);
       setSelected(confirmed);
       alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
     } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('확인 처리 결과를 확인하지 못했습니다. 입력을 유지했습니다. 다시 조회해 주세요.'); }
@@ -205,7 +213,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
       if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
       if (!(control.current(token) && actor.isCurrent(requestOwner)) || !canSend('delete', id)) return;
       await deleteItem('haccp_closing_checklist', id);
-      if ((control.current(token) && actor.canAct('delete', requestOwner)) && selected?.id === id) { control.dirty.current = false; knowledge.clearSelection(); setSelected(null); }
+      if ((control.current(token) && actor.canAct('delete', requestOwner))) { acknowledgements.rememberDelete(id, selected?.id); readRef.current.rows = acknowledgements.visibleRecords(); setRecords(acknowledgements.visibleRecords()); if (selected?.id === id) { control.dirty.current = false; setSelected(null); } }
     } catch { if ((control.current(token) && actor.isCurrent(requestOwner))) { readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안은 유지했습니다. 다시 조회해 주세요.'); }
     } finally { if ((control.current(token) && actor.isCurrent(requestOwner))) { control.busy.current = false; setDeleting(false); } }
   };
@@ -217,17 +225,34 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
   };
 
   const pastRecords = records.filter(r => r.checkDate !== todayStr());
-  const currentRecord = records.find(r => r.checkDate === checkDate);
+  const currentRecord = acknowledgements.known(checkDate, recordsReady) ?? records.find(r => r.checkDate === checkDate);
+
+  const serverCandidate = selected && recordsReady ? acknowledgements.serverRecord(closingKey(selected)) : undefined;
+  const openServerRecord = () => {
+    if (!serverCandidate?.id || !selected) return;
+    const wasDirty = control.dirty.current;
+    const id = serverCandidate.id, key = closingKey(selected);
+    void changeSelection(() => {
+      // change가 승인을 받고 dirty를 먼저 해제하므로, 실제 열기 실패는 같은 owner의 추적을 복원한다.
+      const record = readRef.current.ready ? acknowledgements.openServerRecord(key, id, true) : undefined;
+      if (record) { setSelected(record); setSaveError(''); }
+      else { control.dirty.current = wasDirty; setSaveError('선택한 저장 기록을 열지 못했습니다. 입력은 보존했습니다. 기록을 다시 조회한 뒤 저장된 기록을 열어 주세요.'); }
+    });
+  };
+  const retryRecords = () => {
+    if (control.busy.current || !actor.isCurrent(ownerToken)) return;
+    readRef.current.ready = false; setRecordsReady(false); setReadAttempt(value => value + 1);
+  };
 
   return (
     <fieldset disabled={saving || confirming || deleting} className="flex min-w-0 flex-col gap-4 border-0 p-0 m-0">
-      {saveError && <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">⚠️ {saveError}</div>}
+      {saveError && <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">⚠️ {saveError}<button type="button" className="ml-2 underline" onClick={retryRecords}>기록 다시 조회</button>{serverCandidate && <button type="button" className="ml-2 underline" onClick={openServerRecord}>저장된 기록 열기</button>}</div>}
       {!templateReady['closing'] && !templateErrors['closing'] && <p role="status" className="text-xs text-slate-600">점검 양식을 조회 중입니다. 입력은 유지되며 조회 후 저장할 수 있습니다.</p>}
       {templateErrors['closing'] && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{templateErrors['closing']}</p><button type="button" className="mt-2 rounded border border-slate-300 px-3 py-1.5" onClick={() => { templateRead.current['closing'] = false; setTemplateReady(value => ({ ...value, ['closing']: false })); setTemplateAttempt(value => ({ ...value, ['closing']: value['closing'] + 1 })); }}>양식 다시 조회</button></div>}
 
       {!recordsReady && !recordsError && <p role="status" className="text-xs text-slate-600">기존 기록을 조회 중입니다. 입력할 수 있으며 조회가 끝난 뒤 저장할 수 있습니다.</p>}
       {recordsError && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError}</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { readRef.current.ready = false; setRecordsReady(false); setReadAttempt(value => value + 1); }}>다시 조회</button></div>}
-      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={() => { void changeSelection(() => { const existing = readRef.current.rows.find(r => r.checkDate === checkDate); if (existing) { setSelected(existing); setSaveError(''); } }); }}>저장된 기록 열기</button></div>}
+      {recordsReady && selected && !selected.id && currentRecord && control.dirty.current && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>작성 중 같은 기간의 저장된 기록이 확인되었습니다. 초안은 유지했으며 중복 저장은 막았습니다.</p><button className="mt-2 rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-700" type="button" onClick={openServerRecord}>저장된 기록 열기</button></div>}
       {/* 날짜 선택 */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex items-center gap-3">

@@ -111,7 +111,7 @@ it('저장 대기 중 슬롯과 입력을 잠그고 한 번만 송신한다',asy
 const sanitationPreserved=(text:string)=>{
  const file=ts.createSourceFile('SanitationForm.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),result:Record<string,string>={};
  const stable=new Set(['emptyRecord','padRows','allChecked','todayMorning','todayAfternoon','isToday','isReadOnly','monthRecordsSorted','startBulkDownload','revLabel','slotLabel','resultBadge','monthOptions','historyList','historyDates','historyConfirmed','historyFail']);
- const hash=(key:string,node:ts.Node)=>{result[key]=createHash('sha256').update(node.getText(file).replace(/\r\n/g,'\n')).digest('hex');};
+ const hash=(key:string,node:ts.Node)=>{result[key]=createHash('sha256').update(node.getText(file).replace(/\r\n/g,'\n').replace(/^(?:acknowledgements\.known\([\s\S]*?\) \?\? )/,'')).digest('hex');};
  const visit=(node:ts.Node,scope='')=>{
   if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){
    const name=node.name.text;if(stable.has(name))hash(name,node.initializer);
@@ -224,7 +224,7 @@ it('신규 ACK 뒤 query 미수신이어도 본인 현재 ID로 수정·확인�
 const remainingFormPreserved=(text:string)=>{
  const file=ts.createSourceFile('form.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),result:Record<string,string>={};
  const stable=new Set(['currentWeekStr','emptyPeriodRecord','emptyClosingRecord','padRows','toggleResult','setRow','resultBadge','currentRecord','isReadOnly','actualCurrentPeriod','pastRecords','period','items','cycleName','outputSignal']);
- const hash=(key:string,node:ts.Node)=>{result[key]=createHash('sha256').update(node.getText(file).replace(/\r\n/g,'\n')).digest('hex');};
+ const hash=(key:string,node:ts.Node)=>{result[key]=createHash('sha256').update(node.getText(file).replace(/\r\n/g,'\n').replace(/^(?:acknowledgements\.known\([\s\S]*?\) \?\? )/,'')).digest('hex');};
  const visit=(node:ts.Node,scope='')=>{
   if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){const name=node.name.text;if(stable.has(name))hash(name,node.initializer);if(['handleSave','handleConfirm'].includes(name))scope=name;if(['handleSave','handleConfirm'].includes(scope)&&['data','update','userName','now','missingNote'].includes(name))hash(scope+':'+name,node.initializer);}
   if(ts.isJsxElement(node)&&node.openingElement.attributes.properties.some(attribute=>ts.isJsxAttribute(attribute)&&attribute.name.getText(file)==='ref'&&attribute.initializer?.getText(file)==='{printRef}'))hash('PDF:printRef',node);
@@ -284,7 +284,7 @@ it.each(['ACK전','ACK후'])('자기 ID를 목록에서 관측한 뒤 삭제되�
 it('신규 ACK ID는 조회오류·빈결과 재조회 뒤에도 같은 선택에서만 유지한다',async()=>{
  const d=pending<string>();m.add.mockReturnValue(d.promise);renderForm();open();fireEvent.click(screen.getByRole('button',{name:'저장'}));act(()=>latestSub('haccp_sanitation').error({code:'unavailable'}));await act(async()=>d.resolve('retained-id'));
  fireEvent.click(screen.getByRole('button',{name:'다시 조회'}));fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.update).toHaveBeenCalledWith('haccp_sanitation','retained-id',expect.any(Object)));
- fireEvent.click(screen.getByRole('button',{name:/오후 15:00/}));fireEvent.click(screen.getByRole('button',{name:/오전 08:30/}));m.add.mockResolvedValue('fresh-id');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.add).toHaveBeenCalledTimes(2));
+ fireEvent.click(screen.getByRole('button',{name:/오후 15:00/}));fireEvent.click(screen.getByRole('button',{name:/오전 08:30/}));fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.update).toHaveBeenCalledTimes(2));expect(m.update.mock.calls[1][1]).toBe('retained-id');expect(m.add).toHaveBeenCalledOnce();
 });
 it('관측 후 소실된 ID는 늦은 정상 ACK로 미관측 예외가 부활하지 않는다',async()=>{
  const d=pending<string>();m.add.mockReturnValue(d.promise);renderForm();open();for(const box of screen.getAllByRole('checkbox').filter((_,index)=>index%2===0))fireEvent.click(box);
@@ -304,3 +304,7 @@ it.each(['records','template'])('현재cache격하%s는Reactflush전saveconfirm�
 
 it('기록cache는삭제를막고양식cache는기존삭제를막지않는다',async()=>{m.rows=[fixture()];const view=renderForm();open();const row=m.rows[0];fireEvent.click(screen.getByRole('button',{name:/점검 기록 조회/}));const remove=view.container.querySelector('[role=button]')!;const recordSub=latestSub('haccp_sanitation'),tpl=latestSub('haccp_templates');m.confirm.mockResolvedValue(true);act(()=>recordSub.next({docs:[{id:row.id,data:()=>row}],metadata:{fromCache:true}}));fireEvent.click(remove);expect(m.confirm).not.toHaveBeenCalled();expect(m.remove).not.toHaveBeenCalled();act(()=>recordSub.next({docs:[{id:row.id,data:()=>row}],metadata:{fromCache:false,hasPendingWrites:true}}));act(()=>tpl.next({exists:()=>false,metadata:{fromCache:true}}));fireEvent.click(remove);await waitFor(()=>expect(m.remove).toHaveBeenCalledOnce());});
 it('송신중cache의정상ACKID는보존하고metadata누락은미준비이며pendingwrite는기존정책이다',async()=>{let resolve!:(id:string)=>void;m.add.mockReturnValue(new Promise<string>(r=>{resolve=r;}));renderForm();open();const recordSub=latestSub('haccp_sanitation'),tpl=latestSub('haccp_templates');fireEvent.click(screen.getByRole('button',{name:'저장'}));act(()=>{recordSub.next({docs:[],metadata:{fromCache:true}});tpl.next({exists:()=>false,metadata:{fromCache:true}});});await act(async()=>resolve('cache-ack'));expect(m.add).toHaveBeenCalledOnce();act(()=>{recordSub.next({docs:[],metadata:{fromCache:false,hasPendingWrites:true}});tpl.next({exists:()=>false,metadata:{fromCache:false,hasPendingWrites:true}});});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.update).toHaveBeenCalledWith('haccp_sanitation','cache-ack',expect.any(Object)));act(()=>tpl.next({exists:()=>false}));expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();act(()=>{tpl.next({exists:()=>false,metadata:{fromCache:false}});recordSub.next({docs:[]});});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();expect(m.add).toHaveBeenCalledOnce();});
+
+it('ACK뒤query0다른slot왕복은원ID본문revision으로수정한다',async()=>{
+ renderForm();open();fireEvent.change(screen.getByPlaceholderText('특이사항 및 개선조치 내용을 입력하세요'),{target:{value:'확정A'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(screen.getByRole('button',{name:'저장'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:/오후 15:00/}));open();expect(screen.getByPlaceholderText('특이사항 및 개선조치 내용을 입력하세요')).toHaveValue('확정A');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.update).toHaveBeenCalledWith('haccp_sanitation','new-id',expect.objectContaining({specialNotes:'확정A',revisionCount:1})));expect(m.add).toHaveBeenCalledOnce();
+});

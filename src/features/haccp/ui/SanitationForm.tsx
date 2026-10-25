@@ -10,7 +10,7 @@ import {haccpTemplateDocId} from '../../../shared/haccpTemplateId';
 import {useHaccpRecordActor, type HaccpRecordActorAction} from '../hooks/useHaccpRecordActor';
 import {useHaccpCompany} from '../context/HaccpCompanyContext';
 import {todayStr} from '../domain/haccpDate';
-import {createHaccpRecordKnowledge} from '../domain/haccpRecordKnowledge';
+import {createHaccpRecordAcknowledgements} from '../domain/haccpRecordAcknowledgements';
 import {SANITATION_ITEMS} from '../domain/sanitationItems';
 import type {SlotTime,SanitationRow,SanitationRecord} from '../domain/sanitationTypes';
 import {TH,TD,TDL} from './ChecklistFormParts';
@@ -30,12 +30,14 @@ const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationR
   revisionCount: -1,
 });
 
+const sanitationKey = (record: Pick<SanitationRecord, 'checkDate' | 'checkTime'>) => JSON.stringify([record.checkDate, record.checkTime]);
+
 export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const companyId = useHaccpCompany();
   const actor = useHaccpRecordActor({companyId, currentUserId: currentUser?.id, isAdmin, canConfirm});
   const owner = actor.ownerToken;
   const runRef = useRef<object | null>(null), selection = useRef(0);
-  const [knowledge] = useState(createHaccpRecordKnowledge);
+  const [acknowledgements] = useState(() => createHaccpRecordAcknowledgements<SanitationRecord>({getKey: sanitationKey, strategy: {kind: 'numeric', getRevision: record => record.revisionCount ?? -1}, mergeConfirmed: (base, result) => ({...base, confirmedBy: result.confirmedBy, confirmedAt: result.confirmedAt})}));
   const [deleting, setDeleting] = useState(false);
   const [readAttempt, setReadAttempt] = useState(0);
   const [recordsReady, setRecordsReady] = useState(false), [templateReady, setTemplateReady] = useState(false);
@@ -53,7 +55,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const today = todayStr();
 
   useLayoutEffect(() => {
-    runRef.current = null; selection.current++; knowledge.resetOwner();
+    runRef.current = null; selection.current++; acknowledgements.resetOwner();
     readRef.current = {records: false, template: false, blocked: false, rows: []};
     setSelected(null); setRecords([]); setTemplateItems(SANITATION_ITEMS);
     setSaving(false); setConfirming(false); setDeleting(false); setSaveError('');
@@ -67,11 +69,11 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     const stop = onSnapshot(q, {includeMetadataChanges: true}, snap => {
       if (!active || !actor.isCurrent(owner)) return;
       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
-      knowledge.observe(rows.map(row => row.id).filter(Boolean));
       const serverConfirmed = snap.metadata?.fromCache === false;
       const ready = serverConfirmed && !readRef.current.blocked;
-      readRef.current.records = ready; readRef.current.rows = rows;
-      setRecords(rows); setRecordsReady(ready); if (ready) setRecordsError('');
+      acknowledgements.observe(rows, ready);
+      readRef.current.records = ready; readRef.current.rows = acknowledgements.visibleRecords();
+      setRecords(acknowledgements.visibleRecords()); setRecordsReady(ready); if (ready) setRecordsError('');
     }, () => {
       if (!active || !actor.isCurrent(owner)) return;
       active = false; readRef.current.records = false; setRecordsReady(false);
@@ -106,8 +108,10 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
   const canSend = (kind: HaccpRecordActorAction, id?: string) => {
     if (!actor.canAct(kind, owner) || !readRef.current.records || (kind !== 'delete' && !readRef.current.template)) return false;
-    if (id && !readRef.current.rows.some(row => row.id === id) && !(kind !== 'delete' && knowledge.allowsUnobservedAck(id))) {
-      setSaveError('현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 위의 점검 시간이나 다른 기록을 선택해 다시 진행해 주세요.');
+    const issue = acknowledgements.targetIssue(kind, id, selected ? sanitationKey(selected) : '');
+    if (issue) {
+      const messages = {'body-mismatch': '마지막 저장 내용과 조회된 내용이 다릅니다. 입력은 보존했습니다. 다시 조회하거나 저장된 기록을 열어 확인해 주세요.', 'duplicate-key': '같은 점검 기록이 여러 개입니다. 입력은 보존했습니다. 관리자 확인 후 기존 이력에서 중복 기록을 정리하고 다시 조회해 주세요.', 'existing-key': '같은 날짜·시간에 저장된 기록이 있습니다. 입력은 보존했습니다. 저장된 기록을 열어 확인해 주세요.', 'missing-record': '현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 위의 점검 시간이나 다른 기록을 선택하거나 다시 조회해 주세요.'};
+      setSaveError(messages[issue]);
       return false;
     }
     return true;
@@ -180,25 +184,23 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   }, [bulkList]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 오늘 슬롯 기존 데이터 조회
-  const todayMorning = records.find(r => r.checkDate === today && r.checkTime === '08:30');
-  const todayAfternoon = records.find(r => r.checkDate === today && r.checkTime === '15:00');
+  const todayMorning = acknowledgements.known(sanitationKey({checkDate: today, checkTime: '08:30'}), recordsReady) ?? records.find(r => r.checkDate === today && r.checkTime === '08:30');
+  const todayAfternoon = acknowledgements.known(sanitationKey({checkDate: today, checkTime: '15:00'}), recordsReady) ?? records.find(r => r.checkDate === today && r.checkTime === '15:00');
 
   const openSlot = (slot: SlotTime) => {
     if (runRef.current || !actor.isCurrent(owner)) return;
     // 같은 슬롯의 확정 ID는 목록이 도착하기 전에 다시 신규 초안으로 바꾸지 않는다.
-    if (selected?.id && selected.checkDate === today && selected.checkTime === slot && knowledge.allowsUnobservedAck(selected.id)) return;
+    if (selected?.id && selected.checkDate === today && selected.checkTime === slot && acknowledgements.allowsUnobservedAck(selected.id)) return;
     const existing = slot === '08:30' ? todayMorning : todayAfternoon;
-    if (selected?.id !== existing?.id || selected?.checkDate !== today || selected?.checkTime !== slot) knowledge.clearSelection();
     selection.current++;
-    setSelected(existing ?? { ...emptyRecord(slot, templateItems) } as SanitationRecord);
+    setSelected(acknowledgements.select(existing ?? { ...emptyRecord(slot, templateItems) } as SanitationRecord, readRef.current.records));
     setSaveError('');
   };
 
   const openHistory = (r: SanitationRecord) => {
     if (runRef.current || !actor.isCurrent(owner)) return;
-    if (selected?.id !== r.id || selected?.checkDate !== r.checkDate || selected?.checkTime !== r.checkTime) knowledge.clearSelection();
     selection.current++;
-    setSelected(r);
+    setSelected(acknowledgements.select(r, readRef.current.records));
     setSaveError('');
     setShowHistory(false);
   };
@@ -259,6 +261,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
+    const saveObservation = acknowledgements.captureSave();
     try {
       if (!selected.id) {
         const data: Omit<SanitationRecord, 'id'> = {
@@ -271,7 +274,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
         };
         const id = await addItem('haccp_sanitation', data);
         if (action.allowed()) {
-          knowledge.rememberAck(id);
+          acknowledgements.rememberSave({ ...data, id }, saveObservation);
           setSelected({ ...data, id });
         }
       } else {
@@ -283,7 +286,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           revisionCount: newRev,
         };
         await updateItem('haccp_sanitation', selected.id, update as any);
-        if (action.allowed()) setSelected(prev => prev ? { ...prev, ...update } : prev);
+        if (action.allowed()) { acknowledgements.rememberSave({ ...selected, ...update }, saveObservation); setSelected(prev => prev ? { ...prev, ...update } : prev); }
       }
     } catch {
       if (action.allowed()) { readRef.current.blocked = true; readRef.current.records = false; setRecordsReady(false); setRecordsError('저장 결과를 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회한 뒤 기존 기록을 확인해 주세요.'); }
@@ -301,6 +304,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       return;
     }
     const action = begin('confirm', selected.id); if (!action) return;
+    const captured = acknowledgements.captureConfirm(sanitationKey(selected), selected.id);
     setConfirming(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '관리자';
@@ -309,6 +313,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       await updateItem('haccp_sanitation', selected.id, update);
       if (!action.allowed()) return;
       const confirmed = { ...selected, ...update };
+      acknowledgements.rememberConfirm(confirmed, captured);
       setSelected(confirmed);
       alert('확인 결과를 저장했습니다. PDF는 별도 PDF 버튼에서 미리보고 저장하세요.');
     } catch {
@@ -323,10 +328,17 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
       if (!action.beforeSend()) return;
       await deleteItem('haccp_sanitation', id);
-      if (action.allowed() && selected?.id === id) { knowledge.clearSelection(); setSelected(null); }
+      if (action.allowed()) { acknowledgements.rememberDelete(id, selected?.id); readRef.current.rows = acknowledgements.visibleRecords(); setRecords(acknowledgements.visibleRecords()); if (selected?.id === id) setSelected(null); }
     } catch {
       if (action.allowed()) { readRef.current.blocked = true; readRef.current.records = false; setRecordsReady(false); setRecordsError('삭제 결과를 확인하지 못했습니다. 초안을 유지했습니다. 다시 조회해 주세요.'); }
     } finally { action.finish(); }
+  };
+
+  const serverCandidate = selected && recordsReady ? acknowledgements.serverRecord(sanitationKey(selected)) : undefined;
+  const openServerRecord = () => {
+    if (runRef.current || !actor.isCurrent(owner) || !readRef.current.records || !selected || !serverCandidate?.id) return;
+    const record = acknowledgements.openServerRecord(sanitationKey(selected), serverCandidate.id, readRef.current.records);
+    if (record) { selection.current++; setSelected(record); setSaveError(''); }
   };
 
   const revLabel = (r: SanitationRecord) =>
@@ -380,7 +392,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       {(recordsError || templateError) && <div role="alert" className="border border-slate-200 bg-white rounded px-3 py-2 text-xs"><p>{recordsError || templateError}</p><button type="button" onClick={retryRead} className="mt-2 rounded border border-slate-300 px-3 py-1.5">다시 조회</button></div>}
       {selected && !selected.id && recordsReady && records.some(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime) && <div role="alert" className="text-xs"><p>같은 날짜와 시간의 저장된 기록이 있습니다. 초안은 유지했습니다.</p><button type="button" onClick={() => { const existing = readRef.current.rows.find(row => row.checkDate === selected.checkDate && row.checkTime === selected.checkTime); if (existing) openHistory(existing); }}>저장된 기록 열기</button></div>}
 
-      {saveError && actor.isCurrent(owner) && <div role="alert" className="border border-slate-200 bg-white text-xs rounded-lg px-3 py-2">{saveError}</div>}
+      {saveError && actor.isCurrent(owner) && <div role="alert" className="border border-slate-200 bg-white text-xs rounded-lg px-3 py-2">{saveError}<button type="button" className="ml-2 underline" onClick={retryRead}>기록 다시 조회</button>{serverCandidate && <button type="button" className="ml-2 underline" onClick={openServerRecord}>저장된 기록 열기</button>}</div>}
       {/* ── 오늘 날짜 + 슬롯 선택 ────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="text-xs text-slate-500 mb-3">
