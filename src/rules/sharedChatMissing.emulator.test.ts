@@ -1,12 +1,37 @@
 import {randomUUID} from 'node:crypto';
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../test/emulatorTestPolicy';
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let assertSucceeds:typeof import('@firebase/rules-unit-testing').assertSucceeds;
+let assertFails:typeof import('@firebase/rules-unit-testing').assertFails;
+let doc:typeof import('firebase/firestore').doc;
+let getDoc:typeof import('firebase/firestore').getDoc;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let getDocs:typeof import('firebase/firestore').getDocs;
+let collection:typeof import('firebase/firestore').collection;
+const policy=createEmulatorTestPolicy(process.env,'sharedChatMissing',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeTestEnvironment,assertSucceeds,assertFails}=await import('@firebase/rules-unit-testing'));
+  ({doc,getDoc,setDoc,getDocs,collection}=await import('firebase/firestore'));
+  policy.assertCurrentEnvironment(process.env);
+}
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  await env.clearFirestore();
+}
 import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,describe,it} from 'vitest';
-import {initializeTestEnvironment,assertSucceeds,assertFails,type RulesTestEnvironment} from '@firebase/rules-unit-testing';
-import {doc,getDoc,setDoc,getDocs,collection} from 'firebase/firestore';
-let env:RulesTestEnvironment;const id='MSG-share-'+randomUUID();
-describe.skipIf(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8182')('공유 UUID의 최초 부재 조회',{timeout:30000},()=>{
- beforeAll(async()=>{env=await initializeTestEnvironment({projectId:'demo-share-rules-'+randomUUID(),firestore:{host:'127.0.0.1',port:8182,rules:readFileSync('firestore.rules','utf8')}});});
- afterAll(async()=>{await env.clearFirestore();await env.cleanup();});
+import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
+
+let env:RulesTestEnvironment;let id:string;
+describe.skipIf(!policy.enabled||policy.port!==8182)('공유 UUID의 최초 부재 조회',{timeout:30000},()=>{
+ beforeAll(async()=>{
+  await loadRuntime();
+  id='MSG-share-'+randomUUID();
+  env=await initializeTestEnvironment({projectId:policy.projectId,firestore:{host:policy.host,port:policy.port,rules:readFileSync('firestore.rules','utf8')}});
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+ });
+ afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup()]);});
  it('양사 직원·관리자는 정확 공유 UUID의 없는 문서만 단건 확인한다',async()=>{
  for(const companyId of ['taebaek','punghoe']) for(const isAdmin of [true,false]){
  const db=env.authenticatedContext(companyId+isAdmin,{companyId,isAdmin,employeeId:'employee'}).firestore();

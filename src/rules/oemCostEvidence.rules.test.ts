@@ -1,17 +1,41 @@
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../test/emulatorTestPolicy';
+import {randomUUID} from 'node:crypto';
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let assertFails:typeof import('@firebase/rules-unit-testing').assertFails;
+let assertSucceeds:typeof import('@firebase/rules-unit-testing').assertSucceeds;
+let deleteDoc:typeof import('firebase/firestore').deleteDoc;
+let deleteField:typeof import('firebase/firestore').deleteField;
+let doc:typeof import('firebase/firestore').doc;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let updateDoc:typeof import('firebase/firestore').updateDoc;
+const policy=createEmulatorTestPolicy(process.env,'oemCostEvidence',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeTestEnvironment,assertFails,assertSucceeds}=await import('@firebase/rules-unit-testing'));
+  ({deleteDoc,deleteField,doc,setDoc,updateDoc}=await import('firebase/firestore'));
+  policy.assertCurrentEnvironment(process.env);
+}
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  await env.clearFirestore();
+}
 import {afterAll,beforeAll,beforeEach,describe,it} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {initializeTestEnvironment,assertFails,assertSucceeds,type RulesTestEnvironment} from '@firebase/rules-unit-testing';
-import {deleteDoc,deleteField,doc,setDoc,updateDoc} from 'firebase/firestore';
-const address=process.env.FIRESTORE_EMULATOR_HOST;
-const available=['127.0.0.1:8082','127.0.0.1:8182'].includes(address??'');
+import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
+
+const available=policy.enabled;
 let env:RulesTestEnvironment;
 const db=(companyId='taebaek')=>env.authenticatedContext(companyId,{employeeId:'operator',companyId,isAdmin:true}).firestore();
 const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:10,supplyAmount:1000}],packaging:{confirmed:true,supplyAmount:0},capturedAt:'2026-10-11T00:00:00Z'};
 const po={companyId:'taebaek',poType:'oem',status:'pending',oemSent:[{rawItemId:'raw',material:'참깨',kg:10}],oemCostEvidence:evidence,oemIssueFingerprint:'original'};
 describe.skipIf(!available)('신규 OEM 원가 근거 보안 경계',()=>{
- beforeAll(async()=>{const [host,port]=address!.split(':');env=await initializeTestEnvironment({projectId:'demo-oem-cost-rules',firestore:{host,port:Number(port),rules:readFileSync('firestore.rules','utf8')}});});
- afterAll(async()=>{await env?.cleanup();});
- beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'purchaseOrders/fixed'),po);await setDoc(doc(ctx.firestore(),'purchaseOrders/legacy'),{companyId:'taebaek',status:'pending'});});});
+ beforeAll(async()=>{
+  await loadRuntime();
+  env=await initializeTestEnvironment({projectId:policy.projectId,firestore:{host:policy.host,port:policy.port,rules:readFileSync('firestore.rules','utf8')}});
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+ });
+ afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup()]);});
+ beforeEach(async()=>{await clearOwned();await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'purchaseOrders/fixed'),po);await setDoc(doc(ctx.firestore(),'purchaseOrders/legacy'),{companyId:'taebaek',status:'pending'});});});
  it('발주 때 근거를 기록하고 후속 상태·메모는 그대로 수정할 수 있다',async()=>{
   await assertSucceeds(setDoc(doc(db(),'purchaseOrders/new'),po));
   await assertSucceeds(updateDoc(doc(db(),'purchaseOrders/fixed'),{status:'invoiced',note:'수정 메모'}));
