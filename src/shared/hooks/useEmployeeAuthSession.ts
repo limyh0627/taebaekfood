@@ -38,7 +38,7 @@ function removeSavedEmployee() {
 }
 /** 저장된 이름은 화면 복원용이며 신원과 권한은 현재 토큰으로만 확인한다. */
 export function useEmployeeAuthSession() {
-    const [session, setSession] = useState<{ user: Employee; key: string } | null>(null);
+    const [session, setSession] = useState<{ user: Employee; key: string; mountKey:string; epoch:number } | null>(null);
     const [initialIntent] = useState(readLogoutIntent);
     const [authChecked, setAuthChecked] = useState(false);
     const [logoutState, setLogoutState] = useState<'idle' | 'pending' | 'failed'>(initialIntent.raw !== null || initialIntent.readFailed ? 'pending' : 'idle');
@@ -47,11 +47,14 @@ export function useEmployeeAuthSession() {
     const sessionRef = useRef(session);
     sessionRef.current = session;
     const generation = useRef(0);
+    // token 검증 순서와 별개로 실제 UID 경계를 기억해 배치된 왕복도 자료 수명을 교대한다.
+    const uidLifetime=useRef({uid:auth.currentUser&&!auth.currentUser.isAnonymous?auth.currentUser.uid:null,epoch:0});
     const mounted = useRef(false);
     const verifiedUid = useRef<string | null>(null);
     const candidate = useRef<Employee | null>(null);
     const freshLoginAfterNull = useRef(false);
     const clearSession = useCallback(() => {
+        uidLifetime.current.epoch++;
         generation.current++;
         verifiedUid.current = null;
         candidate.current = null;
@@ -67,6 +70,10 @@ export function useEmployeeAuthSession() {
     }, []);
     const verify = useCallback(async (user: User | null, login?: Employee) => {
         if (!user && auth.currentUser !== null) return;
+        if(user&&auth.currentUser?.uid!==user.uid)return;
+        const observedUid=user&&!user.isAnonymous?user.uid:null;
+        if(uidLifetime.current.uid!==observedUid){uidLifetime.current.uid=observedUid;uidLifetime.current.epoch++;}
+        const epoch=uidLifetime.current.epoch;
         const pending = logoutRun.current;
         if (pending && !user && pending.running) {
             pending.sawNull = true;
@@ -134,7 +141,7 @@ export function useEmployeeAuthSession() {
             verifiedUid.current = user.uid;
             localStorage.setItem('tb_user', JSON.stringify(safe));
             localStorage.removeItem('tb_company');
-            setSession(previous => previous?.key === key ? previous : { user: safe, key });
+            setSession(previous => previous?.key === key && previous.epoch===epoch ? previous : { user: safe, key, epoch, mountKey:key+':'+epoch });
         } catch {
             if (!mounted.current || turn !== generation.current || auth.currentUser?.uid !== uid || logoutRun.current) return;
             const observed = readLogoutIntent();
@@ -241,5 +248,5 @@ export function useEmployeeAuthSession() {
     const logout = useCallback(() => performLogout(), [performLogout]);
     const retryLogout = useCallback(() => performLogout(true), [performLogout]);
     const onLogin = useCallback((employee: Employee) => { void verify(auth.currentUser, employeeSession(employee)); }, [verify]);
-    return { currentUser: session?.user ?? null, sessionKey: session?.key ?? '', authChecked, onLogin, clearSession, logout, retryLogout, logoutState, logoutError };
+    return { currentUser: session?.user ?? null, sessionKey: session?.mountKey ?? '', authChecked, onLogin, clearSession, logout, retryLogout, logoutState, logoutError };
 }

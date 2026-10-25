@@ -142,3 +142,13 @@ it('푸시 owner 캡처가 실패해도 signOut을 실행하며 재시도로 중
  await act(async()=>hook.result.current.logout());expect(hook.result.current.logoutState).toBe('failed');expect(mock.unregister).not.toHaveBeenCalled();
  await act(async()=>hook.result.current.retryLogout());expect(hook.result.current.logoutState).toBe('idle');expect(mock.signOut).toHaveBeenCalledTimes(2);expect(mock.capture).toHaveBeenCalledTimes(1);
 });
+
+it('mount 수명 key는 로그아웃 actor 대조와 기기 intent 형식을 바꾸지 않는다',async()=>{
+ const hook=await loggedIn();expect(hook.result.current.sessionKey).toContain('uid-a:emp-a:taebaek:staff');mock.signOut.mockRejectedValueOnce(Error('첫 종료 거절'));await act(async()=>hook.result.current.logout());expect(hook.result.current.logoutState).toBe('failed');const intent=JSON.parse(localStorage.getItem(markerKey)!);expect(intent).toEqual({version:1,attemptId:expect.any(String),uid:'uid-a',companyId:'taebaek',employeeId:'emp-a'});await act(async()=>hook.result.current.retryLogout());expect(mock.signOut).toHaveBeenCalledTimes(2);expect(hook.result.current.logoutState).toBe('idle');expect(hook.result.current.currentUser).toBeNull();
+});
+it('명시 세션 해제 뒤 동일 신원 로그인은 이전 mount 수명 key를 재사용하지 않는다',async()=>{
+ const hook=await loggedIn(),key=hook.result.current.sessionKey;act(()=>hook.result.current.clearSession());expect(hook.result.current.currentUser).toBeNull();await act(async()=>hook.result.current.onLogin(employee));expect(hook.result.current.currentUser?.id).toBe(employee.id);expect(hook.result.current.sessionKey).not.toBe(key);
+});
+it('현재 Auth와 다른 늦은 UID 이벤트는 현재 mount 수명을 교체하지 않는다',async()=>{
+ const hook=await loggedIn(),key=hook.result.current.sessionKey,selected=hook.result.current.currentUser;await act(async()=>{mock.listener(user('stale-b'));});expect(hook.result.current.currentUser).toBe(selected);expect(hook.result.current.sessionKey).toBe(key);
+});

@@ -14,6 +14,7 @@ export function useOfficeTalkSelfSend(options: {
     employees: Employee[];
     rooms: ChatRoom[];
     getUid: () => string | undefined;
+    getSignal:()=>AbortSignal;
     addRoom: (room: ChatRoom) => void | Promise<unknown>;
     sendMessage: (message: ChatMessage) => void | Promise<unknown>;
     onSuccess: (message: string) => void;
@@ -36,14 +37,14 @@ export function useOfficeTalkSelfSend(options: {
             mounted.current = false;
         };
     }, []);
-    const run = async (attempt: Attempt) => {
-        if (!current() || state.run)
+    const run = async (attempt: Attempt,signal:AbortSignal) => {
+        if (!current() || state.run || signal.aborted)
             return;
         const execution = {};
         state.run = execution;
         state.error = '';
         notify();
-        const own = () => current() && state.run === execution;
+        const own = () => current() && state.run === execution && !signal.aborted;
         let stage: 'room' | 'message' = attempt.roomReady ? 'message' : 'room';
         try {
             if (!attempt.roomReady) {
@@ -77,7 +78,8 @@ export function useOfficeTalkSelfSend(options: {
         }
     };
     const send = async (message: ChatMessage) => {
-        if (!current() || state.run || state.attempt)
+        const signal=latest.current.getSignal();
+        if (!current() || state.run || state.attempt || signal.aborted)
             return;
         const user = { ...latest.current.currentUser }, source = JSON.parse(JSON.stringify(message)) as ChatMessage;
         state.planningSource = source;
@@ -88,20 +90,21 @@ export function useOfficeTalkSelfSend(options: {
             const payload: ChatMessage = { id: `MSG-${Date.now()}`, roomId: room.id, senderId: user.id, senderName: user.name, text: source.text, createdAt: new Date().toISOString(), replyTo: replySnippet(source) };
             const attempt: Attempt = { source, room, message: payload, roomReady: !!existing };
             state.attempt = attempt;
-            await run(attempt);
+            await run(attempt,signal);
         }
         catch (error) {
-            if (current()) {
+            if (current()&&!signal.aborted) {
                 state.error = '나에게 전달할 직원을 확인하지 못했습니다. ' + (error instanceof Error ? error.message : '다시 확인해 주세요.');
                 notify();
             }
         }
     };
     const retry = async () => {
-        if (!current())
+        const signal=latest.current.getSignal();
+        if (!current()||signal.aborted)
             return;
         if (state.attempt)
-            await run(state.attempt);
+            await run(state.attempt,signal);
         else if (state.planningSource)
             await send(state.planningSource);
     };

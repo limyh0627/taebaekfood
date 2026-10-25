@@ -3,8 +3,8 @@ import React from 'react';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import type {Employee,ChatRoom,ChatMessage} from '../types';
-const m=vi.hoisted(()=>({upload:vi.fn(),messages:[{id:'source',roomId:'r1',senderId:'other',senderName:'동료',text:'전달 원문',createdAt:'2026-10-23T00:00:00Z'}]}));
-const firebaseFixture=vi.hoisted(()=>({db:{},storage:{},authReady:Promise.resolve(),auth:{currentUser:{uid:'qa'},onAuthStateChanged:vi.fn(()=>()=>{})}}));
+const m=vi.hoisted(()=>({upload:vi.fn(),listener:null as null|((user:{uid:string}|null)=>void),messages:[{id:'source',roomId:'r1',senderId:'other',senderName:'동료',text:'전달 원문',createdAt:'2026-10-23T00:00:00Z'}]}));
+const firebaseFixture=vi.hoisted(()=>({db:{},storage:{},authReady:Promise.resolve(),auth:{currentUser:{uid:'qa'},onAuthStateChanged:vi.fn((listener:(user:{uid:string}|null)=>void)=>{m.listener=listener;return()=>{m.listener=null;};})}}));
 vi.mock('../src/firebase',()=>firebaseFixture);
 vi.mock('../src/shared/firebase',()=>firebaseFixture);
 vi.mock('firebase/storage',()=>({ref:vi.fn(),uploadBytes:vi.fn(),getDownloadURL:vi.fn()}));
@@ -15,5 +15,9 @@ const me={id:'me',name:'관리자',companyId:'taebaek',position:'관리자',depa
 const other={...me,id:'other',name:'동료'};
 const room={id:'r1',companyId:'taebaek',participantIds:['me','other'],isGroup:false,lastUpdatedAt:'2026-01-01'} as ChatRoom;
 const props={currentUser:me,employees:[me,other],chatRooms:[room],chatMessages:[] as ChatMessage[],onAddRoom:vi.fn(),onUpdateRoom:vi.fn(),onDeleteRoom:vi.fn(),onSendMessage:vi.fn()};
-beforeEach(()=>{vi.clearAllMocks();Element.prototype.scrollIntoView=vi.fn();});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks();firebaseFixture.auth.currentUser.uid='qa';m.listener=null;Element.prototype.scrollIntoView=vi.fn();});afterEach(cleanup);
 it('자기방 생성이 완료되기 전에는 메시지를 보내지 않는다',()=>{const add=vi.fn(()=>new Promise(()=>{})),send=vi.fn();render(<OfficeTalk {...props} initialRoomId="r1" onAddRoom={add} onSendMessage={send}/>);fireEvent.contextMenu(screen.getByText('전달 원문'));fireEvent.click(screen.getByRole('button',{name:'나에게'}));expect(add).toHaveBeenCalledTimes(1);expect(send).not.toHaveBeenCalled();});
+
+it('실제 공유 scope가 렌더 없는 UID ABA를 관측하면 자기방 ACK 뒤 메시지와 성공을 보내지 않는다',async()=>{
+ vi.spyOn(window,'alert').mockImplementation(()=>{});let complete!:(value:unknown)=>void;const add=vi.fn(()=>new Promise(resolve=>{complete=resolve;})),send=vi.fn();render(<OfficeTalk {...props} initialRoomId="r1" onAddRoom={add} onSendMessage={send}/>);fireEvent.contextMenu(screen.getByText('전달 원문'));fireEvent.click(screen.getByRole('button',{name:'나에게'}));expect(add).toHaveBeenCalledOnce();act(()=>{firebaseFixture.auth.currentUser.uid='B';m.listener?.({uid:'B'});firebaseFixture.auth.currentUser.uid='qa';m.listener?.({uid:'qa'});});await act(async()=>complete(undefined));expect(send).not.toHaveBeenCalled();expect(screen.queryByText('나에게 보냈습니다')).toBeNull();
+});

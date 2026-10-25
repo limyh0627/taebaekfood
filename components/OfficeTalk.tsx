@@ -493,7 +493,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const 알리기 = (t: string) => { set알림글(t); setTimeout(() => set알림글(''), 1600); };
 
   /** 나와의 대화방 — 없으면 만든다. '나에게' 가 쓴다. */
-  const selfSend=useOfficeTalkSelfSend({currentUser,employees,rooms:chatRooms,getUid:()=>auth.currentUser?.uid,addRoom:onAddRoom,sendMessage:onSendMessage,onSuccess:알리기});
+  const selfSend=useOfficeTalkSelfSend({getSignal:getComposerSignal,currentUser,employees,rooms:chatRooms,getUid:()=>auth.currentUser?.uid,addRoom:onAddRoom,sendMessage:onSendMessage,onSuccess:알리기});
 
   const deletion=useOfficeTalkDeletion({roomId:activeRoomId,rooms:chatRooms,messages:localMessages,currentUser,isAdmin,getUid:()=>auth.currentUser?.uid,confirm:appConfirm,updateMessage:onUpdateMessage,deleteRoom:onDeleteRoom,onNotice:알리기,onRoomDeleted:id=>setActiveRoomId(current=>current===id?null:current)});
 
