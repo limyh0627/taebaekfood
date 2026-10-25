@@ -1,18 +1,44 @@
+import {randomUUID} from 'node:crypto';
+import {createEmulatorTestPolicy,cleanupOwnedResources} from '../../test/emulatorTestPolicy';
+let initializeAdminApp:typeof import('firebase-admin/app').initializeApp;
+let deleteAdminApp:typeof import('firebase-admin/app').deleteApp;
+let getAdminFirestore:typeof import('firebase-admin/firestore').getFirestore;
+let executeFinancialOpening:typeof import('../../../functions/src/financialOpeningCommand').executeFinancialOpening;
+let initializeTestEnvironment:typeof import('@firebase/rules-unit-testing').initializeTestEnvironment;
+let doc:typeof import('firebase/firestore').doc;
+let getDoc:typeof import('firebase/firestore').getDoc;
+let setDoc:typeof import('firebase/firestore').setDoc;
+let saveOpeningBalancesWithDb:typeof import('./firebaseService').saveOpeningBalancesWithDb;
+const policy=createEmulatorTestPolicy(process.env,'cashOpening',randomUUID);
+async function loadRuntime(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(policy.projectId);
+  ({initializeApp:initializeAdminApp, deleteApp:deleteAdminApp}=await import('firebase-admin/app'));
+  ({getFirestore:getAdminFirestore}=await import('firebase-admin/firestore'));
+  ({executeFinancialOpening}=await import('../../../functions/src/financialOpeningCommand'));
+  ({initializeTestEnvironment}=await import('@firebase/rules-unit-testing'));
+  ({doc, getDoc, setDoc}=await import('firebase/firestore'));
+  ({saveOpeningBalancesWithDb}=await import('./firebaseService'));
+  policy.assertCurrentEnvironment(process.env);
+}
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import {initializeApp as initializeAdminApp,deleteApp as deleteAdminApp} from 'firebase-admin/app';
-import {getFirestore as getAdminFirestore} from 'firebase-admin/firestore';
-import {executeFinancialOpening,type FinancialOpeningInput} from '../../../functions/src/financialOpeningCommand';
-import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+
+
+import type { FinancialOpeningInput } from '../../../functions/src/financialOpeningCommand';
+import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
+import type { Firestore } from 'firebase/firestore';
 import type { CashAccount } from '../types';
 
-vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-const { saveOpeningBalancesWithDb } = await import('./firebaseService');
-const ready = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(r => r.status < 500).catch(() => false);
+vi.mock('../firebase', () => ({ db: null, functions: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
+vi.mock('firebase/functions',()=>({httpsCallable:()=>{throw new Error('이 시험은 callable 경로를 사용하지 않습니다.');}}));
 let env: RulesTestEnvironment;
 let admin:ReturnType<typeof initializeAdminApp>;
 let adminDb:ReturnType<typeof getAdminFirestore>;
+async function clearOwned(){
+  policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+  if(admin)policy.assertOwned(admin.options.projectId!);
+  await env.clearFirestore();
+}
 let attempt=0;
 const releaseId='opening-test-release';
 const createCashOpening=(_store:Firestore,companyId:'taebaek'|'punghoe',account: CashAccount)=>executeFinancialOpening(adminDb,companyId,'cash-admin',{...{kind:'account-create',account},companyId,operationId:'demo-cash-opening-'+(++attempt),releaseId} as FinancialOpeningInput);
@@ -21,16 +47,17 @@ const account = (id: string, type: CashAccount['type'] = '통장', amount = 100_
   openingBalance: amount, active: true, createdAt: '2026-08-01T00:00:00+09:00',
 });
 
-describe.skipIf(!ready)('계좌 기초잔액 (Firestore Emulator)', () => {
+describe.skipIf(!policy.enabled)('계좌 기초잔액 (Firestore Emulator)', () => {
   beforeAll(async () => {
-    env = await initializeTestEnvironment({ projectId: 'demo-cash-opening', firestore: {
-      rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8082,
+    await loadRuntime();
+    env = await initializeTestEnvironment({ projectId:policy.projectId, firestore: {
+      rules: readFileSync('firestore.rules', 'utf8'), host:policy.host, port:policy.port,
     } });
-    process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8082';
-    admin=initializeAdminApp({projectId:'demo-cash-opening'},'demo-cash-opening-admin');adminDb=getAdminFirestore(admin);
+    policy.assertCurrentEnvironment(process.env);policy.assertOwned(env.projectId);
+    admin=initializeAdminApp({projectId:policy.projectId},policy.appName);policy.assertOwned(admin.options.projectId!);adminDb=getAdminFirestore(admin);
   }, 90_000);
-  beforeEach(async () => { await env.clearFirestore();await adminDb.doc('appMeta/releaseCutover').set({status:'active',releaseId}); });
-  afterAll(async () => { await env?.cleanup();if(admin)await deleteAdminApp(admin); });
+  beforeEach(async () => { await clearOwned();await adminDb.doc('appMeta/releaseCutover').set({status:'active',releaseId}); });
+  afterAll(async () => {await cleanupOwnedResources([async()=>{if(env)await clearOwned();},()=>env?.cleanup(),()=>admin&&deleteAdminApp(admin)]);});
   const store = () => env.authenticatedContext('cash-admin', { employeeId: 'admin', companyId: 'punghoe', isAdmin: true }).firestore() as unknown as Firestore;
 
   it('첫 계좌와 회계 기초일·전표를 함께 만들고 재시도는 중복되지 않는다', async () => {
