@@ -154,8 +154,7 @@ import LargeModalShell from '../../shared/components/LargeModalShell';
 import ModalShell from '../../shared/components/ModalShell';
 const Dashboard = React.lazy(() => import('../../../components/Dashboard'));
 import OrdersList from '../../../components/OrdersList';
-import ItemList from '../../../components/ItemList';
-const BomIntegrityPanel = React.lazy(() => import('../../../components/BomIntegrityPanel'));
+import DeferredInventoryView from '../inventory/ui/DeferredInventoryView';
 const AIConsultant = React.lazy(() => import('../../../components/AIConsultant'));
 import AddOrderModal from '../../../components/AddOrderModal';
 import PasteOrderModal,{type OrderCopyEvidence} from '../../../components/PasteOrderModal';
@@ -2776,8 +2775,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {(currentView === 'inventory' || currentView === 'lot-management') && (
             <>
-            {currentView === 'inventory' && <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} bomIndex={appData.orderUnitInputs!.bom} />}
-            <ItemList
+            <DeferredInventoryView
+              bomProps={currentView === 'inventory' ? {items:allItems,itemFormulas,bomIndex:appData.orderUnitInputs!.bom} : undefined}
               orderUnitInputs={appData.orderUnitInputs}
               mode={currentView === 'lot-management' ? 'lots' : 'inventory'}
               companyId={companyId}

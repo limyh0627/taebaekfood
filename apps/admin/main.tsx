@@ -1,15 +1,7 @@
 import { useEmployeeAuthSession } from '../../src/shared/hooks/useEmployeeAuthSession';
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
-// 청크 로드 실패(배포 후 구버전 캐시) 시 자동 새로고침
-window.addEventListener('vite:preloadError', () => { window.location.reload(); });
-window.__chunkErrorHandled = false;
-window.addEventListener('unhandledrejection', (e) => {
-  if (!window.__chunkErrorHandled && e.reason?.message?.includes('dynamically imported module')) {
-    window.__chunkErrorHandled = true;
-    window.location.reload();
-  }
-});
+// 청크 오류는 자동으로 작업 화면을 재시작하지 않고 오류 경계에서 명시적으로 복구한다.
 import ReactDOM from 'react-dom/client';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
@@ -41,6 +33,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
           <h2 style={{ color: '#e11d48' }}>앱 오류</h2>
           <pre style={{ whiteSpace: 'pre-wrap', color: '#374151', fontSize: 13 }}>{msg}</pre>
           <p style={{ color: '#6b7280', fontSize: 12 }}>위 오류 내용을 캡처해서 전달해주세요.</p>
+          <button type="button" onClick={() => window.location.reload()}>화면 새로고침</button>
         </div>
       );
     }
