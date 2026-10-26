@@ -1,4 +1,13 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
+## 2026-10-26 — 원료 수동 정정 전용 처리 기록·권한 규칙 배포
+
+사용자의 UI 수정 후 배포 지시에 따라 검수 소스 `9db3170`의 `rawManualCorrectionCommand` 함수1개와 Firestore Rules를 반영하고, 이후 양 Hosting을 배포했다. 실제 함수는 ACTIVE·Node22이며 배포 원본158파일이 로컬 검수본과 일치한다. Rules release는 `projects/taebaek-3abe4/releases/cloud.firestore`, ruleset은 `7f0fc2a8-09de-42dc-b143-136e64e8fe68`, 원문 SHA256은 `c8a4cb4498b7d75b1dc59b77ef2c32cee08e7681ea8d12d997ade665fde37a85`다. 앱 공개169파일도 원격 크기·SHA 일치를 확인했다.
+
+새 `rawManualCorrectionReceipts`는 회사·operationId의 SHA-256 ID에 최초 전체 request·canonical text·hash·소유자와 applied/cancelled/rejected 결과를 보관한다. createdAt은 원요청의 options.now이며 서버 commit 시각으로 해석하지 않는다. 적용은 기존 원료 상태·원장·품목 미러와 처리 기록을 같은 거래로 저장한다. 조회 부재는 미처리 확정이 아니며, 중단은 같은 처리 기록으로 늦은 적용과 경합한다. 클라이언트의 receipt 직접 접근과 기존 수동정정 우회 쓰기는 Rules에서 차단한다.
+
+이번 작업자는 운영 원료·품목·원장·처리 기록을 생성·수정·삭제하지 않았다. 준비 확인은 업무 원문 없는 null 입력의 INVALID_ARGUMENT 거절뿐이며 실제 운영 정정 apply/cancel은 실행하지 않았다. 수동 IAM·Storage 규칙 변경과 원격 푸시도 없다. 서버SDK/Rules 시험은 전용 로컬 에뮬레이터 자체 자료로 수행한 근거를 사용했다.
+
+되돌릴 때는 원료 함수와 수동 writer 차단 규칙·기존 취소 처리 기록을 유지한 호환 앱 후보를 사용한다. 이미 확정한 중단을 우회할 수 있으므로 처리 기록을 지우거나 옛 직접쓰기 규칙으로 되돌리지 않는다. 최초 미배포 기준 소스는 `23aed58`이며 실제 release·원격 검증 근거는 `work/next-release-20261026-*.json`에 보존했다.
 
 ## 2026-10-23 — 대변 누락 전표 템플릿 14건 및 풍회 화재보험 면세 정정
 
