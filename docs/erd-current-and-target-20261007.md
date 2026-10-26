@@ -1,4 +1,18 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
+## 2026-10-26 원료 수동 정정 처리 기록 · 배포 후보
+
+이번 후보는 전용 `rawManualCorrectionCommand`의 적용·조회·중단 경로와 `rawManualCorrectionReceipts`를 추가한다. 이는 새 서버 컬렉션이며 앱의 브라우저 초안 보관과 구분한다. 문서 ID는 `[companyId, operationId]` JSON의 SHA-256이다. 원요청의 회사·실제 Auth UID·직원, operationId·requestHash·canonical requestText와 전체 request, createdAt, status를 저장한다. 저장되는 종결 상태는 applied·cancelled·rejected이며 unknown·conflict는 조회·대조 응답으로 영수증 종결 상태가 아니다.
+
+| 연결/값 | 현재 의미와 근거 |
+| --- | --- |
+| request.command.rawItemId → items.id | 정정 당시 원료 홀더의 논리 참조. 현재 품목이 남아 있음을 보장하지 않는다. |
+| applied operationId → rawMaterialLedger.operationId | 적용 원장과 처리 기록을 같은 서버 거래에 저장한다. 취소·거절은 원장 변경을 만들지 않는다. |
+| rawInventories·rawMaterialLedger·items 미러 | 기존 공용 원료 계산·준비 함수를 재사용하며 적용 때 상태·원장·미러와 receipt를 같은 거래로 저장한다. |
+| requestHash·requestText·request | 최초 전체 원문을 고정해 같은 번호의 다른 내용이나 처리 주체를 덮지 않는다. |
+| callable 조회·중단 | 조회는 쓰지 않는다. 중단은 같은 receipt에 cancelled를 확정하며 기존 원장만 있고 receipt가 없으면 미처리 중단으로 확정하지 않는다. |
+| Firestore Rules | 클라이언트의 receipt 직접 읽기·쓰기를 차단하고 전용 호출에서 같은 회사·계정·직원을 검사한다. 기존 수동 정정 우회 writer도 차단한다. |
+
+포털·원료 정정의 계정별 초안·최초 요청, 중앙 로그아웃 보관 확인은 같은 브라우저의 JSON/CAS 보관이다. 이 자료를 새 Firestore 초안 컬렉션이나 기기 간 동기화로 그리지 않는다. 운영 원문·문서 수는 실측하지 않았고 기존 수치 기준일·양식·배치는 유지한다. 원본 Claude 게시물의 직접 편집은 하지 않았다. 아래 관계도에는 새 receipt의 논리 참조만 추가한다. 배포 성공 여부와 운영 버전은 배포 검증 후 기록한다.
 
 ## 2026-10-25 HACCP 작성 수명 · 데이터 구조 대조
 
@@ -241,6 +255,8 @@ erDiagram
   purchaseOrderBatchAudits |o..o{ purchaseOrders : request_orders_id
   items ||--o{ rawInventories : rawItemId
   rawInventories ||--o{ rawMaterialLedger : companyId_and_rawItemId
+  items |o..o{ rawManualCorrectionReceipts : request_command_rawItemId
+  rawManualCorrectionReceipts |o..o| rawMaterialLedger : applied_operationId
   orders ||--o{ rawInventoryJobs : source_id
   orders ||--o{ rawMaterialLedger : source_id
   rawMaterialLedger ||--o{ rawInventoryReversalGuards : originalOperationId

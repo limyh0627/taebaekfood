@@ -40,7 +40,6 @@ import { canPin, pinPatch, unpinPatch, noticeOf, noticeLine, isPinned } from '..
 import { peekSharedText,clearSharedText } from '../src/shared/shareTarget';
 import { readSharedFile, discardSharedFile, shareIdFromUrl, type SharedFileDraft } from '../src/shared/shareInbox';
 import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
-import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
 import {
   collection,
   query,
@@ -158,21 +157,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const 넘기기 = (걸음: number) => setViewer(v =>
     v ? { ...v, at: (v.at + 걸음 + v.urls.length) % v.urls.length } : v);
   const prevRoomTimestamps = useRef<Record<string, string>>({});
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(notifyPermission);
-  const [notifMode, setNotifMode] = useState<NotifyMode>(loadNotifyMode);
-  const [showNotifSettings, setShowNotifSettings] = useState(false);
-
-  const saveNotifMode = (mode: NotifyMode) => { setNotifMode(mode); saveNotifyMode(mode); };
-
-
-  //  종에서 권한을 켜면 이 화면 표시도 따라간다 — 화면을 다시 볼 때 한 번 확인한다
   const currentUserId = currentUser.id;
   const currentCompanyId = companyOf(currentUser);
-  useEffect(() => {
-    const 다시읽기 = () => setNotifPermission(notifyPermission());
-    window.addEventListener('focus', 다시읽기);
-    return () => window.removeEventListener('focus', 다시읽기);
-  }, []);
 
   //  **새 메시지 알림은 여기서 안 한다**(2026-09-03 사장님).
   //  이 화면 안에서 감지하면 오피스톡을 보고 있을 때만 알림이 온다. 지금은 AdminApp 이
@@ -540,10 +526,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     return results;
   }, [employees, mentionSearch, currentUser.id]);
 
-  const sharedControls=(surface:"desktop"|"mobile")=>(<div data-testid={`shared-controls-${surface}`} className={`m-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3 ${surface==='mobile'?'lg:hidden':''}`}>
-          <div className="border-b border-slate-200 pb-2"><ActionButton tone="recovery" type="button" onClick={()=>{setShareAttempt(null);setShareRecoveryOpen(true);}}>공유 실패 {shareAttempts.length}</ActionButton></div>
+  const shareRecoveryEntry=(surface:"title"|"mobile")=>shareAttempts.length>0&&<ActionButton data-testid={`share-recovery-${surface}`} tone="recovery" type="button" onClick={()=>{setShareAttempt(null);setShareRecoveryOpen(true);}}>공유 확인 {shareAttempts.length}</ActionButton>;
+  const sharedControls=(surface:"desktop"|"mobile")=>{
+    if(!pendingShare&&!shareIdFromUrl()&&(surface==='desktop'||shareAttempts.length===0))return null;
+    return <div data-testid={`shared-controls-${surface}`} className={`m-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3 ${surface==='mobile'?'lg:hidden':''}`}>
+          {surface==='mobile'&&shareRecoveryEntry('mobile')}
+          {shareError&&!shareRecoveryOpen&&<p role="alert" className="text-xs">{shareError}</p>}
           {(pendingShare||shareIdFromUrl())&&<><p className="text-xs">현재 계정에 연결하지 않은 공유가 있습니다. 대화방을 선택하고 직접 연결해주세요.</p>{pendingShare&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('text')}>공유 내용 연결</button>}{shareIdFromUrl()&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('file')}>공유 파일 연결</button>}</>}
-        </div>);
+        </div>;
+  };
 
   return (
     <div className="flex bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative" style={{ height: 'calc(100dvh - 120px)' }}>
@@ -553,13 +544,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-black text-slate-900">오피스톡</h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowNotifSettings(p => !p)}
-                className={`p-2 rounded-xl transition-all ${showNotifSettings ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:bg-slate-100'}`}
-                title="알림 설정"
-              >
-                🔔
-              </button>
+              {shareRecoveryEntry('title')}
               <button
                 onClick={() => roomDraft.open()}
                 className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
@@ -569,42 +554,6 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             </div>
           </div>
 
-          {/* 알림 설정 패널 */}
-          {showNotifSettings && (
-            <div className="mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2">
-              <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">알림 방식</p>
-              <div className="flex gap-2">
-                {([
-                  { value: 'sound',     label: '🔊 소리' },
-                  { value: 'vibration', label: '📳 진동' },
-                  { value: 'both',      label: '🔊+📳 둘 다' },
-                ] as const).map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() => saveNotifMode(value)}
-                    className={`flex-1 py-2 rounded-xl text-[11px] font-black transition-all border ${
-                      notifMode === value
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow'
-                        : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {/*  **권한은 여기서 안 묻는다**(2026-09-03 사장님) — 묻는 자리가 흩어져 있으면
-                   어디서 켰는지 헷갈린다. 폰 알림 권한은 **계정 메뉴 한 곳**에서만 받는다.
-                   여기 남은 건 소리를 낼지 진동을 줄지 하는 취향이고, 그 값도 공용 자리에 있다. */}
-              {notifPermission !== 'granted' && (
-                <p className="text-[10px] font-bold text-amber-600 px-1 leading-relaxed">
-                  폰 알림은 왼쪽 아래 <b>계정</b> 을 눌러 한 번만 켜면 됩니다.
-                </p>
-              )}
-              {notifPermission === 'granted' && (
-                <p className="text-[10px] text-emerald-600 font-bold px-1">✅ 폰 알림 켜져 있음</p>
-              )}
-            </div>
-          )}
           <QueryFilterPanel onReset={() => setSearchTerm('')} searchRow={<>
 <label className={QUERY_FILTER_SEARCH_CLASS}><span>전체 검색</span><div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
@@ -682,11 +631,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         </div>
       </div>
 
-        {shareRecoveryOpen&&<ModalShell title={shareAttempt?'공유 실패 작업 상세':'공유 실패 작업 목록'} layer={1400} onClose={()=>{if(!shareSending){if(shareAttempt){setShareAttempt(null);setSharedFile(null);}else setShareRecoveryOpen(false);}}}>
+        {shareRecoveryOpen&&<ModalShell title={shareAttempt?'공유 전송 상세':'공유 전송 확인'} layer={1400} onClose={()=>{if(!shareSending){if(shareAttempt){setShareAttempt(null);setSharedFile(null);}else setShareRecoveryOpen(false);}}}>
           {shareError&&<p role="alert">{shareError}</p>}
-          {!shareAttempt?<>{!shareAttempts.length&&<p>실패 작업이 없습니다.</p>}{shareAttempts.map(candidate=><button type="button" key={candidate.shareId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>void selectSharedAttempt(candidate)}>{candidate.kind==='text'?'공유 내용':candidate.file.name} · {myRooms.find(room=>room.id===candidate.roomId)?.name??candidate.roomId} · 처리 결과 미확인</button>)}</>:<div className="space-y-3">
+          {!shareAttempt?<><p className="mb-2 text-sm text-slate-600">응답이 끊겨 이미 전송됐을 수 있습니다. 최초 내용과 처리 결과를 확인해 주세요.</p>{!shareAttempts.length&&<p>확인할 공유 전송이 없습니다.</p>}{shareAttempts.map(candidate=><button type="button" key={candidate.shareId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>void selectSharedAttempt(candidate)}>{candidate.kind==='text'?'공유 내용':candidate.file.name} · {myRooms.find(room=>room.id===candidate.roomId)?.name??candidate.roomId} · 처리 결과 미확인</button>)}</>:<div className="space-y-3">
             <p>{shareAttempt.kind==='text'?'공유 내용':shareAttempt.file.name} · 최초 대화방 {myRooms.find(room=>room.id===shareAttempt.roomId)?.name??shareAttempt.roomId}</p><pre className="whitespace-pre-wrap">{shareAttempt.text}</pre><p>최초 내용·파일·대화방과 전송 시각을 확인해주세요. 응답이 끊겨 이미 전송됐을 수 있습니다.</p>
-            <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void sendSharedFile()}>{shareSending?'전송 중…':'선택한 대화방에 전송'}</button><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void discardShare()}>실패 요청 삭제</button></div><p>실패 목록에서 요청을 삭제합니다. 실제 대화 내용은 삭제하지 않으며 미확인 원문은 유지합니다.</p>
+            <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void sendSharedFile()}>{shareSending?'전송 중…':'선택한 대화방에 전송'}</button><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void discardShare()}>확인 목록에서 제외</button></div><p>전송 확인 목록에서 요청을 제외합니다. 실제 대화 내용은 삭제하지 않으며 미확인 원문은 유지합니다.</p>
           </div>}
         </ModalShell>}
       {/* Main Content: Chat Window */}

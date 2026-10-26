@@ -33,7 +33,7 @@ import {readSharedChatAttempts,readRetainedSharedChatAttempts} from '../src/shar
 import { beginSharedChatAttempt, completeSharedChatAttempt, beginSharedTextChatAttempt } from '../src/shared/sharedChatAttempt';
 
 function ack(message:any,shareId:string,actorUid='firebase-user'){return Promise.resolve({companyId:'taebaek',actorUid,shareId,messageText:JSON.stringify(message)});}
-async function chooseFile(){await act(async()=>{});const list=within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:/공유 실패 /});if(!list.textContent?.endsWith('0')){fireEvent.click(list);fireEvent.click(await screen.findByRole('button',{name:/quote.pdf · r1/}));}else fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:'공유 파일 연결'}));await screen.findByText(/quote.pdf/);}
+async function chooseFile(){await act(async()=>{});const list=screen.queryByTestId('share-recovery-title');if(list){fireEvent.click(list);fireEvent.click(await screen.findByRole('button',{name:/quote.pdf · r1/}));}else fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:'공유 파일 연결'}));await screen.findByText(/quote.pdf/);}
 const me = { id: 'me', name: '나', companyId: 'taebaek', position: '직원', department: '사무', joinDate: '2026-01-01', status: 'working', phone: '' } as Employee;
 const room = { id: 'r1', companyId: 'taebaek', participantIds: ['me'], isGroup: false, lastUpdatedAt: '2026-09-24T15:01:00Z' } as ChatRoom;
 beforeAll(() => { Element.prototype.scrollIntoView = vi.fn(); vi.stubGlobal('crypto', webcrypto); });
@@ -91,8 +91,8 @@ it('explains why a second share was not accepted', async () => {
   window.history.replaceState(null, '', '/?share=123e4567-e89b-42d3-a456-426614174000&shareRejected=1');
   render(<OfficeTalk currentUser={me} employees={[me]} chatRooms={[room]} chatMessages={[]} initialRoomId="r1"
     onAddRoom={vi.fn()} onUpdateRoom={vi.fn()} onDeleteRoom={vi.fn()} onSendMessage={mocks.send} />);
-  fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:/공유 실패 /}));
-  expect(screen.getByText(/새 공유를 받지 않았습니다/)).toBeInTheDocument();
+  expect(screen.queryByTestId('share-recovery-title')).toBeNull();
+  expect(within(screen.getByTestId('shared-controls-desktop')).getByText(/새 공유를 받지 않았습니다/)).toBeInTheDocument();
   window.history.replaceState(null, '', '/');
 });
 
@@ -178,7 +178,7 @@ it('URL 없는 복수 보존 전송은 사용자가 고른 원문만 결과 확�
  }
  render(<OfficeTalk currentUser={me} employees={[me]} chatRooms={[room]} chatMessages={[]} initialRoomId="r1"
   onAddRoom={vi.fn()} onUpdateRoom={vi.fn()} onDeleteRoom={vi.fn()} onSendMessage={mocks.send}/>);
- fireEvent.click(await within(screen.getByTestId('shared-controls-desktop')).findByRole('button',{name:/공유 실패 2/}));const select=await screen.findByRole('button',{name:/quote1.pdf · r1/});
+ fireEvent.click(await screen.findByTestId('share-recovery-title'));expect(screen.getByRole('dialog')).toHaveTextContent('공유 전송 확인');const select=await screen.findByRole('button',{name:/quote1.pdf · r1/});
  expect(mocks.send).not.toHaveBeenCalled();fireEvent.click(select);
  fireEvent.click(await screen.findByRole('button',{name:'선택한 대화방에 전송'}));
  await waitFor(()=>expect(mocks.send).toHaveBeenCalledWith(messages[1],ids[1],'firebase-user'));
@@ -200,6 +200,12 @@ it('다른 회사·Firebase UID 보존 원문은 현재 사용자 화면에서 �
 });
 
 const textProps={currentUser:me,employees:[me],chatRooms:[room],chatMessages:[],initialRoomId:'r1',onAddRoom:vi.fn(),onUpdateRoom:vi.fn(),onDeleteRoom:vi.fn(),onSendMessage:mocks.send};
+it('확인할 공유와 미연결 공유가 모두 0이면 종과 빈 공유 컨트롤을 표시하지 않는다',async()=>{
+ mocks.shareId=null;render(<OfficeTalk {...textProps}/>);await act(async()=>{});expect(screen.queryByTitle('알림 설정')).toBeNull();expect(screen.queryByText('알림 방식')).toBeNull();expect(screen.queryByRole('button',{name:/공유 확인/})).toBeNull();expect(screen.queryByTestId('shared-controls-desktop')).toBeNull();expect(screen.queryByTestId('shared-controls-mobile')).toBeNull();expect(mocks.send).not.toHaveBeenCalled();
+});
+it('남은 공유는 제목 옆 확인 진입과 모바일 기존 위치에서 같은 전송 확인 모달을 연다',async()=>{
+ mocks.shareId=null;beginSharedTextChatAttempt('taebaek','firebase-user',{id:'123e4567-e89b-42d3-a456-426614174000',text:'확인할 원문'},'r1','me','나');render(<OfficeTalk {...textProps}/>);const title=await screen.findByTestId('share-recovery-title');expect(title).toHaveTextContent('공유 확인 1');expect(screen.getByText('오피스톡').parentElement).toContainElement(title);expect(screen.queryByTestId('shared-controls-desktop')).toBeNull();const mobile=screen.getByTestId('shared-controls-mobile');expect(mobile).toHaveClass('lg:hidden');fireEvent.click(within(mobile).getByRole('button',{name:'공유 확인 1'}));expect(await screen.findByRole('dialog')).toHaveTextContent('공유 전송 확인');expect(screen.getByRole('dialog')).toHaveTextContent('이미 전송됐을 수 있습니다');expect(mocks.send).not.toHaveBeenCalled();expect(mocks.upload).not.toHaveBeenCalled();
+});
 it('미연결 글은 노출·전송하지 않고 명시 연결의 최초 원문으로 실패 뒤 재시도한다',async()=>{
  mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'  첫 공유 원문\n둘째줄  ');mocks.send.mockRejectedValueOnce(Error('응답 미확인'));
  render(<OfficeTalk {...textProps}/>);expect(screen.queryByText(/첫 공유 원문/)).toBeNull();expect(mocks.send).not.toHaveBeenCalled();
@@ -207,12 +213,12 @@ it('미연결 글은 노출·전송하지 않고 명시 연결의 최초 원문�
  fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await screen.findByText('응답 미확인');fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await waitFor(()=>expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(0));expect(mocks.send.mock.calls[0]).toEqual(mocks.send.mock.calls[1]);expect(mocks.upload).not.toHaveBeenCalled();
 });
 it('임의 ACK는 원문을 정리하지 않고 삭제는 목록만 제외한다',async()=>{
- mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'원문 A');mocks.send.mockResolvedValue({id:'임의 응답'});render(<OfficeTalk {...textProps}/>);fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:'공유 내용 연결'}));await screen.findByText('원문 A');fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await screen.findByText(/처리 결과를 확인하지 못했습니다/);expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'실패 요청 삭제'}));await waitFor(()=>expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(0));expect(readRetainedSharedChatAttempts('taebaek','firebase-user')).toHaveLength(1);expect(mocks.discard).not.toHaveBeenCalled();
+ mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'원문 A');mocks.send.mockResolvedValue({id:'임의 응답'});render(<OfficeTalk {...textProps}/>);fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:'공유 내용 연결'}));await screen.findByText('원문 A');fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await screen.findByText(/처리 결과를 확인하지 못했습니다/);expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'확인 목록에서 제외'}));await waitFor(()=>expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(0));expect(readRetainedSharedChatAttempts('taebaek','firebase-user')).toHaveLength(1);expect(mocks.discard).not.toHaveBeenCalled();
 });
 it('응답 대기 중 UID가 바뀌면 정확한 ACK도 이전 원문을 지우지 않는다',async()=>{
  mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'원문 A');let finish!:(value:any)=>void;mocks.send.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));render(<OfficeTalk {...textProps}/>);fireEvent.click(within(screen.getByTestId('shared-controls-desktop')).getByRole('button',{name:'공유 내용 연결'}));await screen.findByText('원문 A');fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await waitFor(()=>expect(mocks.send).toHaveBeenCalledOnce());const [msg,id,uid]=mocks.send.mock.calls[0];(auth.currentUser as any).uid='different';await act(async()=>{finish(await ack(msg,id,uid));});expect(readRetainedSharedChatAttempts('taebaek','firebase-user')).toHaveLength(1);expect(mocks.discard).not.toHaveBeenCalled();
 });
 
 it('모바일 선택 대화방에서 공유 연결과 실패 삭제가 같은 최초 요청을 사용한다',async()=>{
- mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'모바일 원문');mocks.send.mockRejectedValue(Error('전송 결과 미확인'));render(<OfficeTalk {...textProps}/>);const controls=screen.getByTestId('shared-controls-mobile');expect(controls).toHaveClass('lg:hidden');expect(screen.getByTestId('shared-controls-desktop').closest('.hidden')).toHaveClass('lg:flex');expect(screen.queryByText('모바일 원문')).toBeNull();fireEvent.click(within(controls).getByRole('button',{name:'공유 내용 연결'}));await screen.findByText('모바일 원문');const original=readSharedChatAttempts('taebaek','firebase-user')[0];fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await screen.findByText('전송 결과 미확인');expect(mocks.send.mock.calls[0][1]).toBe(original.shareId);expect(screen.getByTestId('shared-controls-desktop').parentElement!.contains(screen.getByRole('dialog'))).toBe(false);fireEvent.click(screen.getByRole('button',{name:'실패 요청 삭제'}));await waitFor(()=>expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(0));expect(readRetainedSharedChatAttempts('taebaek','firebase-user')[0]).toEqual(original);expect(within(controls).getByRole('button',{name:'공유 실패 0'})).toBeInTheDocument();
+ mocks.shareId=null;sessionStorage.setItem(SHARE_KEY,'모바일 원문');mocks.send.mockRejectedValue(Error('전송 결과 미확인'));render(<OfficeTalk {...textProps}/>);const controls=screen.getByTestId('shared-controls-mobile');expect(controls).toHaveClass('lg:hidden');expect(screen.getByTestId('shared-controls-desktop').closest('.hidden')).toHaveClass('lg:flex');expect(screen.queryByText('모바일 원문')).toBeNull();fireEvent.click(within(controls).getByRole('button',{name:'공유 내용 연결'}));await screen.findByText('모바일 원문');const original=readSharedChatAttempts('taebaek','firebase-user')[0];fireEvent.click(screen.getByRole('button',{name:'선택한 대화방에 전송'}));await screen.findByText('전송 결과 미확인');expect(mocks.send.mock.calls[0][1]).toBe(original.shareId);expect(screen.queryByTestId('shared-controls-desktop')).toBeNull();expect(screen.getByRole('dialog').closest('.hidden')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'확인 목록에서 제외'}));await waitFor(()=>expect(readSharedChatAttempts('taebaek','firebase-user')).toHaveLength(0));expect(readRetainedSharedChatAttempts('taebaek','firebase-user')[0]).toEqual(original);expect(screen.queryByTestId('share-recovery-title')).toBeNull();expect(screen.queryByTestId('shared-controls-mobile')).toBeNull();
 });
