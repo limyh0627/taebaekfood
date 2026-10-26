@@ -4782,7 +4782,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setIsOrderCreateChooserOpen(false);
                 setIsAddOrderOpen(false);
               }}
-              onSendMessage={async (msg,sharedUUID,expectedUid) => {
+              onSendMessage={async (msg,sharedUUID,expectedUid,beforeSend) => {
+                if(sharedUUID&&beforeSend)throw Error('공유 전송과 일반 메시지 전송 경계를 함께 사용할 수 없습니다.');
                 const originalText=JSON.stringify(msg),first=JSON.parse(originalText) as typeof msg;
                 const actorUid=expectedUid??auth.currentUser?.uid;
                 const assertScope=()=>{if(!actorUid||auth.currentUser?.uid!==actorUid||companyOf(first)!==companyId)throw Error('공유 전송의 로그인·회사 범위가 변경되었습니다.');};
@@ -4792,7 +4793,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   if(!['created','duplicate'].includes(result))throw Error('최초 공유 전송의 완료 응답을 확인하지 못했습니다.');
                   if (result === 'duplicate') return ack();
                 } else {
-                  await addItem('chatMessages', msg);
+                  await addItem('chatMessages', msg,beforeSend?{chatBeforeSend:beforeSend}:undefined);
                 }
                 // 공유 중복 확인에서는 방 요약·수신 알림도 다시 만들지 않는다.
 

@@ -69,7 +69,7 @@ interface OfficeTalkProps {
   onAddRoom: (_room: ChatRoom) => void | Promise<unknown>;
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void | Promise<unknown>;
   onDeleteRoom: (_id: string) => void | Promise<unknown>;
-  onSendMessage: (_msg: ChatMessage, _sharedUUID?: string,expectedUid?:string) => void | Promise<unknown>;
+  onSendMessage: (_msg: ChatMessage, _sharedUUID?: string,expectedUid?:string,beforeSend?:()=>void) => void | Promise<unknown>;
   /** 말 지우기 — 줄은 남기고 내용만 비운다(shared/messageActions) */
   onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void | Promise<unknown>;
   /** 관리자면 남의 말도 지울 수 있다 */
@@ -332,7 +332,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   };
 
   const getComposerSignal=useOutputScope(currentCompanyId,currentUser.id);
-  const composer=useOfficeTalkComposer({getSignal:getComposerSignal,readMessage:(message,signal)=>readPendingChatMessage({companyId:currentCompanyId,uid:auth.currentUser?.uid??'',employeeId:currentUser.id,signal,id:message.id,roomId:message.roomId,senderId:message.senderId}),getUid:()=>auth.currentUser?.uid,roomId:activeRoomId,currentUser,employees,send:onSendMessage,
+  const composer=useOfficeTalkComposer({getSignal:getComposerSignal,readMessage:(message,signal)=>readPendingChatMessage({companyId:currentCompanyId,uid:auth.currentUser?.uid??'',employeeId:currentUser.id,signal,id:message.id,roomId:message.roomId,senderId:message.senderId}),getUid:()=>auth.currentUser?.uid,roomId:activeRoomId,currentUser,employees,send:onSendMessage,canSendRoom:id=>myRooms.some(room=>room.id===id&&companyOf(room)===currentCompanyId),
     add:message=>{pendingMessages.current.set(message.id,message);stickToBottomRef.current=true;setLocalMessages(prev=>prev.some(row=>row.id===message.id)?prev:[...prev,message]);},
     remove:id=>{pendingMessages.current.delete(id);setLocalMessages(prev=>prev.filter(row=>row.id!==id));},onError:setFirestoreError});
   const {messageText,setMessageText,replyTo,setReplyTo,uploading,uploadCount,sendFiles}=composer;
@@ -537,7 +537,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   };
 
   return (
-    <div className="flex bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative" style={{ height: 'calc(100dvh - 120px)' }}>
+    <><AttachmentSubmissionRecovery key={currentCompanyId+':'+currentUser.id+':'+(auth.currentUser?.uid??'')} roomName={id=>{const room=myRooms.find(row=>row.id===id);return room?getRoomName(room):undefined;}} attempts={composer.attachmentAttempts} open={composer.attachmentRecoveryOpen} onOpen={composer.openAttachmentRecovery} onClose={composer.closeAttachmentRecovery} onRead={composer.readAttachment} onDismissConfirmed={composer.dismissConfirmedAttachment} storageError={composer.storageError} checkpointText={composer.checkpointText} uploads={composer.uploads} onRetry={composer.retryCheckpoint} onReadCheckpoint={composer.readCheckpoint} onRestore={composer.restoreCheckpoint} onCancelFiles={composer.cancelUnstartedUploads} onContinueFiles={composer.continueUploads}/><div className="flex bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative" style={{ height: 'calc(100dvh - 120px)' }}>
       {/* Sidebar: Room List */}
       <div className={`w-full lg:w-80 border-r border-slate-100 flex flex-col bg-slate-50/30 ${activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         <div className="p-6 border-b border-slate-100">
@@ -1031,7 +1031,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 )}
               </AnimatePresence>
 
-              <AttachmentSubmissionRecovery attempts={composer.attachmentAttempts} open={composer.attachmentRecoveryOpen} onOpen={composer.openAttachmentRecovery} onClose={composer.closeAttachmentRecovery} onRead={composer.readAttachment} onDismissConfirmed={composer.dismissConfirmedAttachment}/>
+
               {/*  답장할 말 — 카톡처럼 입력칸 위에 인용으로 붙는다 */}
               {replyTo && (
                 <div className="flex items-start gap-2 mb-2 px-3 py-2 bg-slate-50 border-l-2 border-indigo-400 rounded-r-xl">
@@ -1392,7 +1392,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           onCancel={deletion.closeRoom}
         />
       )}
-    </div>
+    </div></>
   );
 };
 

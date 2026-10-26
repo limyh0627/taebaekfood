@@ -454,7 +454,7 @@ export type PartnerRegistrationConflict = {
   partnerId: string;
   existingPartner?: Partner;
 };
-export type AddItemOptions = { partnerRegistration?: true };
+export type AddItemOptions = { partnerRegistration?: true; chatBeforeSend?:()=>void };
 
 function registrationJson(value: unknown, seen = new Set<object>()): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
@@ -475,6 +475,7 @@ function registrationJson(value: unknown, seen = new Set<object>()): boolean {
 
 /** 응답을 놓쳐 다시 등록하더라도 다른 담당자가 수정한 거래처를 덮어쓰지 않는다. */
 export const addItem = async (collectionName: CollectionName, item: any, options?: AddItemOptions) => {
+  if(options&&Object.hasOwn(options,'chatBeforeSend')&&(collectionName!=='chatMessages'||typeof options.chatBeforeSend!=='function'||options.partnerRegistration!==undefined||typeof item?.id!=='string'||!item.id.trim()||item.id!==item.id.trim()||item.id.includes('/')))throw Error('메시지 전송 번호와 전송 경계를 확인해 주세요.');
   if (options?.partnerRegistration === true && (collectionName !== 'partners' || !item ||
       typeof item.id !== 'string' || !item.id.trim() || item.id !== item.id.trim() || item.id.includes('/') || !registrationJson(item))) {
     throw new Error('거래처 등록 요청의 고정 번호와 입력 형식을 확인해 주세요.');
@@ -535,6 +536,11 @@ export const addItem = async (collectionName: CollectionName, item: any, options
     return settlementRef.id;
   }
   if (id) {
+    const beforeSendResult:unknown=options?.chatBeforeSend?.();
+    if(beforeSendResult&&(typeof beforeSendResult==='object'||typeof beforeSendResult==='function')&&typeof (beforeSendResult as {then?:unknown}).then==='function'){
+      void Promise.resolve(beforeSendResult).catch(()=>{});
+      throw Error('메시지 전송 검사는 동기 함수여야 합니다. 전송하지 않았습니다.');
+    }
     await setDoc(doc(db, collectionName, id), data);
     return id;
   } else {
