@@ -527,7 +527,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
 
     it('**회사를 안 붙이고는 못 만든다**', async () => {
       await assertFails(setDoc(doc(태백직원(), 'orders', 'o-새것'), { partnerName: '회사없음' }));
-      await assertSucceeds(setDoc(doc(태백직원(), 'orders', 'o-새것2'), { companyId: 'taebaek', partnerName: '있음', inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertSucceeds(setDoc(doc(태백직원(), 'orders', 'o-새것2'), { companyId: 'taebaek', partnerName: '있음', inventoryWriterProtocolVersion:1,inventoryWriteRevision:1, orderListProjection:{version:1,candidateDay:'9999-12-31'} }));
     });
   });
 

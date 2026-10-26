@@ -626,6 +626,24 @@ service cloud.firestore {
         && request.resource.data.deletionRevision == (resource == null ? 1 : resource.data.deletionRevision + 1);
       allow delete: if false;
     }
+    function orderListCanonicalUtc(value) {
+      return value is string && value.size() == 24 && value.matches('^[1-9][0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|1[0-9]|2[0-8])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$');
+    }
+    function orderListProjectionValid(next) {
+      let projection = next.get('orderListProjection', null);
+      let bounded = next.get('status', '') == 'DELIVERED' && orderListCanonicalUtc(next.get('deliveredAt', null))
+        && orderListCanonicalUtc(next.get('deliveryDate', null)) && orderListCanonicalUtc(next.get('createdAt', null));
+      return projection is map && projection.keys().hasAll(['version', 'candidateDay']) && projection.keys().hasOnly(['version', 'candidateDay'])
+        && projection.version is int && projection.version == 1 && projection.candidateDay is string
+        && projection.candidateDay == (bounded ? next.deliveredAt.split('T')[0] : '9999-12-31');
+    }
+    function orderListProjectionWriteOk() {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      return (resource != null && !('orderListProjection' in before) && !('orderListProjection' in next)
+        && !next.diff(before).affectedKeys().hasAny(['status', 'deliveredAt', 'deliveryDate', 'createdAt']))
+        || orderListProjectionValid(next);
+    }
     function orderWriteOk() {
       let before = resource == null ? {} : resource.data;
       let next = request.resource.data;
@@ -706,7 +724,7 @@ service cloud.firestore {
     match /orders/{id} {
       allow get: if getOk();
       allow list: if readOk();
-      allow create, update: if createUpdateOk() && orderWriteOk() && catalogOrderReferenceOk(id);
+      allow create, update: if createUpdateOk() && orderWriteOk() && catalogOrderReferenceOk(id) && orderListProjectionWriteOk();
       allow delete: if deleteOk() && orderDeleteOk(id);
     }
     match /purchaseOrders/{id} {

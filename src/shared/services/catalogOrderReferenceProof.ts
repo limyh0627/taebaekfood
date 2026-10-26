@@ -1,4 +1,5 @@
-import { doc, Timestamp, DocumentReference, GeoPoint, Bytes, type Firestore, type Transaction } from 'firebase/firestore';
+import {withOrderListProjection} from '../orderListProjection';
+import { doc, FieldValue, deleteField, Timestamp, DocumentReference, GeoPoint, Bytes, type Firestore, type Transaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, functions } from '../firebase';
 import { encodeCatalogValue, needsCatalogOrderReferenceProof, CATALOG_ORDER_EPOCH, CATALOG_ORDER_PROOFS, type CatalogValue, type CatalogOrderReferenceProofResult } from '../../../functions/src/shared/catalogOrderReferenceProof';
@@ -14,11 +15,12 @@ const adapter = { special(value: unknown): CatalogValue | undefined {
 } };
 /** 업무 patch는 바꾸지 않고 최종 커밋 메타만 별도 복사에 붙인다. 모든 호출은 첫 쓰기 전이다. */
 export async function prepareCatalogOrderCommit(database: Firestore, tx: Transaction, orderId: string, before: Record<string, any> | undefined, patch: Record<string, any>, replace = false, collection: 'orders' | 'purchaseOrders' = 'orders'): Promise<Record<string, any>> {
+  const projectedPatch = collection === 'orders' ? withOrderListProjection(before,patch,replace?'replace':before?'patch':'create',{isDeleteValue:value=>value instanceof FieldValue&&value.isEqual(deleteField()),isTransform:value=>value instanceof FieldValue}) : patch;
   const next = replace ? { ...patch } : { ...before, ...patch };
-  if (!(collection === 'purchaseOrders' ? needsCatalogPurchaseOrderReferenceProof(before, next, adapter) : needsCatalogOrderReferenceProof(before, next, adapter))) return patch;
+  if (!(collection === 'purchaseOrders' ? needsCatalogPurchaseOrderReferenceProof(before, next, adapter) : needsCatalogOrderReferenceProof(before, next, adapter))) return projectedPatch;
   const companyId = next.companyId ?? before?.companyId ?? 'taebaek';
   const epoch = await tx.get(doc(database, CATALOG_ORDER_EPOCH, companyId));
-  if (!epoch.exists()) return patch;
+  if (!epoch.exists()) return projectedPatch;
   await authReady;
   const uid = auth.currentUser?.uid;
   if (!uid || !['taebaek', 'punghoe'].includes(companyId)) throw Error('회사와 로그인 정보를 다시 확인해 주세요.');
@@ -34,5 +36,5 @@ export async function prepareCatalogOrderCommit(database: Firestore, tx: Transac
   const p = proof.data();
   const matches = !!p && (collection === 'purchaseOrders' ? p.collection === collection && JSON.stringify(encodeCatalogValue(p.beforeProjection, adapter)) === JSON.stringify(request.beforeProjection) && JSON.stringify(encodeCatalogValue(p.nextProjection, adapter)) === JSON.stringify(request.nextProjection) : p.beforeRevision === request.beforeRevision && p.status === next.status && JSON.stringify(encodeCatalogValue(p.items, adapter)) === JSON.stringify(request.items));
   if (!proof.exists() || !p || p.companyId !== companyId || p.actorUid !== uid || p.orderId !== orderId || p.catalogRevision !== revision || p.orderExists !== request.orderExists || !matches) throw Error('주문 품목 확인 증거가 원문과 다릅니다.');
-  return { ...patch, catalogReferenceProofId: response.proofId };
+  return { ...projectedPatch, catalogReferenceProofId: response.proofId };
 }

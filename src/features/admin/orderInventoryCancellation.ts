@@ -1,3 +1,4 @@
+import {withOrderListProjection} from '../../shared/orderListProjection';
 import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
 import { cancellationEvidenceText } from '../../shared/orderCancellationEvidence';
 import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
@@ -289,8 +290,8 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       };
       buffer.set(auditRef, protectInventoryWriterPatch(undefined,{...auditData,beforeOrderWriteRevision:(order as Order&{inventoryWriteRevision?:number}).inventoryWriteRevision??0}));
       if (ticket.action === 'delete') writes.set(orderRef.path, { ref: orderRef, method: 'delete' });
-      else buffer.update(orderRef, protectInventoryWriterPatch(snap.data(),{ status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [], shipmentConfirmedBy: null, shipmentConfirmedAt: null,
-        inventorySnapshots: { ...order.inventorySnapshots, shipment: { ...order.inventorySnapshots!.shipment!, stockDeltas: [], productConsumedLots: [] } }, inventoryOperation: null }));
+      else buffer.update(orderRef, withOrderListProjection(snap.data(),protectInventoryWriterPatch(snap.data(),{ status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [], shipmentConfirmedBy: null, shipmentConfirmedAt: null,
+        inventorySnapshots: { ...order.inventorySnapshots, shipment: { ...order.inventorySnapshots!.shipment!, stockDeltas: [], productConsumedLots: [] } }, inventoryOperation: null }),'patch'));
       const bytes = new TextEncoder().encode(JSON.stringify([...writes.values()].map(write => ({ path: write.ref.path, data: write.data })))).byteLength;
       const oversizedDocument = [...writes.values()].some(write => write.data && new TextEncoder().encode(JSON.stringify(write.data)).byteLength > 512 * 1024);
       if (writes.size > 200 || bytes > 4 * 1024 * 1024 || oversizedDocument) block('CANCELLATION_TRANSACTION_BUDGET');

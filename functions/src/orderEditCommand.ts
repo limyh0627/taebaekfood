@@ -1,3 +1,4 @@
+import {withOrderListProjection} from './shared/orderListProjectionWrite';
 import * as admin from 'firebase-admin';
 import {createHash} from 'node:crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
@@ -130,7 +131,7 @@ export async function executeOrderEditCommand(db:admin.firestore.Firestore,actor
     const changes=diffOrderItems(before,stamped);
     const auditRef=db.collection('orderItemEdits').doc('order-edit-'+operationRef.id);
     if(changes.length&&(await tx.get(auditRef)).exists)return reject('같은 수정 이력 번호가 이미 있습니다. 최초 요청을 확인해 주세요.');
-    tx.update(orderRef,protectInventoryWriterPatch(current,patch,['items','status']));
+    tx.update(orderRef,withOrderListProjection(current,protectInventoryWriterPatch(current,patch,['items','status']),'patch'));
     if(changes.length)tx.create(auditRef,{companyId:scope.companyId,orderId:scope.targetId,at,by,changes:changes.map(change=>change.text)});
     return receipt(outcome(scope,'applied',requestHash!,'주문 수정을 완료했습니다.'),requestText);
   });

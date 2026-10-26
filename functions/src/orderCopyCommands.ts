@@ -1,3 +1,4 @@
+import {withOrderListProjection} from './shared/orderListProjectionWrite';
 import * as admin from 'firebase-admin';
 import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
@@ -67,7 +68,7 @@ export async function submitOrderCopy(db:admin.firestore.Firestore,scope:OrderIn
   const capture={version:1,...base,companyId:scope.companyId,actorUid:scope.actorUid,requestText:input.requestText,status:reason?'rejected':'applied',...(reason?{reason}:{})};
   if(reason){tx.create(operation,capture);return {...base,status:'rejected' as const,reason};}
   const approved={...draft,companyId:scope.companyId,createdBy:scope.employeeId,status:'PENDING'};
-  tx.create(order!,approved);tx.create(operation,{...capture,orderText:JSON.stringify(approved)});
+  tx.create(order!,withOrderListProjection(undefined,approved,'create'));tx.create(operation,{...capture,orderText:JSON.stringify(approved)});
   for(let index=0;index<candidates.length;index++){
    const candidate=candidates[index],ref=ruleRefs[index],old=ruleSnapshots[index].data() as InterpretationRule|undefined;
    if(old&&(old.companyId!==scope.companyId||old.partnerId!==candidate.partnerId||old.alias!==candidate.alias||old.itemId!==candidate.itemId||candidateRuleId(scope.companyId,old)!==ref.id||!Number.isSafeInteger(old.revision)||!['proposed','approved','stopped'].includes(old.status)||!Array.isArray(old.captureIds)||!Array.isArray(old.orderIds)))throw new HttpsError('failed-precondition','기존 별칭 제안 근거를 확인해 주세요.');
