@@ -1,6 +1,6 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
-## 2026-10-26 주문 잠금·채팅 복구 · Hosting 배포 후보
+## 2026-10-26 주문 잠금·채팅 복구 · Hosting 배포 반영
 
 주문카드는 기존 `orders.inventoryOperation`을 단일 자물쇠로 표시한다. 클릭 후 현재 주문·실패 줄·해당 세대의 원료 job·생산 기록·최종 완료표를 읽고, 검증된 최초 줄 작업을 같은 번호·시각·처리 계정으로 재개한다. 기존 원자 취소의 잠금 해제와 줄 작업 재개를 구분하며 새 해제 영수증이나 서버 컬렉션을 추가하지 않는다.
 
@@ -11,7 +11,7 @@
 | rawInventoryJobs·productionRecords | 기존 exact ID와 연결을 읽는다. 기록 부재는 재고 미반영의 증명이 아니다. |
 | 채팅 초안·최초 MSG·첨부 URL | 같은 브라우저의 UID·회사·직원별 JSON/CAS 사본이며 Firestore 컬렉션이나 기기 간 동기화가 아니다. |
 
-기존 관계도 양식·배치·컬렉션 수는 유지한다. 서버·Rules·운영 자료는 수정하지 않는 Hosting 후보이며 원래 청우 예약 권한 거절의 구체 원인을 해결했다고 표시하지 않는다. 배포·원격 검증 결과는 실제 완료 뒤 기록한다.
+기존 관계도 양식·배치·컬렉션 수는 유지한다. 검수 소스1a47b3a를 2026-10-26 16:07 KST 양 Hosting에 배포했고 양 라이브 FINALIZED·공개169개 HTTP200/크기/SHA 일치를 확인했다. 서버·Rules·운영 자료는 수정하지 않았으며 원래 예약 권한 거절의 구체 원인을 해결했다고 표시하지 않는다.
 ## 2026-10-26 원료 수동 정정 처리 기록 · 배포 반영
 
 2026-10-26 11:43 KST 검수 소스 `9db3170`을 원료 함수1개→Firestore Rules→관리자·직원 Hosting 순서로 반영했다. 이번 변경은 전용 `rawManualCorrectionCommand`의 적용·조회·중단 경로와 `rawManualCorrectionReceipts`를 추가한다. 이는 새 서버 컬렉션이며 앱의 브라우저 초안 보관과 구분한다. 문서 ID는 `[companyId, operationId]` JSON의 SHA-256이다. 원요청의 회사·실제 Auth UID·직원, operationId·requestHash·canonical requestText와 전체 request, createdAt, status를 저장한다. 저장되는 종결 상태는 applied·cancelled·rejected이며 unknown·conflict는 조회·대조 응답으로 영수증 종결 상태가 아니다.
