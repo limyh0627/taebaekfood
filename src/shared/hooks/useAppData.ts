@@ -218,8 +218,8 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [ordersMonths, setOrdersMonthsState] = useState<number>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('tb_orders_months') : null;
-    const n = saved ? parseInt(saved, 10) : 12;
-    return Number.isFinite(n) && n > 0 ? n : 12;
+    const n = saved ? parseInt(saved, 10) : 1;
+    return Number.isFinite(n) && n > 0 ? n : 1;
   });
   const setOrdersMonths = useCallback((n: number) => {
     setOrdersMonthsState(n);

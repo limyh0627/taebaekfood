@@ -221,3 +221,8 @@ describe('과거 주문 요청 순서와 공유', () => {
     expect(pending).toHaveLength(1);expect(mock.authListeners.size).toBe(0);
   });
 });
+
+it.each([[null,1],['',1],['NaN',1],['0',1],['-2',1],['1',1],['3',3],['12',12],['24',24],['3months',3],['1.9',1]] as const)('기본기간 정책: 보관값 %s는 %s개월이며 원문은 덮지 않는다',(saved,expected)=>{
+ if(saved===null)localStorage.removeItem('tb_orders_months');else localStorage.setItem('tb_orders_months',saved);
+ const view=renderHook(()=>useAppData(false,'taebaek',false));expect(view.result.current.ordersMonths).toBe(expected);expect(localStorage.getItem('tb_orders_months')).toBe(saved);view.unmount();localStorage.removeItem('tb_orders_months');
+});

@@ -538,7 +538,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historySearch, setHistorySearch] = useState('');
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
-  const [activeDateFrom, setActiveDateFrom] = useState(() => `${seoulDateInput().slice(0, 7)}-01`);
+  const [activeDateFrom, setActiveDateFrom] = useState(() => seoulDateInput(new Date(Date.now() - 30 * 86400000)));
   const [activeDateTo, setActiveDateTo] = useState(() => seoulDateInput());
   const [operationDateFrom, setOperationDateFrom] = useState('');
   const [operationDateTo, setOperationDateTo] = useState('');
@@ -1068,7 +1068,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="완료 주문 이력 표시 범위 · 진행 중 주문은 모두 표시">
               <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">이력 표시</span>
               <select
-                value={ordersMonths ?? 12}
+                value={ordersMonths ?? 1}
                 onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
                 className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
               >

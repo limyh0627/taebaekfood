@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi, afterEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../types';
 import { today } from '../src/shared/day';
@@ -143,4 +143,21 @@ it('이월 주문의 완료 전후 같은 ID는 진행 목록에서 이력으로
   expect(screen.queryByText(active.partnerName)).toBeNull();
   fireEvent.change(screen.getByLabelText('완료일 시작'), { target: { value: '2026-10-01' } });
   expect(screen.getAllByText(active.partnerName)).toHaveLength(1);
+});
+
+it('기본기간 정책: 최근30일 완료와 오래된 미완료를 보존하고 명시기간은 rerender로 덮지 않는다',()=>{
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-15T03:00:00Z'));
+ const recent=makeOrder('지난달완료',OrderStatus.DELIVERED,'2026-09-30'),outside=makeOrder('30일밖완료',OrderStatus.DELIVERED,'2026-09-14');
+ const active=statuses.map(status=>makeOrder('오래된-'+status,status));
+ const props={companyId:'taebaek' as const,title:'주문',subtitle:'',groupBy:'status' as const,allowedStatuses:statuses,orders:[recent,outside,...active],partners:[],items:[item],onUpdateStatus:vi.fn(),onUpdateDeliveryDate:vi.fn(),onDeleteOrder:vi.fn(),onAddClick:vi.fn(),onChangeOrdersMonths:vi.fn()};
+ const view=render(<OrdersList {...props}/>);for(const row of active)expect(document.getElementById('order-card-'+row.id)).not.toBeNull();
+ expect((screen.getByLabelText('진행 주문일 시작') as HTMLInputElement).value).toBe('');expect((screen.getByLabelText('진행 주문일 종료') as HTMLInputElement).value).toBe('');
+ fireEvent.click(screen.getAllByRole('button',{name:'이력'}).find(button=>button.hasAttribute('aria-pressed'))!);
+ expect((screen.getByLabelText('완료일 시작') as HTMLInputElement).value).toBe('2026-09-15');expect((screen.getByLabelText('완료일 종료') as HTMLInputElement).value).toBe('2026-10-15');
+ expect(screen.getByText('지난달완료')).toBeTruthy();expect(screen.queryByText('30일밖완료')).toBeNull();
+ fireEvent.click(within(screen.getByLabelText('완료일 시작').closest('label')!).getByRole('button',{name:'이번 달'}));expect((screen.getByLabelText('완료일 시작') as HTMLInputElement).value).toBe('2026-10-01');expect(screen.queryByText('지난달완료')).toBeNull();
+ fireEvent.click(within(screen.getByLabelText('완료일 시작').closest('label')!).getByRole('button',{name:'이번 주'}));expect((screen.getByLabelText('완료일 시작') as HTMLInputElement).value).toBe('2026-10-12');
+ fireEvent.click(within(screen.getByLabelText('완료일 시작').closest('label')!).getByRole('button',{name:'오늘'}));expect((screen.getByLabelText('완료일 시작') as HTMLInputElement).value).toBe('2026-10-15');
+ fireEvent.change(screen.getByLabelText('완료일 시작'),{target:{value:'2026-09-01'}});view.rerender(<OrdersList {...props} orders={[...props.orders]}/>);expect((screen.getByLabelText('완료일 시작') as HTMLInputElement).value).toBe('2026-09-01');expect(screen.getByText('30일밖완료')).toBeTruthy();
+ fireEvent.click(screen.getAllByRole('button',{name:'이력'}).find(button=>!button.hasAttribute('aria-pressed'))!);expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1');
 });
