@@ -1,3 +1,4 @@
+import type {OrderListReadState} from '../src/shared/hooks/useOrderListRead';
 import ActionButton from '../src/shared/components/ActionButton';
 import {useWorkOrderEditor,type WorkItem} from '../src/features/orders/hooks/useWorkOrderEditor';
 import type {WorkOrderBindings} from '../src/shared/services/workOrderWrites';
@@ -240,6 +241,7 @@ interface OrdersListProps extends OrderEditBindings {
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
   ordersMonths?: number;
+  orderListRead?:OrderListReadState;
   onChangeOrdersMonths?: (n: number) => void;
   embeddedListOnly?: boolean;
   /**
@@ -407,6 +409,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onLoadHistoricalOrders,
   isLoadingHistoricalOrders = false,
   ordersMonths,
+  orderListRead,
   onChangeOrdersMonths,
   embeddedListOnly = false,
   calendarSlot, renderOrderRecovery, orderRecoveryOrphans,
@@ -960,6 +963,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
 
         </div>} actions={(activeView === 'kanban' || activeView === 'list') ? <button type="button" onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={13}/><span>주문 생성</span></button> : undefined}/>
+          {orderListRead&&(orderListRead.status==='error'||orderListRead.status==='refreshing'||(!orderListRead.serverReady&&orders.length===0))&&<div className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600" aria-label="주문 조회 상태">
+            {orderListRead.status==='error'?<div role="alert"><span>{orderListRead.error}</span><button type="button" onClick={orderListRead.retry} className="ml-2 rounded border border-slate-300 px-2 py-1">다시 조회</button></div>
+            :orderListRead.status==='refreshing'?<div role="status"><span>주문을 다시 조회 중입니다. 보이는 자료는 유지합니다.</span><button type="button" disabled className="ml-2 rounded border px-2 py-1">다시 조회</button></div>
+            :!orderListRead.serverReady&&orders.length===0?<p role="status">{orderListRead.source==='cache'?'기기에 보관된 주문이 없습니다. 서버 주문 목록은 아직 확인하지 못했습니다.':'서버 주문 목록을 아직 확인하지 못했습니다.'}</p>
+            :<span>{orderListRead.source==='cache'?'기기에 보관된 주문을 표시합니다.':orderListRead.serverReady?'현재 서버 조회 자료를 표시합니다.':'주문 조회 상태를 확인 중입니다.'}</span>}
+          </div>}
           <QueryFilterPanel id="active-view-query-title" onReset={() => { const today = seoulDateInput(); if (activeView !== 'history') { setOperationDateFrom(''); setOperationDateTo(''); } setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} dateRow={<>{activeView === 'history' ? <label className={QUERY_FILTER_DATE_CLASS}>
                 완료일
                 {/* 모바일은 날짜 다음 빠른 기간을 두어 메뉴별 줄바꿈을 맞춘다. */}

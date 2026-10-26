@@ -2,6 +2,7 @@
 import {act,renderHook,waitFor} from '@testing-library/react';
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({listeners:[] as {name:string;company:string;callback:(rows:any[])=>void}[],verify:vi.fn(),auth:{currentUser:{uid:'uid'}}}));
+vi.mock('../services/orderListRead',()=>({subscribeOrderList:()=>()=>{},orderListReadError:()=>({code:'unknown',message:'조회 실패'})}));
 vi.mock('../firebase',()=>({authReady:Promise.resolve(),auth:mocks.auth,db:{}}));
 vi.mock('firebase/firestore',()=>({where:(field:string,op:string,value:string)=>({field,op,value}),doc:vi.fn(),getDoc:vi.fn()}));
 vi.mock('../partnerAdvanceAudit',()=>({verifyAdvanceStatements:mocks.verify}));

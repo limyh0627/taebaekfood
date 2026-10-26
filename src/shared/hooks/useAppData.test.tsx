@@ -11,10 +11,12 @@ const mock = vi.hoisted(() => ({
   requests: [] as Array<{ company: string; resolve: (orders: Order[]) => void }>,
   fetchCollection: vi.fn(),
   onOrders: null as null | ((orders: Order[]) => void),
+  onOrderError:null as null|((error:unknown)=>void),
   listeners: [] as Array<{ name: string; callback: (rows: any[]) => void }>,
   documents: [] as Array<{ id: string; callback: (value: any) => void }>,
 }));
 
+vi.mock('../services/orderListRead',()=>({orderListReadError:(error:any)=>({code:error?.code??'unknown',message:'주문 조회 실패'}),subscribeOrderList:(_options:any,next:any,error:any)=>{mock.onOrderError=error;const callback=(rows:any[])=>next({rows,metadata:{fromCache:false,hasPendingWrites:false}});mock.listeners.push({name:'orders',callback});mock.onOrders=callback;return()=>{};}}));
 vi.mock('../firebase', () => ({ authReady: Promise.resolve(), auth: mock.auth, db: {} }));
 vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }), doc: (_db:unknown,_name:string,id:string)=>({id}), onSnapshot:(ref:{id:string},callback:(snapshot:{exists:()=>boolean;data:()=>unknown})=>void)=>{mock.documents.push({id:ref.id,callback:(value:unknown)=>callback({exists:()=>value!==null,data:()=>value})});return()=>{};} }));
 beforeEach(()=>{mock.auth.currentUser={uid:'actor-a'};});
@@ -226,3 +228,8 @@ it.each([[null,1],['',1],['NaN',1],['0',1],['-2',1],['1',1],['3',3],['12',12],['
  if(saved===null)localStorage.removeItem('tb_orders_months');else localStorage.setItem('tb_orders_months',saved);
  const view=renderHook(()=>useAppData(false,'taebaek',false));expect(view.result.current.ordersMonths).toBe(expected);expect(localStorage.getItem('tb_orders_months')).toBe(saved);view.unmount();localStorage.removeItem('tb_orders_months');
 });
+it('주문 live UID ABA 뒤 옛 구독 callback은 최종 회사 화면에 재노출하지 않는다',async()=>{
+ mock.listeners.length=0;mock.onOrders=null;mock.fetchCollection.mockResolvedValue([]);const {result}=renderHook(()=>useAppData(true,'taebaek',false));await waitFor(()=>expect(mock.onOrders).toBeTypeOf('function'));const old=mock.onOrders!;
+ act(()=>{for(const uid of ['actor-b','actor-a']){mock.auth.currentUser={uid};for(const callback of mock.authListeners)callback(mock.auth.currentUser);}old([{...order('old-live','taebaek'),status:OrderStatus.PENDING}]);});expect(result.current.orders).toEqual([]);
+});
+it('주문 최초 오류도 items 관측과 합쳐 전체로딩을 종결하고 재조회만 연결한다',async()=>{mock.listeners.length=0;mock.onOrderError=null;mock.fetchCollection.mockResolvedValue([]);const {result}=renderHook(()=>useAppData(true,'taebaek',false));await waitFor(()=>expect(mock.listeners.some(row=>row.name==='items')).toBe(true));act(()=>{mock.listeners.find(row=>row.name==='items')!.callback([]);mock.onOrderError!({code:'permission-denied'});});expect(result.current.isDataLoading).toBe(false);expect(result.current.orders).toEqual([]);expect(result.current.orderListRead).toMatchObject({status:'error',errorCode:'permission-denied'});});

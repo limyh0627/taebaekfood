@@ -1,3 +1,4 @@
+import {useOrderListRead,type OrderListReadState} from './useOrderListRead';
 import { verifyAdvanceStatements, type ReadonlyAdvanceOperation } from '../partnerAdvanceAudit';
 import { useReturnAllocationSources, type ReturnAllocationOperation } from './useReturnAllocationSources';
 import type { ReturnStockOperation } from '../returnStockMovement';
@@ -52,6 +53,7 @@ export interface AppData {
   orderUnitInputs?: OrderUnitInputs;
   // 주문
   orders: Order[];
+  orderListRead?: OrderListReadState;
   purchaseOrders: PurchaseOrder[];
   // 품목 (items 컬렉션)
   items: Item[];
@@ -125,7 +127,6 @@ export interface AppData {
  * (확인함: 이 컬렉션들은 관리자 화면에서만 쓰인다 — 직원 화면에는 한 곳도 없다)
  */
 export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isAdmin = false): AppData {
-  const [orders, setOrders] = useState<Order[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [partnerItems, setPartnerItems] = useState<PartnerItem[]>([]);
@@ -209,10 +210,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       ? historicalState.orders.filter(order => companyOf(order) === companyId) : [],
     [enabled, historicalState, historicalScope, companyId],
   );
-  const visibleOrders = useMemo(
-    () => enabled ? orders.filter(order => companyOf(order) === companyId) : [],
-    [orders, enabled, companyId],
-  );
   const isLoadingHistoricalOrders = enabled && historicalState?.scope === historicalScope
     ? historicalState.loading : false;
   const [isDataLoading, setIsDataLoading] = useState(true);
@@ -276,6 +273,10 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       setIsDataLoading(false);
     }
   };
+
+  const orderUid=auth?.currentUser?.uid??'';
+  const orderRead=useOrderListRead({companyId,enabled,ordersMonths,owner:{scope:historicalScope,uid:orderUid,isCurrent:()=>historicalMounted.current&&historicalScopeRef.current.id===historicalScope&&auth?.currentUser?.uid===orderUid},onSettled:()=>markLoaded('orders')});
+  const visibleOrders=useMemo(()=>enabled?orderRead.rows.filter(order=>companyOf(order)===companyId):[],[orderRead.rows,enabled,companyId]);
 
   // 재무 구독은 업무 구독과 수명을 분리한다. 직원에게는 생성하지 않는다.
   useEffect(() => {
@@ -366,38 +367,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       unsubscribes.forEach(u => u());
     };
   }, [enabled, companyId, isAdmin]);
-
-  // ── orders 구독 — ordersMonths 변경 시 재구독 ──
-  useEffect(() => {
-    if (!enabled) return;
-    let unsub: (() => void) | null = null;
-    let cancelled = false;
-    authReady.then(() => {
-      if (cancelled) return;
-      const cutoff = dateOfLocal(new Date(Date.now() - ordersMonths * 30 * 86400000).toISOString());
-      unsub = subscribeToCollection<Order>(
-        'orders',
-        (data) => {
-          // 진행 중 주문은 오래됐어도 업무 대상이다. 구독 기간은 완료 이력에만 적용한다.
-          if (cancelled) return;
-          setOrders(data.filter(order => order.status !== OrderStatus.DELIVERED
-            || dateOfLocal(order.deliveredAt || order.deliveryDate || order.createdAt) >= cutoff));
-          markLoaded('orders');
-        },
-        [where('companyId', '==', companyId)],
-        (error) => {
-          console.error('[Firestore 구독 실패] orders', error);
-          // 인덱스 생성 지연이나 일시 오류가 있어도 앱 전체가 무한 로딩에 갇히면
-          // 로그인·다른 업무까지 못 하므로 로딩은 반드시 끝낸다.
-          markLoaded('orders');
-        },
-      );
-    });
-    return () => {
-      cancelled = true;
-      if (unsub) unsub();
-    };
-  }, [enabled, ordersMonths, companyId]);
 
   // ── 1회 읽기 (거의 안 바뀌는 정적 데이터) — refreshStaticData() 호출 시 재로드 ──
   useEffect(() => {
@@ -506,7 +475,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   return {
     ...scopedData,
     orderUnitInputs: { bom: bomIndex, pack: packIndex },
-    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
+    orders: visibleOrders, orderListRead:orderRead.read, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
     isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

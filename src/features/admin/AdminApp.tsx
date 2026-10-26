@@ -334,7 +334,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     itemFormulas, itemBoms, returnRequests, itemReceipts, companyInfo, companyInfoRead, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
-    ordersMonths, setOrdersMonths,
+    ordersMonths, setOrdersMonths, orderListRead,
   } = appData;
 
   /**
@@ -2746,6 +2746,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               itemBoms={itemBoms}
               isLoadingHistoricalOrders={isLoadingHistoricalOrders}
               onLoadHistoricalOrders={loadHistoricalOrders}
+              orderListRead={orderListRead}
               ordersMonths={ordersMonths}
               onChangeOrdersMonths={setOrdersMonths}
               onDeleteOrder={handleDeleteOrder}
