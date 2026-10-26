@@ -7,3 +7,4 @@ describe('주문 재고 오류 표시',()=>{
  it('한국어 업무 사유는 원문을 보존한다',()=>{const message='들깨 재고가 부족합니다. 현재 0kg, 필요 20kg';expect(orderInventoryErrorMessage(Error(message))).toBe(message);});
  it.each(['OPERATION_GENERATION_CHANGED','LEGACY_OPERATION_UNPROVEN','COMPLETION_RECEIPT_PRESENT','ORDER_STATUS_CHANGED'])('복구 사유 %s는 내부 코드를 표시하지 않는다',reason=>{expect(orderInventoryErrorMessage(reason)).toMatch(/[가-힣]/);expect(orderInventoryErrorMessage(reason)).not.toContain(reason);});
 });
+it('1027 반례: 권한거절 원인은 미확인 일반문구로 숨기지 않는다',()=>{expect(orderInventoryErrorMessage('Missing or insufficient permissions.')).toMatch(/권한.*거절|권한.*허용되지/);expect(orderInventoryErrorMessage({code:'permission-denied',message:'Missing or insufficient permissions.'})).toMatch(/권한.*거절|권한.*허용되지/);});

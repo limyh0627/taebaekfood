@@ -201,7 +201,7 @@ export const OrderCard = memo<OrderCardProps>(({
       {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
            **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
            색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
-      <OrderRecoveryEntry order={order} renderOrderRecovery={readOnly ? undefined : renderOrderRecovery} />
+
       {!readOnly&&renderOrderEditRecovery?.(order)}
       <div className={`flex flex-col rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
@@ -210,7 +210,7 @@ export const OrderCard = memo<OrderCardProps>(({
              온전히 쓸 수 있게"). 상태가 이름 옆에 있으면 긴 거래처명이 밀려 잘렸다 —
              주문번호는 짧아서 옆자리가 남는다. */}
         <div className="flex items-baseline justify-between gap-2">
-          <p className="min-w-0 truncate text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}{isCarriedOrder(order) && <span className="ml-1 text-amber-700">이월</span>}</p>
+          <div className="flex min-w-0 items-center gap-1" data-testid="order-number-header"><p className="min-w-0 truncate text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}{isCarriedOrder(order) && <span className="ml-1 text-amber-700">이월</span>}</p>{!readOnly&&<OrderRecoveryEntry order={order} renderOrderRecovery={readOnly ? undefined : renderOrderRecovery} />}</div>
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
         {/*  **상태와 진행도는 한 줄이다** — `작업중 3/5`

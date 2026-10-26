@@ -39,6 +39,7 @@ export function orderInventoryRecoveryChecks(reason: unknown): readonly string[]
 export function orderInventoryErrorMessage(error: unknown): string {
   const source = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
   const text = source.trim();
+  if ((error&&typeof error==='object'&&(error as {code?:unknown}).code==='permission-denied')||/Missing or insufficient permissions|permission-denied/i.test(text))return '권한 확인에서 요청이 거절되었습니다. 현재 회사·로그인과 해당 자료의 접근 조건을 확인한 뒤 다시 조회해 주세요. 재고 반영 여부는 이 오류만으로 확정하지 않습니다.';
   if (reasons[text]) return reasons[text];
   // SDK·스택·내부 문서 경로는 업무 화면에 노출하지 않는다.
   if (/Firestore|FirebaseError|Transaction\.(?:set|update)|Nested arrays|invalid data|(?:rawInventoryJobs|rawMaterialLedger|rawInventories)\//i.test(text)

@@ -1795,7 +1795,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-black text-slate-800">{cardNoLabel(order) || order.id}</span>
+                          <span className="font-black text-slate-800">{cardNoLabel(order) || order.id}</span><OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
                           <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
                         </div>
                         <div className="mt-1 text-sm font-black text-slate-800">{partnerName}</div>
@@ -1806,7 +1806,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       <span>주문 {fmtYYMMDD(new Date(order.createdAt))}</span>
                       <span>출고예정 {fmtYYMMDD(new Date(order.deliveryDate))}</span>
                     </div>
-                    <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
+
                     <OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>
                     <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
                       {visibleItems.map((item, index) => <div key={`${item.itemId}-${index}`} className="flex justify-between gap-2 text-xs"><span className="min-w-0 font-bold text-slate-700">{item.name}</span><span className="shrink-0 font-black text-indigo-600">{item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`}</span></div>)}
@@ -1881,7 +1881,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-2 py-1">
                           {/*  `ORD-` 는 전부 붙는 머리라 읽을 정보가 없다 — 떼고 숫자만 보여 준다
                                (2026-09-11 사장님). 원래 번호는 마우스를 올리면 나온다. */}
-                          <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{(cardNoLabel(order) || order.id).replace(/^ORD-/, '')}</span>
+                          <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{(cardNoLabel(order) || order.id).replace(/^ORD-/, '')}</span><OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
                           <span className="text-[9px] font-bold text-slate-600">{statusLabel(order.status)}{isCarriedOrder(order) && <span className="ml-1 text-amber-700">이월</span>}</span>
                         </div>
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
@@ -1910,7 +1910,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             </span>
                             {!embeddedListOnly && <Edit2 size={12} className="shrink-0 text-slate-300 group-hover:text-indigo-500" aria-hidden="true" />}
                           </button>
-                          <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
+
                     <OrderEditRecovery application={orderEdits} orderId={order.id} actionsEnabled={false}/>
                         </div>
                         {embeddedListOnly && <div role="cell" className="flex min-w-0 items-center border-r border-slate-300 px-3 text-[10px] font-bold text-slate-600">

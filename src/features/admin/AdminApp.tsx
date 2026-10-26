@@ -41,7 +41,7 @@ import type {OrderInventoryGeneration} from '../../shared/orderInventoryGenerati
 import { confirmPendingPurchaseOrder } from '../../shared/services/confirmPendingPurchaseOrderService';
 import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
 import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
-import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
+import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,type OrderInventoryResumeRun,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
 import {normalizeViewAlias} from '../../shared/startView';
 import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
@@ -1403,14 +1403,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
-  const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange,
-    prepareOrderCancellation, executeOrderCancellation, readOrderCancellation } = createOrderStockEngine({
+  const orderStockDependencies = {
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordPlan, updateItem, addItem,
     orderUnitInputs: appData.orderUnitInputs,
     claimOrderOperation: claimOrderInventoryOperation,
-  });
+  };
+  const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange,
+    prepareOrderCancellation, executeOrderCancellation, readOrderCancellation } = createOrderStockEngine(orderStockDependencies);
 
   // 품목 완료 진입점 — 생산품은 재고 유무와 관계없이 모달에서 재고 사용/전량 생산을 확인한다.
   // 드롭다운으로 바꾸든 품목 체크로 자동 이동하든 여기 하나를 지난다.
@@ -1427,7 +1428,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * `shipOrder`). 모자라면 그때 음수가 된다 — 그래서 완료를 찍는 지금 알린다.
    */
   const [goodsStockAsk, setGoodsStockAsk] = useState<{
-    scope: object; title: string; tone: AlertTone; message: string; subMessage: string; confirmText: string; onConfirm: () => void;
+    scope: object; title: string; tone: AlertTone; message: string; subMessage: string; confirmText: string; onConfirm: () => void;onCancel?:()=>void;
   } | null>(null);
 
   /**
@@ -1463,7 +1464,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     scope: object; mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
     scope: object; mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
-    onConfirm: (plan: StockUsePlan) => Promise<void>;
+    onConfirm: (plan: StockUsePlan) => Promise<void>;onCancel?:()=>void;
   } | null>(null);
   const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null; goods: object | null }>({ rollback: null, stock: null, goods: null });
   orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk, goods: goodsStockAsk };
@@ -1914,11 +1915,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
     const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
     const hasCancellation=pendingCancellations.includes(orderId)||processingCancellationIds.includes(orderId);
-    if(!hasCancellation&&!pending.length&&order?.inventoryOperation?.state!=='failed')return null;
+    if(!hasCancellation&&!pending.length&&!order?.inventoryOperation)return null;
     return <div key={companyId+':'+recoveryActorUid+':'+orderId} aria-label={'주문 처리 확인 '+orderId}>
       {hasCancellation&&<button type="button" disabled={processingCancellationIds.includes(orderId)} className="mt-2 text-sm font-bold text-indigo-700 underline"
         onClick={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)void handleDeleteOrder(orderId);}}>{processingCancellationIds.includes(orderId)?'확인·처리 중':'처리 결과 확인'}</button>}
       <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending}
+        onResumeLine={run=>handleToggleItemChecked(orderId,run.intent.itemIndex,currentUser?.name,run)}
         isCurrentActor={()=>auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={(result,expectedSaved)=>{
         if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope||result.orderId!==orderId)return;
         clearRecoveredOrderCancellation(companyId,recoveryActorUid,result,expectedSaved);
@@ -1980,6 +1982,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const completionSaving = React.useRef(new Set<string>());
+  const lineResumeLocks=useRef(new Map<string,object>());
+  useEffect(()=>()=>{lineResumeLocks.current.clear();},[companyId,currentUser?.id]);
   /**
    * **송장 칸 한 번 누름 → 저장할 값.**
    *
@@ -1998,23 +2002,33 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ? { invoicePrinted: value, invoiceStage: value ? 'printed' : null }
       : { invoicePrinted: value !== undefined, invoiceStage: value ?? null };
 
-  const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
-    const askScope = orderAskScope.current.token;
-    const order = allOrders.find(o => o.id === orderId);
-    if (!order || completionSaving.current.has(orderId)) return;
+  const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string,resumeRun?:OrderInventoryResumeRun) => {
+    const askScope = orderAskScope.current.token,runToken={};let settled=false;
+    const settle=(result:Parameters<OrderInventoryResumeRun['settled']>[0])=>{if(!resumeRun||settled)return;settled=true;if(lineResumeLocks.current.get(orderId)===runToken)lineResumeLocks.current.delete(orderId);resumeRun?.settled(result);};
+    const resumeCurrent=()=>orderAskScope.current.token===askScope&&(!resumeRun||resumeRun.isCurrent());
+    if(resumeRun){if(lineResumeLocks.current.has(orderId)||!resumeRun.isCurrent()){settle({status:'cancelled'});return{status:'blocked'};}lineResumeLocks.current.set(orderId,runToken);}
+    const order = resumeRun?.intent.order??allOrders.find(o => o.id === orderId);
+    if (!order || completionSaving.current.has(orderId)){settle({status:'cancelled'});return;}
+    if(resumeRun&&(order.id!==orderId||resumeRun.intent.itemIndex!==itemIdx||order.items[itemIdx]?.checked||order.items[itemIdx]?.lineId!==resumeRun.intent.lineId)){settle({status:'cancelled'});return;}
     const normalizedOrder = { ...order, items: ensureOrderLineIds(order.items) };
     const plan = planOrderItemToggle(normalizedOrder, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
-    if (!plan) return;
+    if (!plan){settle({status:'cancelled'});return;}
     const applying = plan.items[itemIdx]?.checked === true;
     const save = async (stockPlan?: StockUsePlan) => {
-      if (orderAskScope.current.token !== askScope || completionSaving.current.has(orderId)) return;
+      if (!resumeCurrent() || completionSaving.current.has(orderId)){settle({status:'cancelled'});return;}
       completionSaving.current.add(orderId);
       try {
+        if(resumeRun){await resumeRun.intent.revalidate();if(!resumeCurrent())throw Error('원작업의 로그인 범위가 바뀌어 전송하지 않았습니다.');}
         const lineId = plan.items[itemIdx]?.lineId;
         const isLegacyRollback = !applying && !!order.producedAt && (!lineId || !order.itemInventory?.[lineId]);
         if (isLegacyRollback) await requestOrderStatus(orderId, plan.status, { items: plan.items });
         else {
-          await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
+          const lineWriter=resumeRun?createOrderStockEngine({...orderStockDependencies,
+            getActorUid:()=>resumeRun.isCurrent()?auth.currentUser?.uid:undefined,
+            claimOrderOperation:(id,expected,operation)=>claimOrderInventoryOperation(id,expected,operation,{isCurrent:resumeRun.isCurrent,beforeSend:()=>{if(!resumeRun.isCurrent())throw Error('원작업 범위가 바뀌어 전송하지 않았습니다.');}}),
+          }).changeOrderItemCompletion:changeOrderItemCompletion;
+          await lineWriter(orderId, itemIdx, plan.items, plan.status, stockPlan);
+          settle({status:'completed'});
           if (orderAskScope.current.token !== askScope) return;
           /*  **품목 알림 다음에 주문 알림**(2026-09-15 사장님: "품목단위 알람 다음에 주문 자체
            *  상태변환 알람뜨게해 이건 취소는 못하고 확인버튼만 누르게 … 주문이 대기중에서
@@ -2038,11 +2052,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
           }
         }
       } catch (error) {
-        if (orderAskScope.current.token !== askScope) return;
+        if (orderAskScope.current.token !== askScope){settle({status:'failed',error});return;}
         if (error instanceof Error && error.message === 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
           await requestOrderStatus(orderId, plan.status, { items: plan.items });
           return;
         }
+        if(resumeRun){settle({status:'failed',error});return;}
         console.error('작업 확인 저장 실패', error);
         const reason = error instanceof Error ? error.message : String(error);
         alert(`작업 확인을 저장하지 못했습니다.\n사유: ${reason}`);
@@ -2093,11 +2108,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
       : [];
     const startSave = () => {
-      if (orderAskScope.current.token !== askScope) return;
+      if (!resumeCurrent()){settle({status:'cancelled'});return;}
       if (lineRows.length === 0) { void save(); return; }
       setStockUseAsk({
         scope: askScope, mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
-        onConfirm: save,
+        onConfirm: save,onCancel:()=>settle({status:'cancelled'}),
       });
     };
 
@@ -2138,14 +2153,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
           + `이 주문 몫으로 ${주문량}${단위}를 잡으면, 출고할 때 재고가 ${출고뒤}${단위} 로 음수가 됩니다.\n`
           + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.${잡힘글}`,
         confirmText: '그래도 완료',
-        onConfirm: () => { void save(); },
+        onConfirm: () => { void save(); },onCancel:()=>settle({status:'cancelled'}),
       } : {
         scope: askScope, title: '작업완료', tone: 'emerald',
         message: `“${완료품목.name}” ${주문량}${단위}를 이 주문 몫으로 잡습니다.`,
         subMessage: `재고에서는 출고할 때 빠집니다 — 지금 ${재고}${단위} → 출고 뒤 ${출고뒤}${단위}.\n`
           + `사 오거나 맡긴 물건이라 생산하지 않습니다.${잡힘글}`,
         confirmText: '완료',
-        onConfirm: () => { void save(); },
+        onConfirm: () => { void save(); },onCancel:()=>settle({status:'cancelled'}),
       });
       return;
     }
@@ -5005,7 +5020,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onCancel={() => {
             const ask = goodsStockAsk;
             if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.goods !== ask) return;
-            setGoodsStockAsk(current => current === ask ? null : current);
+            setGoodsStockAsk(current => current === ask ? null : current);ask.onCancel?.();
           }}
         />
       )}
@@ -5025,7 +5040,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           partnerName={stockUseAsk.partnerName}
           rows={stockUseAsk.rows}
           completionLabel={stockUseAsk.mode === 'line' ? '품목 완료' : '작업완료'}
-          onCancel={() => setStockUseAsk(current => current === stockUseAsk ? null : current)}
+          onCancel={() => {const ask=stockUseAsk;setStockUseAsk(current => current === ask ? null : current);if(ask.mode==='line')ask.onCancel?.();}}
           onConfirm={async (plan: StockUsePlan) => {
             const ask = stockUseAsk;
             if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.stock !== ask) return;

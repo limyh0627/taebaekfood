@@ -1,13 +1,11 @@
-import React from 'react';
+import React,{useState} from 'react';
+import {LockKeyhole} from 'lucide-react';
+import ModalShell from '../../../shared/components/ModalShell';
 import type { Order } from '../../../shared/types';
 import { orderInventoryErrorMessage } from '../../../shared/orderInventoryError';
-
 export function OrderRecoveryEntry({order,renderOrderRecovery}:{order:Order;renderOrderRecovery?: (order:Order)=>React.ReactNode}) {
-  const failed=order.inventoryOperation?.state==='failed';
-  const action=order.inventoryOperation?.state==='processing' ? null : renderOrderRecovery?.(order);
-  if(!failed&&!action)return null;
-  return <section aria-label="주문 재고 작업 상태" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
-    {failed&&<><p className="font-bold text-amber-900">재고 작업 실패</p><p className="mt-1 break-words">{orderInventoryErrorMessage(order.inventoryOperation?.error)}</p></>}
-    {action}
-  </section>;
+ const [open,setOpen]=useState(false),action=renderOrderRecovery?.(order);
+ if(action)return <>{action}</>;
+ if(!order.inventoryOperation)return null;
+ return <><button type="button" aria-label="잠금 이유 및 복구" title="잠금 이유 및 복구" className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-600" onClick={()=>setOpen(true)}><LockKeyhole size={14}/></button>{open&&<ModalShell className="text-slate-700" title="주문 재고 작업 확인" onClose={()=>setOpen(false)}><p>{order.inventoryOperation.state==='processing'?'현재 재고 작업을 처리 중입니다. 자동 해제하거나 다시 시작하지 않습니다.':'실패한 원작업을 확인해 주세요.'}</p>{order.inventoryOperation.error&&<p>{orderInventoryErrorMessage(order.inventoryOperation.error)}</p>}<button type="button" onClick={()=>setOpen(false)}>주문으로 돌아가기</button></ModalShell>}</>;
 }
