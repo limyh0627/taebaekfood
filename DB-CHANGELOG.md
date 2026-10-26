@@ -1,4 +1,11 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
+## 2026-10-26 — 태백 프린터렌탈료 33,000원 전표 템플릿 추가
+
+사용자가 프린터 렌탈료 33,000원 추가를 요청하고 회사를 태백으로 지정했다. `fixedCostTemplates/fct-taebaek-printer-rental-33000` 한 문서를 `exists:false` 조건의 원자 create로 생성했다. 회사 taebaek, 이름·품목명 프린터렌탈료, 총액33,000원, 기존 계정819 임차료, 고정비/기타, 매입 양식(statementType 매입·기존 dir 대체), 기본 과세 설정이다. autoIssue/active는 false, hidden은 false이며 거래처·은행·발행일은 추정하지 않았다. 전표 발행이나 다른 회사·기존 템플릿 수정은 없다.
+
+전용 `scripts/fix-add-printer-rental-template-20261026.mts`의 기본 dry에서 계정·중복과 현재 상태를 확인하고 계획·원문 백업을 비공개 `privatework/printer-template`에 보관했다. 계획 hash `397757c36f1ad6263ee3804f9acc23a7f0abee23a1a1f83c7c72c1560bff6e2a`를 재검해 apply했다. 서버 create 응답·영수증 저장을 확인했으며 updateTime은 `2026-10-26T03:17:45.044786Z`다. 별도 읽기 경로에서 전체 필드 일치와 같은 회사·이름의 문서1건을 확인했다.
+
+순수16시험·기존 경합 문서 보존 변이1 검출/원복·독립 검수 CLEAR를 통과했다. 적용1회·생성1건·undo0이며 앱 코드 시드나 재배포는 필요하지 않다. 되돌림은 같은 스크립트의 undo 경로로 확정 apply 영수증·전체 afterFields·나노초 updateTime이 모두 일치할 때만 허용한다. 이후 수정·재생성·응답 유실로 소유 버전 증거가 없는 경우 삭제하지 않는다. 비공개 계획·백업·영수증은 Git에 포함하지 않는다.
 ## 2026-10-26 — 원료 수동 정정 전용 처리 기록·권한 규칙 배포
 
 사용자의 UI 수정 후 배포 지시에 따라 검수 소스 `9db3170`의 `rawManualCorrectionCommand` 함수1개와 Firestore Rules를 반영하고, 이후 양 Hosting을 배포했다. 실제 함수는 ACTIVE·Node22이며 배포 원본158파일이 로컬 검수본과 일치한다. Rules release는 `projects/taebaek-3abe4/releases/cloud.firestore`, ruleset은 `7f0fc2a8-09de-42dc-b143-136e64e8fe68`, 원문 SHA256은 `c8a4cb4498b7d75b1dc59b77ef2c32cee08e7681ea8d12d997ade665fde37a85`다. 앱 공개169파일도 원격 크기·SHA 일치를 확인했다.
