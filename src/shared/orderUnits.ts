@@ -1,3 +1,6 @@
+import * as orderStockUnitsModule from '../../functions/src/shared/orderStockUnits';
+const {unpackComponent:unpackComponentFromInputs,isBoxStockItem:isBoxStockItemFromInputs,stockUnits:stockUnitsFromInputs,unitsPerBoxOf:unitsPerBoxOfFromInputs}=
+  (Reflect.get(orderStockUnitsModule,'default')??orderStockUnitsModule) as typeof orderStockUnitsModule;
 import * as itemEditorDomainModule from '../../functions/src/shared/itemEditorDomain';
 const sharedEditorDomain=(Reflect.get(itemEditorDomainModule,'default')??itemEditorDomainModule) as typeof itemEditorDomainModule;
 import type { Item, OrderItem } from './types';
@@ -8,15 +11,18 @@ import { packUnitsOf, type PackIndex } from './packIndex';
 import * as stockUnitMeasureModule from '../../functions/src/shared/stockUnitMeasure';
 
 // 스크립트의 CommonJS 경계와 앱의 ESM 모두 기존 공용 함수 원본을 그대로 사용한다.
-const { unpackStockComponent, itemPackageKg, stockUnitKg } =
+const { itemPackageKg, stockUnitKg } =
   (Reflect.get(stockUnitMeasureModule, 'default') ?? stockUnitMeasureModule) as Pick<
-    typeof stockUnitMeasureModule, 'unpackStockComponent' | 'itemPackageKg' | 'stockUnitKg'
+    typeof stockUnitMeasureModule, 'itemPackageKg' | 'stockUnitKg'
   >;
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
 type BoxLike = Pick<Item, 'id'>;
 
 export interface OrderUnitInputs { bom: BomIndex; pack: PackIndex }
+// 레지스트리는 함수를 부를 때 읽어 이전 회사의 기준정보를 붙잡지 않는다.
+const orderStockUnitInputs=(inputs?:OrderUnitInputs):orderStockUnitsModule.OrderStockUnitInputs=>inputs??{bom:{of:id=>bomOf(id)},pack:{of:packUnitsOf}};
+
 
 /**
  * 박스 품목의 낱개 구성 — **BOM에서 읽는다.**
@@ -55,12 +61,12 @@ export function 묶음갈래of(완제품구성: readonly { qty: number }[]): 묶
 }
 
 export function unpackComponent(product: BoxLike | undefined, inputs?: OrderUnitInputs): { itemId: string; count: number } | null {
-  return unpackStockComponent(inputs ? (product ? inputs.bom.of(product.id) : []) : bomOf(product?.id));
+  return unpackComponentFromInputs(product,orderStockUnitInputs(inputs));
 }
 
 /** 재고 단위가 박스인 품목인가 (BOM에 낱개 구성품이 물려 있는 것) */
 export function isBoxStockItem(product: BoxLike | undefined, inputs?: OrderUnitInputs): boolean {
-  return unpackComponent(product, inputs) !== null;
+  return isBoxStockItemFromInputs(product,orderStockUnitInputs(inputs));
 }
 
 /**
@@ -109,20 +115,7 @@ export function stockUnits(
   product: BoxLike | undefined,
   inputs?: OrderUnitInputs,
 ): number {
-  if (!isBoxStockItem(product, inputs)) return item.quantity;
-  /*
-   * **박스 품목이면 `isBoxUnit` 은 안 본다**(2026-09-09 사장님:
-   * "박스 품목으로 주문 들어오면 isBoxUnit 이 true 일 필요는 없는거야?").
-   *
-   * 품목이 이미 "나는 박스다" 라고 말하고 있으니 그 사실이 줄에도 또 있는 셈이었고,
-   * **그 둘이 갈린 게 사고였다** — 박스 20으로 넣은 뒤 낱개로 토글하면
-   * `isBoxUnit` 만 꺼지고 `quantity` 는 낱개(200)로 남아, 여기서 200을 박스로 읽었다.
-   * 무경유통 볶음참깨가 그렇게 2,000kg 빠졌다.
-   *
-   * 이제 박스 수가 적혀 있으면(`boxQuantity`) 그게 임자고, 없으면 `quantity` 가 박스 수다
-   * — 운영 데이터의 박스 품목 주문줄 309개가 전부 그 모양이다(2026-09-09 실측).
-   */
-  return boxCountOf(item);
+  return stockUnitsFromInputs(item,product,orderStockUnitInputs(inputs));
 }
 
 /**
@@ -171,10 +164,7 @@ export {boxCountOf,orderItemQuantityLabel};
  * `boxSize`와 '향미유 12'는 goods 아홉 품목뿐이었다.
  */
 export function unitsPerBoxOf(product: BoxLike | undefined, inputs?: OrderUnitInputs): number {
-  if (!product) return 0;
-  const packed = unpackComponent(product, inputs);
-  if (packed) return packed.count;
-  return inputs ? inputs.pack.of(product.id) : packUnitsOf(product.id);
+  return unitsPerBoxOfFromInputs(product,orderStockUnitInputs(inputs));
 }
 
 /**
