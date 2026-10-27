@@ -1,3 +1,5 @@
+import {useInventoryReferenceGuard,type InventoryReferenceGuard} from './useInventoryReferenceGuard';
+import {subscribeInventoryItems} from '../services/staticReferenceRead';
 import {useStaticReferenceRead,type StaticReferenceReadState} from './useStaticReferenceRead';
 import {useOrderListRead,type OrderListReadState} from './useOrderListRead';
 import { verifyAdvanceStatements, type ReadonlyAdvanceOperation } from '../partnerAdvanceAudit';
@@ -58,6 +60,7 @@ export interface AppData {
   purchaseOrders: PurchaseOrder[];
   // 품목 (items 컬렉션)
   items: Item[];
+  inventoryReferenceGuard?:InventoryReferenceGuard;
   // 파트너-품목 매핑 (partner_item 컬렉션)
   partnerItems: PartnerItem[];
   setPartnerItems: React.Dispatch<React.SetStateAction<PartnerItem[]>>; // 낙관적 갱신용(라이브 구독 아님)
@@ -270,6 +273,9 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const staticReferences=useStaticReferenceRead({enabled,companyId,isAdmin,ownerKey:JSON.stringify([historicalScope,orderUid]),isCurrent:()=>historicalMounted.current&&historicalScopeRef.current.id===historicalScope&&auth?.currentUser?.uid===orderUid});
   const {partnerItems,itemBoms,itemPacks,itemFormulas,accountGroups,accountCodes,fixedCostTemplates,expensePresets,cashFlowManual}=staticReferences.rows;
   const {setPartnerItems}=staticReferences;
+  const inventoryReferences=useInventoryReferenceGuard({ownerKey:staticReferences.read.ownerKey,enabled,isCurrent:staticReferences.isCurrent,core:staticReferences.captureCore});
+  const [itemsRetryKey,setItemsRetryKey]=useState(0);
+  const refreshInventoryReferences=()=>Promise.allSettled([inventoryReferences.refreshItems(()=>setItemsRetryKey(n=>n+1)),refreshStaticData()]).then(results=>{const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;});
   const refreshStaticData=useCallback(()=>{if(staticReferences.isCurrent())setStaticRefreshKey(value=>value+1);return staticReferences.refresh();},[staticReferences.refresh]);
   const orderRead=useOrderListRead({companyId,enabled,ordersMonths,owner:{scope:historicalScope,uid:orderUid,isCurrent:()=>historicalMounted.current&&historicalScopeRef.current.id===historicalScope&&auth?.currentUser?.uid===orderUid},onSettled:()=>markLoaded('orders')});
   const visibleOrders=useMemo(()=>enabled?orderRead.rows.filter(order=>companyOf(order)===companyId):[],[orderRead.rows,enabled,companyId]);
@@ -318,6 +324,13 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     return () => { cancelled = true; unsubscribes.forEach(stop => stop()); };
   }, [enabled, companyId, isAdmin]);
 
+  useEffect(()=>{
+    if(!enabled)return;let stopped=false,unsubscribe:(()=>void)|undefined;
+    inventoryReferences.invalidateItems();
+    void authReady.then(()=>{if(stopped||!inventoryReferences.isCurrent())return;unsubscribe=subscribeInventoryItems<Item>(companyId,snapshot=>{if(stopped||!inventoryReferences.isCurrent())return;inventoryReferences.itemsSnapshot(snapshot);setItems(snapshot.rows);markLoaded('items');},error=>{if(stopped||!inventoryReferences.isCurrent())return;inventoryReferences.itemsError(error);markLoaded('items');});}).catch(error=>{if(!stopped&&inventoryReferences.isCurrent()){inventoryReferences.itemsError(error);markLoaded('items');}});
+    return()=>{stopped=true;unsubscribe?.();};
+  },[enabled,companyId,staticReferences.read.ownerKey,itemsRetryKey]);
+
   // ── 실시간 구독 (자주 바뀌는 데이터) ──
   useEffect(() => {
     if (!enabled) return;
@@ -344,7 +357,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         listen<LeaveRequest>(COL.leaveRequests, setLeaveRequests, co),
         listen<AdjustmentRequest>(COL.adjustmentRequests, setAdjustmentRequests, co),
         listen<PurchaseOrder>(COL.purchaseOrders, setPurchaseOrders, co),
-        listen<Item>(COL.items, (data) => { setItems(data); markLoaded('items'); }, co),
+
         listen<Partner>(COL.partners, setPartners, co),
         listen<ChatRoom>(COL.chatRooms, setChatRooms, co),
         listenRecent<ChatMessage>(COL.chatMessages, 'createdAt', 7, setChatMessages, co),
@@ -436,6 +449,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     ...scopedData,
     orderUnitInputs,
     orders: visibleOrders, orderListRead:orderRead.read, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
-    isDataLoading, refreshStaticData, staticReferenceRead:staticReferences.read, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
+    isDataLoading, refreshStaticData, staticReferenceRead:{...staticReferences.read,inventory:{reviewRequest:inventoryReferences.reviewRequest,blocked:inventoryReferences.blocked,items:inventoryReferences.items,refresh:refreshInventoryReferences}}, inventoryReferenceGuard:inventoryReferences, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

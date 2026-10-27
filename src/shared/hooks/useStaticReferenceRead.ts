@@ -7,15 +7,17 @@ import {readStaticReferenceCollection,staticReferenceServerRows} from '../servic
 export type StaticReferenceGroup='core'|'terms'|'finance';
 export interface StaticReferenceRows{partnerItems:PartnerItem[];itemBoms:ItemBom[];itemPacks:PackRow[];itemFormulas:ItemFormula[];accountGroups:AccountGroup[];accountCodes:AccountCode[];fixedCostTemplates:FixedCostTemplate[];expensePresets:ExpensePreset[];cashFlowManual:CashFlowManual[]}
 export interface StaticReferenceGroupState{status:'idle'|'loading'|'refreshing'|'ready'|'error';error:string;hasPrevious:boolean}
-export interface StaticReferenceReadState{ownerKey:string;groups:Record<StaticReferenceGroup,StaticReferenceGroupState>;serverReady:boolean;refresh:()=>Promise<void>}
+export interface StaticReferenceReadState{inventory?:{reviewRequest?:number;blocked?:boolean;items:import('./useInventoryReferenceGuard').InventoryItemsReadState;refresh:()=>Promise<void>};ownerKey:string;groups:Record<StaticReferenceGroup,StaticReferenceGroupState>;serverReady:boolean;refresh:()=>Promise<void>}
 const emptyRows=():StaticReferenceRows=>({partnerItems:[],itemBoms:[],itemPacks:[],itemFormulas:[],accountGroups:[],accountCodes:[],fixedCostTemplates:[],expensePresets:[],cashFlowManual:[]});
 const emptyGroups=():Record<StaticReferenceGroup,StaticReferenceGroupState>=>({core:{status:'idle',error:'',hasPrevious:false},terms:{status:'idle',error:'',hasPrevious:false},finance:{status:'idle',error:'',hasPrevious:false}});
-type Run={owner:object;started:boolean;done:boolean;promise:Promise<void>;resolve:()=>void;reject:(reason:unknown)=>void};
+type Run={coreEpoch:number;owner:object;started:boolean;done:boolean;promise:Promise<void>;resolve:()=>void;reject:(reason:unknown)=>void};
 const cancelled=()=>Object.assign(Error('회사 또는 로그인 상태가 바뀌어 이전 기준정보 조회를 종료했습니다.'),{code:'cancelled'});
 const failure=(reason:unknown)=>{const code=reason&&typeof reason==='object'?String((reason as {code?:unknown}).code??'').replace(/^firestore\//,''):'';return code==='permission-denied'?'현재 회사의 기준정보 조회 권한을 확인해 주세요.':code==='unavailable'?'연결이 원활하지 않습니다. 연결을 확인하고 다시 조회해 주세요.':code==='unconfirmed'?'기준정보를 서버에서 확인하지 못했습니다. 이전 자료를 유지합니다.':code==='cancelled'?'회사 또는 로그인 상태가 바뀌어 이전 조회를 종료했습니다.':'기준정보를 조회하지 못했습니다. 연결·권한을 확인한 뒤 다시 조회해 주세요.';};
 export function useStaticReferenceRead(options:{companyId:CompanyId;enabled:boolean;isAdmin:boolean;ownerKey:string;isCurrent:()=>boolean}){
  const key=JSON.stringify([options.companyId,options.enabled,options.isAdmin,options.ownerKey]),identity=useRef({key,token:{}});
  if(identity.current.key!==key)identity.current={key,token:{}};
+ const coreObservation=useRef<{owner:object;epoch:number;token:object|null}>({owner:identity.current.token,epoch:0,token:null});
+ if(coreObservation.current.owner!==identity.current.token)coreObservation.current={owner:identity.current.token,epoch:0,token:null};
  const owner=identity.current.token,alive=useRef(true),runs=useRef<{active?:Run;queued?:Run}>({});
  const [snapshot,setSnapshot]=useState<{owner:object;rows:StaticReferenceRows;groups:Record<StaticReferenceGroup,StaticReferenceGroupState>}>(()=>({owner,rows:emptyRows(),groups:emptyGroups()}));
  const current=()=>alive.current&&identity.current.token===owner&&options.isCurrent();
@@ -36,6 +38,7 @@ export function useStaticReferenceRead(options:{companyId:CompanyId;enabled:bool
  };
  const request=useCallback(()=>{
   if(!current()||!options.enabled){const p=Promise.reject<void>(cancelled());void p.catch(()=>{});return p;}
+  coreObservation.current.token=null;
   const queue=runs.current;
   // 새 owner의 layout 요청이 옛 passive cleanup 뒤에 갇히지 않게 한다.
   for(const key of ['active','queued'] as const){const previous=queue[key];if(previous&&previous.owner!==owner){finish(previous,cancelled());delete queue[key];}}
@@ -43,14 +46,14 @@ export function useStaticReferenceRead(options:{companyId:CompanyId;enabled:bool
   if(queue.queued?.owner===owner)return queue.queued.promise;
   let resolve!:()=>void,reject!:(reason:unknown)=>void;
   const promise=new Promise<void>((yes,no)=>{resolve=yes;reject=no;});void promise.catch(()=>{});
-  const run:Run={owner,started:false,done:false,promise,resolve,reject};
+  const run:Run={coreEpoch:++coreObservation.current.epoch,owner,started:false,done:false,promise,resolve,reject};
   const start=async()=>{
    try{
     await authReady;if(!current()||run.done)throw cancelled();run.started=true;
     const groups:StaticReferenceGroup[]=options.isAdmin?['core','terms','finance']:['core','terms'];
     update(previous=>({...previous,groups:{...previous.groups,...Object.fromEntries(groups.map(group=>[group,{...previous.groups[group],status:previous.groups[group].hasPrevious?'refreshing':'loading',error:''}]))}}));
     const results=await Promise.allSettled(groups.map(async group=>{
-     try{const rows=await loadGroup(group);if(!current()||run.done)return;update(previous=>({...previous,rows:{...previous.rows,...rows},groups:{...previous.groups,[group]:{status:'ready',error:'',hasPrevious:true}}}));}
+     try{const rows=await loadGroup(group);if(!current()||run.done)return;if(group==='core'&&coreObservation.current.epoch===run.coreEpoch)coreObservation.current.token={};update(previous=>({...previous,rows:{...previous.rows,...rows},groups:{...previous.groups,[group]:{status:'ready',error:'',hasPrevious:true}}}));}
      catch(reason){if(current()&&!run.done)update(previous=>({...previous,groups:{...previous.groups,[group]:{...previous.groups[group],status:'error',error:failure(reason)}}}));throw reason;}
     }));
     if(!current()||run.done)throw cancelled();const rejected=results.find(row=>row.status==='rejected');if(rejected?.status==='rejected')finish(run,rejected.reason,true);else finish(run);
@@ -67,5 +70,7 @@ export function useStaticReferenceRead(options:{companyId:CompanyId;enabled:bool
  useEffect(()=>()=>{alive.current=false;},[]);
  const setPartnerItems:Dispatch<SetStateAction<PartnerItem[]>>=useCallback(action=>{update(previous=>({...previous,rows:{...previous.rows,partnerItems:typeof action==='function'?action(previous.rows.partnerItems):action}}));},[owner]);
  const groups=visible.groups,serverReady=options.enabled&&groups.core.status==='ready'&&groups.terms.status==='ready'&&(!options.isAdmin||groups.finance.status==='ready');
- return {rows:visible.rows,setPartnerItems,refresh:request,isCurrent:current,read:{ownerKey:key,groups,serverReady,refresh:request} as StaticReferenceReadState};
+ const renderedCore=coreObservation.current.token;
+ const captureCore=()=>current()&&coreObservation.current.token===renderedCore?renderedCore:null;
+ return {captureCore,rows:visible.rows,setPartnerItems,refresh:request,isCurrent:current,read:{ownerKey:key,groups,serverReady,refresh:request} as StaticReferenceReadState};
 }

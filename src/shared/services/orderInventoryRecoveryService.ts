@@ -101,3 +101,20 @@ export async function readOrderInventoryRecoveryEvidence(scope:OrderInventoryEvi
  if(canResume){const businessText=orderRawBatchOrderEvidence(order),intent:OrderInventoryLineResumeIntent={order,generation,lineId:line!.lineId!,itemIndex:index,businessText,isCurrent:current,revalidate:async()=>{const fresh=await readOrderInventoryRecoveryEvidence(scope,target);if(!fresh.canResume||!fresh.intent||!sameOrderInventoryGeneration(fresh.intent.generation,generation)||fresh.intent.lineId!==line!.lineId||fresh.order?.inventoryOperation?.targetStatus!==operation?.targetStatus||fresh.intent.businessText!==businessText)throw Error(fresh.reason||'확인 뒤 주문 내용이 바뀌었습니다. 원작업을 다시 조회해 주세요.');}};evidence.intent=intent;}
  return evidence;
 }
+/** 이전 claim은 readonly로 확인한다. 처리 중인 실행권이나 생산계획을 새로 만들지 않는다. */
+export async function readRetainedRetirementClaimEvidence(scope:OrderInventoryEvidenceScope,descriptor:import('./orderRequestRetirementService').RetainedRetirementClaimDescriptor):Promise<OrderInventoryRecoveryEvidence>{
+ const {assertRetainedRetirementClaimCurrent}=await import('./orderRequestRetirementService');
+ const assert=()=>{if(scope.signal.aborted||!scope.isCurrent()||auth.currentUser?.uid!==scope.uid||descriptor.actorUid!==scope.uid||descriptor.companyId!==scope.companyId)throw Error('로그인 범위가 바뀌었습니다. 이전 요청은 보존했습니다.');assertRetainedRetirementClaimCurrent(descriptor);};
+ assert();await authReady;assert();const token=await auth.currentUser!.getIdTokenResult();assert();
+ if(token.claims.companyId!==scope.companyId||typeof token.claims.employeeId!=='string'||!token.claims.employeeId.trim())throw Error('현재 회사 직원의 로그인을 확인해 주세요.');
+ if(descriptor.requestText){const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(descriptor.requestText))),byte=>byte.toString(16).padStart(2,'0')).join('');assert();if(hash!==descriptor.requestHash)throw Error('보관된 이전 요청의 원문을 확인하지 못했습니다. 삭제하지 않고 유지합니다.');}
+ const snapshot=await getDocFromServer(doc(db,'orders',descriptor.orderId));assert();
+ if(snapshot.id!==descriptor.orderId||snapshot.metadata?.fromCache!==false||snapshot.metadata?.hasPendingWrites!==false)throw Error('서버에서 현재 주문을 확인하지 못했습니다. 이전 요청은 보존했습니다.');
+ const prefix='이전 시작 요청의 결과를 확인하고 있습니다. 완료가 확인되기 전에는 새 작업을 보내지 않습니다. ',suffix=' 처리 중 요청을 이어가는 기능은 현재 지원하지 않습니다.';
+ if(!snapshot.exists())return {order:null,canResume:false,reason:prefix+'이번 조회에서 주문을 찾지 못했습니다. 미처리로 확정하지 않았습니다.'+suffix,checks:[],lineCompleted:false,generationCompleted:false};
+ const order={...snapshot.data(),id:snapshot.id} as Order;if(order.companyId!==scope.companyId)throw Error('현재 회사의 주문을 확인하지 못했습니다.');
+ const generation={contractVersion:1 as const,companyId:scope.companyId,actorUid:scope.uid,orderId:descriptor.orderId,operationId:descriptor.operationId,startedAt:descriptor.startedAt};
+ const complete=descriptor.state!=='corrupt'&&hasOrderInventoryGenerationCompletion(order,generation),same=order.inventoryOperation?.id===descriptor.operationId&&order.inventoryOperation?.startedAt===descriptor.startedAt&&order.inventoryOperation?.actorUid===scope.uid;
+ const detail=complete?'이전 시작 요청과 일치하는 최종 완료를 서버에서 확인했습니다. 보관 원문은 유지합니다.':same&&order.inventoryOperation?.state==='processing'?'이전 요청은 현재 처리 중으로 표시됩니다.':same?'이전 요청은 아직 최종 완료로 확인되지 않았습니다.':'현재 주문의 작업이 보관된 요청과 다르거나 작업 근거가 없습니다. 미처리로 확정하지 않았습니다.';
+ return {order,canResume:false,reason:complete?detail:prefix+detail+suffix,checks:[{label:'이전 시작 요청의 현재 상태',state:complete?'confirmed':same?'unknown':'different',detail}],lineCompleted:false,generationCompleted:complete};
+}

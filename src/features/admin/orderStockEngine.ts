@@ -1,3 +1,4 @@
+import type {InventoryReferenceGuard,InventoryReferenceToken,InventoryNewSendGuard} from '../../shared/hooks/useInventoryReferenceGuard';
 import {createOrderProductionPlanner,addDelta,type StockUseChoice,type StockUsePlan} from '../../shared/orderProductionPlanner';
 export {perUnitOilKg} from '../../shared/orderProductionPlanner';
 export type {StockUseChoice,StockUsePlan} from '../../shared/orderProductionPlanner';
@@ -26,6 +27,7 @@ import { inspectOrderProduction, OrderProductionPreflightError } from './orderPr
 import { aggregateOrderLineInventory, ensureOrderLineIds } from '../../shared/orderLineInventory';
 
 export interface OrderStatusChangeContext {
+  referenceToken?:InventoryReferenceToken;
   approvedBy?: string;
   approvedAt?: string;
   approvedPlan?: RollbackPlan;
@@ -52,6 +54,7 @@ export interface PreparedOrderStatusChange {
  * AdminApp에서 매 렌더 시점의 데이터·쓰기 함수를 주입해 생성한다(순수 로직 + 의존성 주입).
  */
 export interface OrderStockEngineDeps {
+  referenceGuard?:InventoryReferenceGuard;
   orderUnitInputs?: OrderUnitInputs;
   /**
    * **지금 이 일을 하는 사람** — 자동으로 찍히는 원료 원장 줄에 `addedBy` 로 남는다.
@@ -75,7 +78,7 @@ export interface OrderStockEngineDeps {
   createProductionRecordPlan?:(order:Order,inputs:OrderUnitInputs|undefined,generation:OrderInventoryGeneration)=>OrderProductionRecordPlan;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
-  claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
+  claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>,referenceGuard?:InventoryNewSendGuard) => Promise<Order>;
   retireRetainedRequestBeforeClaim?:(order:Order)=>Promise<void|'archived-only'>;
   /** 시험에서는 인메모리 job을 주입한다. 운영 기본값은 공용 원자화 job 러너다. */
   runRawInventoryJob?: typeof runRawInventoryJob;
@@ -574,6 +577,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     clearOrderRawBatchAttempt(request,retained.encoded);return true;
   };
   /** 서버 첫claim의 완료 ACK는 null 잠금으로 legacy 재고 셈에 내려가지 않는다. */
+  const reviewPreviousClaim=async(order:Order)=>{const service=await import('../../shared/services/orderRequestRetirementService');await service.requirePreviousRetirementClaimReview(order.id,companyOf(order),(deps.getActorUid??(()=>actorAuth?.currentUser?.uid))()??'');};
   const confirmCompletedFirstClaim=async(live:Order,selection:Record<string,unknown>,requestedItem?:OrderItem):Promise<boolean>=>{
     if(live.inventoryOperation!=null||typeof (live as Order&{retirementId?:unknown}).retirementId!=='string')return false;
     const marker=live.inventoryGenerationCompletion;
@@ -609,6 +613,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     requestedItems: OrderItem[],
     nextStatus: OrderStatus,
     plan?: StockUsePlan,
+    approvedReferenceToken?:InventoryReferenceToken,
   ) => {
     if (inFlightOrders.has(id)) return;
     inFlightOrders.add(id);
@@ -628,6 +633,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (!after) throw new Error('주문 품목을 찾을 수 없습니다. 새로고침 후 다시 확인해 주세요.');
       const lineId = after.lineId!;
       const applying = after.checked === true;
+      await reviewPreviousClaim(live);
       if(await retireRetainedRequestBeforeClaim(live)==='archived-only'){await getFreshOrder(id,true);return;}
       if(await confirmCompletedAtomicRaw(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;
 
@@ -636,6 +642,9 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if(!beforeClaim||beforeClaim.itemId!==after.itemId||beforeClaim.lineId!==after.lineId)throw Error('주문 품목 순서가 이미 변경되었습니다.');
       const existing=live.inventoryOperation;
       const blockedExisting=existing?.state==='processing'||(existing?.state==='failed'&&!canResumeFailedInventoryOperation(existing,{kind:'line'} as NonNullable<Order['inventoryOperation']>));
+      const referenceToken=!existing?(approvedReferenceToken??deps.referenceGuard?.capture()):undefined;
+      const newSendGuard=referenceToken?{assertBeforeNewSend:()=>deps.referenceGuard?.assertCurrent(referenceToken)}:undefined;
+      newSendGuard?.assertBeforeNewSend();
       const knownLineResume=existing?.state==='failed'&&canResumeFailedInventoryOperation(existing,{kind:'line'} as NonNullable<Order['inventoryOperation']>);
       // 이전 실패의 부분 수불은 부족 사전검사로 새 작업처럼 판정하지 않는다. 기존 claim/재개 계약으로 넘긴다.
       if(!blockedExisting&&!knownLineResume&&applying&&(!live.producedAt||!!live.itemInventory)){
@@ -648,7 +657,8 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         id: operationId, kind: 'line' as const, lineId, stage: 'claim' as const,
         targetStatus: nextStatus, state: 'processing' as const, startedAt: now, actor: actorName ?? '미기록',
       };
-      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
+      newSendGuard?.assertBeforeNewSend();
+      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation, newSendGuard);
       else await updateItem('orders', id, { inventoryOperation: operation });
       if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;
       claimed = true;
@@ -868,6 +878,9 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   const prepareOrderStatusChange = async (id: string, status: OrderStatus): Promise<PreparedOrderStatusChange | undefined> => {
     const order = await getFreshOrder(id, true);
     if (!order) return undefined;
+    await reviewPreviousClaim(order);
+    const referenceToken=deps.referenceGuard?.capture();
+    if(referenceToken)deps.referenceGuard?.assertCurrent(referenceToken);
     return { order, plan: buildRollbackPlan(order, allItems, order.status, status, inputs) };
   };
 
@@ -887,6 +900,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       // producedAt·shippedOut은 DB에서 다시 읽는다 — React 상태는 같은 틱에 갱신되지 않아
       // 직전 호출이 이미 생산했는지 알 수 없다.
       let live = await getFreshOrder(id, !!context.approvedPlan) ?? order;
+      await reviewPreviousClaim(live);
       if(await retireRetainedRequestBeforeClaim(live)==='archived-only'){await getFreshOrder(id,true);return;}
       if(await confirmCompletedAtomicRaw(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
       if (live.status === status) {
@@ -896,6 +910,9 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (isStockProduction(live) && [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)) {
         throw new Error('재고 만들기는 출고하지 않습니다.');
       }
+      const referenceToken=!live.inventoryOperation?(context.referenceToken??deps.referenceGuard?.capture()):undefined;
+      const newSendGuard=referenceToken?{assertBeforeNewSend:()=>deps.referenceGuard?.assertCurrent(referenceToken)}:undefined;
+      newSendGuard?.assertBeforeNewSend();
       const nextItems = context.orderPatch?.items ?? live.items;
       if (requiresCompleteItemsForStatusChange(live.status, status) && !hasCompleteOrderItems(nextItems)) {
         throw new Error('모든 주문 품목의 작업완료 여부를 확인한 뒤 상태를 변경해 주세요.');
@@ -917,7 +934,8 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const approvedBy = context.approvedBy ?? actorName ?? '미기록';
       let auditId = `order-status-${id}-${Date.now()}`;
       const operation = { id: auditId, kind: 'status' as const, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
-      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
+      newSendGuard?.assertBeforeNewSend();
+      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation,newSendGuard);
       else await updateItem('orders', id, { inventoryOperation: operation });
       if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
       const generation=generationOf(live);

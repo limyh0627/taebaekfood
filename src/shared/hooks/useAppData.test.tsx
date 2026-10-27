@@ -6,6 +6,8 @@ import { today } from '../day';
 import { useAppData } from './useAppData';
 
 const mock = vi.hoisted(() => ({
+  itemsMetadata:{fromCache:false,hasPendingWrites:false},
+  itemError:null as null|((reason:unknown)=>void),
   authListeners: new Set<(user: {uid:string}|null) => void>(),
   auth: { currentUser: null as {uid:string}|null, onAuthStateChanged: (callback: (user: {uid:string}|null)=>void) => { mock.authListeners.add(callback); return () => { mock.authListeners.delete(callback); }; } },
   requests: [] as Array<{ company: string; resolve: (orders: Order[]) => void }>,
@@ -234,7 +236,7 @@ it('주문 live UID ABA 뒤 옛 구독 callback은 최종 회사 화면에 재�
 });
 it('주문 최초 오류도 items 관측과 합쳐 전체로딩을 종결하고 재조회만 연결한다',async()=>{mock.listeners.length=0;mock.onOrderError=null;mock.fetchCollection.mockResolvedValue([]);const {result}=renderHook(()=>useAppData(true,'taebaek',false));await waitFor(()=>expect(mock.listeners.some(row=>row.name==='items')).toBe(true));act(()=>{mock.listeners.find(row=>row.name==='items')!.callback([]);mock.onOrderError!({code:'permission-denied'});});expect(result.current.isDataLoading).toBe(false);expect(result.current.orders).toEqual([]);expect(result.current.orderListRead).toMatchObject({status:'error',errorCode:'permission-denied'});});
 
-vi.mock('../services/staticReferenceRead',async()=>{const {fetchCollection}=await import('../services/firebaseService');return {readStaticReferenceCollection:async(name:string,companyId:string)=>({rows:await fetchCollection(name as never,[{field:'companyId',value:companyId}] as never),metadata:{fromCache:false,hasPendingWrites:false}}),staticReferenceServerRows:async(request:Promise<{rows:unknown[]}>)=>(await request).rows};});
+vi.mock('../services/staticReferenceRead',async()=>{const {fetchCollection,subscribeToCollection}=await import('../services/firebaseService');return {subscribeInventoryItems:(companyId:string,next:(snapshot:unknown)=>void,error:(reason:unknown)=>void)=>{mock.itemError=error;return subscribeToCollection('items',(rows:unknown[])=>next({rows,metadata:mock.itemsMetadata}),[{field:'companyId',value:companyId}] as never,error as never);},readStaticReferenceCollection:async(name:string,companyId:string)=>({rows:await fetchCollection(name as never,[{field:'companyId',value:companyId}] as never),metadata:{fromCache:false,hasPendingWrites:false}}),staticReferenceServerRows:async(request:Promise<{rows:unknown[]}>)=>(await request).rows};});
 it('실제 정적 refresh는 초기 앱 로딩 완료와 별개로 BOM 응답까지 기다린다',async()=>{
  mock.listeners.length=0;mock.fetchCollection.mockResolvedValue([]);const h=renderHook(()=>useAppData(true,'taebaek',false));
  await waitFor(()=>expect(mock.listeners.some(row=>row.name==='items')).toBe(true));act(()=>{mock.listeners.find(row=>row.name==='items')!.callback([]);mock.onOrders!([]);});expect(h.result.current.isDataLoading).toBe(false);
@@ -248,3 +250,5 @@ it('실제 정적 금융 조회 거절이 성공한 BOM·포장·원료식 반�
  const h=renderHook(()=>useAppData(true,'taebaek',true));await waitFor(()=>expect(mock.fetchCollection.mock.calls.some(([name])=>name==='accountGroups')).toBe(true));await act(async()=>{for(let n=0;n<12;n++)await Promise.resolve();});
  expect(h.result.current.itemBoms[0]?.quantity).toBe(8);expect(h.result.current.staticReferenceRead?.groups.finance.status).toBe('error');
 });
+
+it('실제 AppData의 단일 items cache/error는 static 성공과 무관하게 신규 준비를 차단한다',async()=>{mock.itemsMetadata={fromCache:true,hasPendingWrites:false};mock.fetchCollection.mockResolvedValue([]);const h=renderHook(()=>useAppData(true,'taebaek'));await waitFor(()=>expect(h.result.current.staticReferenceRead?.groups.core.status).toBe('ready'));const listener=mock.listeners.filter(row=>row.name==='items').at(-1)!;act(()=>listener.callback([]));expect(()=>h.result.current.inventoryReferenceGuard?.capture()).toThrow('기준정보');mock.itemsMetadata={fromCache:false,hasPendingWrites:false};act(()=>listener.callback([]));const token=h.result.current.inventoryReferenceGuard!.capture();act(()=>{mock.itemError!({code:'permission-denied'});expect(()=>h.result.current.inventoryReferenceGuard!.assertCurrent(token)).toThrow();});expect(h.result.current.staticReferenceRead?.inventory?.items.status).toBe('error');mock.itemsMetadata={fromCache:false,hasPendingWrites:false};});

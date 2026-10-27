@@ -1,3 +1,5 @@
+import {readPendingRetirementClaims,requirePreviousRetirementClaimReview,type RetainedRetirementClaimDescriptor} from '../../shared/services/orderRequestRetirementService';
+import type {InventoryReferenceToken} from '../../shared/hooks/useInventoryReferenceGuard';
 import StaticReferenceReadNotice from '../../shared/components/StaticReferenceReadNotice';
 import RawManualCorrectionForm from '../items/components/RawManualCorrectionForm';
 import { planPurchaseOrderBatch, applyPurchaseOrderBatch, type PurchaseOrderBatchRow } from '../../shared/services/purchaseOrderBatchService';
@@ -1406,10 +1408,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
   const orderStockDependencies = {
     actorName: currentUser?.name,
+    getActorUid:()=>auth.currentUser?.uid,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordPlan, updateItem, addItem,
     orderUnitInputs: appData.orderUnitInputs,
-    claimOrderOperation: claimOrderInventoryOperation,
+    referenceGuard:appData.inventoryReferenceGuard,
+    claimOrderOperation:(id:string,expected:OrderStatus,operation:NonNullable<Order['inventoryOperation']>,referenceGuard?:import('../../shared/hooks/useInventoryReferenceGuard').InventoryNewSendGuard)=>claimOrderInventoryOperation(id,expected,operation,undefined,referenceGuard),
   };
   const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange,
     prepareOrderCancellation, executeOrderCancellation, readOrderCancellation } = createOrderStockEngine(orderStockDependencies);
@@ -1462,10 +1466,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const rollbackSaving = !!rollbackAsk && rollbackBusy === rollbackAsk;
 
   const [stockUseAsk, setStockUseAsk] = useState<{
-    scope: object; mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
+    scope: object; referenceToken?:InventoryReferenceToken; mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
-    scope: object; mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
-    onConfirm: (plan: StockUsePlan) => Promise<void>;onCancel?:()=>void;
+    scope: object; referenceToken?:InventoryReferenceToken; itemIndex?:number; lineId?:string; mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
+    onConfirm: (plan: StockUsePlan,referenceToken?:InventoryReferenceToken) => Promise<unknown>;onCancel?:()=>void;
   } | null>(null);
   const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null; goods: object | null }>({ rollback: null, stock: null, goods: null });
   orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk, goods: goodsStockAsk };
@@ -1677,7 +1681,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const requestOrderStatus = async (id: string, requestedStatus: OrderStatus, orderPatch?: Partial<Order>) => {
     const askScope = orderAskScope.current.token;
-    const prepared = await prepareOrderStatusChange(id, requestedStatus);
+    let prepared:Awaited<ReturnType<typeof prepareOrderStatusChange>>;
+    try{prepared=await prepareOrderStatusChange(id, requestedStatus);}catch(error){if(orderAskScope.current.token===askScope&&error&&typeof error==='object'&&'code' in error&&error.code==='previous-claim-review'){setCancellationRevision(n=>n+1);setAppNotice({message:'이전 시작 요청의 결과 확인이 필요합니다.',subMessage:'주문 카드의 자물쇠를 눌러 현재 서버 상태를 조회해 주세요. 완료 확인 전에는 새 작업을 보내지 않습니다.'});return;}throw error;}
     if (orderAskScope.current.token !== askScope) return;
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
     const nextItems = orderPatch?.items ?? cur?.items ?? [];
@@ -1758,9 +1763,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
     const order = cur;
     if (!order || order.producedAt || isStockProduction(order)) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
+    const referenceToken=appData.inventoryReferenceGuard?.capture();
     const rows = buildStockUseRows(order, allItems, appData.orderUnitInputs);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
-    setStockUseAsk({ scope: askScope, mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
+    setStockUseAsk({ scope: askScope, referenceToken, mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
   const deletingOrders = useRef(new Set<string>());
@@ -1769,14 +1775,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
   cancellationScope.current = `${companyId}:${currentUser.id}`;
   const [cancellationRevision, setCancellationRevision] = useState(0);
   const [pendingCancellations, setPendingCancellations] = useState<string[]>([]);
+  const [pendingRetirementClaims,setPendingRetirementClaims]=useState<RetainedRetirementClaimDescriptor[]>([]);
   const [pendingInventoryRecoveries,setPendingInventoryRecoveries] = useState<PendingOrderInventoryRecovery[]>([]);
   useEffect(() => {
     // 삭제 응답을 잃으면 주문 자체가 목록에서 사라질 수 있어 별도 재조회 진입점을 남긴다.
     const refresh = () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) { setPendingCancellations([]);setPendingInventoryRecoveries([]); return; }
+      if (!uid) { setPendingCancellations([]);setPendingInventoryRecoveries([]);setPendingRetirementClaims([]); return; }
       const prefix = `order-cancellation:${uid}:${companyId}:`;
       try {
+        setPendingRetirementClaims(readPendingRetirementClaims(companyId,uid));
         setPendingInventoryRecoveries(readPendingOrderInventoryRecoveries(companyId,uid));
         setPendingCancellations(Object.keys(localStorage).filter(key => key.startsWith(prefix))
           .map(key => key.slice(prefix.length)));
@@ -1785,7 +1793,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     refresh();
     window.addEventListener('storage', refresh);
     window.addEventListener('order-inventory-recovery-pending',refresh);
-    return () => {window.removeEventListener('storage', refresh);window.removeEventListener('order-inventory-recovery-pending',refresh);};
+    window.addEventListener('order-retirement-claim-pending',refresh);
+    return () => {window.removeEventListener('storage', refresh);window.removeEventListener('order-inventory-recovery-pending',refresh);window.removeEventListener('order-retirement-claim-pending',refresh);};
   }, [companyId, currentUser.id, cancellationRevision]);
   /** 확인과 삭제를 한 곳에서 맡아 목록의 이중 확인·실패 직후 닫기를 막는다. */
   const handleDeleteOrder = async (id: string): Promise<boolean> => {
@@ -1915,12 +1924,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const recoveryActorUid=auth.currentUser?.uid??'';
   const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
     const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
+    const retirementClaims=pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.orderId===orderId&&row.state!=='unsent');
     const hasCancellation=pendingCancellations.includes(orderId)||processingCancellationIds.includes(orderId);
-    if(!hasCancellation&&!pending.length&&!order?.inventoryOperation)return null;
+    if(!hasCancellation&&!pending.length&&!retirementClaims.length&&!order?.inventoryOperation)return null;
     return <div key={companyId+':'+recoveryActorUid+':'+orderId} aria-label={'주문 처리 확인 '+orderId}>
       {hasCancellation&&<button type="button" disabled={processingCancellationIds.includes(orderId)} className="mt-2 text-sm font-bold text-indigo-700 underline"
         onClick={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)void handleDeleteOrder(orderId);}}>{processingCancellationIds.includes(orderId)?'확인·처리 중':'처리 결과 확인'}</button>}
-      <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending}
+      <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending} retirementClaims={retirementClaims}
         onResumeLine={run=>handleToggleItemChecked(orderId,run.intent.itemIndex,currentUser?.name,run)}
         isCurrentActor={()=>auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={(result,expectedSaved)=>{
         if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope||result.orderId!==orderId)return;
@@ -1930,7 +1940,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     </div>;
   };
   const renderOrderRecovery=(order:Order):React.ReactNode=>companyOf(order)===companyId?renderOrderRecoveryForId(order.id,order):null;
-  const orderRecoveryOrphanIds=[...new Set([...pendingCancellations,...processingCancellationIds,...pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid).map(row=>row.orderId)])]
+  const orderRecoveryOrphanIds=[...new Set([...pendingCancellations,...processingCancellationIds,...pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.state!=='unsent').map(row=>row.orderId),...pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid).map(row=>row.orderId)])]
     .filter(id=>!allOrders.some(order=>order.id===id&&companyOf(order)===companyId));
   const orderRecoveryOrphans=orderRecoveryOrphanIds.length>0?<>{orderRecoveryOrphanIds.map(id=><div key={id} className="rounded-lg border border-amber-200 p-2"><p className="text-xs font-bold">원 주문을 찾을 수 없는 처리 기록 · {id}</p>{renderOrderRecoveryForId(id)}</div>)}</>:null;
 
@@ -2003,7 +2013,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ? { invoicePrinted: value, invoiceStage: value ? 'printed' : null }
       : { invoicePrinted: value !== undefined, invoiceStage: value ?? null };
 
-  const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string,resumeRun?:OrderInventoryResumeRun) => {
+  const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string,resumeRun?:OrderInventoryResumeRun,reprepareOnly?:{lineId?:string}) => {
     const askScope = orderAskScope.current.token,runToken={};let settled=false;
     const settle=(result:Parameters<OrderInventoryResumeRun['settled']>[0])=>{if(!resumeRun||settled)return;settled=true;if(lineResumeLocks.current.get(orderId)===runToken)lineResumeLocks.current.delete(orderId);resumeRun?.settled(result);};
     const resumeCurrent=()=>orderAskScope.current.token===askScope&&(!resumeRun||resumeRun.isCurrent());
@@ -2011,11 +2021,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const order = resumeRun?.intent.order??allOrders.find(o => o.id === orderId);
     if (!order || completionSaving.current.has(orderId)){settle({status:'cancelled'});return;}
     if(resumeRun&&(order.id!==orderId||resumeRun.intent.itemIndex!==itemIdx||order.items[itemIdx]?.checked||order.items[itemIdx]?.lineId!==resumeRun.intent.lineId)){settle({status:'cancelled'});return;}
+    if(reprepareOnly&&(order.items[itemIdx]?.checked||order.items[itemIdx]?.lineId!==reprepareOnly.lineId))return false;
     const normalizedOrder = { ...order, items: ensureOrderLineIds(order.items) };
     const plan = planOrderItemToggle(normalizedOrder, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
     if (!plan){settle({status:'cancelled'});return;}
     const applying = plan.items[itemIdx]?.checked === true;
-    const save = async (stockPlan?: StockUsePlan) => {
+    let referenceToken:InventoryReferenceToken|undefined;
+    const save = async (stockPlan?: StockUsePlan,approvedReferenceToken?:InventoryReferenceToken) => {
       if (!resumeCurrent() || completionSaving.current.has(orderId)){settle({status:'cancelled'});return;}
       completionSaving.current.add(orderId);
       try {
@@ -2026,9 +2038,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         else {
           const lineWriter=resumeRun?createOrderStockEngine({...orderStockDependencies,
             getActorUid:()=>resumeRun.isCurrent()?auth.currentUser?.uid:undefined,
-            claimOrderOperation:(id,expected,operation)=>claimOrderInventoryOperation(id,expected,operation,{isCurrent:resumeRun.isCurrent,beforeSend:()=>{if(!resumeRun.isCurrent())throw Error('원작업 범위가 바뀌어 전송하지 않았습니다.');}}),
+            claimOrderOperation:(id,expected,operation,referenceGuard)=>claimOrderInventoryOperation(id,expected,operation,{isCurrent:resumeRun.isCurrent,beforeSend:()=>{if(!resumeRun.isCurrent())throw Error('원작업 범위가 바뀌어 전송하지 않았습니다.');}},referenceGuard),
           }).changeOrderItemCompletion:changeOrderItemCompletion;
-          await lineWriter(orderId, itemIdx, plan.items, plan.status, stockPlan);
+          await lineWriter(orderId, itemIdx, plan.items, plan.status, stockPlan,approvedReferenceToken??referenceToken);
           settle({status:'completed'});
           if (orderAskScope.current.token !== askScope) return;
           /*  **품목 알림 다음에 주문 알림**(2026-09-15 사장님: "품목단위 알람 다음에 주문 자체
@@ -2058,10 +2070,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
           await requestOrderStatus(orderId, plan.status, { items: plan.items });
           return;
         }
-        if(resumeRun){settle({status:'failed',error});return;}
+        if(resumeRun){settle({status:'failed',error});return false;}
+        if(error&&typeof error==='object'&&'code' in error&&error.code==='inventory-reference-changed')return false;
         console.error('작업 확인 저장 실패', error);
         const reason = error instanceof Error ? error.message : String(error);
         alert(`작업 확인을 저장하지 못했습니다.\n사유: ${reason}`);
+        return false;
       } finally { completionSaving.current.delete(orderId); }
     };
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
@@ -2101,25 +2115,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
           ? [{ name: 줄이름, qty: 풀릴양, unit: unpackComponent(푸는품목, appData.orderUnitInputs) ? '박스' : (푸는품목.unit || '개') }]
           : [],
       });
-      setRollbackAsk({ scope: askScope, ...묻는글, onConfirm: () => save() });
+      setRollbackAsk({ scope: askScope, ...묻는글, onConfirm: async () => {await save();} });
       return;
     }
 
+    try{await requirePreviousRetirementClaimReview(order.id,companyId,auth.currentUser?.uid??'');}catch(error){if(resumeCurrent()){setCancellationRevision(n=>n+1);setAppNotice({message:'이전 시작 요청의 결과 확인이 필요합니다.',subMessage:'주문 카드의 자물쇠를 눌러 현재 서버 상태를 조회해 주세요. 원문은 보존했습니다.'});}settle({status:'failed',error});return {status:'review-required'};}
+    if(!resumeCurrent()){settle({status:'cancelled'});return;}
+    if(!order.inventoryOperation){try{referenceToken=appData.inventoryReferenceGuard?.capture();}catch(error){settle({status:'failed',error});return;}}
     const lineRows = applying && !isStockProduction(order)
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
       : [];
     const startSave = () => {
       if (!resumeCurrent()){settle({status:'cancelled'});return;}
-      if (lineRows.length === 0) { void save(); return; }
+      if (lineRows.length === 0&&!reprepareOnly) { void save(); return false; }
       setStockUseAsk({
-        scope: askScope, mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
+        scope: askScope, referenceToken,itemIndex:itemIdx,lineId:plan.items[itemIdx]?.lineId, mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
         onConfirm: save,onCancel:()=>settle({status:'cancelled'}),
       });
+      return true;
     };
 
     /*  **완사입·임가공은 생산이 없다 — 재고로만 나간다.**
      *  그래서 `buildStockUseRows` 가 빼 버리는데, 그냥 지나가면 재고가 모자란 것도 모른다.
      *  여기서 재고와 주문량을 견줘 **쓸 수 있으면 쓴다고, 모자라면 음수가 된다고** 알린다. */
+    if(reprepareOnly)return startSave();
     const 완료줄 = plan.items[itemIdx];
     const 완료품목 = 완료줄 ? allItems.find(p => p.id === 완료줄.itemId) : undefined;
     if (applying && lineRows.length === 0 && 완료줄 && 완료품목 && isGoodsItem(완료품목)) {
@@ -2167,7 +2186,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
 
     // 생산품은 주문 전체 상태와 관계없이 품목 하나를 완료할 때마다 재고 확인창을 거친다.
-    startSave();
+    return startSave();
   };
 
   const handleToggleShipmentComplete = async (orderId: string, completed: boolean) => {
@@ -2584,7 +2603,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onOpenNotifications={event => { const rect = event.currentTarget.getBoundingClientRect(); setNotifPanelPos({ top: rect.bottom + 8, left: Math.max(8, window.innerWidth - 368) }); setShowNotifPanel(prev => !prev); }} />
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
-          <StaticReferenceReadNotice read={staticReferenceRead} />
+          <StaticReferenceReadNotice read={staticReferenceRead} onPrepareInventory={stockUseAsk?async()=>{
+            const ask=stockUseAsk;if(ask.scope!==orderAskScope.current.token)return false;
+            const order=allOrders.find(row=>row.id===ask.orderId);if(!order)return false;
+            if(ask.mode==='line'){const prepared=await handleToggleItemChecked(ask.orderId,ask.itemIndex??-1,undefined,undefined,{lineId:ask.lineId});if(prepared===true){ask.onCancel?.();return true;}return false;}
+            const referenceToken=appData.inventoryReferenceGuard?.capture();
+            const source=order;
+            const rows=buildStockUseRows(source,allItems,appData.orderUnitInputs);
+            setStockUseAsk(current=>current===ask?{...ask,rows,referenceToken}:current);
+            return true;
+          }:undefined} />
           <FinancialOpeningResume key={`${companyId}:${auth.currentUser?.uid ?? ''}`} companyId={companyId} onRecovered={refreshStaticData} />
           {/* 초기 데이터 로딩 스켈레톤 */}
           {isDataLoading ? (
@@ -4749,7 +4777,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       await refreshStaticData();
                     } catch (error: any) {
                       if(!currentScope())return;
-                      if(saved){setAppNotice({message:'품목 연결 해제은 저장됐지만 목록을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 기준정보 확인에서 다시 조회해 주세요.'});return;}
+                      if(saved){setAppNotice({message:'품목 연결 해제는 저장됐지만 목록을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 기준정보 확인에서 다시 조회해 주세요.'});return;}
                       console.error('품목 연결 해제 실패:', error);
                       alert(`품목 연결을 해제하지 못했습니다.\n${error?.message ?? String(error)}`);
                     }
@@ -5059,12 +5087,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onConfirm={async (plan: StockUsePlan) => {
             const ask = stockUseAsk;
             if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.stock !== ask) return;
-            setStockUseAsk(current => current === ask ? null : current);
+            if(ask.referenceToken){try{appData.inventoryReferenceGuard?.assertCurrent(ask.referenceToken);}catch{return;}}
             if (ask.mode === 'line') {
-              await ask.onConfirm(plan);
+              const result=await ask.onConfirm(plan,ask.referenceToken);
+              if(result!==false)setStockUseAsk(current=>current===ask?null:current);
               return;
             }
-            await changeOrderStatus(ask.orderId, OrderStatus.DISPATCHED, plan, { approvedBy: currentUser?.name, orderPatch: ask.orderPatch });
+            await changeOrderStatus(ask.orderId, OrderStatus.DISPATCHED, plan, { approvedBy: currentUser?.name, orderPatch: ask.orderPatch,referenceToken:ask.referenceToken });
+            setStockUseAsk(current=>current===ask?null:current);
           }}
         />
       )}

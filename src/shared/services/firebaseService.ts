@@ -1,3 +1,4 @@
+import type {InventoryNewSendGuard} from '../hooks/useInventoryReferenceGuard';
 import {runInventoryWriterTransaction,captureInventoryWriterContext,prepareCatalogOrderCommit} from '../inventoryWriterProtocol';
 import {readOemReceiptEntry,pinOemReceiptPacket,acknowledgeOemReceiptPacket,markOemReceiptPreCallFailure,
  withOemReceiptLock,type OemReceiptScope} from '../oemReceiptPending';
@@ -1052,8 +1053,9 @@ export async function assertOrderInventoryGenerationActor(generation:OrderInvent
 }
 export interface OrderInventoryClaimResumeScope {beforeSend:()=>void;isCurrent:()=>boolean}
 export const claimOrderInventoryOperation = async (
- orderId:string,expectedStatus:OrderStatus,operation:NonNullable<Order['inventoryOperation']>,resumeScope?:OrderInventoryClaimResumeScope,
+ orderId:string,expectedStatus:OrderStatus,operation:NonNullable<Order['inventoryOperation']>,resumeScope?:OrderInventoryClaimResumeScope,referenceGuard?:InventoryNewSendGuard,
 ):Promise<Order>=>{
+ const assertReference=()=>{const checked:unknown=referenceGuard?.assertBeforeNewSend();if(checked&&(typeof checked==='object'||typeof checked==='function')&&typeof (checked as {then?:unknown}).then==='function'){void Promise.resolve(checked).catch(()=>{});throw Error('기준정보 전송 검사는 동기 함수여야 합니다. 전송하지 않았습니다.');}};
  if(resumeScope&&(typeof resumeScope.beforeSend!=='function'||typeof resumeScope.isCurrent!=='function'))throw Error('원작업 재개의 현재 실행 범위를 확인해 주세요.');
  await authReady;const actorUid=auth.currentUser?.uid;
  if(!actorUid)throw Error('주문 재고 작업은 직원 로그인이 필요합니다.');
@@ -1074,7 +1076,7 @@ export const claimOrderInventoryOperation = async (
  };
  const claimRetired=async()=>{
   if(resumeScope)throw Error('퇴역 요청의 첫 작업은 이 줄 재개에서 실행하지 않았습니다. 해당 처리 결과를 따로 확인해 주세요.');
-  return service.claimRetiredOrderInventoryOperation(orderId,expectedStatus,requestedOperation);
+  return referenceGuard?service.claimRetiredOrderInventoryOperation(orderId,expectedStatus,requestedOperation,referenceGuard):service.claimRetiredOrderInventoryOperation(orderId,expectedStatus,requestedOperation);
  };
  const entry=await getDoc(doc(db,'orders',orderId));
  if(entry.exists()&&needsRetiredClaim(entry.data()))return claimRetired();
@@ -1084,6 +1086,7 @@ export const claimOrderInventoryOperation = async (
   const checked:unknown=resumeScope.beforeSend();
   if(checked&&(typeof checked==='object'||typeof checked==='function')&&typeof (checked as {then?:unknown}).then==='function'){void Promise.resolve(checked).catch(()=>{});throw Error('원작업 전송 검사는 동기 함수여야 합니다. 전송하지 않았습니다.');}
  }
+ if(!entry.exists()||!entry.data().inventoryOperation)assertReference();
  const result=await runInventoryWriterTransaction(db,resumeContext,async tx=>{
  const ref=doc(db,'orders',orderId),snap=await tx.get(ref);
  if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
@@ -1104,6 +1107,7 @@ export const claimOrderInventoryOperation = async (
   }else selected={...requestedOperation,stage:'claim'};
  }
  if(selected.contractVersion===1)await assertOrderInventoryGenerationActor(generationFromOrder({...current,inventoryOperation:selected})!);
+ if(!previous)assertReference();
  const patch=protectInventoryWriterPatch(snap.data(),{inventoryOperation:selected});tx.update(ref,patch);return {...current,...patch} as Order;
 });
  return result??claimRetired();
