@@ -417,6 +417,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const bomIndex = useMemo(() => buildBomIndex(enabled ? items.filter(row => companyOf(row) === companyId) : [], enabled ? itemBoms.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, items, itemBoms]);
   //  포장 환산표도 같은 방식으로 — 개입수의 근거는 BOM 아니면 이 표, 둘뿐이다
   const packIndex = useMemo(() => buildPackIndex(enabled ? itemPacks.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, itemPacks]);
+  const orderUnitInputs = useMemo(() => ({ bom: bomIndex, pack: packIndex }), [bomIndex, packIndex]);
 
   const loadedReturnOperations = enabled && isAdmin && returnOperationState?.companyId === companyId ? returnOperationState.rows : undefined;
   const loadReturnSources = useCallback(async (ids: string[], company: CompanyId) => {
@@ -474,7 +475,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   }, [enabled, companyId, isAdmin, verifiedAdvances, advanceOperationState, returnOperationState, returnAllocationOperations, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
     ...scopedData,
-    orderUnitInputs: { bom: bomIndex, pack: packIndex },
+    orderUnitInputs,
     orders: visibleOrders, orderListRead:orderRead.read, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
     isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
