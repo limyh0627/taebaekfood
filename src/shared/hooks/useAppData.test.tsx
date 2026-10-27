@@ -233,3 +233,18 @@ it('주문 live UID ABA 뒤 옛 구독 callback은 최종 회사 화면에 재�
  act(()=>{for(const uid of ['actor-b','actor-a']){mock.auth.currentUser={uid};for(const callback of mock.authListeners)callback(mock.auth.currentUser);}old([{...order('old-live','taebaek'),status:OrderStatus.PENDING}]);});expect(result.current.orders).toEqual([]);
 });
 it('주문 최초 오류도 items 관측과 합쳐 전체로딩을 종결하고 재조회만 연결한다',async()=>{mock.listeners.length=0;mock.onOrderError=null;mock.fetchCollection.mockResolvedValue([]);const {result}=renderHook(()=>useAppData(true,'taebaek',false));await waitFor(()=>expect(mock.listeners.some(row=>row.name==='items')).toBe(true));act(()=>{mock.listeners.find(row=>row.name==='items')!.callback([]);mock.onOrderError!({code:'permission-denied'});});expect(result.current.isDataLoading).toBe(false);expect(result.current.orders).toEqual([]);expect(result.current.orderListRead).toMatchObject({status:'error',errorCode:'permission-denied'});});
+
+vi.mock('../services/staticReferenceRead',async()=>{const {fetchCollection}=await import('../services/firebaseService');return {readStaticReferenceCollection:async(name:string,companyId:string)=>({rows:await fetchCollection(name as never,[{field:'companyId',value:companyId}] as never),metadata:{fromCache:false,hasPendingWrites:false}}),staticReferenceServerRows:async(request:Promise<{rows:unknown[]}>)=>(await request).rows};});
+it('실제 정적 refresh는 초기 앱 로딩 완료와 별개로 BOM 응답까지 기다린다',async()=>{
+ mock.listeners.length=0;mock.fetchCollection.mockResolvedValue([]);const h=renderHook(()=>useAppData(true,'taebaek',false));
+ await waitFor(()=>expect(mock.listeners.some(row=>row.name==='items')).toBe(true));act(()=>{mock.listeners.find(row=>row.name==='items')!.callback([]);mock.onOrders!([]);});expect(h.result.current.isDataLoading).toBe(false);
+ await act(async()=>{for(let n=0;n<8;n++)await Promise.resolve();});let release:((rows:never[])=>void)|undefined,settled=false;
+ mock.fetchCollection.mockImplementation((name:string)=>name==='item_bom'?new Promise(resolve=>{release=resolve;}):Promise.resolve([]));
+ try{act(()=>{void Promise.resolve(h.result.current.refreshStaticData()).then(()=>{settled=true;},()=>{settled=true;});});await waitFor(()=>expect(release).toBeDefined());expect(settled,'BOM 조회가 남아 있는데 갱신 완료로 반환하면 안 된다').toBe(false);}
+ finally{await act(async()=>{release?.([]);for(let n=0;n<8;n++)await Promise.resolve();});h.unmount();}
+});
+it('실제 정적 금융 조회 거절이 성공한 BOM·포장·원료식 반영을 막지 않는다',async()=>{
+ mock.listeners.length=0;mock.fetchCollection.mockImplementation((name:string)=>name==='accountGroups'?Promise.reject({code:'permission-denied'}):Promise.resolve(name==='item_bom'?[{id:'bom',companyId:'taebaek',parent_id:'box',child_id:'loose',quantity:8}]:[]));
+ const h=renderHook(()=>useAppData(true,'taebaek',true));await waitFor(()=>expect(mock.fetchCollection.mock.calls.some(([name])=>name==='accountGroups')).toBe(true));await act(async()=>{for(let n=0;n<12;n++)await Promise.resolve();});
+ expect(h.result.current.itemBoms[0]?.quantity).toBe(8);expect(h.result.current.staticReferenceRead?.groups.finance.status).toBe('error');
+});

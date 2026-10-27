@@ -33,3 +33,5 @@ it('확인되지 않은 한 거래처 감사만 제외하고 정상 거래처 �
  act(()=>{emit('issuedStatements','taebaek',[{...statement('bad','taebaek'),partnerId:'bad'},{...statement('good','taebaek'),partnerId:'good'}]);emit('partnerAdvanceOperations','taebaek',[]);});
  await waitFor(()=>expect(result.current.advanceStatements?.map(row=>row.id)).toEqual(['good']));
 });
+
+vi.mock('../services/staticReferenceRead',async()=>{const {fetchCollection}=await import('../services/firebaseService');return {readStaticReferenceCollection:async(name:string,companyId:string)=>({rows:await fetchCollection(name as never,[{field:'companyId',value:companyId}] as never),metadata:{fromCache:false,hasPendingWrites:false}}),staticReferenceServerRows:async(request:Promise<{rows:unknown[]}>)=>(await request).rows};});

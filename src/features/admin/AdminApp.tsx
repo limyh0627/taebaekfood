@@ -1,3 +1,4 @@
+import StaticReferenceReadNotice from '../../shared/components/StaticReferenceReadNotice';
 import RawManualCorrectionForm from '../items/components/RawManualCorrectionForm';
 import { planPurchaseOrderBatch, applyPurchaseOrderBatch, type PurchaseOrderBatchRow } from '../../shared/services/purchaseOrderBatchService';
 import {statementEditWrites} from '../../shared/services/statementEditWrites';
@@ -332,7 +333,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements: allIssuedStatements,
     itemFormulas, itemBoms, returnRequests, itemReceipts, companyInfo, companyInfoRead, inventorySnapshots, productionSalesLogs, isDataLoading,
-    pendingStatementEdits, refreshStaticData,
+    pendingStatementEdits, refreshStaticData, staticReferenceRead,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
     ordersMonths, setOrdersMonths, orderListRead,
   } = appData;
@@ -421,7 +422,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if(!isCurrentPartnerTerms()||!termsActor)return {status:'rejected',message:'회사 또는 로그인 정보가 바뀌어 거래조건 저장을 전송하지 않았습니다.',nextAction:'현재 회사에서 품목을 다시 열어 주세요.'};
     const result=await work({companyId,actorUid:termsActor});
     if(result.status==='saved'&&isCurrentPartnerTerms()){
-      try{await refreshStaticData();}catch{if(isCurrentPartnerTerms())setAppNotice({message:'거래조건은 저장됐지만 화면을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 새로고침해 주세요.'});}
+      try{await refreshStaticData();}catch{if(isCurrentPartnerTerms())setAppNotice({message:'거래조건은 저장됐지만 화면을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 기준정보 확인에서 다시 조회해 주세요.'});}
     }
     return result;
   };
@@ -443,15 +444,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
     };
     const result = await save();
     if (!primaryCommitted(result, id) || context.companyId !== companyId || !context.isCurrent()) return result;
-    try { refreshStaticData(); }
+    try { await refreshStaticData(); }
     catch {
+      if(context.companyId!==companyId||!context.isCurrent()||auth.currentUser?.uid!==context.actorUid)return result;
       if (result.status === 'partial') return {
-        ...result, message: result.message + ' 목록 갱신도 시작하지 못했습니다.',
+        ...result, message: result.message + ' 목록 갱신도 완료하지 못했습니다.',
       };
       return {
         ...result,
         status: 'partial', reason: 'followup-unconfirmed', committedIds: [id], unconfirmedIds: [],
-        message: '계정 처리는 완료됐지만 목록 갱신을 시작하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
+        message: '계정 처리는 완료됐지만 목록 갱신을 완료하지 못했습니다.', nextAction: '다시 저장하지 말고 화면을 새로고침해 주세요.',
       };
     }
     return result;
@@ -2582,6 +2584,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onOpenNotifications={event => { const rect = event.currentTarget.getBoundingClientRect(); setNotifPanelPos({ top: rect.bottom + 8, left: Math.max(8, window.innerWidth - 368) }); setShowNotifPanel(prev => !prev); }} />
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
+          <StaticReferenceReadNotice read={staticReferenceRead} />
           <FinancialOpeningResume key={`${companyId}:${auth.currentUser?.uid ?? ''}`} companyId={companyId} onRecovered={refreshStaticData} />
           {/* 초기 데이터 로딩 스켈레톤 */}
           {isDataLoading ? (
@@ -4718,23 +4721,35 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onAddItem={() => { setItemEditorRecovery(null);setEditingProduct(null); setIsProductModalOpen(true); }}
                   onDeleteItem={requestCatalogItemDelete}
                   onLinkItem={async (itemId, partnerId) => {
+                    const scope=orderAskScope.current.token,uid=auth.currentUser?.uid,identity=termsScope.current;
+                    const currentScope=()=>termsAlive.current&&termsScope.current===identity&&orderAskScope.current.token===scope&&orderAskScope.current.companyId===companyId&&auth.currentUser?.uid===uid;
+                    let saved=false;
                     try {
                       const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
                       if (!current.includes(partnerId)) {
                         await setProductClients(itemId, [...current, partnerId]);
+                      saved=true;
                         await refreshStaticData();
                       }
                     } catch (error: any) {
+                      if(!currentScope())return;
+                      if(saved){setAppNotice({message:'품목 연결은 저장됐지만 목록을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 기준정보 확인에서 다시 조회해 주세요.'});return;}
                       console.error('품목 연결 실패:', error);
                       alert(`품목을 연결하지 못했습니다.\n${error?.message ?? String(error)}`);
                     }
                   }}
                   onUnlinkItem={async (itemId, partnerId) => {
+                    const scope=orderAskScope.current.token,uid=auth.currentUser?.uid;
+                    const currentScope=()=>orderAskScope.current.token===scope&&orderAskScope.current.companyId===companyId&&auth.currentUser?.uid===uid;
+                    let saved=false;
                     try {
                       const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
                       await setProductClients(itemId, current.filter(id => id !== partnerId));
+                      saved=true;
                       await refreshStaticData();
                     } catch (error: any) {
+                      if(!currentScope())return;
+                      if(saved){setAppNotice({message:'품목 연결 해제은 저장됐지만 목록을 갱신하지 못했습니다.',subMessage:'다시 저장하지 말고 기준정보 확인에서 다시 조회해 주세요.'});return;}
                       console.error('품목 연결 해제 실패:', error);
                       alert(`품목 연결을 해제하지 못했습니다.\n${error?.message ?? String(error)}`);
                     }

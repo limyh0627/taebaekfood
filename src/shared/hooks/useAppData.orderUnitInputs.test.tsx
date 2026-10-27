@@ -7,7 +7,7 @@ import {buildPackIndex,getPackIndex,setPackIndex} from '../packIndex';
 import type {OrderUnitInputs} from '../orderUnits';
 import type {CompanyId,Item} from '../types';
 const mocks=vi.hoisted(()=>({listeners:[] as {name:string;company:string;callback:(rows:unknown[])=>void}[],staticRows:{} as Record<string,{bom:unknown[];pack:unknown[]}>}));
-vi.mock('../firebase',()=>({authReady:Promise.resolve(),auth:{currentUser:null},db:{}}));
+vi.mock('../firebase',()=>({authReady:Promise.resolve(),auth:{currentUser:{uid:'static-actor'}},db:{}}));
 vi.mock('firebase/firestore',()=>({where:(field:string,op:string,value:string)=>({field,op,value}),doc:vi.fn(),getDoc:vi.fn()}));
 vi.mock('../services/firebaseService',()=>({
  subscribeToCollection:(name:string,callback:(rows:unknown[])=>void,clauses:{field:string;value:string}[])=>{mocks.listeners.push({name,callback,company:clauses.find(r=>r.field==='companyId')?.value??''});return()=>{};},
@@ -66,9 +66,9 @@ it('품목과 pack·BOM 실제 갱신 및 회사·활성 전환은 새 입력을
  act(()=>itemsListener('taebaek').callback(items('taebaek').map(row=>row.id==='loose'?{...row,name:'새 낱개'}:row)));
  await waitFor(()=>expect(hook.result.current.derived).toEqual({bom:12,pack:13,child:'새 낱개'}));expect(hook.result.current.data.orderUnitInputs).not.toBe(input);input=hook.result.current.data.orderUnitInputs;
  // BOM 배열은 그대로 반환하여 packIndex만 바뀌는 갱신도 검증한다.
- mocks.staticRows.taebaek={bom,pack:[{item_id:'loose',units_per_box:17,companyId:'taebaek'}]};act(()=>hook.result.current.data.refreshStaticData());
+ mocks.staticRows.taebaek={bom,pack:[{item_id:'loose',units_per_box:17,companyId:'taebaek'}]};await act(async()=>{await hook.result.current.data.refreshStaticData();});
  await waitFor(()=>expect(hook.result.current.data.orderUnitInputs?.pack.of('loose')).toBe(17));expect(hook.result.current.derived).toEqual({bom:12,pack:17,child:'새 낱개'});expect(hook.result.current.data.orderUnitInputs).not.toBe(input);input=hook.result.current.data.orderUnitInputs;
- const samePack=mocks.staticRows.taebaek.pack;mocks.staticRows.taebaek={bom:[{parent_id:'box',child_id:'loose',quantity:20,companyId:'taebaek'}],pack:samePack};act(()=>hook.result.current.data.refreshStaticData());
+ const samePack=mocks.staticRows.taebaek.pack;mocks.staticRows.taebaek={bom:[{parent_id:'box',child_id:'loose',quantity:20,companyId:'taebaek'}],pack:samePack};await act(async()=>{await hook.result.current.data.refreshStaticData();});
  await waitFor(()=>expect(hook.result.current.data.orderUnitInputs?.bom.of('box')[0]?.qty).toBe(20));expect(hook.result.current.derived).toEqual({bom:20,pack:17,child:'새 낱개'});expect(hook.result.current.data.orderUnitInputs).not.toBe(input);
  const oldItems=itemsListener('taebaek');hook.rerender({enabled:true,company:'punghoe'});expect(hook.result.current.derived).toEqual({bom:0,pack:0,child:''});
  await waitFor(()=>expect(itemsListener('punghoe')).toBeDefined());act(()=>itemsListener('punghoe').callback(items('punghoe')));
@@ -77,3 +77,5 @@ it('품목과 pack·BOM 실제 갱신 및 회사·활성 전환은 새 입력을
  hook.rerender({enabled:false,company:'punghoe'});expect(hook.result.current.derived).toEqual({bom:0,pack:0,child:''});expect(hook.result.current.data.orderUnitInputs).not.toBe(input);input=hook.result.current.data.orderUnitInputs;
  hook.rerender({enabled:true,company:'punghoe'});await waitFor(()=>expect(hook.result.current.derived).toEqual({bom:6,pack:7,child:'낱개'}));expect(hook.result.current.data.orderUnitInputs).not.toBe(input);
 });
+
+vi.mock('../services/staticReferenceRead',async()=>{const {fetchCollection}=await import('../services/firebaseService');return {readStaticReferenceCollection:async(name:string,companyId:string)=>({rows:await fetchCollection(name as never,[{field:'companyId',value:companyId}] as never),metadata:{fromCache:false,hasPendingWrites:false}}),staticReferenceServerRows:async(request:Promise<{rows:unknown[]}>)=>(await request).rows};});

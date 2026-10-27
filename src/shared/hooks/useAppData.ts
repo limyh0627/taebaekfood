@@ -1,3 +1,4 @@
+import {useStaticReferenceRead,type StaticReferenceReadState} from './useStaticReferenceRead';
 import {useOrderListRead,type OrderListReadState} from './useOrderListRead';
 import { verifyAdvanceStatements, type ReadonlyAdvanceOperation } from '../partnerAdvanceAudit';
 import { useReturnAllocationSources, type ReturnAllocationOperation } from './useReturnAllocationSources';
@@ -103,7 +104,8 @@ export interface AppData {
   productionSalesLogs: ProductionSalesLog[];
   pendingStatementEdits: PendingStatementEdit[];
   isDataLoading: boolean;
-  refreshStaticData: () => void;
+  refreshStaticData: () => Promise<void>;
+  staticReferenceRead?: StaticReferenceReadState;
   historicalOrders: Order[];
   loadHistoricalOrders: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders: boolean;
@@ -129,7 +131,6 @@ export interface AppData {
 export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isAdmin = false): AppData {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [partnerItems, setPartnerItems] = useState<PartnerItem[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -144,20 +145,12 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
-  const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
-  const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   //  포장 환산표 — 낱개로만 세는데 박스로 말하는 품목(향미유·고춧가루)의 개입수
-  const [itemPacks, setItemPacks] = useState<PackRow[]>([]);
   const [returnOperationState, setReturnOperationState] = useState<{ companyId: CompanyId; rows: ReturnStockOperation[] } | null>(null);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   //  사 온 기록 — 제품별원장이 '입고' 줄로 읽는다(2026-09-03부터)
   const [itemReceipts, setItemReceipts] = useState<ItemReceipt[]>([]);
   const companyInfoRead = useCompanyInfoRead({ companyId, enabled });
-  const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
-  const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
-  const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
-  const [expensePresets, setExpensePresets] = useState<ExpensePreset[]>([]);
-  const [cashFlowManual, setCashFlowManual] = useState<CashFlowManual[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cashEntries, setCashEntries] = useState<CashEntry[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -223,10 +216,9 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     try { localStorage.setItem('tb_orders_months', String(n)); } catch {}
   }, []);
   const loadedRef = useRef(new Set<string>());
-  // 정적 데이터 새로고침 트리거
-  const [staticRefreshKey, setStaticRefreshKey] = useState(0);
-  const refreshStaticData = useCallback(() => setStaticRefreshKey(k => k + 1), []);
 
+
+  const [staticRefreshKey,setStaticRefreshKey]=useState(0);
   const loadedHistoricalRangeRef = useRef<{ scope: number; start: string; end: string } | null>(null);
   const historicalRequestGeneration = useRef(0);
   const historicalInFlight = useRef<{ scope: number; start: string; end: string; promise: Promise<void> } | null>(null);
@@ -275,6 +267,10 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   };
 
   const orderUid=auth?.currentUser?.uid??'';
+  const staticReferences=useStaticReferenceRead({enabled,companyId,isAdmin,ownerKey:JSON.stringify([historicalScope,orderUid]),isCurrent:()=>historicalMounted.current&&historicalScopeRef.current.id===historicalScope&&auth?.currentUser?.uid===orderUid});
+  const {partnerItems,itemBoms,itemPacks,itemFormulas,accountGroups,accountCodes,fixedCostTemplates,expensePresets,cashFlowManual}=staticReferences.rows;
+  const {setPartnerItems}=staticReferences;
+  const refreshStaticData=useCallback(()=>{if(staticReferences.isCurrent())setStaticRefreshKey(value=>value+1);return staticReferences.refresh();},[staticReferences.refresh]);
   const orderRead=useOrderListRead({companyId,enabled,ordersMonths,owner:{scope:historicalScope,uid:orderUid,isCurrent:()=>historicalMounted.current&&historicalScopeRef.current.id===historicalScope&&auth?.currentUser?.uid===orderUid},onSettled:()=>markLoaded('orders')});
   const visibleOrders=useMemo(()=>enabled?orderRead.rows.filter(order=>companyOf(order)===companyId):[],[orderRead.rows,enabled,companyId]);
 
@@ -368,43 +364,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     };
   }, [enabled, companyId, isAdmin]);
 
-  // ── 1회 읽기 (거의 안 바뀌는 정적 데이터) — refreshStaticData() 호출 시 재로드 ──
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    //  정적 데이터도 회사에 잠근다. 옛 연결 문서(partner_item·item_bom·item_pack 등)에는
-    //  companyId가 안 붙은 것이 많아 이관 전까지는 목록에서 빠진다.
-    const co = [where('companyId', '==', companyId)];
-    authReady.then(() => {
-      Promise.all([
-        fetchCollection<PartnerItem>('partner_item', co),
-        fetchCollection<ItemBom>('item_bom', co),
-        fetchCollection<PackRow & { id: string }>('item_pack', co),
-        fetchCollection<ItemFormula>('item_formula', co),
-        //  **계정과목·비용 기준정보는 관리자만 읽는다**(2026-09-16 코덱스 검수 6번).
-        //  규칙이 관리자 전용이라, 직원이 부르면 `permission-denied` 가 난다.
-        //  빈 배열로 두면 직원 화면은 예전과 똑같이 돈다 — 쓰는 화면이 관리자 것뿐이다.
-        isAdmin ? fetchCollection<AccountGroup>('accountGroups', co) : Promise.resolve([] as AccountGroup[]),
-        isAdmin ? fetchCollection<AccountCode>('accountCodes', co) : Promise.resolve([] as AccountCode[]),
-        isAdmin ? fetchCollection<FixedCostTemplate>('fixedCostTemplates', co) : Promise.resolve([] as FixedCostTemplate[]),
-        isAdmin ? fetchCollection<ExpensePreset>('expensePresets', co) : Promise.resolve([] as ExpensePreset[]),
-        isAdmin ? fetchCollection<CashFlowManual>('cashFlowManual', co) : Promise.resolve([] as CashFlowManual[]),
-      ]).then(([piData, bomData, packData, ifData, agData, acData, fctData, epData, cfmData]) => {
-        // partner_item은 canonical(itemId/partnerId/price)만 쓴다. 레거시 대문자 별칭 주입 안 함.
-        if (cancelled) return;
-        setPartnerItems(piData);
-        setItemBoms(bomData);
-        setItemPacks(packData);
-        setItemFormulas(ifData);
-        setAccountGroups(agData);
-        setAccountCodes(acData);
-        setFixedCostTemplates(fctData);
-        setExpensePresets(epData);
-        setCashFlowManual(cfmData);
-      });
-    });
-    return () => { cancelled = true; };
-  }, [enabled, staticRefreshKey, companyId, isAdmin]);
 
   /**
    * BOM 단일원천 — item_bom을 유일 소스로 세운다.
@@ -477,6 +436,6 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     ...scopedData,
     orderUnitInputs,
     orders: visibleOrders, orderListRead:orderRead.read, setPartnerItems, rawMaterialLedger, companyInfo: companyInfoRead.value, companyInfoRead,
-    isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
+    isDataLoading, refreshStaticData, staticReferenceRead:staticReferences.read, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

@@ -1,0 +1,8 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const port=vi.hoisted(()=>({get:vi.fn()}));
+vi.mock('../firebase',()=>({db:{}}));vi.mock('firebase/firestore',()=>({collection:(_db:unknown,name:string)=>({name}),where:(field:string,op:string,value:string)=>({field,op,value}),query:(collection:unknown,...clauses:unknown[])=>({collection,clauses}),getDocsFromServer:port.get}));
+import {readStaticReferenceCollection,staticReferenceServerRows} from './staticReferenceRead';
+beforeEach(()=>{port.get.mockReset();});
+it('회사 조건 서버 조회와 문서 원래 순서·id를 유지한다',async()=>{port.get.mockResolvedValue({docs:[{id:'b',data:()=>({value:2})},{id:'a',data:()=>({value:1})}],metadata:{fromCache:false,hasPendingWrites:false}});const result=await readStaticReferenceCollection('item_bom','punghoe');expect(result.rows).toEqual([{id:'b',value:2},{id:'a',value:1}]);expect(port.get).toHaveBeenCalledWith({collection:{name:'item_bom'},clauses:[{field:'companyId',op:'==',value:'punghoe'}]});expect(await staticReferenceServerRows(Promise.resolve(result))).toEqual(result.rows);});
+it.each([{fromCache:true,hasPendingWrites:false},{fromCache:false,hasPendingWrites:true},{fromCache:undefined,hasPendingWrites:undefined}])('확인되지 않은 메타 %j는 정상 빈 결과로 승격하지 않는다',async metadata=>{await expect(staticReferenceServerRows(Promise.resolve({rows:[],metadata}))).rejects.toMatchObject({code:'unconfirmed'});});
+it('서버 정상 빈 결과와 실제 조회 오류를 구분한다',async()=>{expect(await staticReferenceServerRows(Promise.resolve({rows:[],metadata:{fromCache:false,hasPendingWrites:false}}))).toEqual([]);port.get.mockRejectedValue({code:'permission-denied'});await expect(readStaticReferenceCollection('partner_item','taebaek')).rejects.toMatchObject({code:'permission-denied'});});
