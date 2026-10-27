@@ -23,6 +23,9 @@ export interface OrderItemStockDeps {
 const stripUndefined = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 
+export class OrderReservationExecutionConflictError extends Error {readonly code='order-reservation-execution-conflict';constructor(){super('현재 예약이 다른 실행에서 변경됐습니다. 원문을 유지하고 주문 작업을 다시 확인해 주세요.');}}
+const freezeReservationEvidence=<T,>(value:T):T=>{if(value&&typeof value==='object'){Object.values(value).forEach(freezeReservationEvidence);Object.freeze(value);}return value;};
+
 export interface OrderStockReservation {
   operationId: string;
   orderId: string;
@@ -34,6 +37,7 @@ export interface OrderStockReservation {
   /** 작업완료 뒤 출고 전 상태라면 새로 만든 몫까지 포함한 주문 전체 출고량을 여기에 둔다. */
   allocationQuantities?: ReadonlyMap<string, number>;
   active: boolean;
+  readonly executionEvidence?:Readonly<{version:1;reservationAttemptId:string;currentReservationsByItem:readonly (readonly [string,readonly ItemInventoryReservation[]])[]}>;
 }
 
 
@@ -117,6 +121,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     if(generation&&(generation.orderId!==order.id||generation.operationId!==operationId))throw Error('주문 예약의 최초 세대가 다릅니다.');
     assertActor(generation);
     const ids = [...new Set([...orderStockTouchedIds(order, bomIndex), ...extraItemIds])];
+    const reservationAttemptId=globalThis.crypto.randomUUID();
     const now = new Date();
     const nowMs = now.getTime();
     const createdAt = now.toISOString();
@@ -136,14 +141,16 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       if(shortages.length){const row=shortages[0],item=allItems.find(candidate=>candidate.id===row.itemId);throw new OrderInventoryPreconditionError(`${item?.name??row.itemId} 재고가 부족합니다. 현재 ${row.current}, 다른 주문 예약 ${row.other}, 이번 주문 ${row.required}`);}
 
       const stagePatch=current?{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}}:null;
-      const commitStage=current&&stagePatch?await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,stagePatch):null;
+      const commitStage=current&&stagePatch&&!inventoryWriterSame(current.order.inventoryOperation,stagePatch.inventoryOperation)?await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,stagePatch):null;
+      const currentReservationsByItem:[string,ItemInventoryReservation[]][]=[];
       ids.forEach((itemId, index) => {
         const data = snapshots[index]!.data() ?? {};
         const active = activeByItem.get(itemId) ?? [];
         const qty = quantities.get(itemId) ?? 0;
         const next = qty > 0
-          ? [...active, { operationId, orderId: order.id, qty, createdAt, state: 'processing' as const,...(generation?{generation}:{}) }]
+          ? [...active, { operationId, orderId: order.id, qty, createdAt, state: 'processing' as const,reservationAttemptId,...(generation?{generation}:{}) }]
           : active;
+        currentReservationsByItem.push([itemId,JSON.parse(JSON.stringify(next.filter(row=>row.orderId===order.id)))]);
         // 만료되었거나 같은 작업의 낡은 예약도 이 transaction에서 걷어낸다.
         // 같은 예약 배열의 쓰기도 품목별 Rules 조회를 소모하므로 실제 변화만 한 거래에 남긴다.
         if ((qty > 0 || Array.isArray(data.inventoryReservations)) && !inventoryWriterSame(data.inventoryReservations,next)) {
@@ -161,6 +168,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         stockSnapshot: available,
         previousReservations,
         active: true,
+        executionEvidence:freezeReservationEvidence({version:1 as const,reservationAttemptId,currentReservationsByItem}),
       };
     });
   };
@@ -179,6 +187,17 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     active: false,
   });
 
+  const assertReservationExecution=(reservation:OrderStockReservation,dataByItem:ReadonlyMap<string,Record<string,any>>,release=false)=>{
+    if(!reservation.active)return;
+    const evidence=reservation.executionEvidence;
+    for(const id of reservation.itemIds){
+      const data=dataByItem.get(id)??{},own=(Array.isArray(data.inventoryReservations)?data.inventoryReservations:[]).filter((row:ItemInventoryReservation)=>row?.orderId===reservation.orderId);
+      if(release&&own.length===0)continue;
+      const expected=evidence?.currentReservationsByItem.find(([itemId])=>itemId===id);
+      if(evidence?.version!==1||!evidence.reservationAttemptId||!expected||!inventoryWriterSame(own,expected[1]))throw new OrderReservationExecutionConflictError();
+    }
+  };
+
   /** 원료 작업 등이 실패해 최종 재고 반영까지 가지 못한 예약을 풀어 준다. */
   const releaseOrderStockReservation = async (reservation: OrderStockReservation): Promise<void> => {
     const generation=reservation.generation;assertActor(generation);
@@ -191,6 +210,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       assertActor(generation);
       if(generation&&snapshots.some(snapshot=>!snapshot.exists()||snapshot.data()?.companyId!==generation.companyId))throw Error('예약 복원 품목의 명시 회사·원문을 확인해 주세요.');
       if(generation&&snapshots.some(snapshot=>liveItemInventoryReservations(snapshot.data()?.inventoryReservations,nowMs).some(row=>row.orderId===reservation.orderId&&(row.operationId!==reservation.operationId||!sameOrderInventoryGeneration((row as ItemInventoryReservation&{generation?:OrderInventoryGeneration}).generation,generation)))))throw Error('같은 주문의 다른 세대 예약은 복원하지 않습니다.');
+      assertReservationExecution(reservation,new Map(reservation.itemIds.map((id,index)=>[id,snapshots[index]!.data()??{}])),true);
       snapshots.forEach((snapshot, index) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data() ?? {};
@@ -285,6 +305,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
 
       assertActor(generation);
       if(generation&&snapshots.some(snapshot=>snapshot.data()?.companyId!==generation.companyId))throw Error('재고 확정 품목의 명시 회사가 다릅니다.');
+      if(reservation)assertReservationExecution(reservation,new Map(rows.map((row,index)=>[row.itemId,snapshots[index]!.data()??{}])));
       const updates = rows.map((row, index) => {
         const data = snapshots[index]!.data() ?? {};
         const before = Number(data.stock ?? 0);

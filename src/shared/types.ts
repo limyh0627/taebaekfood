@@ -483,6 +483,7 @@ export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
  * 있다고 판단하지 못하게 한다. 정상 완료 때 재고 반영과 함께 지워지고, 중간 실패 때도 해제한다.
  */
 export interface ItemInventoryReservation {
+  reservationAttemptId?: string;
   operationId: string;
   generation?:import('./orderInventoryGeneration').OrderInventoryGeneration;
   orderId: string;

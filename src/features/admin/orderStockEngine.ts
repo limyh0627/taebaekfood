@@ -22,7 +22,7 @@ import {clearOrderRawBatchAttempt,orderRawBatchOrderEvidence,readOrderRawBatchAt
 import {rawPressText} from '../../shared/rawPressAttempt';
 import {deriveNextProductionRecordIndex,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
 import { combineProductLotMutations, createOrderProductLotOperations, OrderInventoryPreconditionError,productionProductLotMutation, productionProductLots, reverseProductionProductLots, type OrderProductLotMutation } from './orderProductLots';
-import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
+import { OrderReservationExecutionConflictError,createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
 import { inspectOrderProduction, OrderProductionPreflightError } from './orderProductionPreflight';
 import { aggregateOrderLineInventory, ensureOrderLineIds } from '../../shared/orderLineInventory';
 
@@ -147,7 +147,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     const result=await (await import('../../shared/services/orderProductionRecordService')).executeOrderProductionRecords(request);
     if(result.status==='blocked')throw Error(result.reason??'생산기록 완료를 확인하지 못했습니다.');return result;
   };
-  const saveReservation=(value:NonNullable<Awaited<ReturnType<typeof reserveOrderStock>>>)=>plain({...value,quantities:[...value.quantities],stockSnapshot:[...value.stockSnapshot],previousReservations:[...value.previousReservations],allocationQuantities:value.allocationQuantities?[...value.allocationQuantities]:[]});
+  const saveReservation=(value:NonNullable<Awaited<ReturnType<typeof reserveOrderStock>>>)=>{const {executionEvidence,...business}=value;return plain({...business,quantities:[...value.quantities],stockSnapshot:[...value.stockSnapshot],previousReservations:[...value.previousReservations],allocationQuantities:value.allocationQuantities?[...value.allocationQuantities]:[]});};
   const restoreReservation=(value:ReturnType<typeof saveReservation>)=>({...value,quantities:new Map(value.quantities),stockSnapshot:new Map(value.stockSnapshot),previousReservations:new Map(value.previousReservations),allocationQuantities:new Map(value.allocationQuantities)}) as NonNullable<Awaited<ReturnType<typeof reserveOrderStock>>>;
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
@@ -513,11 +513,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (!orderCommitted) finalizePatch(productConsumedLots);
       return { patch, stockAdjustments: deltaRows(deltas), orderCommitted };
     } catch (error) {
+      if(error instanceof OrderReservationExecutionConflictError)throw error;
       if (error instanceof OrderInventoryPreconditionError && (inventoryMayHaveChanged || stockCommitted)) error.inventoryUnchanged = false;
       if (reservation && !stockCommitted) {
         try {
           await releaseOrderStockReservation(reservation);
         } catch (releaseError) {
+          if(releaseError instanceof OrderReservationExecutionConflictError)throw releaseError;
           if (error instanceof OrderInventoryPreconditionError) error.inventoryUnchanged = false;
           // 원래 실패 원인을 바꾸면 주문 감사 기록이 엉뚱한 오류를 남긴다. 남은 processing 예약은
           // 1시간 뒤 만료되므로 여기서는 둘 다 로그로 드러내고 최초 오류를 유지한다.
@@ -853,9 +855,10 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         console.error(`[품목 작업 감사 기록 실패] ${id}/${lineId}`, auditError);
       }
     } catch (error) {
+      if(error instanceof OrderReservationExecutionConflictError)throw error;
       if (reservation && !stockCommitted) {
         try { await releaseOrderStockReservation(reservation); }
-        catch (releaseError) { console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
+        catch (releaseError) { if(releaseError instanceof OrderReservationExecutionConflictError)throw releaseError;console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
       }
       // 재개 가능한 품목 작업은 새 실패 단계까지 남겨, 다음 재시도가 어디부터 이어지는지 알 수 있게 한다.
       const existingFailure = live?.inventoryOperation?.state === 'failed';
@@ -983,6 +986,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         if(generation&&result.orderCommitted&&readOrderRawBatchAttempt(generation.companyId,generation.actorUid,id)){const completed=await getFreshOrder(id,true);if(!completed||!await confirmCompletedAtomicRaw(completed,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))throw Error('최종 완료 근거를 확인하지 못해 최초 원문을 보존했습니다.');}
         await addItem('orderStatusAudits', { ...initialAudit, state: 'completed', completedAt: new Date().toISOString(), stockAdjustments: namedAdjustments });
       } catch (error) {
+        if(error instanceof OrderReservationExecutionConflictError)throw error;
         if (result.orderCommitted) { console.error(`[완료된 주문 후속 기록 실패] ${id}`, error); return; }
         const message = error instanceof Error ? error.message : String(error);
         if(generation)await markOrderInventoryGenerationFailed(generation,message,statusFailureStage);else await updateItem('orders', id, { inventoryOperation: error instanceof OrderInventoryPreconditionError && error.inventoryUnchanged

@@ -14,9 +14,11 @@ vi.mock('../../shared/firebase',()=>({auth:ports.auth,authReady:Promise.resolve(
 vi.mock('firebase/functions',async original=>({...await original<typeof import('firebase/functions')>(),httpsCallable:()=>{ports.rpcCalls++;throw Error('예약 stage-only 시험에서 RPC는 허용하지 않습니다.');}}));
 
 const enabled=process.env.HACCP_EMULATOR_TEST==='true';
-const projectId='demo-order-list-20261027';
+const workerDiagnostic=process.env.ORDER_LIST_EMULATOR_PROJECT==='demo-order-workers-20261028';
+const projectId=workerDiagnostic?'demo-order-workers-20261028':'demo-order-list-20261027';
+const emulatorPort=workerDiagnostic?8288:8287;
 const route={host:process.env.FIRESTORE_EMULATOR_HOST,project:process.env.ORDER_LIST_EMULATOR_PROJECT,optin:process.env.HACCP_EMULATOR_TEST};
-const host=/^(127\.0\.0\.1|localhost):8287$/.exec(route.host??'');
+const host=new RegExp('^(127\\.0\\.0\\.1|localhost):'+emulatorPort+'$').exec(route.host??'');
 const prefix='reservation-sdk-'+randomUUID()+'-';
 const actor=prefix+'employee',time='2026-10-15T00:00:00.000Z';
 let env:RulesTestEnvironment|undefined,runtime:typeof import('@firebase/rules-unit-testing'),sdk:typeof import('firebase/firestore'),api:typeof import('./orderItemStock');
@@ -62,15 +64,15 @@ function assertSuccess(f:Awaited<ReturnType<typeof fixture>>,before:Record<strin
  f.itemPaths.forEach((path,index)=>{
   if(index>=used){expect(after[path]).toEqual(before[path]);return;}
   const row=after[path].inventoryReservations[0];
-  expect(row).toEqual({operationId:f.generation.operationId,orderId:f.order.id,qty:1,createdAt:expect.any(String),state:'processing',generation:f.generation});
+  expect(row).toEqual({operationId:f.generation.operationId,orderId:f.order.id,qty:1,createdAt:expect.any(String),state:'processing',reservationAttemptId:expect.any(String),generation:f.generation});
   expect(Number.isFinite(Date.parse(row.createdAt))).toBe(true);
   expect(after[path]).toEqual({...before[path],inventoryWriteRevision:2,inventoryReservations:[row]});
  });
 }
 
 describe.skipIf(!enabled)('실제 주문 예약 거래의 Rules 한도 진단 (root 소유 SDK)',()=>{
- beforeAll(async()=>{guard();runtime=await import('@firebase/rules-unit-testing');guard();sdk=await import('firebase/firestore');guard();api=await import('./orderItemStock');guard();try{env=await runtime.initializeTestEnvironment({projectId,firestore:{host:host![1],port:8287,rules:readFileSync('firestore.rules','utf8')}});guard();}catch(error){await cleanupOwnedResources([()=>env?.cleanup()],error);throw error;}});
- afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env){guard();await env.withSecurityRulesDisabled(async ctx=>{for(const path of paths){guard();own(path);await sdk.deleteDoc(sdk.doc(ctx.firestore(),path));expect((await sdk.getDoc(sdk.doc(ctx.firestore(),path))).exists()).toBe(false);guard();}});}},()=>env?.cleanup()]);if(enabled&&process.env.ORDER_RESERVATION_OBSERVATIONS_PATH){const root=resolve('privatework/order-reservation-noop'),output=resolve(process.env.ORDER_RESERVATION_OBSERVATIONS_PATH);if(dirname(output)!==root||!/^observations-[a-f0-9-]+[.]json$/.test(basename(output)))throw Error('지정 private 관측 경로만 허용합니다.');mkdirSync(root,{recursive:true});if(realpathSync(root)!==root)throw Error('관측 경로의 junction은 허용하지 않습니다.');writeFileSync(output,JSON.stringify({observations,ownedPaths:paths.size,cleanupConfirmed:true,auth:'합성 getAuth 조회와 실제 Rules unit claims',realFirestoreSDK:true,realReservationAPI:true,operatingWrites:0,rpcCalls:ports.rpcCalls},null,2),{flag:'wx'});}});
+ beforeAll(async()=>{guard();runtime=await import('@firebase/rules-unit-testing');guard();sdk=await import('firebase/firestore');guard();api=await import('./orderItemStock');guard();try{env=await runtime.initializeTestEnvironment({projectId,firestore:{host:host![1],port:emulatorPort,rules:readFileSync('firestore.rules','utf8')}});guard();}catch(error){await cleanupOwnedResources([()=>env?.cleanup()],error);throw error;}});
+ afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env){guard();await env.withSecurityRulesDisabled(async ctx=>{for(const path of paths){guard();own(path);await sdk.deleteDoc(sdk.doc(ctx.firestore(),path));expect((await sdk.getDoc(sdk.doc(ctx.firestore(),path))).exists()).toBe(false);guard();}});}},()=>env?.cleanup()]);if(workerDiagnostic)writeFileSync('work/performance-orders-reservation-reentry-sdk-cleanup-20261028.json',JSON.stringify({projectId,prefix,ownedPaths:[...paths],cleanupConfirmed:true,rpcCalls:ports.rpcCalls,wholeClear:0},null,2));if(enabled&&process.env.ORDER_RESERVATION_OBSERVATIONS_PATH){const root=resolve('privatework/order-reservation-noop'),output=resolve(process.env.ORDER_RESERVATION_OBSERVATIONS_PATH);if(dirname(output)!==root||!/^observations-[a-f0-9-]+[.]json$/.test(basename(output)))throw Error('지정 private 관측 경로만 허용합니다.');mkdirSync(root,{recursive:true});if(realpathSync(root)!==root)throw Error('관측 경로의 junction은 허용하지 않습니다.');writeFileSync(output,JSON.stringify({observations,ownedPaths:paths.size,cleanupConfirmed:true,auth:'합성 getAuth 조회와 실제 Rules unit claims',realFirestoreSDK:true,realReservationAPI:true,operatingWrites:0,rpcCalls:ports.rpcCalls},null,2),{flag:'wx'});}});
  it.each([1,19,20,21])('실제 %i개 예약과 주문 stage의 원자 허용·거절 경계를 관측한다',async count=>{
   const f=await fixture(count),before=await readAll(f.selected),r=await reserve(f,count);
   if(count<=20){await r.promise;assertSuccess(f,before,await readAll(f.selected),count);}else{await expect(r.promise).rejects.toMatchObject({code:'permission-denied'});expect(await readAll(f.selected)).toEqual(before);}
@@ -137,5 +139,7 @@ describe.skipIf(!enabled)('실제 주문 예약 거래의 Rules 한도 진단 (r
    ],primary);
   }
  },60000);
+
+ it('동일stage 재예약 B4는 orderrevision없이성공하고 옛A release/final은 실제쓰기0이다',async()=>{const f=await fixture(1),a=await f.operations.reserveOrderStock(f.order,f.generation.operationId,()=>new Map([[f.ids[0],-2]]),[],{generation:f.generation}),orderA=(await readAll([f.orderPath]))[f.orderPath],b=await f.operations.reserveOrderStock(f.order,f.generation.operationId,()=>new Map([[f.ids[0],-4]]),[],{generation:f.generation});const before=await readAll(f.selected);expect(before[f.orderPath]).toEqual(orderA);expect(before[f.itemPaths[0]].inventoryReservations[0].qty).toBe(4);expect(a.executionEvidence?.reservationAttemptId).not.toBe(b.executionEvidence?.reservationAttemptId);const updates=vi.spyOn(sdk.Transaction.prototype,'update');const start=updates.mock.calls.length;await expect(f.operations.releaseOrderStockReservation(a)).rejects.toThrow('예약');const {orderRawBatchOrderEvidence}=await import('../../shared/orderRawBatchAttempt');await expect(f.operations.applyItemStockDeltas(new Map([[f.ids[0],-2]]),[],a,{orderId:f.order.id,generation:f.generation,expectedOrderText:orderRawBatchOrderEvidence(f.order),patch:{inventoryOperation:null}})).rejects.toThrow('예약');expect(updates.mock.calls.length).toBe(start);expect(await readAll(f.selected)).toEqual(before);await f.operations.releaseOrderStockReservation(b);expect((await readAll(f.selected))[f.itemPaths[0]].inventoryReservations[0].qty).toBe(2);});
 
 });
