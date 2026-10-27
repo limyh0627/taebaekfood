@@ -1,17 +1,18 @@
+import {oemLedgerKg,type RawUsageKg} from '../../shared/orderProductionPlanner';
+export {oemLedgerKg} from '../../shared/orderProductionPlanner';
+export type {RawUsageKg} from '../../shared/orderProductionPlanner';
+import {stock3 as kg3} from '../../shared/orderStockReservationPlan';
 import type { Firestore } from 'firebase/firestore';
 import { dateOfLocal, today } from '../../shared/day';
 import type { AppNotification, Item, Order, OrderRawInventoryTrace, Partner } from '../../shared/types';
 import { companyOf } from '../../shared/types';
-import { baseRawName, toKg } from '../../constants/formula';
-import { isBoxStockItem, unpackQty, type OrderUnitInputs } from '../../shared/orderUnits';
+import { baseRawName } from '../../constants/formula';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { operationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
 import { lotMixSettingOf } from '../../shared/lotUtils';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../../shared/orderRawBatchAttempt';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
-
-export type RawUsageKg = Record<string, number>;
 
 export interface OrderRawInventoryDeps {
   actorName?: string;
@@ -22,26 +23,7 @@ export interface OrderRawInventoryDeps {
   runRawInventoryJob?: typeof runRawInventoryJob;
 }
 
-const kg3 = (value: number) => Math.round(value * 1000) / 1000;
 
-/**
- * 임가공 완제품 한 줄이 원료수불부에 남길 kg.
- * 박스는 BOM이 정한 개입수까지 `unpackQty`로 편 뒤 한 공식을 쓴다.
- */
-export function oemLedgerKg(
-  product: Pick<Item, 'id' | 'spec'>,
-  units: number,
-  formula: readonly { raw: string; ratio: number }[],
-  inputs?: OrderUnitInputs,
-): RawUsageKg {
-  const eachQty = unpackQty(units, product, isBoxStockItem(product, inputs), inputs);
-  const out: RawUsageKg = {};
-  for (const row of formula) {
-    const kg = toKg(product.spec || '', row.raw, eachQty) * row.ratio;
-    if (kg > 0) out[row.raw] = kg3((out[row.raw] ?? 0) + kg);
-  }
-  return out;
-}
 
 /** 주문 스냅샷에는 실제 Firestore 원장 문서 ID를 남긴다. */
 export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): string[] {
