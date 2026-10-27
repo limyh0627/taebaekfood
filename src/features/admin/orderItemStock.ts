@@ -1,6 +1,6 @@
 import {runInventoryWriterTransaction,captureInventoryWriterContext,prepareCatalogOrderCommit} from '../../shared/inventoryWriterProtocol';
 import {rawPressText} from '../../shared/rawPressAttempt';
-import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
+import {protectInventoryWriterPatch,protectItemInventoryPatch,inventoryWriterSame} from '../../shared/inventoryWriterProtocol';
 import {orderRawBatchOrderEvidence} from '../../shared/orderRawBatchAttempt';
 import {validateProductionRecordIndex} from '../../shared/orderProductionRecordPlan';
 import {advanceOrderInventoryStage,sameOrderInventoryGeneration,assertOrderInventoryGeneration,hasOrderInventoryGenerationCompletion,finalOrderInventoryRequestText,validateOrderInventoryConsumedLots,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
@@ -172,7 +172,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
           ? [...active, { operationId, orderId: order.id, qty, createdAt, state: 'processing' as const,...(generation?{generation}:{}) }]
           : active;
         // 만료되었거나 같은 작업의 낡은 예약도 이 transaction에서 걷어낸다.
-        if (qty > 0 || Array.isArray(data.inventoryReservations)) {
+        // 같은 예약 배열의 쓰기도 품목별 Rules 조회를 소모하므로 실제 변화만 한 거래에 남긴다.
+        if ((qty > 0 || Array.isArray(data.inventoryReservations)) && !inventoryWriterSame(data.inventoryReservations,next)) {
           tx.update(refs[index]!, protectItemInventoryPatch(data,{ inventoryReservations: next }));
         }
       });

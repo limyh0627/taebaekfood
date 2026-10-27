@@ -44,4 +44,45 @@ describe.skipIf(!enabled)('주문 projection 실제 Rules/query SDK (root 소유
  it('원날짜 없는 sentinel은 range 후보에 포함되지만 projection 없는 통제는 빠진다',async()=>{
   const missing={companyId:'taebaek',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1};const included=await seed({...missing,orderListProjection:deriveOrderListProjection(missing)}),excluded=await seed(missing);guard();const result=await sdk.getDocs(sdk.query(sdk.collection(context(),'orders'),sdk.where('companyId','==','taebaek'),sdk.where('orderListProjection.candidateDay','>=','2026-10-13')));guard();const ids=result.docs.map(doc=>doc.ref.path);expect(ids).toContain(included);expect(ids).not.toContain(excluded);
  });
+ it('조회 메타가 있는 주문의 구형 무관 patch는 메타와 기존 버전을 보존한다',async()=>{
+  const original={...base,orderListProjection:deriveOrderListProjection(base)},id=await seed(original),ref=sdk.doc(context(),id);
+  guard();await runtime.assertSucceeds(sdk.updateDoc(ref,{note:'구형 앱의 비고 수정'}));guard();
+  expect((await sdk.getDoc(ref)).data()).toEqual({...original,note:'구형 앱의 비고 수정'});guard();
+ });
+ it('기대 조회일이 달라지는 구형 상태·완료일 patch는 거절하고 전체 원문을 보존한다',async()=>{
+  const original={...base,orderListProjection:deriveOrderListProjection(base)},id=await seed(original),ref=sdk.doc(context(),id);
+  for(const patch of [{status:'PROCESSING',inventoryWriteRevision:2},{deliveredAt:'2026-10-16T00:00:00.000Z',inventoryWriteRevision:2}]){
+   guard();await runtime.assertFails(sdk.updateDoc(ref,patch));guard();expect((await sdk.getDoc(ref)).data()).toEqual(original);guard();
+  }
+ });
+ it('상태·날짜가 바뀌어도 최종 조회 값이 정답인 구형 요청은 허용한다',async()=>{
+  const complete={...base,orderListProjection:deriveOrderListProjection(base)},completeId=await seed(complete),completeRef=sdk.doc(context(),completeId);
+  const datePatch={deliveryDate:'2026-10-16T00:00:00.000Z'};
+  expect(deriveOrderListProjection({...complete,...datePatch})).toEqual(complete.orderListProjection);
+  guard();await runtime.assertSucceeds(sdk.updateDoc(completeRef,datePatch));guard();expect((await sdk.getDoc(completeRef)).data()).toEqual({...complete,...datePatch});guard();
+  const pending={...base,status:'PENDING',orderListProjection:deriveOrderListProjection({...base,status:'PENDING'})},pendingId=await seed(pending),pendingRef=sdk.doc(context(),pendingId);
+  const statusPatch={status:'PROCESSING',inventoryWriteRevision:2};
+  expect(deriveOrderListProjection({...pending,...statusPatch})).toEqual(pending.orderListProjection);
+  guard();await runtime.assertSucceeds(sdk.updateDoc(pendingRef,statusPatch));guard();expect((await sdk.getDoc(pendingRef)).data()).toEqual({...pending,...statusPatch});guard();
+ });
+ it('구형 전체 생성·replace에서 조회 메타 누락은 거절하고 기존 주문을 보존한다',async()=>{
+  const db=context(),created=path();guard();await runtime.assertFails(sdk.setDoc(sdk.doc(db,created),base));guard();expect((await sdk.getDoc(sdk.doc(db,created))).exists()).toBe(false);guard();
+  const original={...base,orderListProjection:deriveOrderListProjection(base)},id=await seed(original),ref=sdk.doc(db,id);
+  guard();await runtime.assertFails(sdk.setDoc(ref,base));guard();expect((await sdk.getDoc(ref)).data()).toEqual(original);guard();
+ });
+ it('새 writer의 상태·완료일 postimage 조회 메타 patch는 원문과 함께 저장한다',async()=>{
+  for(const change of [{status:'PROCESSING'},{deliveredAt:'2026-10-16T00:00:00.000Z'}]){
+   const original={...base,orderListProjection:deriveOrderListProjection(base)},id=await seed(original),ref=sdk.doc(context(),id),next={...original,...change,inventoryWriteRevision:2};
+   const patch={...change,inventoryWriteRevision:2,orderListProjection:deriveOrderListProjection(next)};
+   guard();await runtime.assertSucceeds(sdk.updateDoc(ref,patch));guard();expect((await sdk.getDoc(ref)).data()).toEqual({...original,...patch});guard();
+  }
+ });
+ it('올바른 postimage 조회 메타도 원래 writer 버전·회사 권한을 우회하지 못한다',async()=>{
+  const original={...base,orderListProjection:deriveOrderListProjection(base)},id=await seed(original),ref=sdk.doc(context(),id),change={deliveredAt:'2026-10-16T00:00:00.000Z'};
+  const projection=deriveOrderListProjection({...original,...change});
+  guard();await runtime.assertFails(sdk.updateDoc(ref,{...change,orderListProjection:projection}));guard();expect((await sdk.getDoc(ref)).data()).toEqual(original);guard();
+  const correctPatch={...change,orderListProjection:projection,inventoryWriteRevision:2};
+  guard();await runtime.assertFails(sdk.updateDoc(sdk.doc(context('punghoe'),id),correctPatch));guard();expect((await sdk.getDoc(ref)).data()).toEqual(original);guard();
+  await runtime.assertSucceeds(sdk.updateDoc(ref,correctPatch));guard();expect((await sdk.getDoc(ref)).data()).toEqual({...original,...correctPatch});guard();
+ });
 });

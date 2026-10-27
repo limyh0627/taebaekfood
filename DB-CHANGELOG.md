@@ -1,4 +1,17 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
+
+## 2026-10-27 — 기존 주문 조회 필드 추가 및 전수 확인
+
+사용자는 조회용 값의 목적과 업무 필드 불변 범위를 설명받은 뒤 추가를 승인했다. 최초 계획 `330f13a63465c859291536cfbc2b210c0d394e741417bf1e9cd8d1c442fca87b`의 태백641건 중637건에 `orderListProjection`만 단일 updateMask·원문 전체 확인·나노초 updateTime CAS로 추가했다. 변경을 발견한4건은 송신 전에 건너뛰었으며 거절·결과 불명은0건이다. 1건은 처음부터 무변경이었다.
+
+새 고정 시점 자료에서 건너뛴4건 중2건은 다른 정상 저장이 이미 조회 값을 추가했음을 확인했다. 남은2건은 원 승인 대상·원 commitAttempts0·개별 intent/receipt 부재를 확인한 뒤, 원계획을 덮지 않고 최신 원문·백업·새 계획 `68e35a2dc143f77af16c337567b9990b6efe0c771242928738f0ae5aec0a49c9`와 CAS로 보완했다. 새 대상·기존 조회 값 정정은 없으며 이번 작업의 직접 추가는 총639건이다.
+
+639개 저장 응답·기록 hash·직후 관측의 전체 업무 필드가 원문과 같고 조회 값만 추가됐음을 별도 오프라인 검사로 확인했다. 최종 회사별 고정 snapshot은 태백644건·풍회0건이며 집계=페이지=고유 문서 수가 일치했다. 태백 readTime `2026-10-27T04:41:59.482125Z`의644건 모두 조회 값 정합, 누락·불일치·미래 버전·손상·진행 작업0건이다. 원 승인 밖 새 주문2건은 정상 writer가 조회 값을 저장했으며 이 작업은 수정하지 않았다.
+
+원문·계획·백업·intent·receipt는 지정 privatework/order-list-projection 안에 보관하고 Git에는 포함하지 않는다. 결과와 검사 근거는 work/performance-orders-apply-result.json, completion-guard.json, apply-proof-check-result.json, completion-proof-check-result.json, completion-snapshot-result.json, completion-audit-result.json 및 completion-independent.json에 있다. 마지막 파일명들은 같은 performance-orders 접두사를 사용한다.
+
+strict Rules와 candidate 조회는 적용하지 않았고 전체 reader를 유지한다. 자동 운영 undo는 차단 상태이며 문제 시 조회 방식은 full로 유지하고 별도 승인·원문/버전 재검토 없이 조회 메타를 삭제하지 않는다. 최종 정합은 해당 고정 시점의 확인이며 이후 구형 writer까지 봉쇄했다는 뜻이 아니다.
+
 ## 2026-10-27 — 주문 조회 준비 writer·인덱스 배포
 
 사용자 승인으로 검수 소스9a610cb의 submitOrderCopyCommand와 orderEditCommand 두 함수, 양 Hosting 및 orders의 companyId+orderListProjection.candidateDay 오름차순 인덱스1개를 반영했다. 함수2 ACTIVE/nodejs22·각163파일 원격 archive 일치, 양 Hosting 11:06 KST FINALIZED·공개179파일 HTTP/크기/SHA 및 인덱스READY를 확인했다. 새 주문/수정의 기존 원자 거래에서 조회 메타를 함께 기록하며 업무 원문과 처리 영수증·멱등키는 유지한다.

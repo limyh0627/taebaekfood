@@ -6,6 +6,7 @@ import type { OrderProductLotMutation } from './orderProductLots';
 const memory = vi.hoisted(() => ({
   docs: new Map<string, Record<string, unknown>>(),
   transactionCount: 0,
+  updatePaths: [] as string[],
 }));
 
 type Ref = { path: string };
@@ -22,10 +23,10 @@ vi.mock('firebase/firestore', () => {
     const pending: { path: string; data: Record<string, unknown> }[] = [];
     const result = await callback({
       get: async (ref: Ref) => snapshot(ref),
-      update: (ref: Ref, patch: Record<string, unknown>) => pending.push({
-        path: ref.path,
-        data: { ...(memory.docs.get(ref.path) ?? {}), ...patch },
-      }),
+      update: (ref: Ref, patch: Record<string, unknown>) => {
+        memory.updatePaths.push(ref.path);
+        return pending.push({path: ref.path,data: { ...(memory.docs.get(ref.path) ?? {}), ...patch }});
+      },
     });
     for (const write of pending) memory.docs.set(write.path, write.data);
     return result;
@@ -47,6 +48,7 @@ const reservableOrder = (id: string, itemIds: string[]): Pick<Order, 'id' | 'ite
 beforeEach(() => {
   memory.docs.clear();
   memory.transactionCount = 0;
+  memory.updatePaths = [];
 });
 
 describe('주문 품목 재고 DB 경계', () => {
@@ -342,4 +344,48 @@ it('옛 세대의 재고 증감 없는 주문 변경도 실제 마지막 TX에�
  const patch={status:'PENDING',items:[{itemId:'a'}]},original=structuredClone(patch);
  const spy=vi.spyOn(catalogWriter,'prepareCatalogOrderCommit').mockImplementation(async(_db,_tx,_id,_before,value)=>({...value,catalogReferenceProofId:'legacy-proof'}));
  try{const stock=createOrderItemStockOperations({db:{} as never,allItems:[]});await stock.applyItemStockDeltas(new Map(),[],undefined,{orderId:'legacy',patch});expect(spy).toHaveBeenCalledOnce();expect(spy.mock.calls[0].slice(2)).toEqual(['legacy',before,original]);expect(memory.docs.get('orders/legacy')).toMatchObject({status:'PENDING',catalogReferenceProofId:'legacy-proof'});expect(patch).toEqual(original);}finally{spy.mockRestore();}
+});
+
+
+describe('예약 배열이 실제 바뀌는 품목만 저장한다',()=>{
+ const revision={inventoryWriterProtocolVersion:1,inventoryWriteRevision:7};
+ const operations=()=>createOrderItemStockOperations({db:{} as never,allItems:[item('a')]});
+ const reserve=(stock:ReturnType<typeof operations>,options:{preserveOwnAllocation?:boolean}={})=>stock.reserveOrderStock(reservableOrder('own',['a']),'next',()=>new Map(),[],options);
+ it('무소모 빈 배열은 거래를 읽되 품목과 원 revision을 쓰지 않는다',async()=>{
+  const before={stock:10,inventoryReservations:[],...revision};memory.docs.set('items/a',structuredClone(before));
+  const result=await reserve(operations());
+  expect(memory.transactionCount).toBe(1);expect(memory.updatePaths).toEqual([]);expect(memory.docs.get('items/a')).toEqual(before);
+  expect(result.stockSnapshot.get('a')).toBe(10);expect(result.quantities.size).toBe(0);expect(result.previousReservations.get('a')).toEqual([]);
+ });
+ it('타 주문의 같은 활성 예약과 가용량을 그대로 보존하고 쓰지 않는다',async()=>{
+  const other={operationId:'other-op',orderId:'other',qty:4,createdAt:new Date().toISOString(),state:'processing'};
+  const before={stock:10,inventoryReservations:[other],...revision};memory.docs.set('items/a',structuredClone(before));const result=await reserve(operations());
+  expect(memory.updatePaths).toEqual([]);expect(memory.docs.get('items/a')).toEqual(before);expect(result.stockSnapshot.get('a')).toBe(6);expect(result.previousReservations.get('a')).toEqual([]);
+ });
+ it('만료·무효 예약의 정리는 무소모여도 실제로 저장한다',async()=>{
+  const other={operationId:'other-op',orderId:'other',qty:2,createdAt:new Date().toISOString(),state:'processing'};
+  const expired={operationId:'expired',orderId:'old',qty:3,createdAt:new Date(Date.now()-2*60*60*1000).toISOString(),state:'processing'};
+  memory.docs.set('items/a',{stock:10,inventoryReservations:[other,expired,{qty:'비정상'}],...revision});const result=await reserve(operations());
+  expect(memory.updatePaths).toEqual(['items/a']);expect(memory.docs.get('items/a')).toEqual({stock:10,inventoryReservations:[other],inventoryWriterProtocolVersion:1,inventoryWriteRevision:8});expect(result.stockSnapshot.get('a')).toBe(8);
+ });
+ it('무소모 자기 예약 정리도 저장하고 복원 근거는 보존한다',async()=>{
+  const own={operationId:'own-old',orderId:'own',qty:3,createdAt:new Date().toISOString(),state:'processing'};
+  const other={operationId:'other-op',orderId:'other',qty:2,createdAt:new Date().toISOString(),state:'processing'};
+  memory.docs.set('items/a',{stock:10,inventoryReservations:[other,own],...revision});const result=await reserve(operations());
+  expect(memory.updatePaths).toEqual(['items/a']);expect(memory.docs.get('items/a')).toEqual({stock:10,inventoryReservations:[other],inventoryWriterProtocolVersion:1,inventoryWriteRevision:8});expect(result.previousReservations.get('a')).toEqual([own]);expect(result.stockSnapshot.get('a')).toBe(8);
+ });
+ it('추가 수량·새 시각·상태가 바뀐 예약은 정확한 새 원문으로 저장한다',async()=>{
+  const time='2026-10-15T12:00:00.000Z';vi.useFakeTimers();vi.setSystemTime(new Date(time));try{
+   const old={operationId:'next',orderId:'own',qty:2,createdAt:'2026-10-15T11:50:00.000Z',state:'allocated'};
+   memory.docs.set('items/a',{stock:10,inventoryReservations:[old],...revision});const stock=operations(),result=await stock.reserveOrderStock(reservableOrder('own',['a']),'next',()=>new Map([['a',-3]]));
+   expect(memory.updatePaths).toEqual(['items/a']);expect(memory.docs.get('items/a')).toEqual({stock:10,inventoryReservations:[{operationId:'next',orderId:'own',qty:3,createdAt:time,state:'processing'}],inventoryWriterProtocolVersion:1,inventoryWriteRevision:8});expect(result.previousReservations.get('a')).toEqual([old]);expect(result.quantities.get('a')).toBe(3);
+  }finally{vi.useRealTimers();}
+ });
+ it.each([false,true])('자기 확정 배정 보존 %s의 수량·가용량·복원 원문은 유지한다',async preserveOwnAllocation=>{
+  const own={operationId:'old',orderId:'own',qty:4,createdAt:new Date().toISOString(),state:'allocated'},other={operationId:'other-op',orderId:'other',qty:2,createdAt:new Date().toISOString(),state:'processing'};
+  memory.docs.set('items/a',{stock:10,inventoryReservations:[other,own],...revision});const stock=operations();const result=await stock.reserveOrderStock(reservableOrder('own',['a']),'next',()=>new Map([['a',-2]]),[],{preserveOwnAllocation});
+  expect(memory.updatePaths).toEqual(['items/a']);expect(result.stockSnapshot.get('a')).toBe(preserveOwnAllocation?4:8);expect(result.quantities.get('a')).toBe(preserveOwnAllocation?6:2);expect(result.previousReservations.get('a')).toEqual([own]);
+  const current=memory.docs.get('items/a')!;expect(current.stock).toBe(10);expect(current.inventoryWriteRevision).toBe(8);expect(current.inventoryReservations).toEqual([other,{operationId:'next',orderId:'own',qty:preserveOwnAllocation?6:2,createdAt:expect.any(String),state:'processing'}]);
+  await stock.releaseOrderStockReservation(result);expect(memory.docs.get('items/a')?.inventoryReservations).toEqual([other,own]);
+ });
 });

@@ -146,3 +146,110 @@ it('감사는 같은 밀리초라도 readTime 이후 수정된 나노초 버전�
 it('감사는 같은 시점의 다른 소수 자릿수를 허용하며 원문 버전을 정규화하지 않는다',()=>{
  const value=observation(),row=value.documents[0];row.createTime='2026-10-15T00:00:00Z';row.updateTime='2026-10-15T00:00:00.000000000Z';value.readTime='2026-10-15T00:00:00.000Z';row.fields.orderListProjection=projectionWire(row.fields);const before=structuredClone(value);expect(auditObservation(value)).toMatchObject({status:'audit-consistent',counts:{matched:1},candidateReady:false});expect(value).toEqual(before);
 });
+
+// 이 복사 모듈만 계측한다. 본 후보에는 인증 생성자나 카운터를 공개하지 않는다.
+async function instrumentExecution(){
+ const sourcePath='scripts/backfill-order-list-projection-20261027.mts';
+ mkdirSync(resolve('work/performance-orders-validation-candidate'),{recursive:true});
+ const file=resolve('work/performance-orders-validation-candidate/execution-proof-'+randomUUID()+'.mts');
+ let source=readFileSync(sourcePath,'utf8');
+ source=source.replaceAll("'../functions/src/shared/orderListProjection.ts'","'../../functions/src/shared/orderListProjection.ts'").replace("'./diag-zero-item-price-20261015.mts'","'../../scripts/diag-zero-item-price-20261015.mts'");
+ const signature='export function validatePlan(plan:Plan,approvedHash:string):void{';
+ expect(source.split(signature)).toHaveLength(2);
+ source=source.replace(signature,signature+'executionMeasurements.full++;');
+ source+='\nexport const executionMeasurements={full:0};\nexport {prepareExecution,validateExecution};\n';
+ writeFileSync(file,source);
+ return await import(/* @vite-ignore */file) as typeof import('./backfill-order-list-projection-20261027.mts')&{prepareExecution:(plan:any,hash:string)=>any;validateExecution:(plan:any,hash:string)=>void;executionMeasurements:{full:number}};
+}
+function cliFixture(f=fixture()){
+ const dir=resolve('privatework/order-list-projection/test-validation-candidate-'+randomUUID());mkdirSync(dir,{recursive:true});const file=resolve(dir,'input-plan.json');writeFileSync(file,JSON.stringify(f.plan));
+ const args=['--auth=firebase-cli','--project='+PROJECT,'--company=taebaek','--plan='+file,'--approved-plan-hash='+f.plan.hash,'--directory='+dir];
+ const values=new Map<string,any>();const writes:any[]=[];let reads=0;
+ const disk:Disk={read:name=>values.get(name)??null,writeExclusive:(name,value)=>{if(values.has(name))throw Error('exists');values.set(name,structuredClone(value));},flush:vi.fn()};
+ const fetcher=vi.fn(async(url:any,init:any)=>{
+  if(init.method==='POST'){const write=JSON.parse(init.body).writes[0];writes.push(write);const row=f.rows.get(write.update.name)!;expect(row.updateTime).toBe(write.currentDocument.updateTime);expect(write.updateMask.fieldPaths).toEqual(['orderListProjection']);expect(Object.keys(write.update.fields)).toEqual(['orderListProjection']);f.rows.set(write.update.name,{...row,fields:{...row.fields,...write.update.fields},updateTime:next});return new Response(JSON.stringify({writeResults:[{updateTime:next}]}));}
+  reads++;const key=ROOT+decodeURIComponent(String(url).split('/').at(-1)!);return new Response(JSON.stringify(f.rows.get(key)??null));
+ });
+ return {f,dir,file,args,values,writes,disk,fetcher,get reads(){return reads;}};
+}
+it('후보 공개 API에는 인증 생성자·표식·인증 Map이 없다',async()=>{
+ const publicApi=await import('./backfill-order-list-projection-20261027.mts');
+ for(const key of ['prepareExecution','validateExecution','executionSeals','executionMeasurements'])expect(publicApi).not.toHaveProperty(key);
+});
+it('인증 복제는 원본을 동결하지 않고 모든 중첩값을 동결한다',async()=>{
+ const h=await instrumentExecution(),f=fixture(),text=JSON.stringify(f.plan),prepared=h.prepareExecution(f.plan,f.plan.hash);
+ expect(prepared).not.toBe(f.plan);expect(Object.isFrozen(f.plan)).toBe(false);expect(Object.isFrozen(f.plan.entries[0].beforeWireDocument.fields)).toBe(false);
+ expect(Object.isFrozen(prepared)).toBe(true);expect(Object.isFrozen(prepared.entries[0].afterProjection.mapValue.fields)).toBe(true);expect(Object.isFrozen(prepared.observation.documents[0].fields.receipt.mapValue.fields)).toBe(true);
+ expect(()=>{prepared.entries[0].beforeWireDocument.fields.note={stringValue:'침범'};}).toThrow();expect(JSON.stringify(f.plan)).toBe(text);expect(h.executionMeasurements.full).toBe(1);
+ expect(()=>h.validateExecution(prepared,'0'.repeat(64))).toThrow();h.validateExecution(prepared,f.plan.hash);expect(h.executionMeasurements.full).toBe(1);
+});
+it.each(['getter','toJSON','prototype','proxy','symbol','cycle','sparse'])('인증의 %s 능동/비JSON 입력은 코드 실행 없이 차단한다',async kind=>{
+ const h=await instrumentExecution(),f=fixture();let called=0;const value:any=structuredClone(f.plan);
+ if(kind==='getter')Object.defineProperty(value,'evil',{enumerable:true,get(){called++;return true;}});
+ if(kind==='toJSON')value.toJSON=()=>{called++;return f.plan;};
+ if(kind==='prototype')Object.setPrototypeOf(value,{toJSON(){called++;return f.plan;}});
+ if(kind==='symbol')value[Symbol('표식')]=true;
+ if(kind==='cycle')value.evil=value;
+ if(kind==='sparse')delete value.entries[0];
+ const input=kind==='proxy'?new Proxy(value,{getPrototypeOf(){called++;return Object.prototype;},get(){called++;return undefined;}}):value;
+ expect(()=>h.prepareExecution(input,f.plan.hash)).toThrow();expect(called).toBe(0);expect(h.executionMeasurements.full).toBe(0);expect(Object.isFrozen(value)).toBe(false);
+});
+it('JSON 재로드·얕은 동결·공개 가짜 표식은 private 인증으로 승격되지 않는다',async()=>{
+ const h=await instrumentExecution(),f=fixture(),prepared=h.prepareExecution(f.plan,f.plan.hash),copy=JSON.parse(JSON.stringify(prepared));Object.freeze(copy);
+ const fetcher=vi.fn(async()=>new Response(JSON.stringify(doc()))),token=vi.fn(async()=>'합성');
+ const port=h.createRestPort({project:PROJECT,database:'(default)',company:'taebaek',plan:copy,approvedHash:copy.hash,allowedPaths:[doc().name],fetch:fetcher,tokenProvider:token});await port.get(doc().name);
+ expect(h.executionMeasurements.full).toBe(4); // 최초 인증1 + 재로드 일반객체의 생성/송신전/토큰뒤 검사3
+ copy.entries[0].afterProjection.mapValue.fields.candidateDay.stringValue='1900-01-01';await expect(port.get(doc().name)).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(1);
+ const fake:any=structuredClone(f.plan);fake.preparedExecution=true;expect(()=>h.createRestPort({project:PROJECT,database:'(default)',company:'taebaek',plan:fake,approvedHash:fake.hash,allowedPaths:[doc().name],fetch:fetcher,tokenProvider:token})).toThrow();expect(token).toHaveBeenCalledTimes(1);
+});
+it('CLI 보관 콜백에는 인증 원본 대신 가변 사본을 주고 사본 변조는 실제 쓰기에 반영하지 않는다',async()=>{
+ const h=await instrumentExecution(),c=cliFixture(),captured:any[]=[];const input=readFileSync(c.file,'utf8');
+ const disk:Disk={...c.disk,writeExclusive:(name,value:any)=>{c.disk.writeExclusive(name,value);if(name.startsWith('plan-')){captured.push(value);expect(Object.isFrozen(value)).toBe(false);value.entries[0].afterProjection.mapValue.fields.candidateDay.stringValue='1900-01-01';}if(name.startsWith('backup-')){captured.push(value);value.documents[0].fields.note={stringValue:'보관 콜백 변조'};}}};
+ const output=vi.fn();await h.runCli(['--apply',...c.args],{fetch:c.fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>disk});
+ expect(captured).toHaveLength(2);expect(output.mock.calls[0][0]).toMatchObject({status:'report-confirmed',confirmedAppliedDocuments:1});expect(c.writes).toHaveLength(1);expect(c.writes[0].update.fields.orderListProjection).toEqual(projectionWire(doc().fields));expect(c.f.rows.get(doc().name)!.fields).toEqual({...doc().fields,orderListProjection:projectionWire(doc().fields)});expect(readFileSync(c.file,'utf8')).toBe(input);
+ const token=vi.fn(async()=>'합성'),fetcher=vi.fn();expect(()=>h.createRestPort({project:PROJECT,database:'(default)',company:'taebaek',plan:captured[0],approvedHash:c.f.plan.hash,allowedPaths:[doc().name],fetch:fetcher,tokenProvider:token})).toThrow();expect(token).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled();
+});
+it('중첩 동결은 토큰 대기 중 인증 계획 변조의 실제 송신을 차단한다',async()=>{
+ const h=await instrumentExecution(),f=fixture(),prepared=h.prepareExecution(f.plan,f.plan.hash);let posts=0;
+ const fetcher=vi.fn(async(_url:any,init:any)=>{if(init.method==='POST'){posts++;return new Response(JSON.stringify({writeResults:[{updateTime:next}]}));}return new Response(JSON.stringify(doc()));});
+ const token=vi.fn(async()=>{prepared.entries[0].afterProjection.mapValue.fields.candidateDay.stringValue='1900-01-01';return '합성';});
+ const port=h.createRestPort({project:PROJECT,database:'(default)',company:'taebaek',plan:prepared,approvedHash:prepared.hash,allowedPaths:[doc().name],fetch:fetcher as any,tokenProvider:token});
+ const result=await h.applyPlan(prepared,prepared.hash,port,f.disk);expect(posts).toBe(0);expect(result[0].status).toBe('read-unknown');expect(fetcher).not.toHaveBeenCalled();expect(f.rows.get(doc().name)).toEqual(doc());
+});
+it.each([10,100,500])('CLI %s문서에서도 전체 계획 검증은 실행당1회이며 문서별 현재성 확인은 유지한다',async count=>{
+ const h=await instrumentExecution(),c=cliFixture(fixture(Array.from({length:count},(_,i)=>doc('계측-'+i)))),output=vi.fn();
+ await h.runCli(['--apply',...c.args],{fetch:c.fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>c.disk});
+ expect(h.executionMeasurements.full).toBe(1);expect(c.writes).toHaveLength(count);expect(c.reads).toBe(count*2);expect(output.mock.calls[0][0]).toMatchObject({status:'report-confirmed',confirmedAppliedDocuments:count,commitAttempts:count});
+ await h.runCli(['--inspect',...c.args],{fetch:c.fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>c.disk});
+ expect(h.executionMeasurements.full).toBe(2);expect(c.writes).toHaveLength(count);expect(c.reads).toBe(count*3);expect(output.mock.calls[1][0]).toMatchObject({status:'report-confirmed',commitAttempts:0,confirmedAppliedDocuments:count});
+});
+it('인증 CLI도 현재 원문/정확 ns가 달라졌으면 쓰지 않는다',async()=>{
+ const h=await instrumentExecution(),c=cliFixture();c.f.rows.get(doc().name)!.updateTime=next;c.f.rows.get(doc().name)!.fields.note={stringValue:'다른 업무'};const output=vi.fn();
+ await h.runCli(['--apply',...c.args],{fetch:c.fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>c.disk});expect(c.writes).toHaveLength(0);expect(c.reads).toBe(1);expect(output.mock.calls[0][0]).toMatchObject({status:'review-required',commitAttempts:0,counts:{'skip-re-dry':1}});expect(c.f.rows.get(doc().name)!.fields.note).toEqual({stringValue:'다른 업무'});
+});
+it('인증 CLI의 응답 유실 재진입은 실제 결과 조회만 하고 재송신하지 않는다',async()=>{
+ const h=await instrumentExecution(),c=cliFixture(),output=vi.fn();let posts=0;
+ const fetcher=vi.fn(async(url:any,init:any)=>{const result=await c.fetcher(url,init);if(init.method==='POST'){posts++;throw Error('응답 유실');}return result;});
+ const ports={fetch:fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>c.disk};await h.runCli(['--apply',...c.args],ports);await h.runCli(['--apply',...c.args],ports);
+ expect(posts).toBe(1);expect(c.writes).toHaveLength(1);expect(output.mock.calls.map(call=>call[0].status)).toEqual(['review-required','review-required']);expect(output.mock.calls[1][0]).toMatchObject({commitAttempts:0,confirmedAppliedDocuments:0,counts:{'desired-state-satisfied':1}});expect(h.executionMeasurements.full).toBe(2);
+});
+it.each(['path','mask','ns','projection'])('인증 REST도 %s 변조는 token/fetch 전에 차단한다',async kind=>{
+ const h=await instrumentExecution(),f=fixture(),plan=h.prepareExecution(f.plan,f.plan.hash),token=vi.fn(async()=>'합성'),fetcher=vi.fn();
+ const port=h.createRestPort({project:PROJECT,database:'(default)',company:'taebaek',plan,approvedHash:plan.hash,allowedPaths:[doc().name],fetch:fetcher,tokenProvider:token});
+ const write:Write={update:{name:doc().name,fields:{orderListProjection:projectionWire(doc().fields)}},updateMask:{fieldPaths:['orderListProjection']},currentDocument:{updateTime:old}};
+ if(kind==='path')write.update.name=ROOT+'계획 밖';if(kind==='mask')write.updateMask.fieldPaths=['note'];if(kind==='ns')write.currentDocument.updateTime=next;if(kind==='projection')write.update.fields.orderListProjection.mapValue.fields.candidateDay.stringValue='1900-01-01';
+ await expect(port.commitSingle(write)).rejects.toThrow();expect(token).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled();expect(h.executionMeasurements.full).toBe(1);
+});
+it('인증 CLI의 v2 선택 계획도 선택 밖 문서와 원 hash를 그대로 보존한다',async()=>{
+ const a=stale('인증 수리'),b=stale('비선택'),h=await instrumentExecution(),c=cliFixture(fixture([a,b],[a.name])),output=vi.fn(),text=readFileSync(c.file,'utf8');
+ await h.runCli(['--apply',...c.args],{fetch:c.fetcher as any,tokenProvider:async()=>'합성',output,diskFactory:()=>c.disk});
+ expect(c.writes).toHaveLength(1);expect(c.writes[0].update.name).toBe(a.name);expect(c.f.rows.get(b.name)).toEqual(b);expect(c.f.rows.get(a.name)!.fields).toEqual({...a.fields,orderListProjection:projectionWire(a.fields)});expect(readFileSync(c.file,'utf8')).toBe(text);expect(h.executionMeasurements.full).toBe(1);expect(Object.isFrozen(c.f.plan)).toBe(false);expect(output.mock.calls[0][0]).toMatchObject({status:'report-confirmed',confirmedAppliedDocuments:1});
+});
+it('기존 최대20중첩 typed wire도 인증 복제로 입력 범위를 좁히지 않는다',async()=>{
+ const h=await instrumentExecution(),row=doc('최대 중첩');let value:any={stringValue:'원문'};for(let i=0;i<20;i++)value=i%2?{mapValue:{fields:{child:value}}}:{arrayValue:{values:[value]}};row.fields.deep=value;
+ const plan=buildPlan(observation([row]));expect(()=>validatePlan(plan,plan.hash)).not.toThrow();const prepared=h.prepareExecution(plan,plan.hash);expect(prepared).toEqual(plan);expect(Object.isFrozen(prepared.entries[0].beforeWireDocument.fields.deep)).toBe(true);expect(Object.isFrozen(plan)).toBe(false);
+});
+it('관측의 깊은 추가 JSON 메타도 기존 validator 허용 범위를 유지한다',async()=>{
+ const h=await instrumentExecution(),input:any=observation();let metadata:any='원문';for(let i=0;i<200;i++)metadata={child:metadata};input.sourceMetadata=metadata;
+ const plan=buildPlan(input);expect(()=>validatePlan(plan,plan.hash)).not.toThrow();const prepared=h.prepareExecution(plan,plan.hash);expect(prepared).toEqual(plan);expect(Object.isFrozen(prepared.observation)).toBe(true);expect(Object.isFrozen(plan)).toBe(false);
+});
