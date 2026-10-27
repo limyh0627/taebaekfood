@@ -35,7 +35,15 @@ it('candidate는 projection 형태를 검증하고 상한 없이 미래와 senti
 const compile=(source:string)=>ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
 function actualCode(){
  const day=ts.createSourceFile('day.ts',readFileSync('src/shared/day.ts','utf8'),ts.ScriptTarget.Latest,true);const fn=day.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='dateOfLocal');if(!fn)throw Error('실 dateOfLocal 없음');
- const hook=ts.createSourceFile('hook.ts',readFileSync('src/shared/hooks/useAppData.ts','utf8'),ts.ScriptTarget.Latest,true);const matches:ts.ArrowFunction[]=[];function visit(node:ts.Node){if(ts.isArrowFunction(node)&&node.getText(hook).startsWith('order => order.status !== OrderStatus.DELIVERED'))matches.push(node);ts.forEachChild(node,visit);}visit(hook);if(matches.length!==1)throw Error('실 predicate 유일성');
+ const hook=ts.createSourceFile('hook.ts',readFileSync('src/shared/hooks/useOrderListRead.ts','utf8'),ts.ScriptTarget.Latest,true);const matches:ts.ArrowFunction[]=[];
+ function visit(node:ts.Node){
+  if(ts.isArrowFunction(node)&&node.parameters.length===1&&ts.isIdentifier(node.parameters[0].name)&&ts.isBinaryExpression(node.body)&&node.body.operatorToken.kind===ts.SyntaxKind.BarBarToken){
+   const left=node.body.left;
+   if(ts.isBinaryExpression(left)&&left.operatorToken.kind===ts.SyntaxKind.ExclamationEqualsEqualsToken&&ts.isPropertyAccessExpression(left.left)&&ts.isIdentifier(left.left.expression)&&left.left.expression.text===node.parameters[0].name.text&&left.left.name.text==='status'&&ts.isPropertyAccessExpression(left.right)&&ts.isIdentifier(left.right.expression)&&left.right.expression.text==='OrderStatus'&&left.right.name.text==='DELIVERED')matches.push(node);
+  }
+  ts.forEachChild(node,visit);
+ }
+ visit(hook);if(matches.length!==1)throw Error('실 predicate 유일성');
  return {projection:compile(readFileSync('functions/src/shared/orderListProjection.ts','utf8')),day:compile(fn.getText(day)),predicate:compile('const predicate='+matches[0].getText(hook))};
 }
 it.each([['UTC',0,0],['Asia/Seoul',-540,-540],['Pacific/Kiritimati',-840,-840],['Etc/GMT+12',720,720],['America/Los_Angeles',480,420]] as const)('실제 자식 Date TZ=%s에서 원 predicate 참이면 query 후보에 포함된다',(zone,winter,summer)=>{

@@ -3,14 +3,18 @@ import {authReady} from '../firebase';
 import {dateOfLocal} from '../day';
 import {companyOf,OrderStatus,type CompanyId,type Order} from '../types';
 import {subscribeOrderList,orderListReadError} from '../services/orderListRead';
+import {orderListCandidateFloor} from '../orderListProjection';
 export interface OrderListReadState {status:'idle'|'loading'|'refreshing'|'ready'|'error';source:'none'|'cache'|'server';hasPendingWrites:boolean;serverReady:boolean;hasObserved:boolean;errorCode:string;error:string;retry():void}
 export interface OrderListOwner {scope:number;uid:string;isCurrent:()=>boolean}
 type State={key:string;rows:Order[];read:Omit<OrderListReadState,'retry'>};
 const initial=(key:string,enabled:boolean):State=>({key,rows:[],read:{status:enabled?'loading':'idle',source:'none',hasPendingWrites:false,serverReady:false,hasObserved:false,errorCode:'',error:''}});
+// 운영 전환은 이 명시 정책을 검수·배포하는 절차로만 수행한다. 기기 설정으로 자동 전환하지 않는다.
+const companyReadMode:Readonly<Record<CompanyId,'legacy-full'|'candidate-v1'>>=Object.freeze({taebaek:'candidate-v1',punghoe:'legacy-full'});
 export function useOrderListRead({companyId,enabled,ordersMonths,owner,onSettled}:{companyId:CompanyId;enabled:boolean;ordersMonths:number;owner:OrderListOwner;onSettled?:()=>void}){
+ const mode=companyReadMode[companyId];
  const ownerKey=JSON.stringify([companyId,enabled,owner.scope,owner.uid]);
- const key=JSON.stringify([ownerKey,ordersMonths]);
- const captured=useRef({key,companyId,enabled,ordersMonths,owner});if(captured.current.key!==key)captured.current={key,companyId,enabled,ordersMonths,owner};
+ const key=JSON.stringify([ownerKey,ordersMonths,mode]);
+ const captured=useRef({key,companyId,enabled,ordersMonths,mode,owner});if(captured.current.key!==key)captured.current={key,companyId,enabled,ordersMonths,mode,owner};
  const selected=captured.current, mounted=useRef(false),run=useRef<object|null>(null),unsubscribe=useRef<(()=>void)|null>(null),settled=useRef(new Set<string>()),settledCallback=useRef(onSettled);settledCallback.current=onSettled;
  const [revision,setRevision]=useState(0),[state,setState]=useState(()=>initial(ownerKey,enabled&&!!owner.uid)),observed=useRef(state);
  const publish=(next:State)=>{observed.current=next;setState(next);};
@@ -26,7 +30,7 @@ export function useOrderListRead({companyId,enabled,ordersMonths,owner,onSettled
   void authReady.then(()=>{
    if(!current())return;
    const cutoff=dateOfLocal(new Date(Date.now()-ordersMonths*30*86400000).toISOString());
-   const stop=subscribeOrderList({companyId,mode:'legacy-full'},snapshot=>{
+   const stop=subscribeOrderList({companyId,mode,...(mode==='candidate-v1'?{candidateFloor:orderListCandidateFloor(cutoff)}:{})},snapshot=>{
     if(!current())return;
     const rows=snapshot.rows.filter(order=>order.status!==OrderStatus.DELIVERED||dateOfLocal(order.deliveredAt||order.deliveryDate||order.createdAt)>=cutoff).filter(order=>companyOf(order)===companyId);
     const {fromCache,hasPendingWrites}=snapshot.metadata;
