@@ -1,0 +1,80 @@
+import {stock3} from './shared/orderProductionDomain';
+import * as admin from 'firebase-admin';
+import {HttpsError,onCall} from 'firebase-functions/v2/https';
+import {retirementText,retirementHash} from './orderRequestRetirement';
+import {operationDocId,commandHash} from './shared/rawInventoryCore';
+export interface ExecutionInspectGeneration {contractVersion:1;companyId:'taebaek'|'punghoe';orderId:string;operationId:string;startedAt:string;actorUid:string}
+export interface ExecutionInspectInput {version:1;generation:ExecutionInspectGeneration;claimRequestHash?:string}
+export type ExecutionInspectStatus='completed'|'processing'|'failed'|'different'|'unknown';
+export type ExecutionInspectReason='order-missing'|'generation-different'|'claim-missing'|'claim-invalid'|'raw-missing'|'raw-invalid'|'production-missing'|'production-invalid'|'final-missing'|'final-invalid'|'read-limit'|'evidence-too-large'|'read-failed';
+export interface ExecutionInspectEvidence {state:'matched'|'missing'|'unknown'|'different';count:number;reasonCodes:ExecutionInspectReason[]}
+export interface ExecutionInspectResult {version:1;generation:ExecutionInspectGeneration;claimRequestHash?:string;status:ExecutionInspectStatus;canResume:false;evidence:Record<'claim'|'raw'|'production'|'final',ExecutionInspectEvidence>;reasonCodes:ExecutionInspectReason[];observedAt:string}
+type Row=Record<string,any>;
+const record=(value:unknown):value is Row=>!!value&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;
+const plain=(value:unknown,seen=new Set<object>(),depth=0):boolean=>{if(depth>100)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;if(typeof value==='number')return Number.isFinite(value);if(!value||typeof value!=='object'||seen.has(value)||!Array.isArray(value)&&!record(value))return false;seen.add(value);const ok=Object.values(value).every(child=>plain(child,seen,depth+1));seen.delete(value);return ok;};
+const id=(value:unknown):value is string=>typeof value==='string'&&!!value&&value===value.trim()&&value!=='.'&&value!=='..'&&!/^__.*__$/.test(value)&&!value.includes('/')&&Buffer.byteLength(value,'utf8')<=1500;
+const keys=(row:Row,allowed:readonly string[])=>Object.keys(row).every(key=>allowed.includes(key));
+const same=(left:unknown,right:unknown)=>retirementText(left)===retirementText(right);
+export function normalizeExecutionInspectInput(input:unknown,actor:{uid:string;token:Row}|null|undefined):ExecutionInspectInput{
+ if(!actor?.uid)throw new HttpsError('unauthenticated','직원 로그인을 확인해 주세요.');
+ if(!record(input)||!plain(input)||Buffer.byteLength(JSON.stringify(input))>16384||!keys(input,['version','generation','claimRequestHash'])||input.version!==1||!record(input.generation))throw new HttpsError('invalid-argument','조회할 원작업 정보를 확인해 주세요.');
+ const g=input.generation;
+ if(!keys(g,['contractVersion','companyId','orderId','operationId','startedAt','actorUid'])||Object.keys(g).length!==6||g.contractVersion!==1||!['taebaek','punghoe'].includes(g.companyId)||!id(g.orderId)||![g.operationId,g.actorUid].every(value=>typeof value==='string'&&value.length>0&&value===value.trim())||typeof g.startedAt!=='string'||g.startedAt!==g.startedAt.trim()||!Number.isFinite(Date.parse(g.startedAt))||input.claimRequestHash!==undefined&&(typeof input.claimRequestHash!=='string'||!/^[a-f0-9]{64}$/.test(input.claimRequestHash)))throw new HttpsError('invalid-argument','조회할 최초 세대와 식별자를 확인해 주세요.');
+ if(!record(actor.token)||actor.uid!==g.actorUid||actor.token.companyId!==g.companyId||typeof actor.token.employeeId!=='string'||!actor.token.employeeId.trim())throw new HttpsError('permission-denied','최초 작업을 시작한 회사 직원 계정으로 확인해 주세요.');
+ return JSON.parse(JSON.stringify(input)) as ExecutionInspectInput;
+}
+const observed=(state:ExecutionInspectEvidence['state'],count=0,...reasonCodes:ExecutionInspectReason[]):ExecutionInspectEvidence=>({state,count,reasonCodes});
+/** 실행 명세를 생성하거나 잠금을 바꾸지 않는다. 읽은 영수증의 부재도 미실행 증거로 해석하지 않는다. */
+export async function executeOrderInventoryExecutionInspect(db:admin.firestore.Firestore,actor:{uid:string;token:Row}|null|undefined,value:unknown):Promise<ExecutionInspectResult>{
+ const input=normalizeExecutionInspectInput(value,actor),g=input.generation;
+ const base=():ExecutionInspectResult=>({...input,status:'unknown',canResume:false,evidence:{claim:observed('unknown'),raw:observed('unknown'),production:observed('unknown'),final:observed('unknown')},reasonCodes:[],observedAt:new Date().toISOString()});
+ try{return await db.runTransaction(async tx=>{
+  const result=base(),cache=new Map<string,admin.firestore.DocumentSnapshot>();let bytes=0;
+  const read=async(collection:string,documentId:string)=>{const path=collection+'/'+documentId;if(cache.has(path))return cache.get(path)!;if(cache.size>=53)throw Object.assign(Error(),{inspectReason:'read-limit'});const snapshot=await tx.get(db.collection(collection).doc(documentId));cache.set(path,snapshot);if(snapshot.exists){const encoded=JSON.stringify(snapshot.data());bytes+=Buffer.byteLength(encoded);if(bytes>1048576)throw Object.assign(Error(),{inspectReason:'evidence-too-large'});}return snapshot;};
+  const finish=(status:ExecutionInspectStatus)=>{result.status=status;result.reasonCodes=[...new Set(Object.values(result.evidence).reduce<ExecutionInspectReason[]>((all,row)=>all.concat(row.reasonCodes),[]))];return result;};
+  const order=await read('orders',g.orderId);if(!order.exists){result.reasonCodes=['order-missing'];return result;}const live=order.data()!;
+  if(live.companyId!==g.companyId)throw new HttpsError('permission-denied','현재 회사의 주문을 확인하지 못했습니다.');
+  const operation=live.inventoryOperation,marker=live.inventoryGenerationCompletion;
+  const operationGeneration=operation?{contractVersion:operation.contractVersion,companyId:live.companyId,orderId:g.orderId,operationId:operation.id,startedAt:operation.startedAt,actorUid:operation.actorUid}:null;
+  if(operation&&!same(operationGeneration,g)||!operation&&marker&&!same(marker.generation,g)){result.evidence.final=observed('different',0,'generation-different');return finish('different');}
+  let relationProblem=false;
+  if(live.retirementId!==undefined){if(!id(live.retirementId)||!/^[a-f0-9]{64}$/.test(live.retirementId)){result.evidence.claim=observed('unknown',0,'claim-invalid');relationProblem=true;}else{
+   const terminal=await read('orderRequestRetirements',live.retirementId),saved=terminal.data(),claim=saved?.firstClaim;let request:Row|undefined;
+   try{if(claim&&typeof claim.requestText==='string')request=JSON.parse(claim.requestText);}catch{}
+   const claimGeneration=request?.operation?{contractVersion:request.operation.contractVersion,companyId:request.companyId,orderId:request.orderId,operationId:request.operation.id,startedAt:request.operation.startedAt,actorUid:request.actorUid}:null;
+   const matched=!!saved&&saved.status==='retired'&&saved.action==='allow-new-claim'&&saved.allowNewClaim===true&&saved.companyId===g.companyId&&saved.actorUid===g.actorUid&&saved.orderId===g.orderId&&saved.retirementId===live.retirementId&&saved.consumedBy===g.operationId&&same(claim?.generation,g)&&same(claimGeneration,g)&&!!request&&request.version===1&&request.retirementId===live.retirementId&&typeof request.expectedStatus==='string'&&typeof request.orderText==='string'&&request.operation?.actorUid===g.actorUid&&request.operation?.productionRecordContractVersion===1&&request.operation?.state==='processing'&&typeof request.operation?.actor==='string'&&!!request.operation.actor.trim()&&typeof request.operation?.targetStatus==='string'&&!!request.operation.targetStatus&&['line','status'].includes(request.operation?.kind)&&(request.operation.kind!=='line'||id(request.operation.lineId))&&plain(request)&&retirementText(request)===claim.requestText&&retirementHash(claim.requestText)===claim.requestHash&&(input.claimRequestHash===undefined||input.claimRequestHash===claim.requestHash);
+   result.evidence.claim=matched?observed('matched',1):observed(terminal.exists?'unknown':'missing',0,terminal.exists?'claim-invalid':'claim-missing');if(!matched)relationProblem=true;
+  }}else if(input.claimRequestHash!==undefined){relationProblem=true;result.evidence.claim=observed('unknown',0,'claim-invalid');}
+  const rawId='order-raw-batch:v1:'+operationDocId(g.operationId),job=await read('rawInventoryJobs',rawId),raw=job.data();let rawRequest:Row|undefined;
+  try{if(typeof raw?.requestText==='string')rawRequest=JSON.parse(raw.requestText);}catch{}
+  const rawMatched=!!raw&&raw.id===rawId&&raw.atomicVersion===1&&raw.status==='complete'&&raw.companyId===g.companyId&&raw.actorUid===g.actorUid&&raw.source?.type==='production'&&raw.source.id===g.orderId&&!!rawRequest&&plain(rawRequest)&&rawRequest.version===1&&record(rawRequest.business)&&typeof rawRequest.business.orderText==='string'&&!!rawRequest.business.orderText&&record(rawRequest.plan)&&same(rawRequest.generation,g)&&rawRequest.jobId===rawId&&rawRequest.recordedAt===g.startedAt&&raw.createdAt===g.startedAt&&raw.completedAt===g.startedAt&&retirementText(rawRequest)===raw.requestText&&retirementHash(raw.requestText)===raw.requestHash&&Array.isArray(rawRequest.legacyJobIds)&&rawRequest.legacyJobIds.every(id)&&new Set(rawRequest.legacyJobIds).size===rawRequest.legacyJobIds.length&&Array.isArray(rawRequest.commands)&&rawRequest.commands.length*3+2<=500&&new Set(rawRequest.commands.map((row:Row)=>row.command?.operationId)).size===rawRequest.commands.length&&Array.isArray(raw.results)&&raw.results.length===rawRequest.commands.length&&same(raw.expectedOperationIds,rawRequest.commands.map((row:Row)=>row.command?.operationId))&&rawRequest.commands.every((row:Row,i:number)=>{const c=row?.command,r=raw.results[i],m=r?.movement;return record(c)&&c.companyId===g.companyId&&id(c.rawItemId)&&id(c.operationId)&&['consume','ledger-consume'].includes(c.kind)&&Number.isFinite(c.kg)&&c.kg>0&&typeof c.effectiveAt==='string'&&Number.isFinite(Date.parse(c.effectiveAt))&&c.source?.id===g.orderId&&c.source.type===(c.kind==='consume'?'production':'oem')&&r?.status==='applied'&&m?.id===operationDocId(c.operationId)&&m.operationId===c.operationId&&m.companyId===g.companyId&&m.rawItemId===c.rawItemId&&m.commandHash===commandHash(c as Parameters<typeof commandHash>[0])&&m.kind===c.kind&&m.effectiveAt===c.effectiveAt&&same(m.source,c.source)&&m.recordedAt===g.startedAt&&m.reportedDeltaKg===-stock3(c.kg)&&Number.isFinite(m.appliedDeltaKg)&&(m.appliedDeltaKg===0||m.appliedDeltaKg===m.reportedDeltaKg)&&Number.isSafeInteger(m.sequence)&&m.sequence>0&&Number.isFinite(m.balanceAfterKg);});
+  result.evidence.raw=rawMatched?observed('matched',1):observed(job.exists?'unknown':'missing',0,job.exists?'raw-invalid':'raw-missing');if(job.exists&&!rawMatched)relationProblem=true;
+  const plan=rawMatched?rawRequest?.plan?.productionRecords:undefined,index=live.productionRecordIndex;
+  const pointers=record(index)?Object.entries(index).filter(([,entry])=>record(entry)&&same(entry.generation,g)):[];
+  let records:Row[]=[],productionMatched=false;
+  if(plan!==undefined){if(!record(plan)||plan.version!==1||!same(plan.generation,g)||plan.recordedAt!==g.startedAt||!Array.isArray(plan.records)||!record(plan.previousIndex)){relationProblem=true;result.evidence.production=observed('unknown',0,'production-invalid');}else records=plan.records;}
+  const expectedRecordId=(lineId:string)=>'pr-gen1:'+operationDocId(retirementText({generation:g,lineId}));
+  const pointerValid=pointers.every(([lineId,entry])=>id(lineId)&&same(entry.generation,g)&&entry.recordId===expectedRecordId(lineId)&&typeof entry.requestHash==='string'&&/^[a-f0-9]{64}$/.test(entry.requestHash));
+  const planRecordsValid=records.every(row=>record(row)&&id(row.lineId)&&row.companyId===g.companyId&&row.orderId===g.orderId&&same(row.generation,g)&&row.id===expectedRecordId(row.lineId)&&id(row.itemId)&&typeof row.itemName==='string'&&Number.isFinite(row.finishedQty)&&row.finishedQty>=0&&row.createdAt===g.startedAt);
+  if(!pointerValid||!planRecordsValid){result.evidence.production=observed('unknown',0,'production-invalid');return finish('unknown');}
+  const ids=plan?records.map(row=>row.id):pointers.map(([lineId])=>expectedRecordId(lineId));
+  if(ids.length>50||new Set(ids).size!==ids.length){result.evidence.production=observed('unknown',0,ids.length>50?'read-limit':'production-invalid');return finish('unknown');}
+  if(ids.some(value=>!id(value))){result.evidence.production=observed('unknown',0,'production-invalid');return finish('unknown');}
+  let observedCount=0,allRecords=true;
+  for(let i=0;i<ids.length;i++){const recordSnapshot=await read('productionRecords',ids[i]),data=recordSnapshot.data();if(!recordSnapshot.exists){allRecords=false;continue;}observedCount++;const expected=records[i];if(!data||data.companyId!==g.companyId||data.orderId!==g.orderId||!same(data.generation,g)||typeof data.lineId!=='string'||!id(data.lineId)||data.id!==ids[i]||ids[i]!=='pr-gen1:'+operationDocId(retirementText({generation:g,lineId:data.lineId}))){allRecords=false;relationProblem=true;continue;}if(plan){const {inventoryWriterProtocolVersion:_v,inventoryWriteRevision:_r,...business}=data;if(!same(business,expected))allRecords=false;const pointer=index?.[data.lineId];if(!pointer||pointer.recordId!==ids[i]||!same(pointer.generation,g)||pointer.requestHash!==raw!.requestHash)allRecords=false;}}
+  if(plan&&allRecords){const expectedReceipt={version:1,generation:g,requestHash:raw!.requestHash,recordIds:ids,completedAt:g.startedAt};productionMatched=same(raw!.productionRecordReceipt,expectedReceipt)&&pointers.length===ids.length&&pointers.every(([,pointer])=>ids.includes(pointer.recordId));}
+  if(plan||ids.length)result.evidence.production=productionMatched?observed('matched',observedCount):observed('unknown',observedCount,'production-invalid');
+  if(plan&&!productionMatched)relationProblem=true;
+  if(ids.length&&!plan)relationProblem=true;
+  let finalRequest:Row|undefined;try{if(typeof marker?.requestText==='string')finalRequest=JSON.parse(marker.requestText);}catch{}
+  const smallId=(v:unknown)=>id(v)&&(v as string).length<=512;
+  const finalMatched=live.inventoryOperation==null&&!!marker&&same(marker.generation,g)&&!!finalRequest&&plain(finalRequest)&&same(finalRequest.generation,g)&&retirementText(finalRequest)===marker.requestText&&Array.isArray(finalRequest.deltas)&&finalRequest.deltas.every((row:unknown)=>Array.isArray(row)&&row.length===2&&smallId(row[0])&&Number.isFinite(row[1]))&&Array.isArray(finalRequest.lotItemIds)&&finalRequest.lotItemIds.every(smallId)&&record(finalRequest.patch)&&!['inventoryGenerationCompletion','companyId','id'].some(key=>key in finalRequest!.patch)&&Array.isArray(marker.consumedLots)&&plain(marker.consumedLots)&&marker.consumedLots.every((row:unknown)=>record(row)&&smallId(row.itemId)&&smallId(row.lotId)&&Number.isFinite(row.qty)&&row.qty>0)&&retirementText(marker.consumedLots)===marker.consumedLotsText&&typeof marker.completedAt==='string'&&marker.completedAt===marker.completedAt.trim()&&Number.isFinite(Date.parse(marker.completedAt))&&(live.id===undefined||live.id===g.orderId);
+  result.evidence.final=finalMatched?observed('matched',1):observed(marker?'unknown':'missing',0,marker?'final-invalid':'final-missing');
+  if(finalMatched&&!relationProblem&&rawMatched&&productionMatched)return finish('completed');
+  if(marker)return finish('unknown');
+  if(relationProblem)return finish('unknown');
+  if(operation&&same(operationGeneration,g)&&['processing','failed'].includes(operation.state))return finish(operation.state);
+  return finish('unknown');
+ },{readOnly:true});}catch(error){if(error instanceof HttpsError)throw error;const result=base(),reason=(error as {inspectReason?:ExecutionInspectReason})?.inspectReason;result.reasonCodes=[reason==='read-limit'||reason==='evidence-too-large'?reason:'read-failed'];return result;}
+}
+export const inspectOrderInventoryExecutionCommand=onCall({region:'asia-northeast3'},request=>executeOrderInventoryExecutionInspect(admin.firestore(),request.auth,request.data));

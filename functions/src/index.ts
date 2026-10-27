@@ -260,3 +260,5 @@ export { productionRecordCommand } from './productionRecordCommand';
 
 export { partnerEditCommand } from './partnerEditCommand';
 export { palletTransactionCommand } from './palletTransactionCommand';
+
+export {inspectOrderInventoryExecutionCommand} from './orderInventoryExecutionInspect';

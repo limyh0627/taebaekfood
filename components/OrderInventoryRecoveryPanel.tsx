@@ -8,13 +8,16 @@ import {companyOf,type CompanyId,type Order} from '../src/shared/types';
 import {appConfirm} from '../src/shared/components/appDialog';
 import {readRetainedRetirementClaimEvidence,clearPendingOrderInventoryRecovery,recoverOrderInventoryLock,readOrderInventoryRecoveryEvidence,type OrderInventoryRecoveryEvidence,type OrderInventoryEvidenceScope,type OrderInventoryResumeRun,type OrderInventoryRecoveryResult,type PendingOrderInventoryRecovery} from '../src/shared/services/orderInventoryRecoveryService';
 interface Props {companyId:CompanyId;actorUid:string;orders:readonly Order[];pending?:readonly PendingOrderInventoryRecovery[];retirementClaims?:readonly RetainedRetirementClaimDescriptor[];isCurrentActor?:()=>boolean;onRecovered:(result:OrderInventoryRecoveryResult,expectedSaved:string|null)=>void;onResumeLine?:(run:OrderInventoryResumeRun)=>Promise<unknown>|unknown}
-type Entry={orderId:string;partnerName:string;operationId:string;startedAt:string;order?:Order;pending?:PendingOrderInventoryRecovery;retirement?:RetainedRetirementClaimDescriptor};
+type Entry={ownerToken?:object;orderId:string;partnerName:string;operationId:string;startedAt:string;order?:Order;pending?:PendingOrderInventoryRecovery;retirement?:RetainedRetirementClaimDescriptor};
 const entryKey=(entry:Entry)=>entry.orderId+':'+entry.operationId+':'+entry.startedAt;
-type Notice={message:string;checks?:readonly string[];failure?:string};
+type Notice={ownerToken?:object;message:string;checks?:readonly string[];failure?:string};
 const blockedNotice=(result:OrderInventoryRecoveryResult):Notice=>({message:'잠금을 유지합니다. '+orderInventoryErrorMessage(result.reason),checks:orderInventoryRecoveryChecks(result.reason),failure:result.failureMessage?orderInventoryErrorMessage(result.failureMessage):undefined});
 export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,pending=[],retirementClaims=[],isCurrentActor=()=>true,onRecovered,onResumeLine}:Props){
  const [messages,setMessages]=useState<Record<string,Notice>>({}),[busy,setBusy]=useState<string|null>(null),[selected,setSelected]=useState<Entry|null>(null),[evidence,setEvidence]=useState<OrderInventoryRecoveryEvidence|null>(null);
  const inFlight=useRef<symbol|null>(null),scope=useRef('');scope.current=companyId+':'+actorUid;
+ const identity=useRef({key:companyId+':'+actorUid,token:{}}),flightOwner=useRef(identity.current.token);
+ if(identity.current.key!==companyId+':'+actorUid){identity.current={key:companyId+':'+actorUid,token:{}};inFlight.current=null;}
+ const ownerToken=identity.current.token,visibleBusy=flightOwner.current===ownerToken?busy:null;
  const getSignal=useOutputScope(companyId,'order-recovery:'+actorUid);
  useEffect(()=>{scope.current=companyId+':'+actorUid;return()=>{scope.current='closed';};},[companyId,actorUid]);
  const latest=useRef(orders);latest.current=orders;
@@ -23,34 +26,34 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
  for(const saved of retirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===actorUid&&row.state!=='unsent')){const existing=entries.find(row=>row.orderId===saved.orderId&&row.operationId===saved.operationId&&row.startedAt===saved.startedAt);if(existing)existing.retirement=saved;else entries.push({orderId:saved.orderId,partnerName:orders.find(row=>row.id===saved.orderId)?.partnerName??'',operationId:saved.operationId,startedAt:saved.startedAt,retirement:saved});}
  const lineEntry=(entry:Entry)=>entry.order?.inventoryOperation?.kind==='line'||entry.order?.inventoryOperation?.state==='processing';
  const target=(entry:Entry)=>({orderId:entry.orderId,operationId:entry.operationId,startedAt:entry.startedAt,lineId:entry.order?.inventoryOperation?.lineId});
- function capture():OrderInventoryEvidenceScope{const captured=scope.current,signal=getSignal();return{companyId,uid:actorUid,signal,isCurrent:()=>scope.current===captured&&isCurrentActor()&&!signal.aborted};}
- const notice=(entry:Entry,message:string)=>setMessages(rows=>({...rows,[entryKey(entry)]:{message}}));
+ function capture():OrderInventoryEvidenceScope{const captured=scope.current,signal=getSignal();return{companyId,uid:actorUid,signal,isCurrent:()=>identity.current.token===ownerToken&&scope.current===captured&&isCurrentActor()&&!signal.aborted};}
+ const notice=(entry:Entry,message:string)=>setMessages(rows=>({...rows,[entryKey(entry)]:{ownerToken,message}}));
  async function inspect(entry:Entry){
   if(inFlight.current||!isCurrentActor()||getSignal().aborted)return;
-  const run=Symbol(),captured=capture(),key=entryKey(entry);inFlight.current=run;setBusy(key);setSelected(entry);setEvidence(null);
+  const run=Symbol(),captured=capture(),key=entryKey(entry);inFlight.current=run;flightOwner.current=ownerToken;setBusy(key);setSelected({...entry,ownerToken});setEvidence(null);
   const valid=()=>inFlight.current===run&&captured.isCurrent();
   let expectedSaved:string|null=entry.pending?.expectedSaved??null;
   if(!entry.pending)try{expectedSaved=localStorage.getItem('order-cancellation:'+actorUid+':'+companyId+':'+entry.orderId);}catch{}
   const finish=(result:OrderInventoryRecoveryResult)=>{if(!valid())return;onRecovered(result,expectedSaved);if(!valid())return;clearPendingOrderInventoryRecovery(companyId,actorUid,result,expectedSaved);notice(entry,'작업 잠금을 해제했습니다. 원래 출고 취소·주문 삭제는 목록에서 다시 확인하고 승인해 주세요.');};
   try{
-   if(entry.retirement){const read=await readRetainedRetirementClaimEvidence(captured,entry.retirement);if(valid()){setEvidence(read);notice(entry,read.reason);}return;}
+   if(entry.retirement){notice(entry,'서버의 처리기록을 조회하고 있습니다.');const read=await readRetainedRetirementClaimEvidence(captured,entry.retirement);if(valid()){setEvidence(read);notice(entry,read.reason);}return;}
    if(lineEntry(entry)){const read=await readOrderInventoryRecoveryEvidence(captured,target(entry));if(valid()){setEvidence(read);notice(entry,read.reason||'현재 실패 줄과 근거를 조회했습니다. 같은 최초 작업을 계속할 수 있습니다.');}return;}
    const result=await recoverOrderInventoryLock(companyId,'inspect',entry.orderId,entry.operationId,entry.startedAt);if(!valid())return;
-   if(result.status==='blocked'||result.inventoryApplied!=='none'){setMessages(rows=>({...rows,[key]:blockedNotice(result)}));return;}
+   if(result.status==='blocked'||result.inventoryApplied!=='none'){setMessages(rows=>({...rows,[key]:{...blockedNotice(result),ownerToken}}));return;}
    if(['recovered','duplicate'].includes(result.status)){finish(result);return;}
    if(result.status==='ready'){
     notice(entry,'재고 반영 없음이 확인되었습니다. 사용자 확인을 기다립니다.');
     const approved=await appConfirm({title:'실패 작업 잠금 해제',message:'서버에서 이 실패 작업의 재고·로트·수불부 반영이 없음을 확인했습니다. 작업 잠금만 해제할까요? 출고 취소·주문 삭제는 이후 새로 확인하고 승인합니다.',confirmText:'잠금 해제',tone:'amber'});
     if(!approved||!valid()||!latest.current.some(order=>order.id===entry.orderId&&order.inventoryOperation?.id===entry.operationId&&order.inventoryOperation.state==='failed'&&order.inventoryOperation.startedAt===entry.startedAt))return;
     const recovered=await recoverOrderInventoryLock(companyId,'recover',entry.orderId,entry.operationId,entry.startedAt,expectedSaved);if(!valid())return;
-    if(['recovered','duplicate'].includes(recovered.status)&&recovered.inventoryApplied==='none')finish(recovered);else setMessages(rows=>({...rows,[key]:blockedNotice(recovered)}));
+    if(['recovered','duplicate'].includes(recovered.status)&&recovered.inventoryApplied==='none')finish(recovered);else setMessages(rows=>({...rows,[key]:{...blockedNotice(recovered),ownerToken}}));
    }
-  }catch(error){if(valid())setMessages(rows=>({...rows,[key]:{message:orderInventoryErrorMessage(error),checks:orderInventoryRecoveryChecks(undefined)}}));}
+  }catch(error){if(valid())setMessages(rows=>({...rows,[key]:{ownerToken,message:orderInventoryErrorMessage(error),checks:orderInventoryRecoveryChecks(undefined)}}));}
   finally{if(inFlight.current===run){inFlight.current=null;if(captured.isCurrent())setBusy(null);}}
  }
  async function resume(entry:Entry){
   if(entry.retirement||inFlight.current||!onResumeLine||!isCurrentActor()||getSignal().aborted)return;
-  let launched=false;const run=Symbol(),captured=capture();inFlight.current=run;setBusy(entryKey(entry));
+  let launched=false;const run=Symbol(),captured=capture();inFlight.current=run;flightOwner.current=ownerToken;setBusy(entryKey(entry));
   const valid=()=>inFlight.current===run&&captured.isCurrent();
   const release=()=>{if(inFlight.current===run){inFlight.current=null;if(captured.isCurrent())setBusy(null);}};
   try{
@@ -76,10 +79,10 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
  }
  if(!entries.length)return null;
  const entryOrders=entries.filter((entry,index)=>entries.findIndex(row=>row.orderId===entry.orderId)===index);
- const active=selected,stored=active?messages[entryKey(active)]:undefined,operation=active?.order?.inventoryOperation;
- return <>{entryOrders.map(entry=><button key={entryKey(entry)} type="button" aria-label="잠금 이유 및 복구" title="잠금 이유 및 복구" disabled={busy!==null} onClick={()=>void inspect(entry)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 disabled:opacity-40"><LockKeyhole size={14}/></button>)}
-  {active&&<ModalShell className="text-slate-700" title="주문 재고 작업 확인" subtitle={active.partnerName||'거래처 확인 필요'} onClose={()=>{if(!busy)setSelected(null);}} footer={<><button type="button" disabled={busy!==null} onClick={()=>void inspect(active)} className="rounded border px-3 py-2">다시 조회</button>{!active.retirement&&evidence?.canResume&&onResumeLine&&<button type="button" disabled={busy!==null} onClick={()=>void resume(active)} className="rounded border px-3 py-2">최초 작업 계속</button>}<button type="button" disabled={busy!==null} onClick={()=>setSelected(null)} className="rounded border px-3 py-2">주문으로 돌아가기</button></>}>
-   {entries.filter(row=>row.orderId===active.orderId).length>1&&<label>확인할 작업<select aria-label="확인할 작업" disabled={busy!==null} value={entryKey(active)} onChange={event=>{const chosen=entries.find(row=>entryKey(row)===event.target.value);if(chosen)void inspect(chosen);}}>{entries.filter(row=>row.orderId===active.orderId).map((row,index)=><option key={entryKey(row)} value={entryKey(row)}>{row.order?'현재 잠금':'이전 요청 결과'} {index+1}</option>)}</select></label>}
+ const active=selected?.ownerToken===ownerToken?selected:null,stored=active&&messages[entryKey(active)]?.ownerToken===ownerToken?messages[entryKey(active)]:undefined,operation=active?.order?.inventoryOperation;
+ return <>{entryOrders.map(entry=><button key={entryKey(entry)} type="button" aria-label="잠금 이유 및 복구" title="잠금 이유 및 복구" disabled={visibleBusy!==null} onClick={()=>void inspect(entry)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 disabled:opacity-40"><LockKeyhole size={14}/></button>)}
+  {active&&<ModalShell className="text-slate-700" title="주문 재고 작업 확인" subtitle={active.partnerName||'거래처 확인 필요'} onClose={()=>{if(!visibleBusy)setSelected(null);}} footer={<><button type="button" disabled={visibleBusy!==null} onClick={()=>void inspect(active)} className="rounded border px-3 py-2">다시 조회</button>{!active.retirement&&evidence?.canResume&&onResumeLine&&<button type="button" disabled={visibleBusy!==null} onClick={()=>void resume(active)} className="rounded border px-3 py-2">최초 작업 계속</button>}<button type="button" disabled={visibleBusy!==null} onClick={()=>setSelected(null)} className="rounded border px-3 py-2">주문으로 돌아가기</button></>}>
+   {entries.filter(row=>row.orderId===active.orderId).length>1&&<label>확인할 작업<select aria-label="확인할 작업" disabled={visibleBusy!==null} value={entryKey(active)} onChange={event=>{const chosen=entries.find(row=>entryKey(row)===event.target.value);if(chosen)void inspect(chosen);}}>{entries.filter(row=>row.orderId===active.orderId).map((row,index)=><option key={entryKey(row)} value={entryKey(row)}>{row.order?'현재 잠금':'이전 요청 결과'} {index+1}</option>)}</select></label>}
    <p>{active.order?`주문 품목 ${active.order.items.length}개`:'현재 목록에서 주문 품목을 확인하지 못했습니다.'} · {operation?.state==='processing'?'처리 중':operation?.state==='failed'?'실패 작업':'이전 요청 결과 확인'}</p>
    {operation?.lineId&&<p>실패 줄: {(active.order?.items.findIndex(line=>line.lineId===operation.lineId)??-1)+1}번 · 단계: {({claim:'작업 시작',reservation:'재고 예약','raw-inventory':'원료 처리','production-record':'생산 기록','final-stock':'최종 재고 반영'} as Record<string,string>)[operation.stage??'']??'확인 필요'}</p>}
    {operation?.error&&<section className="mt-3 border-t pt-3"><h4>당시 실패 안내</h4><p>{orderInventoryErrorMessage(operation.error)}</p></section>}
