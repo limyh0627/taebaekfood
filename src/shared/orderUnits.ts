@@ -1,5 +1,5 @@
 import * as orderStockUnitsModule from '../../functions/src/shared/orderStockUnits';
-const {unpackComponent:unpackComponentFromInputs,isBoxStockItem:isBoxStockItemFromInputs,stockUnits:stockUnitsFromInputs,unitsPerBoxOf:unitsPerBoxOfFromInputs}=
+const {unpackComponent:unpackComponentFromInputs,isBoxStockItem:isBoxStockItemFromInputs,stockUnits:stockUnitsFromInputs,unitsPerBoxOf:unitsPerBoxOfFromInputs,unpackQty:unpackQtyFromInputs}=
   (Reflect.get(orderStockUnitsModule,'default')??orderStockUnitsModule) as typeof orderStockUnitsModule;
 import * as itemEditorDomainModule from '../../functions/src/shared/itemEditorDomain';
 const sharedEditorDomain=(Reflect.get(itemEditorDomainModule,'default')??itemEditorDomainModule) as typeof itemEditorDomainModule;
@@ -21,7 +21,7 @@ type BoxLike = Pick<Item, 'id'>;
 
 export interface OrderUnitInputs { bom: BomIndex; pack: PackIndex }
 // 레지스트리는 함수를 부를 때 읽어 이전 회사의 기준정보를 붙잡지 않는다.
-const orderStockUnitInputs=(inputs?:OrderUnitInputs):orderStockUnitsModule.OrderStockUnitInputs=>inputs??{bom:{of:id=>bomOf(id)},pack:{of:packUnitsOf}};
+export const orderStockUnitInputs=(inputs?:OrderUnitInputs):orderStockUnitsModule.OrderStockUnitInputs=>inputs??{bom:{of:id=>bomOf(id)},pack:{of:packUnitsOf}};
 
 
 /**
@@ -196,10 +196,7 @@ export function stocktakeStoredQuantity(
  * 재고를 더하는 자리가 틀리면 재고가 통째로 어긋난다.
  */
 export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>[0], isBox?: boolean, inputs?: OrderUnitInputs): number {
-  const n = Number(qty) || 0;
-  if (!isBox) return n;
-  const per = unitsPerBoxOf(product, inputs);
-  return per > 1 ? n * per : n;
+  return unpackQtyFromInputs(qty,product,isBox,orderStockUnitInputs(inputs));
 }
 
 /**

@@ -17,3 +17,12 @@ export function quantityLotUnitKg(item:InventoryKindItem|undefined,existingKg:nu
  if(['l','리터','ℓ'].includes(unit))return typeof item.density==='number'&&Number.isFinite(item.density)&&item.density>0?item.density:0;
  return existingKg;
 }
+
+export function isBulkItem(item: { subtype?: string } | undefined): boolean {
+  return String(item?.subtype ?? '') === '벌크';
+}
+
+export const isGoodsItem = (p: { category?: string; type?: string; procureType?: string }) =>
+  p.category === '향미유' || p.category === '고춧가루' ||
+  p.type === '향미유' || p.type === '고춧가루' || p.type === 'goods' ||
+  p.procureType === '완사입' || p.procureType === '임가공';

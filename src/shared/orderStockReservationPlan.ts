@@ -1,6 +1,8 @@
+import {stock3} from '../../functions/src/shared/orderProductionDomain';
+export {stock3} from '../../functions/src/shared/orderProductionDomain';
 import type {ItemInventoryReservation} from './types';
 
-export const stock3 = (value: number) => Math.round(value * 1000) / 1000;
+
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 
 export const liveItemInventoryReservations = (value: unknown, nowMs = Date.now()): ItemInventoryReservation[] => {

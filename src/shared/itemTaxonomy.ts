@@ -1,5 +1,6 @@
+export {isBulkItem,isGoodsItem};
 import { RM_LIST, baseRawName } from '../constants/formula';
-import { holdsUnitStockPure, tracksQuantityLots } from '../../functions/src/shared/itemInventoryKind';
+import { holdsUnitStockPure, tracksQuantityLots, isBulkItem, isGoodsItem } from '../../functions/src/shared/itemInventoryKind';
 export { tracksQuantityLots, quantityLotUnitKg } from '../../functions/src/shared/itemInventoryKind';
 
 /**
@@ -30,9 +31,7 @@ export { tracksQuantityLots, quantityLotUnitKg } from '../../functions/src/share
  * 그래서 품목의 단위를 정리하려고 '개'↔'kg'만 고쳐도 차감 수식이 조용히 바뀌었다.
  * 이제 근거는 subtype 하나뿐이다 (DB·코드 모두 subtype='벌크').
  */
-export function isBulkItem(item: { subtype?: string } | undefined): boolean {
-  return String(item?.subtype ?? '') === '벌크';
-}
+
 
 
 /**
@@ -70,10 +69,7 @@ export const holdsUnitStock = holdsUnitStockPure;
  * 엔진에 갇혀 있어서, 화면 쪽에서 출고 차감량을 셈하려면 엔진을 끌어와야 했다 —
  * 그러면 서로 물고 도는 모양이 된다. 분류는 분류가 있는 자리에 둔다.
  */
-export const isGoodsItem = (p: { category?: string; type?: string; procureType?: string }) =>
-  p.category === '향미유' || p.category === '고춧가루' ||
-  p.type === '향미유' || p.type === '고춧가루' || p.type === 'goods' ||
-  p.procureType === '완사입' || p.procureType === '임가공';
+
 
 /**
  * 타입 키(고정) — 사용자가 못 바꾼다.

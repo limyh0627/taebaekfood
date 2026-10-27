@@ -1,3 +1,5 @@
+import type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
+export type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
 import type { ProductStocktakeRequest } from './productStocktakeAttempt';
 import type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
 export type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
@@ -384,21 +386,6 @@ export interface OrderItemInventoryState {
 export interface OrderInventoryAdjustment {
   itemId: string;
   delta: number;
-}
-
-/** 실제 생산 계산 순간의 입력과 결과. 과거 기록에는 없을 수 있다. */
-export interface OrderRawCalculationEvidence {
-  productId: string;
-  spec: string;
-  units: number;
-  raw: string;
-  kg: number;
-  path: 'bom-direct' | 'bom-formula' | 'formula-fallback' | 'bulk';
-  childItemId?: string;
-  bomQuantityKg?: number;
-  formulaName?: string;
-  ratio?: number;
-  convertedKg?: number;
 }
 
 export interface OrderInventorySnapshot {

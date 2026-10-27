@@ -1,3 +1,4 @@
+import {isBulkItem,isGoodsItem} from './itemInventoryKind';
 import {boxCountOf,type OrderEditItem} from './orderEditUnits';
 import {unpackStockComponent,type StockComponent} from './stockUnitMeasure';
 
@@ -43,3 +44,23 @@ export function unitsPerBoxOf(product: BoxLike | undefined, inputs: OrderStockUn
   if (packed) return packed.count;
   return inputs.pack.of(product.id);
 }
+
+export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>[0], isBox: boolean|undefined, inputs: OrderStockUnitInputs): number {
+  const n = Number(qty) || 0;
+  if (!isBox) return n;
+  const per = unitsPerBoxOf(product, inputs);
+  return per > 1 ? n * per : n;
+}
+
+export const goodsShipQty = (item: Pick<OrderEditItem,'quantity'|'isBoxUnit'|'boxQuantity'|'unitsPerBox'>, product: {id:string;type?:string;subtype?:string;category?:string;procureType?:string}, inputs: OrderStockUnitInputs): number => {
+  if (isBoxStockItem(product, inputs)) return stockUnits(item, product, inputs);
+  const uPerBox = item.unitsPerBox || unitsPerBoxOf(product, inputs) || 1;
+  //  **몇 박스인가는 `boxCountOf` 만 답한다** — 여기서 또 따지면 재고와 전표가 갈린다
+  //  (`boxCount.test.ts` 가 막는다). 여기서 내는 값은 박스 수가 아니라 **낱개 수**다.
+  return item.isBoxUnit && item.boxQuantity ? boxCountOf(item) * uPerBox : item.quantity;
+};
+
+export const shipQtyOfLine = (item: Pick<OrderEditItem,'quantity'|'isBoxUnit'|'boxQuantity'|'unitsPerBox'>, product: {id:string;type?:string;subtype?:string;category?:string;procureType?:string} | undefined, inputs: OrderStockUnitInputs): number => {
+  if (!product || isBulkItem(product)) return 0;
+  return isGoodsItem(product) ? goodsShipQty(item, product, inputs) : stockUnits(item, product, inputs);
+};
