@@ -96,4 +96,46 @@ describe.skipIf(!enabled)('실제 주문 예약 거래의 Rules 한도 진단 (r
   const scarce=await fixture(1,{stock:0}),scarceBefore=await readAll(scarce.selected);await expect((await reserve(scarce,1)).promise).rejects.toThrow('재고가 부족');expect(await readAll(scarce.selected)).toEqual(scarceBefore);
   const retired=await fixture(1),tomb='inventoryWriterDeletions/taebaek__'+retired.ids[0];await put(tomb,{companyId:'taebaek',itemId:retired.ids[0],inventoryWriterProtocolVersion:1,lastDeletedItemRevision:1,beforeRevision:1,deletionRevision:1,mergedIntoItemId:prefix+'merged'});const retiredBefore=await readAll([...retired.selected,tomb]),r=await reserve(retired,1);await expect(r.promise).rejects.toMatchObject({code:'permission-denied'});expect(await readAll([...retired.selected,tomb])).toEqual(retiredBefore);expect(r.plan).toHaveBeenCalledTimes(1);
  });
+ it('고유 퇴역 조회 경로만 격리하여 필수21 예약 거절 원인을 대조하고 원 Rules를 복원한다',async()=>{
+  const originalRules=readFileSync('firestore.rules','utf8');
+  const tombCheck="!(exists(tomb) && get(tomb).data.get('mergedIntoItemId', null) != null) && ";
+  // 운영 보안 완화가 아니라 같은 거래의 고유 조회 경로만 분리하는 로컬 대조다.
+  expect(originalRules.split(tombCheck)).toHaveLength(2);
+  const diagnosticRules=originalRules.replace(tombCheck,'');
+  const reload=async(rules:string)=>{
+   guard();const loader=await runtime.initializeTestEnvironment({projectId,firestore:{host:host![1],port:8287,rules}});
+   try{guard();}finally{await loader.cleanup();}
+  };
+  let primary:unknown,restored=false;
+  try{
+   const f=await fixture(21),before=await readAll(f.selected),denied=await reserve(f,21);
+   await expect(denied.promise).rejects.toMatchObject({code:'permission-denied'});
+   expect(await readAll(f.selected)).toEqual(before);expect(denied.plan).toHaveBeenCalledTimes(1);
+   expect(writePaths(denied)).toEqual([...f.itemPaths,f.orderPath].sort());
+   await reload(diagnosticRules);
+   const allowed=await reserve(f,21);await allowed.promise;
+   assertSuccess(f,before,await readAll(f.selected),21);expect(allowed.plan).toHaveBeenCalledTimes(1);
+   expect(writePaths(allowed)).toEqual([...f.itemPaths,f.orderPath].sort());expect(ports.rpcCalls).toBe(0);
+   observations.push({case:'고유 tomb 조회 원인분리',readItems:21,reservedItems:21,originalRules:'permission-denied/whole-document-unchanged',diagnosticRules:'allowed/21-items-and-order-atomic',productionRulesChanged:false});
+  }catch(error){primary=error;throw error;}finally{
+   // 대조가 실패해도 원 규칙 복원과 복원 후 양쪽 보호 검사를 모두 시도한다.
+   await cleanupOwnedResources([
+    async()=>{await reload(originalRules);restored=true;expect(readFileSync('firestore.rules','utf8')).toBe(originalRules);},
+    async()=>{
+     if(!restored)throw Error('원 Rules를 복원하지 못해 정상 예약 대조를 중단합니다.');
+     const f=await fixture(20),before=await readAll(f.selected),r=await reserve(f,20);await r.promise;
+     assertSuccess(f,before,await readAll(f.selected),20);expect(writePaths(r)).toEqual([...f.itemPaths,f.orderPath].sort());expect(r.plan).toHaveBeenCalledTimes(1);
+    },
+    async()=>{
+     if(!restored)throw Error('원 Rules를 복원하지 못해 퇴역 차단 대조를 중단합니다.');
+     const f=await fixture(1),tomb='inventoryWriterDeletions/taebaek__'+f.ids[0];
+     await put(tomb,{companyId:'taebaek',itemId:f.ids[0],inventoryWriterProtocolVersion:1,lastDeletedItemRevision:1,beforeRevision:1,deletionRevision:1,mergedIntoItemId:prefix+'merged'});
+     const before=await readAll([...f.selected,tomb]),r=await reserve(f,1);
+     await expect(r.promise).rejects.toMatchObject({code:'permission-denied'});expect(await readAll([...f.selected,tomb])).toEqual(before);expect(r.plan).toHaveBeenCalledTimes(1);
+     observations.push({case:'원 Rules 복원 후 대조',required20:'allowed',mergedTomb1:'permission-denied/whole-document-unchanged',productionRulesChanged:false});
+    },
+   ],primary);
+  }
+ },60000);
+
 });
