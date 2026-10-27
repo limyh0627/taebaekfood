@@ -1,5 +1,12 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-27 — 주문 조회 값 보존 규칙 배포 · 후속 전수 감사
+
+검수 소스 a651538을 origin/main에 정상 푸시하고 양 Hosting을 13:56:43 KST, strict Firestore Rules를 13:58:41 KST에 반영했다. Rules 원문 SHA256은 3c894205232acf8adbff450b467144fd4303759c22c1c56758d5cb928c48fadf이며 원격 release와 일치한다. 최초 임시 work 설정의 상위 경로 오류는 업로드 전 실패였으며 루트의 임시 배포 설정으로 정상 배포 후 해당 임시 파일을 제거했다. 새 컬렉션·인덱스·함수·IAM 또는 운영 업무 자료 쓰기는 없다.
+
+배포 후 태백 readTime 2026-10-27T04:59:46.058284Z의644건, 풍회04:59:47.028586Z의0건에서 회사별 집계=페이지=고유 문서 수를 대조했다. 전부 조회 값 정합이며 누락·불일치·미래 버전·손상·진행0건이다. 이는 해당 시점 감사이며 외부 수동 Admin writer까지 봉쇄한다는 뜻은 아니다. Rules의 클라이언트 생성·상태/날짜 변경은 조회 값을 같은 쓰기에 보존하도록 제한한다. 구형 앱은 관련 저장이 거절될 수 있어 초안을 보존하고 앱 갱신 후 다시 진행한다.
+
+회사별 전체 reader는 그대로다. 후보 조회 활성은 후속 별도 승인 대상이다. 되돌릴 때 호환 전체 reader를 사용하고 strict Rules와 기존 조회 값·처리 영수증을 유지한다. 옛 직접 쓰기 규칙 복원이나 메타 일괄 삭제를 자동 실행하지 않는다. 근거는 work/performance-orders-reservation-noop-hosting-verified.json, next-rules-verified.json, post-strict-snapshot-result.json, post-strict-audit-result.json 및 post-strict-independent.json이다(파일들은 같은 performance-orders 접두사).
 ## 2026-10-27 — 기존 주문 조회 필드 추가 및 전수 확인
 
 사용자는 조회용 값의 목적과 업무 필드 불변 범위를 설명받은 뒤 추가를 승인했다. 최초 계획 `330f13a63465c859291536cfbc2b210c0d394e741417bf1e9cd8d1c442fca87b`의 태백641건 중637건에 `orderListProjection`만 단일 updateMask·원문 전체 확인·나노초 updateTime CAS로 추가했다. 변경을 발견한4건은 송신 전에 건너뛰었으며 거절·결과 불명은0건이다. 1건은 처음부터 무변경이었다.
