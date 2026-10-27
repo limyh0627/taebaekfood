@@ -4,12 +4,62 @@ import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {PROJECT,ROOT,SOURCE_CONTRACT_SHA,buildPlan,projectionWire,hash,applyPlan,inspectPlan,undoPlan,PortError,createRestPort,runCli,privatePath,documentId,version,type WireDocument,type Observation,type Disk,type Port,type Write} from './backfill-order-list-projection-20261027.mts';
+import {PROJECT,ROOT,SOURCE_CONTRACT_SHA,buildPlan,buildRepairPlan,validatePlan,projectionWire,hash,applyPlan,inspectPlan,undoPlan,PortError,createRestPort,runCli,privatePath,documentId,version,type WireDocument,type Observation,type Disk,type Port,type Write} from './backfill-order-list-projection-20261027.mts';
 const old='2026-10-15T00:00:00.000000001Z',next='2026-10-15T00:00:00.000000002Z';
 function doc(id='한글 품목%25'):WireDocument{return{name:ROOT+id,createTime:'2026-01-01T00:00:00.000Z',updateTime:old,fields:{companyId:{stringValue:'taebaek'},status:{stringValue:'DELIVERED'},deliveredAt:{stringValue:'2026-10-15T00:00:00.000Z'},deliveryDate:{stringValue:'2026-10-15T00:00:00.000Z'},createdAt:{stringValue:'2026-10-15T00:00:00.000Z'},receipt:{mapValue:{fields:{requestText:{stringValue:'최초 원문'},bytes:{bytesValue:'YWJj'},stamp:{timestampValue:old},integer:{integerValue:'9223372036854775807'}}}},bom:{arrayValue:{values:[{stringValue:'그대로'}]}}}};}
 const observation=(documents=[doc()]):Observation=>({project:PROJECT,database:'(default)',company:'taebaek',readTime:'2026-10-15T01:00:00.000Z',complete:true,documents});
-function fixture(documents=[doc()]){const plan=buildPlan(observation(documents)),rows=new Map(documents.map(row=>[row.name,structuredClone(row)])),values=new Map<string,unknown>();const disk:Disk={read:name=>values.get(name)??null,writeExclusive:(name,value)=>{if(values.has(name))throw Error('exists');values.set(name,structuredClone(value));},flush:vi.fn()};const port:Port={get:vi.fn(async path=>structuredClone(rows.get(path)??null)),commitSingle:vi.fn(async(write:Write)=>{const before=rows.get(write.update.name);if(!before||before.updateTime!==write.currentDocument.updateTime)throw new PortError('conflict');const fields={...before.fields};for(const key of write.updateMask?.fieldPaths??Object.keys(before.fields)){if(key in write.update.fields)fields[key]=structuredClone(write.update.fields[key]);else delete fields[key];}rows.set(write.update.name,{...before,fields,updateTime:next});return{updateTime:next};})};return{plan,rows,values,disk,port};}
+function fixture(documents=[doc()],targets?:string[]){const plan=targets?buildRepairPlan(observation(documents),targets):buildPlan(observation(documents)),rows=new Map(documents.map(row=>[row.name,structuredClone(row)])),values=new Map<string,unknown>();const disk:Disk={read:name=>values.get(name)??null,writeExclusive:(name,value)=>{if(values.has(name))throw Error('exists');values.set(name,structuredClone(value));},flush:vi.fn()};const port:Port={get:vi.fn(async path=>structuredClone(rows.get(path)??null)),commitSingle:vi.fn(async(write:Write)=>{const before=rows.get(write.update.name);if(!before||before.updateTime!==write.currentDocument.updateTime)throw new PortError('conflict');const fields={...before.fields};for(const key of write.updateMask?.fieldPaths??Object.keys(before.fields)){if(key in write.update.fields)fields[key]=structuredClone(write.update.fields[key]);else delete fields[key];}rows.set(write.update.name,{...before,fields,updateTime:next});return{updateTime:next};})};return{plan,rows,values,disk,port};}
 afterEach(()=>vi.restoreAllMocks());
+function stale(id='수리 대상'){const row=doc(id);row.fields.orderListProjection=projectionWire(row.fields);row.fields.status={stringValue:'PROCESSING'};return row;}
+it('기존 v1 계획 hash와 저장 식별·intent 재조회는 바뀌지 않는다',async()=>{
+ const f=fixture();expect(f.plan.hash).toBe('ba18be808eb30733e76c763dee2d91eb7a447bc512932aa09cfae0d92a3787dc');
+ const name='apply-intent-'+f.plan.hash+'-'+hash(f.plan.entries[0].path)+'.json';f.values.set(name,{version:1,mode:'apply',planHash:f.plan.hash,path:f.plan.entries[0].path});
+ expect((await applyPlan(f.plan,f.plan.hash,f.port,f.disk))[0]).toMatchObject({status:'unknown',responseConfirmed:false,commitAttempts:0});expect(f.port.commitSingle).not.toHaveBeenCalled();expect(f.values.get(name)).toEqual({version:1,mode:'apply',planHash:f.plan.hash,path:f.plan.entries[0].path});
+});
+it('정정은 명시 선택한 정상 v1만 별도 v2 hash로 계획하고 기본 v1 검토를 유지한다',()=>{
+ const a=stale('a'),b=stale('b'),input=observation([a,b]),before=JSON.stringify(input),legacy=buildPlan(input),plan=buildRepairPlan(input,[a.name]);
+ expect(legacy.version).toBe(1);expect(legacy.entries.map(e=>e.decision)).toEqual(['skip-review','skip-review']);
+ expect(plan).toMatchObject({version:2,policy:'repair-v1',selectedPaths:[a.name]});expect(plan.entries).toHaveLength(1);expect(plan.entries[0].decision).toBe('repair-v1');expect(plan.entries[0].afterProjection.mapValue.fields.candidateDay.stringValue).toBe('9999-12-31');
+ expect(plan.hash).not.toBe(legacy.hash);expect(JSON.stringify(input)).toBe(before);validatePlan(legacy,legacy.hash);validatePlan(plan,plan.hash);
+ const forged=structuredClone(plan);forged.entries[0].beforeWireDocument.fields.status={stringValue:'DELIVERED'};const {hash:_ignored,...body}=forged;forged.hash=hash(body);expect(()=>validatePlan(forged,forged.hash)).toThrow();
+ expect(buildRepairPlan(input,[b.name,a.name])).toEqual(buildRepairPlan(input,[a.name,b.name]));
+ for(const paths of [[],[a.name,a.name],[ROOT+'없음'],['foreign']])expect(()=>buildRepairPlan(input,paths)).toThrow();
+});
+it.each(['future','extra','invalid-day','null','missing','operation','correct'])('정정 선택에도 %s는 송신하지 않는다',async kind=>{
+ const row=stale();if(kind==='future')row.fields.orderListProjection.mapValue.fields.version={integerValue:'2'};
+ if(kind==='extra')row.fields.orderListProjection.mapValue.fields.extra={booleanValue:true};
+ if(kind==='invalid-day')row.fields.orderListProjection.mapValue.fields.candidateDay={stringValue:'2026-02-30'};
+ if(kind==='null')row.fields.orderListProjection={nullValue:null};if(kind==='missing')delete row.fields.orderListProjection;
+ if(kind==='operation')row.fields.inventoryOperation={stringValue:'failed'};if(kind==='correct')row.fields.orderListProjection=projectionWire(row.fields);
+ const f=fixture([row],[row.name]);expect(f.plan.entries[0].decision).toBe(kind==='correct'?'noop':'skip-review');await applyPlan(f.plan,f.plan.hash,f.port,f.disk);expect(f.port.commitSingle).not.toHaveBeenCalled();
+ const r=rest(f);await expect(r.rest.commitSingle({update:{name:row.name,fields:{orderListProjection:f.plan.entries[0].afterProjection}},updateMask:{fieldPaths:['orderListProjection']},currentDocument:{updateTime:old}})).rejects.toThrow('검토/무변경');expect(r.token).not.toHaveBeenCalled();
+});
+it('정정 apply는 선택 외 문서·원업무 전체를 보존하고 fake undo는 이전 조회값만 복원한다',async()=>{
+ const a=stale('repair-a'),b=stale('repair-b'),f=fixture([a,b],[a.name]);const [result]=await applyPlan(f.plan,f.plan.hash,f.port,f.disk);
+ expect(result).toMatchObject({status:'applied',responseConfirmed:true});const current=f.rows.get(a.name)!;expect(current.fields).toEqual({...a.fields,orderListProjection:projectionWire(a.fields)});expect(f.rows.get(b.name)).toEqual(b);
+ expect((await applyPlan(f.plan,f.plan.hash,f.port,f.disk))[0].status).toBe('already-applied');expect(f.port.commitSingle).toHaveBeenCalledTimes(1);
+ await expect(undoPlan(f.plan,f.plan.hash,{...f.port,production:true},f.disk,{assertSafe:async()=>{}})).rejects.toThrow('운영 undo');
+ await undoPlan(f.plan,f.plan.hash,f.port,f.disk,{assertSafe:async()=>{}});expect(f.rows.get(a.name)!.fields).toEqual(a.fields);expect(f.rows.get(b.name)).toEqual(b);
+});
+it('완료일 변경 정정의 실제 REST port도 단일 mask와 정확 ns 조건만 보낸다',async()=>{
+ const row=doc();row.fields.orderListProjection=projectionWire(row.fields);row.fields.deliveredAt={stringValue:'2026-10-16T00:00:00.000Z'};const f=fixture([row],[row.name]);let current=structuredClone(row);
+ const fetcher=vi.fn(async(_url:any,init:any)=>{if(init.method==='POST'){const write=JSON.parse(init.body).writes[0];expect(write.updateMask.fieldPaths).toEqual(['orderListProjection']);expect(write.currentDocument.updateTime).toBe(old);expect(Object.keys(write.update.fields)).toEqual(['orderListProjection']);current={...current,fields:{...current.fields,...write.update.fields},updateTime:next};return new Response(JSON.stringify({writeResults:[{updateTime:next}]}));}return new Response(JSON.stringify(current));});
+ const r=rest(f,fetcher as any);expect((await applyPlan(f.plan,f.plan.hash,r.rest,f.disk))[0].status).toBe('applied');expect(current.fields).toEqual({...row.fields,orderListProjection:projectionWire(row.fields)});expect(current.fields.orderListProjection.mapValue.fields.candidateDay.stringValue).toBe('2026-10-16');
+});
+it.each(['business','projection','ns','recreate'])('정정 GET 후 %s 경합은 후속 값을 보존한다',async kind=>{
+ const row=stale(),f=fixture([row],[row.name]),commit=f.port.commitSingle;f.port.commitSingle=vi.fn(async write=>{const current=f.rows.get(row.name)!;current.updateTime=next;if(kind==='business')current.fields.note={stringValue:'후속업무'};if(kind==='projection')current.fields.orderListProjection=projectionWire(current.fields);if(kind==='recreate')current.createTime=next;return commit(write);});
+ expect((await applyPlan(f.plan,f.plan.hash,f.port,f.disk))[0].status).toBe('conflict');expect(f.rows.get(row.name)!.updateTime).toBe(next);if(kind==='business')expect(f.rows.get(row.name)!.fields.note).toEqual({stringValue:'후속업무'});else if(kind==='projection')expect(f.rows.get(row.name)!.fields.orderListProjection).toEqual(projectionWire(row.fields));else expect(f.rows.get(row.name)!.fields).toEqual(row.fields);
+});
+it('정정 응답 유실은 동일값 관측만 남기고 재송신·undo하지 않는다',async()=>{
+ const row=stale(),f=fixture([row],[row.name]),commit=f.port.commitSingle;f.port.commitSingle=vi.fn(async write=>{await commit(write);throw Error('lost');});
+ expect((await applyPlan(f.plan,f.plan.hash,f.port,f.disk))[0]).toMatchObject({status:'desired-state-satisfied',responseConfirmed:false});await applyPlan(f.plan,f.plan.hash,f.port,f.disk);await inspectPlan(f.plan,f.plan.hash,f.port,f.disk);expect(f.port.commitSingle).toHaveBeenCalledTimes(1);await expect(undoPlan(f.plan,f.plan.hash,f.port,f.disk,{assertSafe:async()=>{}})).rejects.toThrow();
+});
+it('정정 CLI는 대상과 정책을 함께 요구하고 private 합성 dry·실제 subprocess를 무인증으로 실행한다',async()=>{
+ const row=stale(),dir=resolve('privatework/order-list-projection/test-'+randomUUID());mkdirSync(dir,{recursive:true});const snapshot=resolve(dir,'snapshot.json'),targets=resolve(dir,'targets.json');writeFileSync(snapshot,JSON.stringify(observation([row,stale('unselected')])));writeFileSync(targets,JSON.stringify([row.name]));const ports={fetch:vi.fn(),tokenProvider:vi.fn(),output:vi.fn()};
+ const args=['--dry','--snapshot='+snapshot,'--directory='+dir,'--repair-v1','--targets='+targets];await runCli(args,ports as any);expect(ports.output.mock.calls[0][0]).toMatchObject({status:'ready-offline',repair:1,add:0,entries:1,snapshotDocuments:2,selectedDocuments:1,network:0});expect(ports.tokenProvider).not.toHaveBeenCalled();expect(ports.fetch).not.toHaveBeenCalled();
+ for(const invalid of [args.filter(a=>a!=='--repair-v1'),args.filter(a=>!a.startsWith('--targets=')),['--apply','--repair-v1'],args.map(a=>a.startsWith('--targets=')?'--targets=public/leak.json':a)])await expect(runCli(invalid,ports as any)).rejects.toThrow();
+ const result=spawnSync(process.execPath,['--import','tsx','scripts/backfill-order-list-projection-20261027.mts',...args],{encoding:'utf8'});expect(result.status,result.stderr).toBe(0);expect(JSON.parse(result.stdout)).toMatchObject({status:'ready-offline',repair:1,selectedDocuments:1});expect(result.stdout).not.toContain('수리 대상');
+});
 it('계획 결정성과 원 typed wire 전체 원문·정확버전을 보존한다',()=>{const input=observation(),before=JSON.stringify(input),plan=buildPlan(input);expect(buildPlan(input)).toEqual(plan);expect(JSON.stringify(input)).toBe(before);expect(plan.entries[0].beforeWireDocument).toEqual(input.documents[0]);expect(plan.entries[0].decision).toBe('add');expect(plan.sourceContractSha).toBe(SOURCE_CONTRACT_SHA);expect(plan.entries[0].expectedUpdateTime).toBe(old);});
 it('상태/날짜 missing·Timestamp/int/null은 string으로 승격하지 않고 sentinel이다',()=>{const fields={companyId:{stringValue:'taebaek'},createdAt:{timestampValue:old},deliveredAt:{integerValue:'3'},deliveryDate:{nullValue:null}};expect(projectionWire(fields)).toMatchObject({mapValue:{fields:{candidateDay:{stringValue:'9999-12-31'}}}});});
 it.each([{stringValue:'failed'},{mapValue:{fields:{state:{stringValue:'processing'}}}},{booleanValue:false}])('null 아닌 operation %s는 검토로 남긴다',operation=>{const row=doc();row.fields.inventoryOperation=operation;expect(buildPlan(observation([row])).entries[0].decision).toBe('skip-review');});

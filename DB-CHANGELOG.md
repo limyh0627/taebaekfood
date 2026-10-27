@@ -1,4 +1,9 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
+## 2026-10-27 — 주문 조회 준비 writer·인덱스 배포
+
+사용자 승인으로 검수 소스9a610cb의 submitOrderCopyCommand와 orderEditCommand 두 함수, 양 Hosting 및 orders의 companyId+orderListProjection.candidateDay 오름차순 인덱스1개를 반영했다. 함수2 ACTIVE/nodejs22·각163파일 원격 archive 일치, 양 Hosting 11:06 KST FINALIZED·공개179파일 HTTP/크기/SHA 및 인덱스READY를 확인했다. 새 주문/수정의 기존 원자 거래에서 조회 메타를 함께 기록하며 업무 원문과 처리 영수증·멱등키는 유지한다.
+
+기존 운영 주문의 메타 백필은 실행하지 않았다. 현행 Rules와 회사별 전체 조회를 유지한다. strict Rules·후보 조회 활성화·운영 정정·IAM·push는 이번 배포에 포함하지 않는다. 되돌릴 때 기존 전체 reader를 유지하며 조회 메타를 일괄 삭제하거나 영수증·재고 증거를 건드리지 않는다. strict Rules 미전환 상태이고 그 전환 뒤에는 옛 writer로 단독 복귀하지 않는다. 함수 이전 source generation 및 양 Hosting release는 work/performance-orders-release-baseline-observation.json에, 반영 증거는 functions-verified/reader-hosting-verified/index-status JSON에 보관했다.
 ## 2026-10-26 — 태백 프린터렌탈료 33,000원 전표 템플릿 추가
 
 사용자가 프린터 렌탈료 33,000원 추가를 요청하고 회사를 태백으로 지정했다. `fixedCostTemplates/fct-taebaek-printer-rental-33000` 한 문서를 `exists:false` 조건의 원자 create로 생성했다. 회사 taebaek, 이름·품목명 프린터렌탈료, 총액33,000원, 기존 계정819 임차료, 고정비/기타, 매입 양식(statementType 매입·기존 dir 대체), 기본 과세 설정이다. autoIssue/active는 false, hidden은 false이며 거래처·은행·발행일은 추정하지 않았다. 전표 발행이나 다른 회사·기존 템플릿 수정은 없다.
