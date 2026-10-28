@@ -1,3 +1,4 @@
+import {orderStockTouchedIds as sharedOrderStockTouchedIds} from '../../../functions/src/shared/orderStockReservationPlan';
 import {stock3,liveItemInventoryReservations,planOrderStockReservation} from '../../shared/orderStockReservationPlan';
 export {liveItemInventoryReservations,planOrderStockReservation} from '../../shared/orderStockReservationPlan';
 import {runInventoryWriterTransaction,captureInventoryWriterContext,prepareCatalogOrderCommit} from '../../shared/inventoryWriterProtocol';
@@ -72,14 +73,7 @@ export const reservedByOrders = (
 
 /** 주문 라인과 재귀 BOM이 건드릴 모든 품목 ID를 한 번만 모은다. */
 export function orderStockTouchedIds(order: Pick<Order, 'items'>, bomIndex?: BomIndex): string[] {
-  const seen = new Set<string>();
-  const walk = (itemId: string, depth: number) => {
-    if (depth > 5 || seen.has(itemId)) return;
-    seen.add(itemId);
-    for (const line of (bomIndex ? bomIndex.of(itemId) : bomOf(itemId))) walk(line.childId, depth + 1);
-  };
-  for (const row of order.items) walk(row.itemId, 0);
-  return [...seen];
+  return sharedOrderStockTouchedIds(order, bomIndex ?? {of: bomOf});
 }
 
 /**

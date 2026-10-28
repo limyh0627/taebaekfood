@@ -1,9 +1,7 @@
 import {rawPressText} from './rawPressAttempt';
-import type { CompanyId,Order } from './types';
-/** 새 작업에만 붙인다. 옛 잠금에 UID·세대를 추정해 이 표식을 만들지 않는다. */
-export interface OrderInventoryGeneration {
- contractVersion:1;companyId:CompanyId;orderId:string;operationId:string;startedAt:string;actorUid:string;
-}
+import type { Order } from './types';
+import type {OrderInventoryGeneration} from '../../functions/src/shared/orderStockReservationPlan';
+export type {OrderInventoryGeneration} from '../../functions/src/shared/orderStockReservationPlan';
 export function validateOrderInventoryGeneration(generation:OrderInventoryGeneration):void {
  if(generation?.contractVersion!==1||!['taebaek','punghoe'].includes(generation.companyId)||![generation.orderId,generation.operationId,generation.actorUid,generation.startedAt].every(value=>typeof value==='string'&&value.trim().length>0&&value===value.trim())||!Number.isFinite(Date.parse(generation.startedAt)))throw Error('주문 재고 작업의 최초 세대를 확인해 주세요.');
 }

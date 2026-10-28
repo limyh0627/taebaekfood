@@ -19,6 +19,31 @@ export interface StockUseChoice {
 }
 export type StockUsePlan = Record<number, StockUseChoice>;
 
+// 미리보기에서만 조용한 clamp 대신 선택 오류를 구분한다.
+const selectionError = (code: 'invalid-selection' | 'unsupported-selection', index: number, field: string): never => {
+  throw Object.assign(new Error(`${code}:${index}:${field}`), {code, index, field});
+};
+const validateSelectionShape = (plan: StockUsePlan | undefined, length: number) => {
+  if (plan === undefined) return;
+  if (!plan || Object.getPrototypeOf(plan) !== Object.prototype) selectionError('invalid-selection', -1, 'plan');
+  for (const key of Reflect.ownKeys(plan)) {
+    const index = typeof key === 'string' ? Number(key) : NaN;
+    if (typeof key !== 'string' || !Number.isInteger(index) || index < 0 || index >= length || String(index) !== key)
+      selectionError('invalid-selection', -1, 'index');
+    const descriptor = Object.getOwnPropertyDescriptor(plan, key)!;
+    if (!descriptor.enumerable || !('value' in descriptor)) selectionError('invalid-selection', index, 'choice');
+    const choice = descriptor.value;
+    if (!choice || Object.getPrototypeOf(choice) !== Object.prototype) selectionError('invalid-selection', index, 'choice');
+    if (!Object.prototype.hasOwnProperty.call(choice, 'own')) selectionError('invalid-selection', index, 'own');
+    for (const field of Reflect.ownKeys(choice)) {
+      if (field !== 'own' && field !== 'loose') selectionError('invalid-selection', index, 'field');
+      const value = Object.getOwnPropertyDescriptor(choice, field)!;
+      if (!value.enumerable || !('value' in value) || typeof value.value !== 'number' || !Number.isFinite(value.value) || value.value < 0)
+        selectionError('invalid-selection', index, String(field));
+    }
+  }
+};
+
 /**
  * 완제품 1개당 오일 kg = **BOM 수량 그대로**. 오직 BOM만 본다.
  *
@@ -145,6 +170,7 @@ export function createOrderProductionPlanner<TItem extends ProductionItem>({allI
     stockCap?: Map<string, number>,
     stockOf?: (item: TItem) => number,
     evidence: OrderRawCalculationEvidence[] = [],
+    selection?: {index: number; checked: boolean},
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
     for (const line of bomOf(product.id)) {
@@ -166,6 +192,10 @@ export function createOrderProductionPlanner<TItem extends ProductionItem>({allI
         if (!stockOf) throw new Error(`생산 재고 스냅샷이 없습니다: ${comp.id}`);
         const onHand = stockOf(comp) + (deltas.get(comp.id) ?? 0);
         const cap = stockCap?.get(comp.id);
+        if (selection && cap !== undefined) {
+          if (cap > Math.min(need, Math.max(0, onHand))) selectionError('invalid-selection', selection.index, 'loose');
+          selection.checked = true;
+        }
         const have = Math.max(0, cap === undefined ? onHand : Math.min(onHand, cap));
         const short = Math.round((need - have) * 1000) / 1000;
         if (short > 0) {
@@ -191,7 +221,9 @@ export function createOrderProductionPlanner<TItem extends ProductionItem>({allI
     stockSnapshot: ReadonlyMap<string, number>,
     plan?: StockUsePlan,
     allocatedOutput:Map<string,number>=new Map(),
+    options?: {strictSelection?: true},
   ) => {
+    if (options?.strictSelection) validateSelectionShape(plan, order.items.length);
     const stockOf = (item: TItem) => {
       const stock = stockSnapshot.get(item.id);
       if (stock === undefined) throw new Error(`주문 재고 스냅샷에 품목이 없습니다: ${item.id}`);
@@ -206,6 +238,12 @@ export function createOrderProductionPlanner<TItem extends ProductionItem>({allI
     for (const [idx, item] of order.items.entries()) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) throw new Error(`주문 품목 기준정보를 찾을 수 없습니다: ${item.itemId}`);
+      if (options?.strictSelection && (isBulkItem(product) || !holdsUnitStock(product) || product.procureType === '임가공' || isGoodsItem(product))) {
+        const inactive = plan?.[idx];
+        // 무시되는 0 선택은 허용하되 양수 선택을 사용한 것으로 승인하지 않는다.
+        if (inactive?.own) selectionError('unsupported-selection', idx, 'own');
+        if (inactive?.loose) selectionError('unsupported-selection', idx, 'loose');
+      }
       /**
        * **벌크를 그대로 파는 주문** — 볶음참깨 20kg 자루 같은 것.
        *
@@ -250,17 +288,25 @@ export function createOrderProductionPlanner<TItem extends ProductionItem>({allI
       // 이 품목 자신의 재고로 충당할 몫. 앞선 라인이 이미 쓴 만큼(deltas)은 빠진 값으로 본다.
       const onHand = Math.max(0, stockOf(product) + (deltas.get(product.id) ?? 0));
       const choice = plan?.[idx];
+      if (options?.strictSelection && choice && choice.own > (isStockProduction(order) ? 0 : Math.min(onHand, units)))
+        selectionError('invalid-selection', idx, 'own');
       const own = isStockProduction(order) ? 0 : Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
       const toProduce = Math.round((units - own) * 1000) / 1000;
-      if (toProduce <= 0) {allocateOutput();continue;}
+      if (toProduce <= 0) {
+        if (options?.strictSelection && choice?.loose) selectionError('unsupported-selection', idx, 'loose');
+        allocateOutput();continue;
+      }
 
       // 박스 품목이면 낱개 재고 사용량도 사용자가 정한 만큼으로 묶는다.
       const looseId = unpackComponent(product, inputs)?.itemId;
       const stockCap = looseId && choice?.loose !== undefined
         ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
 
+      const selection = options?.strictSelection && choice?.loose !== undefined ? {index: idx, checked: false} : undefined;
+      if (selection && !looseId && choice?.loose) selectionError('unsupported-selection', idx, 'loose');
       const beforeRawKg = rawUsageKg(rawUsage);
-      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf, rawCalculationEvidence);
+      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf, rawCalculationEvidence, selection);
+      if (selection && !selection.checked && choice?.loose) selectionError('unsupported-selection', idx, 'loose');
       // 구성품에 완제품이 있으면 accrueBom이 그 완제품을 따라 내려가며 원료를 뺀다.
       if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage, rawCalculationEvidence);
       requireRawForProduction(product, beforeRawKg, rawUsage);

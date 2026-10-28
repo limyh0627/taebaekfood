@@ -482,16 +482,8 @@ export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
  * 대신 이 예약을 transaction으로 먼저 남겨, 동시에 시작한 다른 주문이 같은 재고를 또 쓸 수
  * 있다고 판단하지 못하게 한다. 정상 완료 때 재고 반영과 함께 지워지고, 중간 실패 때도 해제한다.
  */
-export interface ItemInventoryReservation {
-  reservationAttemptId?: string;
-  operationId: string;
-  generation?:import('./orderInventoryGeneration').OrderInventoryGeneration;
-  orderId: string;
-  qty: number;
-  createdAt: string;
-  /** processing은 작업 중 임시 선점, allocated는 작업완료 후 출고까지 유지할 주문 몫. */
-  state: 'processing' | 'allocated';
-}
+import type {ItemInventoryReservation} from '../../functions/src/shared/orderStockReservationPlan';
+export type {ItemInventoryReservation} from '../../functions/src/shared/orderStockReservationPlan';
 
 export interface ItemStocktakeAnchor {
   id: string;
