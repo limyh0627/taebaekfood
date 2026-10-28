@@ -18,7 +18,8 @@ export function ensureOrderLineIds<T extends {itemId:string;lineId?:string}>(ite
 
 
 export interface OrderRawEffectOrigin {protocol:'private-stock-full-v1';reference:{version:1;companyId:'taebaek'|'punghoe';orderId:string;requestId:string};owner:{uid:string;employeeId:string;companyId:'taebaek'|'punghoe'};lineId:string;attempt:number}
-export interface OrderRawReversalOrigin extends OrderRawEffectOrigin {sourceReference:OrderRawEffectOrigin['reference']}
+export interface OrderLegacyRawSource {kind:'legacy-atomic-v1';generation:import('./orderStockReservationPlan').OrderInventoryGeneration;jobId:string;requestHash:string;lineId:string;attempt:number;sourceLineNativeSha256:string;completionNativeSha256:string}
+export type OrderRawReversalOrigin = OrderRawEffectOrigin & ({sourceReference:OrderRawEffectOrigin['reference'];sourceLegacy?:never}|{sourceLegacy:OrderLegacyRawSource;sourceReference?:never});
 export interface OrderRawEffectReference extends OrderRawEffectOrigin {commandIndex:number;operationId:string;rawItemId:string;movementPath:string;source:{type:string;id:string};commandHash:string;movementHash:string}
 export interface OrderItemInventoryState {
   version: 1;
