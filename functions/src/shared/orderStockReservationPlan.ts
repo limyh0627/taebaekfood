@@ -15,6 +15,7 @@ export interface ItemInventoryReservation {
   createdAt: string;
   /** processing은 작업 중 임시 선점, allocated는 작업완료 후 출고까지 유지할 주문 몫. */
   state: 'processing' | 'allocated';
+  serverProtocol?: 'full-v1';
 }
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
@@ -28,7 +29,7 @@ export const liveItemInventoryReservations = (value: unknown, nowMs = Date.now()
     if (typeof candidate.operationId !== 'string' || typeof candidate.orderId !== 'string' ||
       !Number.isFinite(candidate.qty) || Number(candidate.qty) <= 0 || !Number.isFinite(createdAt)) return false;
     // 배정 완료분은 실제 출고나 주문 취소까지 주문 몫이다. 처리 중 브라우저가 닫힌 흔적만 만료한다.
-    return candidate.state === 'allocated' || nowMs - createdAt < RESERVATION_TTL_MS;
+    return candidate.state === 'allocated' || (candidate.state === 'processing' && candidate.serverProtocol === 'full-v1') || nowMs - createdAt < RESERVATION_TTL_MS;
   });
 };
 

@@ -25,6 +25,21 @@ export interface OrderProductLotDeps {
   allItems: LotItem[];
   shipQtyOf: (item: ProductionLine, product: LotItem) => number;
 }
+export function reverseProductionProductLots(traces: { itemId: string; lotId: string; qty: number }[] = []): OrderProductLotMutation[] {
+  const grouped = new Map<string, typeof traces>();
+  for (const trace of traces) grouped.set(trace.itemId, [...(grouped.get(trace.itemId) ?? []), trace]);
+  return [...grouped].map(([itemId, rows]) => ({ itemId, apply: lots => {
+    for (const row of rows) {
+      const lot = lots.find(candidate => candidate.id === row.lotId);
+      if (!lot || Number(lot.qtyRemaining ?? 0) < row.qty) throw new Error('생산 로트가 이미 사용되어 생산을 취소할 수 없습니다.');
+    }
+    return { lots: lots.map(lot => {
+      const qty = rows.filter(row => row.lotId === lot.id).reduce((sum, row) => sum + row.qty, 0);
+      return qty ? { ...lot, qtyRemaining: Math.round((Number(lot.qtyRemaining) - qty) * 1000) / 1000, kgRemaining: Math.round((Number(lot.qtyRemaining) - qty) * Number(lot.unitKg ?? 0) * 1000) / 1000 } : lot;
+    }), consumedLots: [] };
+  } }));
+}
+
 export function createOrderProductLotPlanner(deps:OrderProductLotDeps & {unitInputs:OrderStockUnitInputs;lotPolicy:OrderProductLotPolicy}) {
 const {buildProductLot,withCarryOverProductLot}=deps.lotPolicy;
 /** 최초 생성한 로트와 저장 원문 재개가 같은 적용 함수를 소비한다. */
@@ -65,20 +80,6 @@ function productionProductLots(allItems: LotItem[], deltas: ReadonlyMap<string, 
   return { traces, mutations, consumedLots };
 }
 
-function reverseProductionProductLots(traces: { itemId: string; lotId: string; qty: number }[] = []): OrderProductLotMutation[] {
-  const grouped = new Map<string, typeof traces>();
-  for (const trace of traces) grouped.set(trace.itemId, [...(grouped.get(trace.itemId) ?? []), trace]);
-  return [...grouped].map(([itemId, rows]) => ({ itemId, apply: lots => {
-    for (const row of rows) {
-      const lot = lots.find(candidate => candidate.id === row.lotId);
-      if (!lot || Number(lot.qtyRemaining ?? 0) < row.qty) throw new Error('생산 로트가 이미 사용되어 생산을 취소할 수 없습니다.');
-    }
-    return { lots: lots.map(lot => {
-      const qty = rows.filter(row => row.lotId === lot.id).reduce((sum, row) => sum + row.qty, 0);
-      return qty ? { ...lot, qtyRemaining: Math.round((Number(lot.qtyRemaining) - qty) * 1000) / 1000, kgRemaining: Math.round((Number(lot.qtyRemaining) - qty) * Number(lot.unitKg ?? 0) * 1000) / 1000 } : lot;
-    }), consumedLots: [] };
-  } }));
-}
 
 function combineProductLotMutations(mutations: readonly OrderProductLotMutation[]): OrderProductLotMutation[] {
   const grouped = new Map<string, OrderProductLotMutation[]>();

@@ -41,6 +41,7 @@ export async function recoverOrderInventoryLock(db:admin.firestore.Firestore,com
    return {...base,status:'duplicate',inventoryApplied:'none'};
   }
   if(!order)return {...base,status:'blocked',inventoryApplied:'unknown',reason:'ORDER_NOT_FOUND'};
+  if(Object.prototype.hasOwnProperty.call(order,'inventoryExecutionProtocol'))return {...base,...details,status:'blocked',inventoryApplied:'unknown',reason:'SERVER_FULL_REQUIRED'};
   if(operation?.id===input.failedOperationId&&operation.startedAt!==input.failedStartedAt)return {...base,...details,status:'blocked',inventoryApplied:'unknown',reason:'OPERATION_GENERATION_CHANGED'};
   const action=operation?.targetStatus==='DISPATCHED'?'cancel-shipment':'delete';
   let evidenceHash:string;

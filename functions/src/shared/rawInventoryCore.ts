@@ -237,6 +237,7 @@ export type RawRejectCode =
   | 'STOCK_MISMATCH'
   | 'INSUFFICIENT_STOCK'
   | 'INVALID_QUANTITY'
+  | 'INVALID_EFFECTIVE_AT'
   | 'MISSING_LOT_ID'
   | 'LOT_NOT_FOUND'
   | 'ORIGINAL_NOT_FOUND'
@@ -247,6 +248,16 @@ export type RawRejectCode =
   | 'STOCKTAKE_HAS_FOLLOWING_MOVEMENT'
   | 'COMPANY_MISMATCH'
   | 'TARGET_MISMATCH';
+
+// 밀리초 이후 원문 소수는 Number로 바꾸지 않아 1ns 차이도 잃지 않는다.
+function rawTimeBefore(left: string, right: string): boolean | null {
+  const leftMs = Date.parse(left), rightMs = Date.parse(right);
+  if (!Number.isFinite(leftMs) || !Number.isFinite(rightMs)) return null;
+  if (leftMs !== rightMs) return leftMs < rightMs;
+  const fraction = (value: string) => /T\d{2}:\d{2}:\d{2}(?:\.(\d+))?(?:Z|[+-]\d{2}:\d{2})$/i.exec(value)?.[1]?.slice(3) ?? '';
+  const a = fraction(left), b = fraction(right), length = Math.max(a.length, b.length);
+  return a.padEnd(length, '0') < b.padEnd(length, '0');
+}
 
 /**
  * 결과는 **넷**이다. 예전에는 불일치 경고를 띄운 직후 성공 토스트가 덮어썼다(§14).
@@ -551,11 +562,14 @@ export function applyRawCommand(input: {
    *    소급으로 치면 실사 당일 사용이 영영 재고에 안 잡힌다.
    *    화면이 `backdatedIntent: 'before'` 를 명시하면 그 뜻대로 소급 처리한다.
    */
-  const anchor = state.stocktakeAnchor;
-  const 시각소급 = anchor != null && c.effectiveAt < anchor.effectiveAt;
-  const backdated = c.backdatedIntent === 'before' ? true
-    : c.backdatedIntent === 'after' ? false
-    : 시각소급;
+  const backdated = (): boolean | null => {
+    if (c.backdatedIntent === 'before') return true;
+    if (c.backdatedIntent === 'after' || !state.stocktakeAnchor) return false;
+    return rawTimeBefore(c.effectiveAt, state.stocktakeAnchor.effectiveAt);
+  };
+  const invalidTime = (): RawApplyResult => ({
+    status: 'rejected', code: 'INVALID_EFFECTIVE_AT', message: '원료 처리 시각 또는 실사 시각을 비교할 수 없다',
+  });
   const recordWithoutStock = (
     kind: RawMovementKind, reportedDeltaKg: number, backdatedBeforeStocktake = false,
   ): RawApplyResult => {
@@ -583,7 +597,9 @@ export function applyRawCommand(input: {
     case 'opening': {
       const kg = r3(c.kg);
       if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '입고 수량은 0보다 커야 한다' };
-      if (backdated) return skipBackdated(c.kind, kg);
+      const isBackdated = backdated();
+      if (isBackdated === null) return invalidTime();
+      if (isBackdated) return skipBackdated(c.kind, kg);
       if (!det.newLotId) return { status: 'rejected', code: 'MISSING_LOT_ID', message: '새 로트 id 를 밖에서 정해 넘겨야 한다' };
       const lotIn: ReceiveLotInput = c.kind === 'receive'
         ? c.lot
@@ -610,7 +626,9 @@ export function applyRawCommand(input: {
     case 'consume': {
       const kg = r3(c.kg);
       if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '사용 수량은 0보다 커야 한다' };
-      if (backdated) return skipBackdated('consume', -kg);
+      const isBackdated = backdated();
+      if (isBackdated === null) return invalidTime();
+      if (isBackdated) return skipBackdated('consume', -kg);
       const stockShortage = r3(Math.max(0, kg - Math.max(0, state.stockKg)));
       if (stockShortage > 0) return {
         status: 'rejected', code: 'INSUFFICIENT_STOCK',
@@ -627,7 +645,9 @@ export function applyRawCommand(input: {
     case 'consume-lot': {
       const kg = r3(c.kg);
       if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '사용 수량은 0보다 커야 한다' };
-      if (backdated) return skipBackdated('consume-lot', -kg);
+      const isBackdated = backdated();
+      if (isBackdated === null) return invalidTime();
+      if (isBackdated) return skipBackdated('consume-lot', -kg);
       const idx = working.findIndex(lot => lot.id === c.lotId);
       if (idx < 0) return { status: 'rejected', code: 'LOT_NOT_FOUND', message: `사용할 활성 로트가 없다: ${c.lotId}` };
       const available = Number(working[idx].kgRemaining ?? 0);

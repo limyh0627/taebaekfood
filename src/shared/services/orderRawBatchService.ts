@@ -11,7 +11,7 @@ import {auth,authReady,db} from '../firebase';
 import {withClaimCompany} from '../companyWriteBoundary';
 import {rawPressText} from '../rawPressAttempt';
 import {type Order} from '../types';
-import {makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../orderProductionRecordPlan';
+import {ownLineIndexEntry,makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../orderProductionRecordPlan';
 import {prepareRawCommand,readRawCommandInTransaction,writePreparedRawCommand} from './rawInventoryService';
 
 type Applied=Extract<RawApplyResult,{status:'applied'}>;
@@ -49,7 +49,7 @@ export async function executeOrderRawBatchWithDb(database:Firestore,request:Orde
   if(live.inventoryOperation?.productionRecordContractVersion===1&&!recordPlan)return blocked('최초 생산기록 계획이 없어 원료를 쓰지 않았습니다.');
   if(recordPlan){try{validateOrderProductionRecordPlan(recordPlan);if(rawPressText(recordPlan.generation)!==rawPressText(request.generation))throw Error();}catch{return blocked('최초 생산기록 계획의 원문과 세대를 확인해 주세요.');}
    if(rawPressText(live.productionRecordIndex??{})!==rawPressText(recordPlan.previousIndex))return blocked('최초 승인 뒤 생산기록 연결이 바뀌었습니다.');
-   const priorCount=recordPlan.records.filter(row=>recordPlan.previousIndex[row.lineId]!==undefined).length;
+   const priorCount=recordPlan.records.filter(row=>ownLineIndexEntry(recordPlan.previousIndex,row.lineId)!==undefined).length;
    if(recordPlan.records.length+priorCount+2>500)return blocked('생산기록과 이전 기록 연결의 쓰기 한도를 초과했습니다.','rejected');
   }
   let nextStage:NonNullable<Order['inventoryOperation']>['stage'];try{nextStage=advanceOrderInventoryStage(live.inventoryOperation!.stage,'raw-inventory');}catch{return blocked('원료 일괄 작업 단계를 확인해 주세요.');}

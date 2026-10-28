@@ -1,3 +1,4 @@
+import {ownLineIndexEntry} from './orderProductionRecordPlan';
 import {docDateOf,docSaleLines,docOilKg,addOilByRaw,docUnpack,docPumokAt} from './docOil';
 import {stockUnits,type OrderUnitInputs} from './orderUnits';
 import {OrderStatus,type Order,type Item,type ProductionRecord,type OrderRawCalculationEvidence} from './types';
@@ -21,7 +22,7 @@ export function collectRawDocOilUsage(orders:Order[],items:Item[],inputs?:OrderU
    const product=items.find(row=>row.id===item.itemId)||items.find(row=>row.name===item.name);
    // 박스·선물세트는 전표와 같은 정본을 거친다. 입력 수량을 다시 풀면 개입수가 중복된다.
    const quantity=stockUnits(item,product,inputs);
-   const pointer=item.lineId?order.productionRecordIndex?.[item.lineId]:undefined;
+   const pointer=item.lineId?ownLineIndexEntry(order.productionRecordIndex,item.lineId):undefined;
    const unpacked=docUnpack(product,quantity,id=>items.find(row=>row.id===id),inputs);
    for(const line of docSaleLines(product,quantity,id=>items.find(row=>row.id===id),inputs,date)){
     const kg=docOilKg(line.spec,line.qty);if(kg<=0)continue;

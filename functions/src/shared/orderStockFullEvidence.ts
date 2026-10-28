@@ -1,11 +1,12 @@
 import type {Firestore,Transaction,Timestamp} from 'firebase-admin/firestore';
-import type {FullRow,FullEvidence,FullNativeEvidence,FullHistoryQuery,OrderStockFullPlan} from './orderStockFullPlan';
-import type {OrderItemInventoryState} from './orderLineInventory';
+import type {FullRow,FullEvidence,FullNativeEvidence,FullHistoryQuery,FullAggregateSourceQuery,OrderStockFullPlan} from './orderStockFullPlan';
+import {ensureOrderLineIds,type OrderItemInventoryState} from './orderLineInventory';
 import {rawReverseReportedDelta,rawReverseLotDeltas,rawAppliedDelta,commandHash,inventoryDocId,operationDocId,legacyOperationDocId} from './rawInventoryCore';
 import {orderRawBatchJobId,type OrderRawBatchRequest} from './orderRawBatchIdentity';
 import {readOrderRawBatchJobRequest,orderRawBatchProofProblem,orderRawBatchRequestHash} from './orderRawBatchProof';
 import {hasOrderInventoryGenerationCompletion,sameOrderInventoryGeneration} from './orderInventoryCompletionEvidence';
-import {validateProductionRecordIndex} from './orderProductionRecordPlan';
+export {ownLineIndexEntry} from './orderProductionRecordPlan';
+import {ownLineIndexEntry,deriveNextProductionRecordIndex,validateOrderProductionRecordPlan,validateProductionRecordIndex} from './orderProductionRecordPlan';
 import {orderRawTracesFromMovement} from './orderRawCommandPlan';
 import {normalizeRawMovement} from './rawInventoryDocument';
 import {advanceInventoryWriterProtocol} from './inventoryWriterProtocol';
@@ -15,7 +16,7 @@ export interface FullHistoricalEvidenceInput {
  codec:{text:(value:unknown)=>string;decode:(value:string)=>any};hash:(value:string)=>string;
  reject:(reason:string,status?:'blocked'|'conflict')=>never;usable:(row:FullRow|undefined,company:string,id:string)=>void;
  materializeTerminal:typeof import('./orderStockFullPlan').materializeOrderStockFullTerminal;
- infrastructure:{protocol:string;attempts:string;object:(value:unknown)=>value is FullRow;id:(value:unknown)=>value is string;path:(path:string)=>void;snapshotNative:(db:Firestore,snapshot:any)=>void;nativeReads:(plan:OrderStockFullPlan)=>FullNativeEvidence[];validateReadEvidence:(plan:OrderStockFullPlan,selfPath:string)=>void;attemptId:(reference:any,uid:string)=>string;isRejected:(error:unknown)=>boolean};
+ infrastructure:{protocol:string;attempts:string;object:(value:unknown)=>value is FullRow;id:(value:unknown)=>value is string;path:(path:string)=>void;snapshotNative:(db:Firestore,snapshot:any)=>void;nativeReads:(plan:OrderStockFullPlan)=>FullNativeEvidence[];validateReadEvidence:(plan:OrderStockFullPlan,selfPath:string)=>void;aggregateQuery:(capturedAt:string)=>any;aggregateCandidates:(snapshot:any)=>any[];generationOperationId:(reference:FullRow,uid:string)=>string;attemptId:(reference:any,uid:string)=>string;isRejected:(error:unknown)=>boolean};
 }
 /** DB 원문은 이 거래 안에서만 읽는다. 읽기 캐시는 다음 거래의 CAS를 대신하지 않는다. */
 export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidenceInput){
@@ -31,14 +32,15 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
   const historical=new Map<string,FullRow|undefined>(),historyWork=new Map<string,number>(),historyQueries=new Map<string,FullHistoryQuery>();
   const trackHistorical=(path:string,row:FullRow|undefined,encodedBytes?:number)=>{if(!historyWork.has(path)){const known=evidence.get(path);historyWork.set(path,encodedBytes??Buffer.byteLength(known&&known.kind!=='digest'?known.nativeText:text(row??null),'utf8'));}if(historyWork.size>500||[...historyWork.values()].reduce((sum,value)=>sum+value,0)>16777216)fullReject('history-work-budget-exceeded');};
   const readPast=async(path:string)=>{const row=await read(path);trackHistorical(path,row);return row;};
-  const readHistoricalEvidence=async(path:string)=>{fullPath(path);if(!['orderStockFullAttemptsV1','rawInventoryJobs'].includes(path.split('/')[0])||path===selfAttemptPath||original.has(path))fullReject('invalid-history-digest');if(!historical.has(path)){const snap=await nativeTx.get(db.doc(path)),row=snap.data(),native=text(row??null);historical.set(path,row);trackHistorical(path,row,Buffer.byteLength(native,'utf8'));evidence.set(path,{kind:'digest',path,exists:row!==undefined,version:snap.updateTime?{seconds:snap.updateTime.seconds,nanoseconds:snap.updateTime.nanoseconds}:null,nativeSha256:fullHash(native),encodedBytes:Buffer.byteLength(native,'utf8')});}return historical.get(path);};
+  const readHistoricalEvidence=async(path:string)=>{fullPath(path);if(!['orderStockFullAttemptsV1','rawInventoryJobs'].includes(path.split('/')[0])||path===selfAttemptPath||original.has(path))fullReject('invalid-history-digest');if(!historical.has(path)){const snap=snapshots.get(path)??await nativeTx.get(db.doc(path)),row=snap.data(),native=text(row??null);historical.set(path,row);trackHistorical(path,row,Buffer.byteLength(native,'utf8'));evidence.set(path,{kind:'digest',path,exists:row!==undefined,version:snap.updateTime?{seconds:snap.updateTime.seconds,nanoseconds:snap.updateTime.nanoseconds}:null,nativeSha256:fullHash(native),encodedBytes:Buffer.byteLength(native,'utf8')});}return historical.get(path);};
   const predecessor=async(rawItemId:string,sequence:number)=>{if(!Number.isSafeInteger(sequence)||sequence<1)fullReject('prior-balance-unproven');const key=text([company,rawItemId,sequence]);let query=historyQueries.get(key);if(!query){const result:any=await nativeTx.get(db.collection('rawMaterialLedger').where('companyId','==',company).where('rawItemId','==',rawItemId).where('sequence','==',sequence).limit(3));if(result.docs.length===0||result.docs.length>=3)fullReject('prior-balance-unproven');const orderedEvidence:FullNativeEvidence[]=[];for(const snap of result.docs){const row=snap.data(),path=snap.ref.path;if(!row||row.companyId!==company||row.rawItemId!==rawItemId||row.sequence!==sequence||typeof row.operationId!=='string'||![operationDocId(row.operationId),legacyOperationDocId(row.operationId)].includes(snap.id)||!Number.isFinite(row.balanceAfterKg))fullReject('prior-balance-unproven');remember(path,row,snap.updateTime);trackHistorical(path,row);orderedEvidence.push(evidence.get(path) as FullNativeEvidence);}orderedEvidence.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);query={companyId:company,rawItemId,sequence,limit:3,orderedEvidence};historyQueries.set(key,query);}
    const values=query.orderedEvidence.map(row=>normalizeRawMovement(codec.decode(row.nativeText)));if(values.length===2&&(values[0].operationId!==values[1].operationId||text(values[0])!==text(values[1])))fullReject('prior-balance-unproven');return values[0].balanceAfterKg;
   };
 
+ const aggregateSourceQueries=new Map<string,FullAggregateSourceQuery>();
  let order:FullRow;
   const legacyJobs=new Map<string,{request:OrderRawBatchRequest;job:FullRow}>();
-  const sourceLines=new Map<string,{state:FullRow;origin?:FullRow;sourceLegacy?:FullRow}>(),operationsByLine=new Map<string,{operationId:string;rawItemId:string;original:FullRow;movement:ReturnType<typeof normalizeRawMovement>}[]>();
+  const sourceLines=new Map<string,{state:FullRow;origin?:FullRow;sourceLegacy?:FullRow;recordProof?:FullRow}>(),operationsByLine=new Map<string,{operationId:string;rawItemId:string;original:FullRow;movement:ReturnType<typeof normalizeRawMovement>}[]>();
   const validateFullOrigin=(value:unknown,lineId:string,attempt:number):FullRow=>{const origin=value;
    if(!fullObject(origin)||origin.protocol!==FULL_PROTOCOL||!fullObject(origin.reference)||origin.reference.version!==1||origin.reference.companyId!==company||origin.reference.orderId!==preview.intent.orderId||!fullId(origin.reference.requestId)||!fullObject(origin.owner)||origin.owner.companyId!==company||typeof origin.owner.uid!=='string'||!origin.owner.uid||!fullId(origin.owner.employeeId)||origin.lineId!==lineId||origin.attempt!==attempt)fullReject('invalid-full-raw-origin');
    return origin;
@@ -60,7 +62,7 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    const {prior}=await appliedAttempt(origin);
    const persisted=prior.orderPatch.itemInventory?.[lineId],withoutReverse=(row:FullRow)=>{const {reversedAt:_reversed,applied:_applied,rawReversalOrigin:_rawReversal,...rest}=row;return rest;};
    if(!persisted||persisted.applied!==true||text(withoutReverse(persisted))!==text(withoutReverse(state)))fullReject('prior-full-line-unproven');
-   sourceLines.set(lineId,{state:persisted,origin});
+   sourceLines.set(lineId,{state:persisted,origin,recordProof:{entry:ownLineIndexEntry<FullRow>(prior.orderPatch.productionRecordIndex,lineId),record:prior.effectSet.filter(row=>row.path.startsWith('productionRecords/')).map(row=>codec.decode(row.nativeText)).find(row=>row.id===ownLineIndexEntry<FullRow>(prior.orderPatch.productionRecordIndex,lineId)?.recordId)}});
    const lines=prior.linePlans?.filter(row=>row.lineId===lineId);
    if(!lines||lines.length!==1||lines[0].attempt!==state.attempt||!Array.isArray(lines[0].commandIndices)||lines[0].commandIndices.length!==state.rawEffectReferences!.length)fullReject('prior-full-line-unproven');
    return state.rawEffectReferences!.map((ref,index)=>{
@@ -81,63 +83,56 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    if(text(prior.orderPatch.itemInventory?.[lineId]??null)!==text(expected)||text(state)!==text(expected)||!Array.isArray(prior.orderPatch.items)||text(prior.orderPatch.items[target.index]??null)!==text({...prior.intent.expectedTarget,checked:false}))fullReject('prior-full-reversal-unproven');
    for(const [path,write]of terminal.writes)if(path.startsWith('rawMaterialLedger/')||path.startsWith('rawInventoryReversalGuards/')){const actual=await readPast(path);if(write.operation!=='create'||text(actual??null)!==text(write.data))fullReject('prior-full-reversal-effect-conflict');}
   };
-  const legacySource=async(lineId:string,state:OrderItemInventoryState,sourceOrder=order,requireAtomic=false)=>{
-   let generation=sourceOrder.productionRecordIndex?.[lineId]?.generation;const marker=sourceOrder.inventoryGenerationCompletion;
-   if(requireAtomic){let patch:FullRow|undefined;try{patch=JSON.parse(marker?.requestText).patch;}catch{fullReject('legacy-raw-history-unproven');}if(!hasOrderInventoryGenerationCompletion({...sourceOrder,id:orderId} as any,marker?.generation)||!state.applied||text(patch?.itemInventory?.[lineId]??null)!==text(state)||!Array.isArray(patch?.items)||patch.items.filter((row:FullRow)=>row.lineId===lineId).length!==1||text(patch.items.find((row:FullRow)=>row.lineId===lineId))!==text(sourceOrder.items?.find((row:FullRow)=>row.lineId===lineId))||patch.items.find((row:FullRow)=>row.lineId===lineId)?.checked!==true)fullReject('legacy-raw-history-unproven');}
-   if(!generation&&marker?.generation?.startedAt===state.completedAt){const patch=JSON.parse(marker.requestText).patch;if(text(patch.itemInventory?.[lineId]??null)===text(state)&&patch.itemInventory?.[lineId]?.applied===true)generation=marker.generation;}
-   if(!generation){
-    const production=state.production,empty=(value:any)=>Array.isArray(value)&&value.length===0;
-    const zero=Object.prototype.hasOwnProperty.call(production,'rawCalculationEvidence')&&empty(production.rawCalculationEvidence)&&[state.rawConsumedLots,production.rawConsumedLots,production.rawLedgerIds,production.stockDeltas,production.productProducedLots,production.productConsumedLots,state.autoBuilt,state.producedUnits].every(empty);
-    const patch=marker?JSON.parse(marker.requestText).patch:undefined;
-    if(!requireAtomic&&!sourceOrder.productionRecordIndex?.[lineId]&&!state.rawEffectOrigin&&zero&&text(patch?.itemInventory?.[lineId]??null)===text(state))return [];
-    fullReject('legacy-raw-history-unproven');
-   }
-   if(generation.companyId!==company||generation.orderId!==preview.intent.orderId||generation.startedAt!==state.completedAt)fullReject('legacy-raw-history-unproven');
+  const validatedLineJobs=new Set<string>();
+  const loadVerifiedLegacyJob=async(generation:NonNullable<Parameters<typeof sameOrderInventoryGeneration>[0]>,requireLines=false)=>{
    const jobId=orderRawBatchJobId(generation);let cached=legacyJobs.get(jobId);
    if(!cached){
     const job=await readHistoricalEvidence('rawInventoryJobs/'+jobId);if(!job)fullReject('legacy-raw-history-unproven');let request:OrderRawBatchRequest;
     try{request=readOrderRawBatchJobRequest(job);}catch{fullReject('legacy-raw-history-unproven');}
-    if(!sameOrderInventoryGeneration(request!.generation,generation)||!Array.isArray(request!.plan.lines))fullReject('legacy-raw-history-unproven');
+    if(!sameOrderInventoryGeneration(request!.generation,generation)||requireLines&&!Array.isArray(request!.plan.lines))fullReject('legacy-raw-history-unproven');
     const reads=[];
     for(const {command}of request!.commands){
      const movement=await readPast('rawMaterialLedger/'+operationDocId(command.operationId)),legacyId=legacyOperationDocId(command.operationId),old=legacyId===operationDocId(command.operationId)?undefined:await readPast('rawMaterialLedger/'+legacyId),state=await readPast('rawInventories/'+inventoryDocId(company,command.rawItemId)),item=await readPast('items/'+command.rawItemId),snap=(row:any)=>({exists:()=>row!==undefined,data:()=>row});
      reads.push({movementSnap:snap(movement),oldMovementSnap:legacyId===operationDocId(command.operationId)?null:snap(old),stateSnap:snap(state),itemSnap:snap(item)});
     }
     if(orderRawBatchProofProblem(job,request!,reads,await orderRawBatchRequestHash(request!)))fullReject('legacy-raw-proof-conflict');
+    cached={request:request!,job};legacyJobs.set(jobId,cached);
+   }
+   if(requireLines&&!Array.isArray(cached.request.plan.lines))fullReject('legacy-raw-history-unproven');return cached;
+  };
+  const legacySource=async(lineId:string,state:OrderItemInventoryState,sourceOrder=order,requireAtomic=false)=>{
+   let generation=ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)?.generation;const marker=sourceOrder.inventoryGenerationCompletion;
+   if(requireAtomic){let patch:FullRow|undefined;try{patch=JSON.parse(marker?.requestText).patch;}catch{fullReject('legacy-raw-history-unproven');}if(!hasOrderInventoryGenerationCompletion({...sourceOrder,id:orderId} as any,marker?.generation)||!state.applied||text(patch?.itemInventory?.[lineId]??null)!==text(state)||!Array.isArray(patch?.items)||patch.items.filter((row:FullRow)=>row.lineId===lineId).length!==1||text(patch.items.find((row:FullRow)=>row.lineId===lineId))!==text(sourceOrder.items?.find((row:FullRow)=>row.lineId===lineId))||patch.items.find((row:FullRow)=>row.lineId===lineId)?.checked!==true)fullReject('legacy-raw-history-unproven');}
+   if(!generation&&marker?.generation?.startedAt===state.completedAt){const patch=JSON.parse(marker.requestText).patch;if(text(patch.itemInventory?.[lineId]??null)===text(state)&&patch.itemInventory?.[lineId]?.applied===true)generation=marker.generation;}
+   if(!generation){
+    const production=state.production,empty=(value:any)=>Array.isArray(value)&&value.length===0;
+    const zero=Object.prototype.hasOwnProperty.call(production,'rawCalculationEvidence')&&empty(production.rawCalculationEvidence)&&[state.rawConsumedLots,production.rawConsumedLots,production.rawLedgerIds,production.stockDeltas,production.productProducedLots,production.productConsumedLots,state.autoBuilt,state.producedUnits].every(empty);
+    const patch=marker?JSON.parse(marker.requestText).patch:undefined;
+    if(!requireAtomic&&!ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)&&!state.rawEffectOrigin&&zero&&text(patch?.itemInventory?.[lineId]??null)===text(state))return [];
+    fullReject('legacy-raw-history-unproven');
+   }
+   if(generation.companyId!==company||generation.orderId!==preview.intent.orderId||generation.startedAt!==state.completedAt)fullReject('legacy-raw-history-unproven');
+   const jobId=orderRawBatchJobId(generation),cached=await loadVerifiedLegacyJob(generation,true);
+   if(!validatedLineJobs.has(jobId)){
     const covered=new Set<number>(),lineIds=new Set<string>();
-    for(const row of request!.plan.lines as FullRow[]){
+    for(const row of cached.request.plan.lines as FullRow[]){
      if(typeof row.lineId!=='string'||lineIds.has(row.lineId)||!Number.isSafeInteger(row.attempt)||row.attempt<1||!Array.isArray(row.commandIndices))fullReject('legacy-command-index-unproven');lineIds.add(row.lineId);
-     for(const index of row.commandIndices){const command=request!.commands[index]?.command;
+     for(const index of row.commandIndices){const command=cached.request.commands[index]?.command;
       if(!Number.isSafeInteger(index)||index<0||!command||covered.has(index)||command.operationId!==(command.kind==='ledger-consume'?'production-ledger':'production')+':'+preview.intent.orderId+':'+row.lineId+':a'+row.attempt+':'+command.rawItemId)fullReject('legacy-command-index-unproven');covered.add(index);
      }
     }
-    if(covered.size!==request!.commands.length)fullReject('legacy-command-index-unproven');cached={request:request!,job};legacyJobs.set(jobId,cached);
+    if(covered.size!==cached.request.commands.length)fullReject('legacy-command-index-unproven');validatedLineJobs.add(jobId);
    }
-   if(sourceOrder.productionRecordIndex?.[lineId]&&sourceOrder.productionRecordIndex[lineId].requestHash!==cached.job.requestHash)fullReject('legacy-record-request-conflict');
+   if(ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)&&ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)!.requestHash!==cached.job.requestHash)fullReject('legacy-record-request-conflict');
    const matches=(cached.request.plan.lines as FullRow[]).filter(row=>row.lineId===lineId);
    if(matches.length!==1||matches[0].attempt!==state.attempt||text(matches[0].rowDeltas)!==text(state.production.stockDeltas)||text(matches[0].bomLines)!==text(state.production.bomLines)||text(matches[0].production.rawCalculationEvidence??null)!==text(state.production.rawCalculationEvidence??null)||text(matches[0].production.autoBuilt)!==text(state.autoBuilt)||text(matches[0].production.producedUnits)!==text(state.producedUnits))fullReject('legacy-line-snapshot-unproven');
    const indices=matches[0].commandIndices as number[],traces=indices.flatMap(index=>orderRawTracesFromMovement(cached!.request.commands[index].command,cached!.job.results[index].movement));
-   if(text(traces)!==text(state.rawConsumedLots))fullReject('legacy-line-snapshot-unproven');if(requireAtomic)sourceLines.set(lineId,{state,sourceLegacy:{kind:'legacy-atomic-v1',generation,jobId,requestHash:cached.job.requestHash,lineId,attempt:state.attempt,sourceLineNativeSha256:fullHash(text(state)),completionNativeSha256:fullHash(text(marker))}});return indices.map(index=>({operationId:cached!.request.commands[index].command.operationId,rawItemId:cached!.request.commands[index].command.rawItemId,command:cached!.request.commands[index].command}));
+   if(text(traces)!==text(state.rawConsumedLots))fullReject('legacy-line-snapshot-unproven');if(requireAtomic)sourceLines.set(lineId,{state,sourceLegacy:{kind:'legacy-atomic-v1',generation,jobId,requestHash:cached.job.requestHash,lineId,attempt:state.attempt,sourceLineNativeSha256:fullHash(text(state)),completionNativeSha256:fullHash(text(marker))},recordProof:{entry:ownLineIndexEntry(deriveNextProductionRecordIndex(cached.request.plan.productionRecords as any,cached.job.requestHash),lineId),record:(cached.request.plan.productionRecords as any).records.find((row:FullRow)=>row.lineId===lineId)}});return indices.map(index=>({operationId:cached!.request.commands[index].command.operationId,rawItemId:cached!.request.commands[index].command.rawItemId,command:cached!.request.commands[index].command}));
   };
 
- const verifyCurrentLineHistory=async(legacyReversalLineId?:string)=>{order=(await read('orders/'+orderId))!;fullUsable(order,company,orderId);
-  const lineBasis={currentStates:(order.itemInventory??{}) as Record<string,OrderItemInventoryState>};
-  {
-   try{validateProductionRecordIndex(order.productionRecordIndex??{},company,preview.intent.orderId);}catch{fullReject('invalid-production-record-index');}
-   const states=lineBasis.currentStates,index=order.productionRecordIndex??{};
-   for(const [lineId,entry]of Object.entries(index) as [string,any][]){const state=states[lineId];if(!state)fullReject('invalid-production-record-index');const record=await readPast('productionRecords/'+entry.recordId),relatedItems=new Set([state.itemId,...state.production.bomLines.filter(row=>row.parentItemId===state.itemId).map(row=>row.childItemId),...(state.production.productProducedLots??[]).map(row=>row.itemId)]);if(!record||record.companyId!==company||record.orderId!==preview.intent.orderId||record.lineId!==lineId||!relatedItems.has(record.itemId)||text(record.generation)!==text(entry.generation)||record.createdAt!==entry.generation.startedAt||record.supersededBy||state.completedAt!==entry.generation.startedAt)fullReject('invalid-prior-production-record');fullUsable(record,company,entry.recordId);}
-   for(const [lineId,state] of Object.entries(states)){
-    let operations;
-    if(state.rawReversalOrigin?.sourceLegacy){
-     if(state.applied||state.rawEffectOrigin||state.rawReversalOrigin.sourceReference!==undefined)fullReject('invalid-full-reversal-origin');
-     const origin=validateFullOrigin(state.rawReversalOrigin,lineId,state.attempt),{prior}=await appliedAttempt(origin),before=fullNativeReads(prior).find(row=>row.path==='orders/'+orderId);
-     if(!before?.exists)fullReject('prior-full-reversal-unproven');const sourceOrder=codec.decode(before.nativeText),sourceState=sourceOrder.itemInventory?.[lineId];
-     if(!sourceState||sourceState.applied!==true||sourceState.rawEffectOrigin)fullReject('prior-full-reversal-unproven');
-     operations=await legacySource(lineId,sourceState,sourceOrder,true);await verifyFullReversal(lineId,state);
-    }else{operations=state.rawEffectOrigin?await fullSource(lineId,state):await legacySource(lineId,state,order,lineId===legacyReversalLineId);
-     if(state.rawReversalOrigin){if(state.applied||!state.rawEffectOrigin)fullReject('invalid-full-reversal-origin');await verifyFullReversal(lineId,state);}
-    }
-    const verified: {operationId:string;rawItemId:string;original:FullRow;movement:ReturnType<typeof normalizeRawMovement>}[]=[];operationsByLine.set(lineId,verified);
+  type SourceOperation={operationId:string;rawItemId:string;command?:any;movementHash?:string};
+  type VerifiedOperation={operationId:string;rawItemId:string;original:FullRow;movement:ReturnType<typeof normalizeRawMovement>};
+  const appendVerifiedOriginals=async(operations:SourceOperation[],state:Pick<OrderItemInventoryState,'applied'|'rawConsumedLots'>,verified:VerifiedOperation[])=>{
     for(const trace of operations){const operation=trace.operationId;
      const canonical=operationDocId(operation),legacy=legacyOperationDocId(operation),a=await readPast('rawMaterialLedger/'+canonical),b=legacy===canonical?undefined:await readPast('rawMaterialLedger/'+legacy);
      const select=(first:FullRow|undefined,second:FullRow|undefined)=>{if(first&&second&&text(normalizeRawMovement(first))!==text(normalizeRawMovement(second)))fullReject('conflicting-prior-raw-movements');return first??second;};
@@ -155,11 +150,76 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
      const expectedLots=rawReverseLotDeltas(movement);if(reverse.reportedDeltaKg!==rawReverseReportedDelta(movement)||reverse.lotChanges.length!==expectedLots.length||new Set(movement.lotChanges.map(row=>row.lotId)).size!==movement.lotChanges.length||reverse.lotChanges.some((row,index)=>row.lotId!==expectedLots[index].lotId||row.deltaKg!==expectedLots[index].deltaKg||rawAppliedDelta(row.beforeKg,row.afterKg)!==row.deltaKg||!row.lotSnapshot||row.lotSnapshot.id!==row.lotId||row.lotSnapshot.kgRemaining!==row.beforeKg))fullReject('invalid-prior-reversal-numerics');
      if(!Number.isSafeInteger(reverse.sequence)||reverse.sequence<=1||reverse.appliedDeltaKg!==rawAppliedDelta(await predecessor(reverse.rawItemId,reverse.sequence-1),reverse.balanceAfterKg))fullReject('invalid-prior-reversal-numerics');
     }
+  };
+  const aggregateCandidates=async(capturedAt:string)=>{
+   if(typeof capturedAt!=='string'||!Number.isFinite(Date.parse(capturedAt)))fullReject('aggregate-source-unproven');
+   let query=aggregateSourceQueries.get(capturedAt);if(!query){const result:any=await nativeTx.get(input.infrastructure.aggregateQuery(capturedAt)),candidates=input.infrastructure.aggregateCandidates(result),orderedEvidence:import('./orderStockFullPlan').FullDigestEvidence[]=[];
+    if(result.docs.some((row:any)=>row.ref.path===selfAttemptPath))trackHistorical(selfAttemptPath,undefined,0);
+    for(const snapshot of candidates){await readHistoricalEvidence(snapshot.ref.path);const row=evidence.get(snapshot.ref.path);if(!row||row.kind!=='digest')fullReject('invalid-history-digest');orderedEvidence.push(row);}
+    orderedEvidence.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);query={version:1,companyId:company,orderId,capturedAt,limit:4,orderedEvidence};aggregateSourceQueries.set(capturedAt,query);
+   }
+   const sources=[];for(const row of query.orderedEvidence){const saved=historical.get(row.path);
+    if(!saved||!fullObject(saved.reference)||saved.reference.version!==1||saved.reference.companyId!==company||saved.reference.orderId!==orderId||!fullId(saved.reference.requestId)||!fullObject(saved.owner)||saved.owner.companyId!==company||typeof saved.owner.uid!=='string'||!saved.owner.uid||!fullId(saved.owner.employeeId)||row.path!==FULL_ATTEMPTS+'/'+fullAttemptId(saved.reference,saved.owner.uid))fullReject('aggregate-source-unproven');
+    const result=await appliedAttempt({reference:saved.reference,owner:saved.owner});if(result.prior.clock.now!==capturedAt||!Number.isFinite(result.prior.clock.nowMs)||Date.parse(result.prior.clock.now)!==result.prior.clock.nowMs)fullReject('aggregate-source-unproven');sources.push(result);
+   }return sources;
+  };
+  const readAggregateRecords=async(generation:FullRow,expectedIndex?:FullRow,expectedRecords?:FullRow[])=>{
+   const index=order.productionRecordIndex??{};try{validateProductionRecordIndex(index,company,orderId);}catch{fullReject('invalid-production-record-index');}
+   if(expectedIndex&&text(index)!==text(expectedIndex))fullReject('aggregate-record-unproven');
+   for(const [lineId,entry]of Object.entries(index)as[string,FullRow][]){const record=await readPast('productionRecords/'+entry.recordId);if(!record||record.companyId!==company||record.orderId!==orderId||record.lineId!==lineId||text(record.generation)!==text(entry.generation)||text(entry.generation)!==text(generation)||record.createdAt!==generation.startedAt||record.supersededBy)fullReject('aggregate-record-unproven');fullUsable(record,company,entry.recordId);if(expectedRecords){const expected=expectedRecords.find(row=>row.id===entry.recordId);if(!expected||['id','companyId','orderId','lineId','generation','createdAt','itemId','finishedQty','wipUsed','wipItemId'].some(key=>text(record[key]??null)!==text(expected[key]??null)))fullReject('aggregate-record-unproven');}}
+   if(expectedRecords?.some(row=>!Object.values(index).some((entry:any)=>entry.recordId===row.id)))fullReject('aggregate-record-unproven');
+  };
+  const aggregateItemSelection=(rows:unknown)=>{if(!Array.isArray(rows)||!rows.length||rows.some(row=>!fullObject(row)||!fullId(row.itemId)||typeof row.quantity!=='number'||!Number.isFinite(row.quantity)||row.quantity<=0))fullReject('aggregate-items-unproven');return ensureOrderLineIds(rows).map((row:any)=>({itemId:row.itemId,lineId:row.lineId,quantity:row.quantity,isBoxUnit:!!row.isBoxUnit,boxQuantity:row.boxQuantity??null,unitsPerBox:row.unitsPerBox??null}));};
+  const aggregateFieldsMatch=(patch:FullRow,production:FullRow)=>text(patch.inventorySnapshots?.production??null)===text(production)&&patch.producedAt===order.producedAt&&patch.rawInventoryAttempt===order.rawInventoryAttempt&&text(patch.rawConsumedLots??[])===text(order.rawConsumedLots??[])&&text(patch.producedUnits??null)===text(order.producedUnits??null)&&text(patch.autoBuilt??[])===text(order.autoBuilt??[]);
+  const verifyCurrentAggregateProduction=async()=>{
+   order=(await read('orders/'+orderId))!;fullUsable(order,company,orderId);const production=order.inventorySnapshots?.production;
+   if(!fullObject(production)||typeof order.producedAt!=='string'||production.capturedAt!==order.producedAt||!Number.isSafeInteger(order.rawInventoryAttempt)||order.rawInventoryAttempt<1||!Array.isArray(production.stockDeltas)||!Array.isArray(production.bomLines)||!Array.isArray(order.rawConsumedLots))fullReject('aggregate-source-unproven');
+   const sources=await aggregateCandidates(production.capturedAt),matches=sources.filter(({prior})=>prior.intent.action==='status-forward'&&!prior.linePlans&&aggregateFieldsMatch(prior.orderPatch,production)&&text(aggregateItemSelection(prior.orderPatch.items))===text(aggregateItemSelection(order.items)));
+   if(sources.length){if(matches.length!==1)fullReject('aggregate-source-unproven');const {prior,saved}=matches[0],generation={contractVersion:1,companyId:company,orderId,operationId:input.infrastructure.generationOperationId(saved.reference,saved.owner.uid),actorUid:saved.owner.uid,startedAt:prior.clock.now},records=prior.effectSet.filter(row=>row.path.startsWith('productionRecords/')).map(row=>codec.decode(row.nativeText));await readAggregateRecords(generation,prior.orderPatch.productionRecordIndex??{},records);
+    const operations:SourceOperation[]=[];for(const effect of prior.effectSet.filter(row=>row.path.startsWith('rawMaterialLedger/'))){const raw=codec.decode(effect.nativeText),before=fullNativeReads(prior).find(row=>row.path===effect.path);if(!before||before.exists||effect.path!=='rawMaterialLedger/'+operationDocId(raw.operationId)||!['consume','ledger-consume'].includes(raw.kind)||raw.operationId!==(raw.kind==='ledger-consume'?'production-ledger':'production')+':'+orderId+':a'+order.rawInventoryAttempt+':'+raw.rawItemId)fullReject('aggregate-command-unproven');operations.push({operationId:raw.operationId,rawItemId:raw.rawItemId,movementHash:fullHash(text(advanceInventoryWriterProtocol(undefined,raw)))});}
+    const verified:VerifiedOperation[]=[];await appendVerifiedOriginals(operations,{applied:true,rawConsumedLots:order.rawConsumedLots},verified);return {source:'full' as const,production,operations:verified};
+   }
+   const marker=order.inventoryGenerationCompletion;let patch:FullRow;try{if(!hasOrderInventoryGenerationCompletion({...order,id:orderId}as any,marker?.generation))fullReject('legacy-aggregate-unproven');patch=JSON.parse(marker.requestText).patch;}catch{fullReject('legacy-aggregate-unproven');}
+   if(!aggregateFieldsMatch(patch!,production))fullReject('legacy-aggregate-unproven');const entries=Object.values(order.productionRecordIndex??{})as FullRow[],generations=new Map(entries.map(entry=>[text(entry.generation),entry.generation]));if(generations.size>1)fullReject('legacy-aggregate-generation-unproven');const generation=generations.size?[...generations.values()][0]:marker?.generation?.startedAt===production.capturedAt?marker.generation:undefined;if(!generation||generation.companyId!==company||generation.orderId!==orderId||generation.startedAt!==production.capturedAt)fullReject('legacy-aggregate-generation-unproven');
+   const {request,job}=await loadVerifiedLegacyJob(generation),plan=request.plan as FullRow;
+   if(plan.finalPlan?.kind!=='status'||Array.isArray(plan.lines)||!fullObject(plan.production)||!Array.isArray(plan.productionDeltas)||!fullObject(plan.productLots)||!Array.isArray(plan.productLots.positive)||plan.attempt!==order.rawInventoryAttempt||text(plan.productionDeltas)!==text(production.stockDeltas)||text(plan.bomLines)!==text(production.bomLines)||text(plan.production.rawCalculationEvidence??[])!==text(production.rawCalculationEvidence??[])||text(plan.production.producedUnits??null)!==text(order.producedUnits??null)||text(plan.production.autoBuilt??[])!==text(order.autoBuilt??[]))fullReject('legacy-aggregate-snapshot-unproven');
+   let businessOrder:FullRow;try{businessOrder=JSON.parse(request.business.orderText as string);}catch{fullReject('legacy-aggregate-items-unproven');}const sourceItems=plan.finalPlan.completionPatch?.items??businessOrder!.items;if(text(aggregateItemSelection(sourceItems))!==text(aggregateItemSelection(plan.normalizedItems))||text(aggregateItemSelection(plan.normalizedItems))!==text(aggregateItemSelection(order.items)))fullReject('legacy-aggregate-items-unproven');
+   try{validateOrderProductionRecordPlan(plan.productionRecords);}catch{fullReject('legacy-aggregate-record-unproven');}if(text(plan.productionRecords.generation)!==text(generation))fullReject('legacy-aggregate-record-unproven');await readAggregateRecords(generation,deriveNextProductionRecordIndex(plan.productionRecords,job.requestHash),plan.productionRecords.records);
+   const positive=plan.productLots.positive.map((row:any)=>({itemId:row.itemId,lotId:row.lot.id,qty:row.lot.qtyIn??0}));if(text(positive)!==text(production.productProducedLots??[]))fullReject('legacy-aggregate-lots-unproven');
+   const traces=request.commands.flatMap(({command},index)=>orderRawTracesFromMovement(command,job.results[index].movement));if(text(traces)!==text(order.rawConsumedLots)||text(traces)!==text(production.rawConsumedLots??[]))fullReject('legacy-aggregate-raw-unproven');
+   const operations=request.commands.map(({command})=>{if(command.operationId!==(command.kind==='ledger-consume'?'production-ledger':'production')+':'+orderId+':a'+plan.attempt+':'+command.rawItemId)fullReject('legacy-aggregate-command-unproven');return {operationId:command.operationId,rawItemId:command.rawItemId,command};}),verified:VerifiedOperation[]=[];await appendVerifiedOriginals(operations,{applied:true,rawConsumedLots:order.rawConsumedLots},verified);return {source:'legacy-atomic' as const,production,operations:verified};
+  };
+  const verifyCurrentShipment=async()=>{
+   order=(await read('orders/'+orderId))!;fullUsable(order,company,orderId);const shipment=order.inventorySnapshots?.shipment;if(order.status!=='SHIPPED'||order.shippedOut!==true||!fullObject(shipment)||typeof shipment.capturedAt!=='string'||!Number.isFinite(Date.parse(shipment.capturedAt)))fullReject('shipment-source-unproven');
+   const matches=(patch:FullRow)=>patch.status==='SHIPPED'&&patch.shippedOut===true&&text(patch.inventorySnapshots?.shipment??null)===text(shipment)&&text(patch.productConsumedLots??[])===text(order.productConsumedLots??[]),marker=order.inventoryGenerationCompletion;
+   if(marker&&hasOrderInventoryGenerationCompletion({...order,id:orderId}as any,marker.generation)){const patch=JSON.parse(marker.requestText).patch;if(matches(patch))return;}
+   const sources=await aggregateCandidates(shipment.capturedAt);if(sources.filter(({prior})=>prior.intent.action==='status-forward'&&matches(prior.orderPatch)).length!==1)fullReject('shipment-source-unproven');
+  };
+
+ const verifyCurrentLineHistory=async(legacyReversalLineIds?:string|ReadonlySet<string>)=>{const strictLegacyIds=new Set(typeof legacyReversalLineIds==='string'?[legacyReversalLineIds]:legacyReversalLineIds??[]);order=(await read('orders/'+orderId))!;fullUsable(order,company,orderId);
+  const lineBasis={currentStates:(order.itemInventory??{}) as Record<string,OrderItemInventoryState>};
+  {
+   try{validateProductionRecordIndex(order.productionRecordIndex??{},company,preview.intent.orderId);}catch{fullReject('invalid-production-record-index');}
+   const states=lineBasis.currentStates,index=order.productionRecordIndex??{};
+   for(const [lineId,entry]of Object.entries(index) as [string,any][]){const state=states[lineId];if(!state)fullReject('invalid-production-record-index');const record=await readPast('productionRecords/'+entry.recordId),relatedItems=new Set([state.itemId,...state.production.bomLines.filter(row=>row.parentItemId===state.itemId).map(row=>row.childItemId),...(state.production.productProducedLots??[]).map(row=>row.itemId)]);if(!record||record.companyId!==company||record.orderId!==preview.intent.orderId||record.lineId!==lineId||!relatedItems.has(record.itemId)||text(record.generation)!==text(entry.generation)||record.createdAt!==entry.generation.startedAt||record.supersededBy||state.completedAt!==entry.generation.startedAt)fullReject('invalid-prior-production-record');fullUsable(record,company,entry.recordId);}
+   for(const [lineId,state] of Object.entries(states)){
+    let operations;
+    if(state.rawReversalOrigin?.sourceLegacy){
+     if(state.applied||state.rawEffectOrigin||state.rawReversalOrigin.sourceReference!==undefined)fullReject('invalid-full-reversal-origin');
+     const origin=validateFullOrigin(state.rawReversalOrigin,lineId,state.attempt),{prior}=await appliedAttempt(origin),before=fullNativeReads(prior).find(row=>row.path==='orders/'+orderId);
+     if(!before?.exists)fullReject('prior-full-reversal-unproven');const sourceOrder=codec.decode(before.nativeText),sourceState=sourceOrder.itemInventory?.[lineId];
+     if(!sourceState||sourceState.applied!==true||sourceState.rawEffectOrigin)fullReject('prior-full-reversal-unproven');
+     operations=await legacySource(lineId,sourceState,sourceOrder,true);await verifyFullReversal(lineId,state);
+    }else{operations=state.rawEffectOrigin?await fullSource(lineId,state):await legacySource(lineId,state,order,strictLegacyIds.has(lineId));
+     if(state.rawReversalOrigin){if(state.applied||!state.rawEffectOrigin)fullReject('invalid-full-reversal-origin');await verifyFullReversal(lineId,state);}
+    }
+    const verified: {operationId:string;rawItemId:string;original:FullRow;movement:ReturnType<typeof normalizeRawMovement>}[]=[];operationsByLine.set(lineId,verified);
+    await appendVerifiedOriginals(operations,state,verified);
    }
   }
 
  return {order,states:lineBasis.currentStates,operationsByLine,sourceLines};
  };
 
- return {tx:nativeTx as Pick<Transaction,'get'>,get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,verifyCurrentLineHistory};
+ return {tx:nativeTx as Pick<Transaction,'get'>,get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,get aggregateSourceQueries(){return [...aggregateSourceQueries.values()];},verifyCurrentAggregateProduction,verifyCurrentShipment,verifyCurrentLineHistory};
 }

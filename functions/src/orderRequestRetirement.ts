@@ -1,35 +1,15 @@
 import * as admin from 'firebase-admin';
-import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
+import {retirementText,retirementHash,retirementIdentity,retirementInventoryManifest,validateRetirementManifest} from './shared/orderRetirementHandoff';
 import {advanceInventoryWriterProtocol} from './shared/inventoryWriterProtocol';
 import {selectOrderRawBatchOrderEvidence,assertArchiveOldGenerationAbsent as assertArchiveGeneration} from './shared/orderRawBatchOrderEvidence';
 
-export const retirementText=(value:any):string=>JSON.stringify(Array.isArray(value)?value.map(row=>JSON.parse(retirementText(row))):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,JSON.parse(retirementText(value[key]))])):value);
-export const retirementHash=(text:string)=>createHash('sha256').update(text).digest('hex');
-export const retirementIdentity=(g:{companyId:string;orderId:string;operationId:string;startedAt:string;actorUid:string})=>retirementHash(retirementText({companyId:g.companyId,orderId:g.orderId,operationId:g.operationId,startedAt:g.startedAt,actorUid:g.actorUid}));
+export {retirementText,retirementHash,retirementIdentity,retirementInventoryManifest} from './shared/orderRetirementHandoff';
 export interface RetirementInput {requestText:string;requestHash:string;releaseId:string}
 export interface RetirementResult {status:'retired'|'duplicate';action:'archived-only'|'allow-new-claim';allowNewClaim:boolean;inventoryApplied:'unknown';requestHash:string;requestText:string;authorizationId:string;retirementId:string;generation:{contractVersion:1;companyId:string;orderId:string;operationId:string;startedAt:string;actorUid:string}}
 const deny=(message:string):never=>{throw new HttpsError('failed-precondition',message);};
 const docId=(id:unknown):id is string=>typeof id==='string'&&id.length>0&&id.length<=512&&id.trim()===id&&!id.includes('/');
-/** 계산 결과를 다시 만들지 않고 최초 저장 계획에 실제 나타난 쓰기 대상만 모은다. */
-export function retirementInventoryManifest(request:any):{itemIds:string[];rawItemIds:string[]}{
- const items=new Set<string>(),raws=new Set<string>(),plan=request.plan;
- if(!plan||typeof plan!=='object'||Array.isArray(plan)||!Array.isArray(request.commands))deny('최초 재고 계획의 대상 명세를 확인해 주세요.');
- const item=(id:unknown)=>{if(!docId(id))deny('최초 재고 계획의 품목 ID가 잘못되었습니다.');items.add(id as string);};
- const deltaRows=(rows:any)=>{if(rows===undefined)return;if(!Array.isArray(rows))deny('최초 재고 변화 명세가 잘못되었습니다.');for(const row of rows)item(Array.isArray(row)?row[0]:row?.itemId);};
- for(const key of ['productionDeltas','reservationDeltas','shipmentDeltas'])deltaRows(plan[key]);
- if(plan.finalLotItemIds!==undefined){if(!Array.isArray(plan.finalLotItemIds))deny('최초 로트 대상이 잘못되었습니다.');plan.finalLotItemIds.forEach(item);}
- const productLots=(lots:any)=>{if(lots?.mutationItemIds!==undefined){if(!Array.isArray(lots.mutationItemIds))deny('최초 로트 대상이 잘못되었습니다.');lots.mutationItemIds.forEach(item);}};
- productLots(plan.productLots);
- if(plan.lines!==undefined){if(!Array.isArray(plan.lines))deny('최초 줄 계획이 잘못되었습니다.');for(const row of plan.lines){deltaRows(row.rowDeltas);productLots(row.productLots);}}
- const reservation=plan.finalPlan?.reservation;
- if(reservation)for(const key of ['quantities','stockSnapshot','previousReservations','allocationQuantities'])deltaRows(reservation[key]);
- if(plan.productionRecords?.records!==undefined){if(!Array.isArray(plan.productionRecords.records))deny('최초 생산 대상이 잘못되었습니다.');for(const row of plan.productionRecords.records)item(row.itemId);}
- for(const row of request.commands){const command=row?.command;if(!command||command.companyId!==request.generation.companyId||!docId(command.rawItemId)||!['consume','ledger-consume'].includes(command.kind)||command.source?.id!==request.generation.orderId||!Number.isFinite(command.kg)||command.kg<=0)deny('최초 원료 명령 회사·대상이 다릅니다.');item(command.rawItemId);raws.add(command.rawItemId);}
- if(items.size+raws.size+3>500)deny('최초 재고 대상 명세가 저장 한도를 초과했습니다.');
- return {itemIds:[...items].sort(),rawItemIds:[...raws].sort()};
-}
 const protocolRevision=(row:any)=>advanceInventoryWriterProtocol(row,{}).inventoryWriteRevision-1;
 const assertOwner=(row:any,companyId:string)=>{if(row&&(row.companyId??'taebaek')!==companyId)deny('최초 재고 대상의 회사가 다릅니다.');};
 function assertArchiveOldGenerationAbsent(order:any,g:any){
@@ -57,7 +37,7 @@ export async function retireOrderRequest(db:admin.firestore.Firestore,companyId:
   }
   if(terminal.exists){const saved=terminal.data()!;if(saved.status!=='retired'||saved.inventoryApplied!=='unknown'||saved.authorizationId!==identity||saved.requestText!==input.requestText||saved.requestHash!==input.requestHash||saved.companyId!==companyId||saved.actorUid!==actorUid||saved.orderId!==g.orderId||saved.backupHash!==a.backupHash||saved.action!==action||saved.allowNewClaim!==base.allowNewClaim||retirementText(saved.generation)!==retirementText(g))deny('같은 최초 세대에 다른 퇴역 원문이 있습니다.');
    // 새 작업이 소비한 뒤 재등장한 옛 사본은 보관 ACK만 한다. 같은 클릭을 새 효과로 이어가지 않는다.
-   if(action==='allow-new-claim'&&(saved.firstClaim||order.data()?.retirementClaimPending!==true||order.data()?.inventoryOperation!=null)){
+   if(action==='allow-new-claim'&&(saved.firstClaim||Object.prototype.hasOwnProperty.call(saved,'firstConsumer')||order.data()?.retirementClaimPending!==true||order.data()?.inventoryOperation!=null)){
     if(!order.exists||order.data()?.companyId!==companyId)deny('현재 주문의 회사를 확인해 주세요.');assertArchiveOldGenerationAbsent(order.data(),g);
     return {...base,action:'archived-only',allowNewClaim:false,status:'duplicate'};
    }
@@ -72,6 +52,7 @@ export async function retireOrderRequest(db:admin.firestore.Firestore,companyId:
    tx.create(terminalRef,{...base,status:'retired',companyId,actorUid,orderId:g.orderId,backupHash:a.backupHash,retiredAt:new Date().toISOString(),reason:'manual-user-authorized',mode:a.mode,authorizationRevision:a.revision,currentOrderText:a.currentOrderText,currentOrderHash:a.currentOrderHash,currentOrderVersion:a.currentOrderVersion,currentEvidence:a.currentEvidence,currentQueries:a.currentQueries});
    return {...base,status:'retired'};
   }
+  if(live&&Object.prototype.hasOwnProperty.call(live,'inventoryExecutionProtocol'))deny('서버 재고 경로에서 최초 요청을 이어가야 합니다.');
   if(!live||live.companyId!==companyId||live.inventoryOperation!=null||retirementText(live)!==a.expectedOrderText||!a.expectedOrderVersion||order.updateTime?.seconds!==a.expectedOrderVersion.seconds||order.updateTime?.nanoseconds!==a.expectedOrderVersion.nanoseconds)deny('수동 해제 뒤 주문이나 작업 세대가 바뀌었습니다. 원문을 보존했습니다.');
   const ids=retirementInventoryManifest(request),manifest:any[]=[];
   for(const itemId of ids.itemIds){
@@ -120,6 +101,7 @@ export async function claimRetiredOrderInventoryOperation(db:admin.firestore.Fir
   const gate=await tx.get(releaseGateRef(db));
   const [order,terminal]=await tx.getAll(orderRef,terminalRef),saved=terminal.data()??{},live=order.data()??{};
   if(!order.exists||!terminal.exists||live.companyId!==companyId||live.retirementId!==request.retirementId||!saved||saved.status!=='retired'||saved.inventoryApplied!=='unknown'||saved.action!=='allow-new-claim'||saved.allowNewClaim!==true||saved.companyId!==companyId||saved.actorUid!==actorUid||saved.orderId!==request.orderId||saved.retirementId!==request.retirementId||saved.generation?.operationId===op.id)deny('퇴역 승인과 첫 재고 claim의 회사·사용자·세대가 다릅니다.');
+  if(Object.prototype.hasOwnProperty.call(saved,'firstConsumer'))deny('퇴역 뒤 이미 다른 최초 소비가 저장되었습니다.');
   const ack=(status:'claimed'|'duplicate',row:any)=>({status,retirementId:request.retirementId,requestText:input.requestText,requestHash:input.requestHash,generation:g,order:{...row,id:request.orderId}});
   if(saved.firstClaim){
    if(saved.firstClaim.requestText!==input.requestText||saved.firstClaim.requestHash!==input.requestHash||saved.consumedBy!==op.id||retirementText(saved.firstClaim.generation)!==retirementText(g))deny('퇴역 뒤 이미 다른 최초 claim이 저장되었습니다.');
@@ -129,21 +111,9 @@ export async function claimRetiredOrderInventoryOperation(db:admin.firestore.Fir
    deny('첫 claim 이후 세대가 바뀌었습니다. 옛 claim을 다시 설치하지 않았습니다.');
   }
   assertReleaseActive(gate,input.releaseId);
+  if(Object.prototype.hasOwnProperty.call(live,'inventoryExecutionProtocol'))deny('서버 재고 경로에서 최초 요청을 이어가야 합니다.');
   if(live.retirementClaimPending!==true||live.inventoryOperation!=null||live.inventoryGenerationCompletion||live.status!==request.expectedStatus||selectOrderRawBatchOrderEvidence({...live,id:request.orderId},retirementText)!==request.orderText)deny('첫 claim 전에 주문 업무·잠금·완료 세대가 바뀌었습니다.');
-  if(!Array.isArray(saved.manifest))deny('퇴역 최초 재고 대상 명세가 없습니다.');
-  for(const row of saved.manifest){
-   if(!['items','rawInventories'].includes(row.collection)||!docId(row.id))deny('퇴역 재고 대상 명세가 다릅니다.');
-   const current=await tx.get(db.collection(row.collection).doc(row.id)),value=current.data();assertOwner(value,companyId);
-   if(row.collection==='rawInventories'){
-    if(current.exists&&(value?.rawItemId!==row.rawItemId||value?.inventoryWriterProtocolVersion!==1||protocolRevision(value)<(row.revision??1))||!current.exists&&row.existed)deny('원료 상태의 퇴역 뒤 계보가 다릅니다.');
-    continue;
-   }
-   const tomb=await tx.get(db.collection('inventoryWriterDeletions').doc(companyId+'__'+row.id)),t=tomb.data();
-   if(t&&(t.companyId!==companyId||t.itemId!==row.id||t.inventoryWriterProtocolVersion!==1||!Number.isSafeInteger(t.deletionRevision)||t.deletionRevision<(row.deletionRevision??0)||!Number.isSafeInteger(t.lastDeletedItemRevision)||t.lastDeletedItemRevision<(row.deletionFloor??0)||t.beforeRevision!==t.lastDeletedItemRevision||t.deletionRevision===row.deletionRevision&&t.lastDeletedItemRevision!==row.deletionFloor))deny('품목 삭제 계보가 다릅니다.');
-   if(current.exists){
-    if(value?.inventoryWriterProtocolVersion!==1||protocolRevision(value)<(row.revision??1)||(t?.deletionRevision??0)>(row.deletionRevision??0)&&protocolRevision(value)<=t!.lastDeletedItemRevision)deny('품목 재생성의 퇴역 뒤 계보가 다릅니다.');
-   }else if(row.existed&&(!t||t.deletionRevision<=(row.deletionRevision??0)||t.lastDeletedItemRevision<row.revision))deny('품목 소실의 정확한 삭제 계보가 없습니다.');
-  }
+  await validateRetirementManifest(tx,db,companyId,saved.manifest);
   const patch=advanceInventoryWriterProtocol(live,{inventoryOperation:{...op,stage:'claim'},retirementClaimPending:false});
   tx.update(orderRef,patch);
   tx.update(terminalRef,{firstClaim:{requestText:input.requestText,requestHash:input.requestHash,generation:g,claimedAt:new Date().toISOString()},consumedBy:op.id});

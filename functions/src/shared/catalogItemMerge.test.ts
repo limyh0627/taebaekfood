@@ -127,3 +127,6 @@ describe('통합 최초 요청 정규화', () => {
   });
   it.each([{ extra: true }, { donorIds: ['a', 'a'] }, { donorIds: ['keep'] }, { snapshotDigest: '' }, { keepId: ' keep' }, { resolutions: [{ destinationKey: '["p","in"]', sourceLinkId: 's' }, { destinationKey: '["p","in"]', sourceLinkId: 't' }] }])('잘못된 요청은 사본으로 저장하지 않는다 %j', patch => { expect(() => normalizeCatalogItemMergeRequest({ ...request(), ...patch })).toThrow(); });
 });
+
+it.each([null,{},'invalid',[{orderId:'a'}]])('donor 보호목록 %s는 삭제 계획을 차단한다', value=>{const result=buildCatalogItemMergePlan(fixture({items:[item('keep'),item('old',{fullReservationRows:value})]}));expect(result.phase).toBe('blocked');expect(result.blockers.map(row=>row.code)).toContain('reservation');});
+it('빈 donor 보호목록과 keep 보호목록은 기존 통합 조건을 유지한다',()=>{expect(buildCatalogItemMergePlan(fixture({items:[item('keep',{fullReservationRows:[{orderId:'other'}]}),item('old',{fullReservationRows:[]})]})).phase).toBe('ready');});

@@ -96,6 +96,7 @@ export function buildCatalogItemMergePlan(snapshot: CatalogItemMergeSnapshot, re
     else if (d.stock !== 0) block('nonzero-stock', id, [id], '통합할 품목에 재고가 남아 있습니다. 재고를 먼저 정리해 주세요.', 'review-inventory');
     checkLots(d.lots, id, id);
     if (d.inventoryReservations !== undefined && (!Array.isArray(d.inventoryReservations) || d.inventoryReservations.length)) block('reservation', id, [id], '주문에 배정 중인 재고가 있습니다. 작업을 마친 뒤 다시 확인해 주세요.', 'review-orders');
+    if (Object.prototype.hasOwnProperty.call(d, 'fullReservationRows') && (!Array.isArray(d.fullReservationRows) || d.fullReservationRows.length)) block('reservation', id, [id], '서버 재고 예약 근거를 먼저 확인해 주세요.', 'review-orders');
     for (const field of ['allocated', 'inventoryAllocations']) if (Object.prototype.hasOwnProperty.call(d, field)) {
       const value = d[field];
       if (!(value === 0 || (Array.isArray(value) && value.length === 0))) block('reservation', id, [id], '이전 재고 배정 값이 남아 있거나 확인되지 않습니다. 주문 배정을 먼저 확인해 주세요.', 'review-orders');

@@ -1,8 +1,9 @@
+import {prepareOrderStockFullCancellationPlan} from './orderStockFullCancellationPlan';
 import {prepareOrderStockFullReversalPlan} from './orderStockFullReversalPlan';
 import {type Firestore} from 'firebase-admin/firestore';
 import {randomUUID} from 'node:crypto';
 import {advanceInventoryWriterProtocol} from './inventoryWriterProtocol';
-import {prepareOrderStockFullPlan,materializeOrderStockFullTerminal,fullAttemptId,fullNativeReads,validateFullReadEvidence,FULL_PROTOCOL,FULL_ATTEMPTS,fullCodec,fullId,fullHash,fullReject,FullRejected,fullObject,fullPath,fullUsable,fullBudget,fullSnapshotNative,type OrderStockFullPlan,type FullRow} from './orderStockFullPlan';
+import {prepareOrderStockFullPlan,materializeOrderStockFullTerminal,fullAttemptId,fullNativeReads,validateFullReadEvidence,FULL_PROTOCOL,FULL_ATTEMPTS,fullCodec,fullId,fullHash,fullReject,FullRejected,fullObject,fullPath,fullUsable,fullBudget,fullSnapshotNative,fullAggregateSourceQuery,fullAggregateSourceCandidates,type OrderStockFullPlan,type FullRow} from './orderStockFullPlan';
 import type {ReservationPreviewActor,ReservationPreviewClock} from './orderStockExecutionPlan';
 
 export interface FullReference {version:1;companyId:'taebaek'|'punghoe';orderId:string;requestId:string}
@@ -39,10 +40,11 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
    if(saved){
     if(saved.version!==1||saved.protocol!==FULL_PROTOCOL||saved.attemptId!==attemptId||text(saved.owner)!==text(owner)||text(saved.reference)!==text(reference)||!['reserved','applied','cancelled'].includes(saved.state)||!fullObject(saved.receipt)||saved.receipt.state!==saved.state||fullHash(text(saved.receipt))!==saved.receiptHash||!fullObject(saved.clock))fullReject('invalid-attempt','conflict');
     if(saved.fullPlanText!==undefined){if(typeof saved.fullPlanText!=='string'||fullHash(saved.fullPlanText)!==saved.fullPlanHash)fullReject('invalid-plan-hash','conflict');plan=decode(saved.fullPlanText);if(plan?.version!==1||plan.protocol!==FULL_PROTOCOL||text(plan.owner)!==text(owner)||plan.intent.orderId!==reference.orderId||plan.intent.requestId!==reference.requestId||plan.intent.companyId!==reference.companyId||text(plan.intent)!==saved.intentText||fullHash(saved.intentText)!==saved.intentHash||!Array.isArray(plan.readSet)||!Array.isArray(plan.effectSet)||!Array.isArray(plan.itemIds)||['line-forward','line-reverse'].includes(plan.intent.action)&&!Array.isArray(plan.originalAllocationRows))fullReject('invalid-plan-evidence','conflict');}
-    if(plan)validateFullReadEvidence(plan,attemptRef.path);
+    if(plan)validateFullReadEvidence(plan,attemptRef.path,db);
     if(plan&&saved.state!=='reserved'){
      const terminalBasis=new Map<string,FullRow|undefined>(fullNativeReads(plan).map(row=>[row.path,decode(row.nativeText)]));for(const row of saved.expectedB)terminalBasis.set(row.path,decode(row.nativeText));
-     const expected=new Set(materializeOrderStockFullTerminal(db,plan,saved,terminalBasis,saved.state==='applied'?'apply':'cancel',{now:saved.receipt.at,nowMs:Date.parse(saved.receipt.at)}).writes.keys());
+     const terminal=materializeOrderStockFullTerminal(db,plan,saved,terminalBasis,saved.state==='applied'?'apply':'cancel',{now:saved.receipt.at,nowMs:Date.parse(saved.receipt.at)}),expected=new Set(terminal.writes.keys());
+     if(plan.cancellation&&text(saved.receipt)!==text(terminal.next.receipt))fullReject('invalid-terminal-receipt','conflict');
      if(saved.receipt.fullPlanHash!==saved.fullPlanHash||!Array.isArray(saved.receipt.effects)||saved.receipt.effects.length!==expected.size||saved.receipt.effects.some((row:FullRow)=>!fullObject(row)||!expected.delete(row.path)||typeof row.hash!=='string'||!/^[a-f0-9]{64}$/.test(row.hash)))fullReject('invalid-terminal-receipt','conflict');
     }
     if(!plan&&(saved.state!=='cancelled'||saved.receipt.cancelledBeforePrepare!==true))fullReject('missing-full-plan','conflict');
@@ -58,7 +60,7 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
     fullBudget(db,next,[{path:attemptRef.path,data:next}]);tx.create(attemptRef,next);return answer(next,false);
    }
    if(!saved){
-    const built=await (intent.action==='line-reverse'?prepareOrderStockFullReversalPlan:prepareOrderStockFullPlan)(tx,db,capturedActor,intent,clock);if(built.status!=='planned')fullReject(built.reason);plan=built.plan;validateFullReadEvidence(plan,attemptRef.path);
+    const built=await (['cancel-shipment','delete'].includes(intent.action)?prepareOrderStockFullCancellationPlan:intent.action==='line-reverse'?prepareOrderStockFullReversalPlan:prepareOrderStockFullPlan)(tx,db,capturedActor,intent,clock);if(built.status!=='planned')fullReject(built.reason);plan=built.plan;validateFullReadEvidence(plan,attemptRef.path,db);
     const original=new Map(fullNativeReads(plan).map(row=>[row.path,decode(row.nativeText)])),order=original.get(orderRef.path)!;
     const lock={id:FULL_PROTOCOL+':'+attemptId,kind:['line-forward','line-reverse'].includes(plan.intent.action)?'line':'status',...(['line-forward','line-reverse'].includes(plan.intent.action)?{lineId:plan.intent.target.lineId}:{}),stage:'reservation',targetStatus:plan.orderPatch.status,state:'processing',startedAt:clock.now,actor:plan.actorDisplay,actorUid:owner.uid,fullProtocol:FULL_PROTOCOL,fullAttemptId:attemptId,fullReference:reference,nonce};
     const ownRows=plan.preview.quantities.map(([itemId,qty]:[string,number])=>({itemId,row:{reservationAttemptId:nonce,operationId:lock.id,orderId:reference.orderId,qty,createdAt:clock.now,state:'processing'}}));
@@ -87,6 +89,7 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
     else {const b=expectedB.get(evidence.path);if(b!==undefined){if(text(row??null)!==b)matches=false;}else if(text(row??null)!==evidence.nativeText||(row!==undefined)!==evidence.exists||text(actualVersion)!==text(evidence.version))matches=false;}
    }
    if(mode==='apply')for(const query of plan!.historyQueries??[]){const snapshot=await tx.get(db.collection('rawMaterialLedger').where('companyId','==',query.companyId).where('rawItemId','==',query.rawItemId).where('sequence','==',query.sequence).limit(query.limit));const observed=snapshot.docs.map(snap=>{fullSnapshotNative(db,snap);return {kind:'native',path:snap.ref.path,exists:true,version:{seconds:snap.updateTime!.seconds,nanoseconds:snap.updateTime!.nanoseconds},nativeText:text(snap.data())};}).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);if(text(observed)!==text(query.orderedEvidence))fullReject('history-query-conflict','conflict');}
+   if(mode==='apply')for(const query of plan!.aggregateSourceQueries??[]){const result=await tx.get(fullAggregateSourceQuery(db,query)),candidates=fullAggregateSourceCandidates(db,result,attemptRef.path,savedSnap),observed=candidates.map(snap=>{const native=text(snap.data());return {kind:'digest',path:snap.ref.path,exists:true,version:{seconds:snap.updateTime.seconds,nanoseconds:snap.updateTime.nanoseconds},nativeSha256:fullHash(native),encodedBytes:Buffer.byteLength(native,'utf8')};}).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);if(text(observed)!==text(query.orderedEvidence))fullReject('aggregate-source-query-conflict','conflict');}
    if(mode==='apply'&&!priorMatches)fullReject('prior-evidence-conflict','conflict');
    const order=current.get(orderRef.path);fullUsable(order,reference.companyId,reference.orderId);
    let owned=text(order!.inventoryOperation??null)===text(saved.lock);
@@ -97,7 +100,7 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
    if(!owned||mode==='apply'&&!matches)fullReject('current-evidence-conflict','conflict');
    if(mode!=='apply'&&mode!=='cancel')fullReject('invalid-input');
    const {writes,next}=materializeOrderStockFullTerminal(db,plan!,saved,current,mode,clock);
-   for(const [path,write]of writes)if(write.operation==='create')tx.create(db.doc(path),write.data);else if(path.startsWith('rawInventories/'))tx.set(db.doc(path),write.data);else tx.update(db.doc(path),write.data);
+   for(const [path,write]of writes)if(write.operation==='delete')tx.delete(db.doc(path));else if(write.operation==='create')tx.create(db.doc(path),write.data!);else if(path.startsWith('rawInventories/'))tx.set(db.doc(path),write.data!);else tx.update(db.doc(path),write.data!);
    tx.update(attemptRef,next);return answer(next,false);
   },mode==='inspect'?{readOnly:true}:{});
  }catch(error){return error instanceof FullRejected?fail(error.status,error.reason):fail('unknown','transaction-result-unconfirmed');}

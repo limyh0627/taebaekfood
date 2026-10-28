@@ -7,7 +7,7 @@ import {withClaimCompany} from '../companyWriteBoundary';
 import {companyOf,type Order} from '../types';
 import {advanceOrderInventoryStage,assertOrderInventoryGeneration,hasOrderInventoryGenerationCompletion,sameOrderInventoryGeneration} from '../orderInventoryGeneration';
 import {orderRawBatchAttemptKey,orderRawBatchJobId,orderRawBatchOrderEvidence,readOrderRawBatchAttempt,validateOrderRawBatchRequest,type OrderRawBatchRequest} from '../orderRawBatchAttempt';
-import {deriveNextProductionRecordIndex,makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../orderProductionRecordPlan';
+import {ownLineIndexEntry,deriveNextProductionRecordIndex,makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../orderProductionRecordPlan';
 import {rawPressText} from '../rawPressAttempt';
 import {readRawCommandInTransaction} from './rawInventoryService';
 import {orderRawBatchProofProblem,orderRawBatchRequestHash,readOrderRawBatchJobRequest} from './orderRawBatchService';
@@ -26,7 +26,7 @@ export async function executeOrderProductionRecordsWithDb(database:Firestore,req
  const plan=productionRecordPlanFromRawRequest(request);await assertActor();
  const requestHash=await orderRawBatchRequestHash(request),expectedReceipt=makeOrderProductionRecordReceipt(plan,requestHash);await assertActor();
  const nextIndex=deriveNextProductionRecordIndex(plan,requestHash);
- const priorRows=plan.records.flatMap(record=>{const entry=plan.previousIndex[record.lineId];return entry?[{record,entry}]:[];});
+ const priorRows=plan.records.flatMap(record=>{const entry=ownLineIndexEntry(plan.previousIndex,record.lineId);return entry?[{record,entry}]:[];});
  const recordIds=expectedReceipt.recordIds,productIds=[...new Set(plan.records.map(record=>record.itemId))];
  const outcome=await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.generation.companyId,isStillCurrent:async()=>{await assertActor();return true;}}),async tx=>{
   await assertActor();

@@ -43,6 +43,10 @@ export interface LegacyProductionSourceCandidate {recordId:string;companyId:Comp
 export type OrderGeneratedProductionRecord=ProductionRecord & {companyId:CompanyId;orderId:string;lineId:string;generation:OrderInventoryGeneration;legacySourceCandidates?:LegacyProductionSourceCandidate[]};
 export interface OrderProductionRecordPlan {version:1;generation:OrderInventoryGeneration;recordedAt:string;previousIndex:ProductionRecordIndex;records:OrderGeneratedProductionRecord[]}
 export interface OrderProductionRecordReceipt {version:1;generation:OrderInventoryGeneration;requestHash:string;recordIds:string[];completedAt:string}
+/** 다른 줄의 상속 속성은 저장된 생산기록 포인터가 아니다. */
+export function ownLineIndexEntry<T>(index:Record<string,T>|null|undefined,lineId:string):T|undefined {
+ return index!=null&&Object.prototype.hasOwnProperty.call(index,lineId)?index[lineId]:undefined;
+}
 export const orderProductionRecordId=(generation:OrderInventoryGeneration,lineId:string)=>'pr-gen1:'+operationDocId(rawPressText({generation,lineId}));
 export function validateOrderProductionRecordPlan(plan:OrderProductionRecordPlan):void {
  assertPlainOrderRawBatch(plan);

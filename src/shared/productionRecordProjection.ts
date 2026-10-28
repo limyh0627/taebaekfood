@@ -1,7 +1,7 @@
 import {companyOf,type Order,type ProductionRecord} from './types';
 import {rawPressText} from './rawPressAttempt';
 import {validateOrderInventoryGeneration,sameOrderInventoryGeneration} from './orderInventoryGeneration';
-import {orderProductionRecordId,validateProductionRecordIndex,type ProductionRecordIndex,type ProductionRecordIndexEntry} from './orderProductionRecordPlan';
+import {ownLineIndexEntry,orderProductionRecordId,validateProductionRecordIndex,type ProductionRecordIndex,type ProductionRecordIndexEntry} from './orderProductionRecordPlan';
 export type ProductionRecordProjectionStatus='current'|'superseded'|'uncertain';
 export interface ProductionRecordProjectionDetail {record:ProductionRecord;status:ProductionRecordProjectionStatus;reason?:string}
 export const hasProductionRecordIndex=(order:Pick<Order,'productionRecordIndex'>):boolean=>Object.prototype.hasOwnProperty.call(order,'productionRecordIndex');
@@ -30,7 +30,7 @@ export function projectProductionRecords(records:readonly ProductionRecord[],ord
   if(order&&hasProductionRecordIndex(order)){
    try{index=order.productionRecordIndex!;validateProductionRecordIndex(index,companyOf(r),r.orderId!);}catch{row.status='uncertain';row.reason='현재 생산기록 인덱스를 확인해야 합니다.';continue;}
   }
-  const pointer=index?.[r.lineId!];
+  const pointer=ownLineIndexEntry(index,r.lineId!);
   if(r.supersededBy!==undefined){
    if(!validEntry(r.supersededBy,r)||r.supersededBy.recordId===r.id||sameOrderInventoryGeneration(r.supersededBy.generation,r.generation)){row.status='uncertain';row.reason='이전 처리 표식의 원문이 일치하지 않습니다.';continue;}
    if(pointer&&pointer.recordId===r.id){row.status='uncertain';row.reason='현재 포인터와 이전 처리 표식이 충돌합니다.';continue;}

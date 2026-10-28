@@ -1,3 +1,4 @@
+import {ownLineIndexEntry} from '../orderProductionRecordPlan';
 import type {ExecutionInspectResult,ExecutionInspectInput} from '../../../functions/src/orderInventoryExecutionInspect';
 import {rawPressText} from '../rawPressAttempt';
 import {generationFromOrder,sameOrderInventoryGeneration,hasOrderInventoryGenerationCompletion,type OrderInventoryGeneration} from '../orderInventoryGeneration';
@@ -86,7 +87,7 @@ export async function readOrderInventoryRecoveryEvidence(scope:OrderInventoryEvi
   try{const snapshot=await read(collection,id);if(!snapshot.exists()){checks.push({label,state:'missing',detail:'이번 조회에서 기록을 찾지 못했습니다. 미처리의 증거는 아닙니다.'});return;}const data=snapshot.data();if(!owns(data)){confirmed=false;checks.push({label,state:'different',detail:'현재 작업과 다른 근거입니다. 원작업을 보존했습니다.'});return;}checks.push({label,state:'confirmed',detail:'현재 작업에 연결된 기록을 조회했습니다.'});}catch(error){if(!current())throw error;confirmed=false;checks.push({label,state:'unknown',detail:error instanceof Error?error.message:'조회하지 못했습니다.'});}
  };
  await observe('원료 일괄 처리 기록','rawInventoryJobs',orderRawBatchJobId(generation),data=>data.companyId===scope.companyId&&sameOrderInventoryGeneration(data.generation??JSON.parse(data.requestText??'null')?.generation,generation));
- const indexed=line?.lineId?order.productionRecordIndex?.[line.lineId]:undefined;
+ const indexed=line?.lineId?ownLineIndexEntry(order.productionRecordIndex,line.lineId):undefined;
  if(indexed)await observe('해당 줄 생산 기록','productionRecords',indexed.recordId,data=>data.companyId===scope.companyId&&data.orderId===order.id&&data.lineId===line!.lineId&&sameOrderInventoryGeneration(data.generation,generation));
  if(indexed&&checks.at(-1)?.state==='missing')confirmed=false;
  else if(!indexed)checks.push({label:'해당 줄 생산 기록',state:'missing',detail:'이 줄에 연결된 생산 기록이 없습니다. 다른 줄의 완료 기록으로 대신 판정하지 않습니다.'});

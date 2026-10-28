@@ -43,3 +43,8 @@ it('이미 확정한 영수증은 나중에 대상 회사가 없어져도 먼저
  const f=noteOnlyRuntime('same');await executeOrderEditCommand(f.db,actor,{mode:'apply',request:f.input});f.rows.get('orders/order')!.companyId=null;f.reads.length=0;const count=f.writes.length;
  expect((await executeOrderEditCommand(f.db,actor,{mode:'apply',request:f.input})).status).toBe('duplicate');expect((await executeOrderEditCommand(f.db,actor,{mode:'inspect',reference:{companyId:'taebaek',planId:f.input.planId,targetId:'order'}})).status).toBe('applied');expect(f.writes).toHaveLength(count);expect(f.reads.every(path=>path.startsWith('orderEditOperations/'))).toBe(true);
 });
+
+it.each(['full-v1',null,'unknown'] as const)('서버표식 %s의 품목 변경은 거절하고 같은 원문의 비고는 상태를 보존한다',async marker=>{
+ const f=noteOnlyRuntime('same');f.row.inventoryExecutionProtocol=marker;f.row.status='DISPATCHED';f.row.items=[{itemId:'item',lineId:'line',quantity:1,checked:false,unknown:{keep:'값'}}];f.input.expected=orderEditExpected(f.row);if(f.input.edit.kind!=='draft')throw Error('draft');f.input.edit.draft.items=[{...(f.row.items as any[])[0],quantity:2}];expect((await executeOrderEditCommand(f.db,actor,{mode:'apply',request:f.input})).status).toBe('rejected');expect(f.rows.get('orders/order')).toEqual(f.row);
+ const next={...f.input,planId:'note-only',edit:{...f.input.edit,draft:{...f.input.edit.draft,items:f.row.items as any}}};expect((await executeOrderEditCommand(f.db,actor,{mode:'apply',request:next})).status).toBe('applied');expect(f.rows.get('orders/order')).toMatchObject({status:'DISPATCHED',items:f.row.items,inventoryExecutionProtocol:marker,note:'바뀐 비고'});
+});

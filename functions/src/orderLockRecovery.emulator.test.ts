@@ -1,9 +1,13 @@
 import {afterAll,beforeAll,describe,it,expect,vi} from 'vitest';
 import {randomUUID,createHash} from 'crypto';
 import * as admin from 'firebase-admin';
+import {writeFileSync} from 'node:fs';
 import {cancellationEvidenceText} from './shared/orderCancellationEvidence';
 import {recoverOrderInventoryLock,recoverOrderInventoryLockCommand} from './orderLockRecovery';
-const available=['127.0.0.1:8182','127.0.0.1:8082'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
+const isolated=process.env.ORDER_ADMIN_GUARDS_EMULATOR==='true',projectId='demo-order-stock-admin-guards-20261029';
+function guard(){if(!isolated||process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8288'||process.env.ORDER_ADMIN_GUARDS_PROJECT!==projectId||process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.FIREBASE_CONFIG)throw Error('명시 독립 데모만 허용');for(const key of ['GCLOUD_PROJECT','GOOGLE_CLOUD_PROJECT'])if(process.env[key]&&process.env[key]!==projectId)throw Error('외부 프로젝트 금지');}
+if(isolated)guard();
+const available=isolated||['127.0.0.1:8182','127.0.0.1:8082'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
 const run='unlock-'+randomUUID(),tracked=new Set<string>();let app:admin.app.App,db:admin.firestore.Firestore;
 const ref=(path:string)=>{tracked.add(path);return db.doc(path);};
 const digest=(text:string)=>createHash('sha256').update(text).digest('hex');
@@ -16,8 +20,8 @@ async function seed(suffix:string,action:'cancel-shipment'|'delete'='cancel-ship
  return {orderId,failedOperationId,evidence,action,operation,order,input:{action:'recover' as const,orderId,failedOperationId,failedStartedAt:operation.startedAt,releaseId:run}};
 }
 describe.skipIf(!available)('같은 회사 사용자 원자 취소 잠금 복구 SDK 거래',{timeout:30000},()=>{
- beforeAll(()=>{app=admin.initializeApp({projectId:'demo-'+run});db=app.firestore();});
- afterAll(async()=>{for(const path of tracked){await db.doc(path).delete();expect((await db.doc(path).get()).exists).toBe(false);}await app?.delete();});
+ beforeAll(()=>{if(isolated)guard();app=admin.initializeApp({projectId:isolated?projectId:'demo-'+run});db=app.firestore();});
+ afterAll(async()=>{let cleaned=false;try{for(const path of tracked){if(isolated)guard();await db.doc(path).delete();expect((await db.doc(path).get()).exists).toBe(false);}cleaned=true;}finally{if(app)await app.delete();if(isolated)writeFileSync('work/performance-orders-admin-recovery-sdk-'+randomUUID()+'.json',JSON.stringify({projectId,paths:[...tracked],cleanupConfirmed:cleaned,globalClear:false,operatingAccess:0},null,2),{flag:'wx'});}});
  it('로그인·회사 claim 없이 복구하지 않는다',async()=>{
   const call=(request:any)=>(recoverOrderInventoryLockCommand as any).run(request);
   await expect(call({data:{}})).rejects.toThrow('로그인');await expect(call({auth:{uid:'staff',token:{}},data:{}})).rejects.toThrow('현재 회사');
@@ -80,5 +84,9 @@ describe.skipIf(!available)('같은 회사 사용자 원자 취소 잠금 복구
   const [completed,recovery]=await Promise.all([completion,recoverOrderInventoryLock(db,'taebaek','actor',f.input)]);
   expect(completed?recovery.status==='blocked':recovery.status==='recovered').toBe(true);
  });
+ it.each(['full-v1',null,'unknown'] as const)('표식 %s는 새 inspect·잠금 해제에서 미확인으로 유지된다',async marker=>{
+  const f=await seed('marker-'+String(marker)),orderRef=ref('orders/'+f.orderId);await orderRef.update({inventoryExecutionProtocol:marker});const before=await orderRef.get();for(const action of ['inspect','recover'] as const)expect(await recoverOrderInventoryLock(db,'taebaek','actor',{...f.input,action})).toMatchObject({status:'blocked',inventoryApplied:'unknown',reason:'SERVER_FULL_REQUIRED'});const after=await orderRef.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);const receipt=ref('orderLockRecoveryOperations/order-unlock-'+digest(JSON.stringify(['taebaek',f.orderId,f.failedOperationId,f.operation.startedAt])));expect((await receipt.get()).exists).toBe(false);
+ });
+ it('기존 복구 영수증은 나중 표식에도 duplicate를 유지한다',async()=>{const f=await seed('marker-duplicate');expect((await recoverOrderInventoryLock(db,'taebaek','actor',f.input)).status).toBe('recovered');const order=ref('orders/'+f.orderId);await order.update({inventoryExecutionProtocol:null});const before=await order.get();expect(await recoverOrderInventoryLock(db,'taebaek','actor',f.input)).toMatchObject({status:'duplicate',inventoryApplied:'none'});expect((await order.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);});
 });
 

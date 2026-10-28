@@ -812,3 +812,79 @@ it.each(['physical','ledger','backdated','intervening','duplicate-lot','tiny-zer
  const capture=(fn:()=>unknown)=>{try{return {result:fn()};}catch(e){return {error:(e as Error).message};}};expect(capture(()=>applyRawCommand(input))).toEqual(capture(()=>원Core.applyRawCommand(input)));
  expect(rawReverseReportedDelta(original)).toBe(Math.round(-original.reportedDeltaKg*1000)/1000);expect(rawReverseLotDeltas(original)).toEqual(original.backdatedBeforeStocktake||original.appliedDeltaKg===0?[]:original.lotChanges.map(row=>({lotId:row.lotId,deltaKg:Math.round(-row.deltaKg*1000)/1000})).filter(row=>row.deltaKg!==0));expect(rawAppliedDelta(3.1234,4.4321)).toBe(Math.round((4.4321-3.1234)*1000)/1000);
 });
+
+describe('원료 실사 시각 비교', () => {
+  const 기초 = () => {
+    const opening = 적용(null, 명령({ kind: 'opening', kg: 10 } as never));
+    return 적용(opening.state, 명령({ kind: 'stocktake', operationId: 'anchor', targetKg: 10, effectiveAt: '2026-10-29T10:00:00.000Z' } as never)).state;
+  };
+  const use = (effectiveAt: string, extra: Record<string, unknown> = {}) => 명령({ kind: 'consume', operationId: 'time-use', kg: 1, effectiveAt, ...extra } as never);
+  it.each(['2026-10-29T12:00:00+09:00', '2026-10-29T03:00:00.000Z'])('동일 순간 %s는 같은 원장 효과만 남긴다', time => {
+    const c = use(time), result = 적용(기초(), c);
+    expect(result.movement).toMatchObject({ effectiveAt: time, commandHash: commandHash(c), reportedDeltaKg: -1, appliedDeltaKg: 0, backdatedBeforeStocktake: true });
+    expect(result.state.stockKg).toBe(10);
+  });
+  it.each([
+    ['2026-10-29T19:00:00+09:00', false],
+    ['2026-10-29T09:59:59.999Z', true],
+    ['2026-10-29T10:00:00.001Z', false],
+    ['2026-10-29T09:59:59.999999999Z', true],
+    ['2026-10-29T10:00:00.000000001Z', false],
+    ['2026-10-30T00:00:00+14:00', false],
+  ])('%s 의 실제 순간에 따라 처리한다', (time, before) => {
+    const r = 적용(기초(), use(time));
+    expect(r.movement.appliedDeltaKg).toBe(before ? 0 : -1);
+    expect(r.state.stockKg).toBe(before ? 10 : 9);
+  });
+  it('밀리초 이후 1ns 및 소수 길이 동치를 구분한다', () => {
+    const s = 기초();
+    s.stocktakeAnchor!.effectiveAt = '2026-10-29T10:00:00.100000002Z';
+    expect(적용(s, use('2026-10-29T19:00:00.100000001+09:00')).movement.appliedDeltaKg).toBe(0);
+    expect(적용(s, use('2026-10-29T10:00:00.100000003Z')).movement.appliedDeltaKg).toBe(-1);
+    s.stocktakeAnchor!.effectiveAt = '2026-10-29T10:00:00.100000000Z';
+    expect(적용(s, use('2026-10-29T10:00:00.1Z')).movement.appliedDeltaKg).toBe(-1);
+  });
+  it('기존 Date.parse 형식은 밀리초로, ISO는 1ns를 보존해 양방향 비교한다', () => {
+    const s = 기초();
+    s.stocktakeAnchor!.effectiveAt = '2026-10-29T10:00:00.000000001Z';
+    expect(적용(s, use('Thu, 29 Oct 2026 10:00:00 GMT')).movement.appliedDeltaKg).toBe(0);
+    s.stocktakeAnchor!.effectiveAt = 'Thu, 29 Oct 2026 10:00:00 GMT';
+    expect(적용(s, use('2026-10-29T10:00:00.000000001Z')).movement.appliedDeltaKg).toBe(-1);
+  });
+  it.each(['receive', 'opening', 'consume', 'consume-lot'] as const)('%s는 수량 오류 다음 자동 시각 오류를 검사한다', kind => {
+    const state = 기초(), base = 명령({kind, kg: 0, effectiveAt: 'invalid', lotId: 'L1'} as never);
+    expect(applyRawCommand({state, command: base, det: {now: NOW, newLotId: 'L2'}})).toMatchObject({status:'rejected',code:'INVALID_QUANTITY'});
+    const validKg = {...base, kg: 1} as RawInventoryCommand;
+    expect(applyRawCommand({state, command: validKg, det: {now: NOW, newLotId: 'L2'}})).toMatchObject({status:'rejected',code:'INVALID_EFFECTIVE_AT'});
+    state.stocktakeAnchor!.effectiveAt = 'invalid';
+    expect(applyRawCommand({state, command: {...validKg, effectiveAt: NOW}, det: {now: NOW, newLotId: 'L2'}})).toMatchObject({status:'rejected',code:'INVALID_EFFECTIVE_AT'});
+    expect(적용(state, {...validKg, backdatedIntent:'before'}, {newLotId:'L2'}).movement.appliedDeltaKg).toBe(0);
+    expect(적용(state, {...validKg, backdatedIntent:'after'}, {newLotId:'L2'}).movement.appliedDeltaKg).not.toBe(0);
+  });
+  it('기존 중복과 anchor 없는 명령은 시각 오류보다 우선한다', () => {
+    const c = use('invalid'), first = 적용(기초(), use(NOW));
+    expect(applyRawCommand({state: 기초(), command:c, existing:{...first.movement, commandHash: commandHash(c)}, det:{now:NOW}})).toMatchObject({status:'duplicate'});
+    const s = 기초(); delete s.stocktakeAnchor;
+    expect(적용(s,c).movement.appliedDeltaKg).toBe(-1);
+  });
+  it('무관한 종류와 원 역처리는 잘못된 시각을 새로 검사하지 않는다', () => {
+    const s = 기초(); s.stocktakeAnchor!.effectiveAt = 'invalid';
+    const ledger = 적용(s, 명령({kind:'ledger-consume', kg:1, effectiveAt:'invalid'} as never));
+    expect(ledger.movement.appliedDeltaKg).toBe(0);
+    const original = 적용(s, use('invalid', {backdatedIntent:'after'}));
+    const reverse = 적용(original.state, 명령({kind:'reverse',operationId:'reverse-time',originalOperationId:'time-use',effectiveAt:'invalid'} as never), {}, original.movement);
+    expect(reverse.movement).toMatchObject({reportedDeltaKg:1,appliedDeltaKg:1});
+    expect(reverse.state.stockKg).toBe(10);
+  });
+});
+
+describe('시각 비교와 무관한 명령의 기존 경로', () => {
+  it.each(['stocktake','adjust-lot','deplete-lot','merge-lots'] as const)('%s는 무관한 잘못된 시각으로 새 거절을 만들지 않는다', kind => {
+    const first = 적용(null, 명령({kind:'opening',kg:10} as never));
+    const second = 적용(first.state, 명령({kind:'opening',operationId:'second',kg:5} as never), {newLotId:'L2'});
+    second.state.stocktakeAnchor = {effectiveAt:'invalid',operationId:'anchor',sequence:1};
+    const command = 명령({kind,operationId:'unrelated',effectiveAt:'invalid',targetKg:3,lotId:'L1',sourceLotId:'L1',targetLotId:'L2'} as never);
+    const result = applyRawCommand({state:second.state,command,det:{now:NOW,newLotId:'L3'}});
+    expect(result.status).toBe('applied');
+  });
+});

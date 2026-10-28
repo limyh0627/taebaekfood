@@ -97,6 +97,8 @@ export async function executeOrderEditCommand(db:admin.firestore.Firestore,actor
     const edit=request!.edit;
     const items=edit.kind==='draft'?edit.draft.items:edit.items;
     const by=employee.get('name') as string;
+    const marked=Object.prototype.hasOwnProperty.call(current,'inventoryExecutionProtocol');
+    if(marked&&!inventoryWriterSame(before,items))return reject('이 주문의 품목 변경은 서버 재고 작업에서 처리해 주세요.');
     // 작업완료는 재고 경로의 소유다. 편집 DTO로 체크 상태나 처리자를 만들지 않는다.
     for(let index=0;index<items.length;index++){
       const line=items[index];
@@ -109,9 +111,9 @@ export async function executeOrderEditCommand(db:admin.firestore.Firestore,actor
     const decision=classifyOrderEdit(current as Parameters<typeof classifyOrderEdit>[0],items);
     if(decision.kind==='blocked')return reject(editBlockMessage(current,decision.line));
     if(decision.kind==='added'&&current.status==='DISPATCHED'&&!request!.confirmedAddedToDispatched)return reject('작업완료 주문의 품목 추가 확인이 필요합니다.');
-    const stamped=stampOrderItemEdits(before,items,by,at);
-    const patch:Record<string,unknown>={items:stamped};
-    if(['PENDING','PROCESSING','DISPATCHED'].includes(current.status))patch.status=workStatusFromItems(stamped);
+    const stamped=marked?before:stampOrderItemEdits(before,items,by,at);
+    const patch:Record<string,unknown>=marked?{}:{items:stamped};
+    if(!marked&&['PENDING','PROCESSING','DISPATCHED'].includes(current.status))patch.status=workStatusFromItems(stamped);
     if(edit.kind==='draft'){
       const draft=edit.draft;
       if(draft.deliveryDate.split('T')[0]!==current.deliveryDate?.split('T')[0])patch.deliveryDate=draft.deliveryDate;
@@ -131,7 +133,7 @@ export async function executeOrderEditCommand(db:admin.firestore.Firestore,actor
     const changes=diffOrderItems(before,stamped);
     const auditRef=db.collection('orderItemEdits').doc('order-edit-'+operationRef.id);
     if(changes.length&&(await tx.get(auditRef)).exists)return reject('같은 수정 이력 번호가 이미 있습니다. 최초 요청을 확인해 주세요.');
-    tx.update(orderRef,withOrderListProjection(current,protectInventoryWriterPatch(current,patch,['items','status']),'patch'));
+    if(Object.keys(patch).length)tx.update(orderRef,withOrderListProjection(current,protectInventoryWriterPatch(current,patch,['items','status']),'patch'));
     if(changes.length)tx.create(auditRef,{companyId:scope.companyId,orderId:scope.targetId,at,by,changes:changes.map(change=>change.text)});
     return receipt(outcome(scope,'applied',requestHash!,'주문 수정을 완료했습니다.'),requestText);
   });

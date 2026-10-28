@@ -1,10 +1,14 @@
 import {beforeAll,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import * as admin from 'firebase-admin';
+import {writeFileSync} from 'node:fs';
 import {executeOrderEditCommand,orderEditReceiptId} from './orderEditCommand';
 import {orderEditExpected,ORDER_EDIT_OPERATIONS,serializeOrderEditRequest,type OrderEditRequest,type OrderEditReference} from './shared/orderEditCommand';
-const active=process.env.FIRESTORE_EMULATOR_HOST==='127.0.0.1:8182';
-const actor={uid:'edit-actor',token:{employeeId:'edit-employee',companyId:'taebaek',isAdmin:false}};
+const isolated=process.env.ORDER_ADMIN_GUARDS_EMULATOR==='true',projectId='demo-order-stock-admin-guards-20261029';
+function guard(){if(!isolated||process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8288'||process.env.ORDER_ADMIN_GUARDS_PROJECT!==projectId||process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.FIREBASE_CONFIG)throw Error('명시 독립 데모만 허용');for(const key of ['GCLOUD_PROJECT','GOOGLE_CLOUD_PROJECT'])if(process.env[key]&&process.env[key]!==projectId)throw Error('외부 프로젝트 금지');}
+if(isolated)guard();
+const active=isolated||process.env.FIRESTORE_EMULATOR_HOST==='127.0.0.1:8182';
+const actor={uid:'edit-actor-'+randomUUID(),token:{employeeId:'edit-employee-'+randomUUID(),companyId:'taebaek',isAdmin:false}};
 let app:admin.app.App,db:admin.firestore.Firestore;
 const owned=new Set<string>();
 const ref=(path:string)=>{owned.add(path);return db.doc(path);};
@@ -21,8 +25,8 @@ async function fixture(patch:Record<string,unknown>={}){
  return {id,item,itemId,order,target,request};
 }
 describe.skipIf(!active)('주문 수정 원자 명령 실제 SDK',()=>{
- beforeAll(async()=>{app=admin.initializeApp({projectId:'demo-order-edit-'+randomUUID().slice(0,8)},'order-edit-'+randomUUID());db=admin.firestore(app);await ref('employees/'+actor.token.employeeId).set({companyId:'taebaek',name:'실제 담당자'});});
- afterAll(async()=>{if(!db)return;const paths=[...owned];for(let i=0;i<paths.length;i+=400){const batch=db.batch();for(const path of paths.slice(i,i+400))batch.delete(db.doc(path));await batch.commit();}await app.delete();},60000);
+ beforeAll(async()=>{if(isolated)guard();app=admin.initializeApp({projectId:isolated?projectId:'demo-order-edit-'+randomUUID().slice(0,8)},'order-edit-'+randomUUID());db=admin.firestore(app);await ref('employees/'+actor.token.employeeId).set({companyId:'taebaek',name:'실제 담당자'});});
+ afterAll(async()=>{let cleaned=false;try{if(db){for(const path of owned){if(isolated)guard();await db.doc(path).delete();expect((await db.doc(path).get()).exists).toBe(false);}cleaned=true;}}finally{if(app)await app.delete();if(isolated)writeFileSync('work/performance-orders-admin-edit-sdk-'+randomUUID()+'.json',JSON.stringify({projectId,paths:[...owned],cleanupConfirmed:cleaned,globalClear:false,operatingAccess:0},null,2),{flag:'wx'});}},60000);
  it('주문 patch와 결정적 감사·receipt는 같이 저장되고 응답유실 조회·재시도는 어떤 원문도 다시 쓰지 않는다',async()=>{
   const f=await fixture();expect((await apply(f.request)).status).toBe('applied');
   expect((await f.target.get()).data()).toMatchObject({items:[{...f.item,quantity:2}],inventoryWriteRevision:5});
@@ -102,5 +106,12 @@ describe.skipIf(!active)('주문 수정 원자 명령 실제 SDK',()=>{
   expect((await apply(f.request)).status).toBe('applied');
   await receipt(f.request).update({requestHash:'a'.repeat(64)});await expect(apply(f.request)).rejects.toMatchObject({code:'failed-precondition'});
   const text=serializeOrderEditRequest(f.request);expect(createHash('sha256').update(text).digest('hex')).not.toBe('a'.repeat(64));
+ });
+ it.each(['full-v1',null,'unknown'] as const)('표식 %s의 구성변경은 거절하고 원문과 같은 비고·날짜만 보존한다',async marker=>{
+  const f=await fixture({inventoryExecutionProtocol:marker,status:'DISPATCHED',native:admin.firestore.Timestamp.fromMillis(123)});const current=(await f.target.get()).data()!,before=await f.target.get();expect((await apply(f.request)).status).toBe('rejected');const after=await f.target.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+  const items=[{...f.item,unknown:{keep:'원문'}}];await f.target.update({items});const row=(await f.target.get()).data()!;
+  const metadata:OrderEditRequest={...f.request,planId:'metadata-'+randomUUID(),expected:orderEditExpected(row,{special:value=>value instanceof admin.firestore.Timestamp?['timestamp',value.seconds,value.nanoseconds]:undefined}),edit:{kind:'draft',draft:{deliveryDate:'2026-10-20',items,note:'정상 비고',noteImportant:true}}};receipt(metadata);audit(metadata);
+  const oldItems=row.items,oldStatus=row.status,oldNative=row.native;expect((await apply(metadata)).status).toBe('applied');const saved=await f.target.get();expect(saved.get('items')).toEqual(oldItems);expect(saved.get('status')).toBe(oldStatus);expect(saved.get('native').isEqual(oldNative)).toBe(true);expect(saved.get('inventoryExecutionProtocol')).toBe(marker);expect(saved.get('note')).toBe('정상 비고');
+  const duplicate=await apply(metadata);expect(duplicate.status).toBe('duplicate');expect((await f.target.get()).updateTime!.isEqual(saved.updateTime!)).toBe(true);
  });
 });
