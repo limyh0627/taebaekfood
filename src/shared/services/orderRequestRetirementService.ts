@@ -98,3 +98,12 @@ export async function requirePreviousRetirementClaimReview(orderId:string,compan
 export function assertRetainedRetirementClaimCurrent(descriptor:RetainedRetirementClaimDescriptor):void{
  if(localStorage.getItem(claimKey(descriptor.companyId,descriptor.actorUid,descriptor.orderId))!==descriptor.encoded)throw Error('보관된 이전 요청이 바뀌었습니다. 원문을 보존하고 다시 조회해 주세요.');
 }
+/** 완료 증명은 호출부의 재조회가 맡는다. 다른 요청이나 업무 원문까지 함께 지우지 않는다. */
+export function removeRetainedRetirementClaimCopy(descriptor:RetainedRetirementClaimDescriptor,assertCurrent:()=>void):void{
+ assertCurrent();assertRetainedRetirementClaimCurrent(descriptor);
+ const key=claimKey(descriptor.companyId,descriptor.actorUid,descriptor.orderId);
+ // 이 동기 비교는 같은 실행의 교체를 막으며 여러 탭의 원자 CAS를 대신하지 않는다.
+ localStorage.removeItem(key);
+ if(localStorage.getItem(key)!==null)throw Error('기기 사본 정리를 확인하지 못했습니다. 현재 사본을 유지하고 다시 조회해 주세요.');
+ claimChanged();
+}

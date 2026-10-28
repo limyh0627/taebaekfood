@@ -6,7 +6,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 import {useOutputScope} from '../src/shared/hooks/useOutputScope';
 import {companyOf,type CompanyId,type Order} from '../src/shared/types';
 import {appConfirm} from '../src/shared/components/appDialog';
-import {readRetainedRetirementClaimEvidence,clearPendingOrderInventoryRecovery,recoverOrderInventoryLock,readOrderInventoryRecoveryEvidence,type OrderInventoryRecoveryEvidence,type OrderInventoryEvidenceScope,type OrderInventoryResumeRun,type OrderInventoryRecoveryResult,type PendingOrderInventoryRecovery} from '../src/shared/services/orderInventoryRecoveryService';
+import {clearCompletedRetirementClaimCopy,readRetainedRetirementClaimEvidence,clearPendingOrderInventoryRecovery,recoverOrderInventoryLock,readOrderInventoryRecoveryEvidence,type OrderInventoryRecoveryEvidence,type OrderInventoryEvidenceScope,type OrderInventoryResumeRun,type OrderInventoryRecoveryResult,type PendingOrderInventoryRecovery} from '../src/shared/services/orderInventoryRecoveryService';
 interface Props {companyId:CompanyId;actorUid:string;orders:readonly Order[];pending?:readonly PendingOrderInventoryRecovery[];retirementClaims?:readonly RetainedRetirementClaimDescriptor[];isCurrentActor?:()=>boolean;onRecovered:(result:OrderInventoryRecoveryResult,expectedSaved:string|null)=>void;onResumeLine?:(run:OrderInventoryResumeRun)=>Promise<unknown>|unknown}
 type Entry={ownerToken?:object;orderId:string;partnerName:string;operationId:string;startedAt:string;order?:Order;pending?:PendingOrderInventoryRecovery;retirement?:RetainedRetirementClaimDescriptor};
 const entryKey=(entry:Entry)=>entry.orderId+':'+entry.operationId+':'+entry.startedAt;
@@ -51,6 +51,19 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
   }catch(error){if(valid())setMessages(rows=>({...rows,[key]:{ownerToken,message:orderInventoryErrorMessage(error),checks:orderInventoryRecoveryChecks(undefined)}}));}
   finally{if(inFlight.current===run){inFlight.current=null;if(captured.isCurrent())setBusy(null);}}
  }
+ async function clearCompletedCopy(entry:Entry){
+  if(!entry.retirement||!evidence?.generationCompleted||inFlight.current||!isCurrentActor()||getSignal().aborted)return;
+  const run=Symbol(),captured=capture();inFlight.current=run;flightOwner.current=ownerToken;setBusy(entryKey(entry));
+  const valid=()=>inFlight.current===run&&captured.isCurrent();
+  try{
+   const approved=await appConfirm({title:'완료 요청의 기기 사본 정리',message:'서버에서 이 요청의 최종 완료를 다시 확인한 뒤 이 기기에 남은 시작 요청 사본만 정리합니다. 주문·재고 기록과 다른 작업의 잠금은 유지합니다. 정리 후 주문 목록에서 다음 업무를 선택해 주세요.',confirmText:'기기 사본 정리'});
+   if(!approved||!valid())return;
+   setEvidence(null);notice(entry,'최종 완료를 다시 조회하고 기기 사본을 정리하고 있습니다.');
+   await clearCompletedRetirementClaimCopy(captured,entry.retirement);if(!valid())return;
+   setSelected(null);setEvidence(null);
+  }catch(error){if(valid())notice(entry,orderInventoryErrorMessage(error));}
+  finally{if(inFlight.current===run){inFlight.current=null;if(captured.isCurrent())setBusy(null);}}
+ }
  async function resume(entry:Entry){
   if(entry.retirement||inFlight.current||!onResumeLine||!isCurrentActor()||getSignal().aborted)return;
   let launched=false;const run=Symbol(),captured=capture();inFlight.current=run;flightOwner.current=ownerToken;setBusy(entryKey(entry));
@@ -81,7 +94,7 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
  const entryOrders=entries.filter((entry,index)=>entries.findIndex(row=>row.orderId===entry.orderId)===index);
  const active=selected?.ownerToken===ownerToken?selected:null,stored=active&&messages[entryKey(active)]?.ownerToken===ownerToken?messages[entryKey(active)]:undefined,operation=active?.order?.inventoryOperation;
  return <>{entryOrders.map(entry=><button key={entryKey(entry)} type="button" aria-label="잠금 이유 및 복구" title="잠금 이유 및 복구" disabled={visibleBusy!==null} onClick={()=>void inspect(entry)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 disabled:opacity-40"><LockKeyhole size={14}/></button>)}
-  {active&&<ModalShell className="text-slate-700" title="주문 재고 작업 확인" subtitle={active.partnerName||'거래처 확인 필요'} onClose={()=>{if(!visibleBusy)setSelected(null);}} footer={<><button type="button" disabled={visibleBusy!==null} onClick={()=>void inspect(active)} className="rounded border px-3 py-2">다시 조회</button>{!active.retirement&&evidence?.canResume&&onResumeLine&&<button type="button" disabled={visibleBusy!==null} onClick={()=>void resume(active)} className="rounded border px-3 py-2">최초 작업 계속</button>}<button type="button" disabled={visibleBusy!==null} onClick={()=>setSelected(null)} className="rounded border px-3 py-2">주문으로 돌아가기</button></>}>
+  {active&&<ModalShell className="text-slate-700" title="주문 재고 작업 확인" subtitle={active.partnerName||'거래처 확인 필요'} onClose={()=>{if(!visibleBusy)setSelected(null);}} footer={<><button type="button" disabled={visibleBusy!==null} onClick={()=>void inspect(active)} className="rounded border px-3 py-2">다시 조회</button>{active.retirement&&evidence?.generationCompleted&&<button type="button" disabled={visibleBusy!==null} onClick={()=>void clearCompletedCopy(active)} className="rounded border px-3 py-2">기기 사본 정리</button>}{!active.retirement&&evidence?.canResume&&onResumeLine&&<button type="button" disabled={visibleBusy!==null} onClick={()=>void resume(active)} className="rounded border px-3 py-2">최초 작업 계속</button>}<button type="button" disabled={visibleBusy!==null} onClick={()=>setSelected(null)} className="rounded border px-3 py-2">주문으로 돌아가기</button></>}>
    {entries.filter(row=>row.orderId===active.orderId).length>1&&<label>확인할 작업<select aria-label="확인할 작업" disabled={visibleBusy!==null} value={entryKey(active)} onChange={event=>{const chosen=entries.find(row=>entryKey(row)===event.target.value);if(chosen)void inspect(chosen);}}>{entries.filter(row=>row.orderId===active.orderId).map((row,index)=><option key={entryKey(row)} value={entryKey(row)}>{row.order?'현재 잠금':'이전 요청 결과'} {index+1}</option>)}</select></label>}
    <p>{active.order?`주문 품목 ${active.order.items.length}개`:'현재 목록에서 주문 품목을 확인하지 못했습니다.'} · {operation?.state==='processing'?'처리 중':operation?.state==='failed'?'실패 작업':'이전 요청 결과 확인'}</p>
    {operation?.lineId&&<p>실패 줄: {(active.order?.items.findIndex(line=>line.lineId===operation.lineId)??-1)+1}번 · 단계: {({claim:'작업 시작',reservation:'재고 예약','raw-inventory':'원료 처리','production-record':'생산 기록','final-stock':'최종 재고 반영'} as Record<string,string>)[operation.stage??'']??'확인 필요'}</p>}

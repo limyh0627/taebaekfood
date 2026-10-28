@@ -133,3 +133,13 @@ export async function readRetainedRetirementClaimEvidence(scope:OrderInventoryEv
  const statusText={completed:'이전 시작 요청과 일치하는 최종 완료를 서버에서 확인했습니다. 보관 원문은 유지합니다.',processing:'이전 요청은 현재 처리 중으로 표시됩니다.',failed:'이전 요청은 실패 상태로 표시됩니다.',different:'현재 주문의 작업이 보관된 요청과 다릅니다.',unknown:'현재 원요청의 결과를 확정하지 못했습니다.'};
  return{order:null,canResume:false,reason:[statusText[response.status],...response.reasonCodes.map(code=>reasonText[code]),complete?'':preserved].filter(Boolean).join(' '),checks,lineCompleted:false,generationCompleted:complete};
 }
+/** 화면의 이전 완료 표시를 삭제 권한으로 쓰지 않고 명시 정리 직전에 다시 확인한다. */
+export async function clearCompletedRetirementClaimCopy(scope:OrderInventoryEvidenceScope,descriptor:import('./orderRequestRetirementService').RetainedRetirementClaimDescriptor):Promise<void>{
+ const {assertRetainedRetirementClaimCurrent,removeRetainedRetirementClaimCopy,readPendingRetirementClaims}=await import('./orderRequestRetirementService');
+ const assert=()=>{if(scope.signal.aborted||!scope.isCurrent()||auth.currentUser?.uid!==scope.uid||descriptor.actorUid!==scope.uid||descriptor.companyId!==scope.companyId)throw Error('로그인 범위가 바뀌었습니다. 이전 요청은 보존했습니다.');assertRetainedRetirementClaimCurrent(descriptor);
+  const saved=readPendingRetirementClaims(scope.companyId,scope.uid).find(row=>row.orderId===descriptor.orderId);
+  if(!saved||saved.state==='corrupt'||saved.state==='unsent'||rawPressText(saved)!==rawPressText(descriptor))throw Error('보관 원문과 확인할 요청이 다릅니다. 현재 사본을 유지하고 다시 조회해 주세요.');};
+ assert();const fresh=await readRetainedRetirementClaimEvidence(scope,descriptor);assert();
+ if(!fresh.generationCompleted||fresh.canResume)throw Error('이 요청의 최종 완료를 다시 확인하지 못했습니다. 기기 사본은 유지합니다. 다시 조회해 주세요.');
+ removeRetainedRetirementClaimCopy(descriptor,assert);
+}
