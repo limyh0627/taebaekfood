@@ -796,3 +796,19 @@ describe('빈 입력을 거절한다', () => {
     if (r.status === 'rejected') expect(r.code).toBe('CANNOT_REVERSE_REVERSAL');
   });
 });
+import {execFileSync} from 'node:child_process';
+import ts from 'typescript';
+import * as 원RawLot from '../../functions/src/shared/rawLot';
+import {rawReverseReportedDelta,rawReverseLotDeltas,rawAppliedDelta} from '../../functions/src/shared/rawInventoryCore';
+const 원CoreSource=execFileSync('git',['show','619edb1:functions/src/shared/rawInventoryCore.ts'],{encoding:'utf8'});
+const 원CoreJS=ts.transpileModule(원CoreSource,{compilerOptions:{target:ts.ScriptTarget.ES2017,module:ts.ModuleKind.CommonJS}}).outputText;
+const 원Core:any={};new Function('exports','require',원CoreJS)(원Core,(name:string)=>{if(name==='./rawLot')return 원RawLot;throw Error(name);});
+it.each(['physical','ledger','backdated','intervening','duplicate-lot','tiny-zero','missing-snapshot'])('반전primitive 추출은 실제 HEAD core 결과·예외·순서를 보존한다 %s',mode=>{
+ const initial=적용(상태(),명령({kg:100}));let command:any=명령({operationId:'consume-oracle',kind:mode==='ledger'?'ledger-consume':'consume',kg:3.1234});if(mode==='backdated')command.backdatedIntent='before';
+ const consumed=applyRawCommand({state:initial.state,command,det:{now:NOW}});const oldConsumed=원Core.applyRawCommand({state:initial.state,command,det:{now:NOW}});expect(consumed).toEqual(oldConsumed);if(consumed.status!=='applied')throw Error('applied');let before=consumed.state,original=structuredClone(consumed.movement);
+ if(mode==='intervening')before=적용(before,명령({operationId:'next-receive',kg:7}),{newLotId:'L2'}).state;
+ if(mode==='duplicate-lot')original.lotChanges.push({...original.lotChanges[0]});if(mode==='tiny-zero')original.lotChanges.unshift({...original.lotChanges[0],deltaKg:.0001});if(mode==='missing-snapshot'){delete (original.lotChanges[0] as Partial<typeof original.lotChanges[number]>).lotSnapshot;before={...before,activeLots:[],recentDepletedLots:[],stockKg:0};}
+ const input={state:before,original,command:명령({operationId:'reverse:'+original.operationId,kind:'reverse',originalOperationId:original.operationId}as any),det:{now:NOW}};
+ const capture=(fn:()=>unknown)=>{try{return {result:fn()};}catch(e){return {error:(e as Error).message};}};expect(capture(()=>applyRawCommand(input))).toEqual(capture(()=>원Core.applyRawCommand(input)));
+ expect(rawReverseReportedDelta(original)).toBe(Math.round(-original.reportedDeltaKg*1000)/1000);expect(rawReverseLotDeltas(original)).toEqual(original.backdatedBeforeStocktake||original.appliedDeltaKg===0?[]:original.lotChanges.map(row=>({lotId:row.lotId,deltaKg:Math.round(-row.deltaKg*1000)/1000})).filter(row=>row.deltaKg!==0));expect(rawAppliedDelta(3.1234,4.4321)).toBe(Math.round((4.4321-3.1234)*1000)/1000);
+});

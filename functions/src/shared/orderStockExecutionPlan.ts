@@ -26,11 +26,7 @@ const adapter={special:(v:unknown):ReturnType<typeof encodeCatalogValue>|undefin
 const numbers=(v:unknown):boolean=>typeof v==='number'?Number.isFinite(v)&&v>=0:Array.isArray(v)?v.every(numbers):v&&typeof v==='object'?Object.values(v).every(numbers):true;
 
 /** 호출 거래의 읽기만 수행한다. blocked의 거래 중단은 caller가 쓰기 전에 결정해야 한다. */
-export async function prepareOrderStockReservationBasis(tx:Pick<Transaction,'get'>,db:Pick<Firestore,'collection'>,actor:ReservationPreviewActor|null|undefined,input:unknown,fixedClock:ReservationPreviewClock){
- if(!object(input)||!plain(input)||Buffer.byteLength(JSON.stringify(input),'utf8')>16384||Reflect.ownKeys(input).some(k=>!['version','requestId','companyId','orderId','action','targetStatus','stockUsePlan'].includes(String(k)))||input.version!==1||!id(input.requestId)||!id(input.orderId)||!['taebaek','punghoe'].includes(input.companyId)||input.action!=='status-forward'||!['DISPATCHED','SHIPPED','DELIVERED'].includes(input.targetStatus)||own(input,'stockUsePlan')&&input.stockUsePlan===undefined)return blocked('invalid-input');
- const intent=JSON.parse(JSON.stringify(input)) as ReservationPreviewIntent;
- if(!actor||typeof actor.uid!=='string'||!actor.uid||!object(actor.token)||actor.token.companyId!==intent.companyId||typeof actor.token.employeeId!=='string'||!actor.token.employeeId.trim())return blocked('permission-denied');
- if(!fixedClock||typeof fixedClock.now!=='string'||!Number.isFinite(fixedClock.nowMs)||!Number.isFinite(Date.parse(fixedClock.now))||Date.parse(fixedClock.now)!==fixedClock.nowMs||new Date(Date.parse(fixedClock.now)).toISOString()!==fixedClock.now)return blocked('invalid-clock');
+export async function readOrderStockPlanningSource(tx:Pick<Transaction,'get'>,db:Pick<Firestore,'collection'>,actor:ReservationPreviewActor,intent:{companyId:'taebaek'|'punghoe';orderId:string},fixedClock:ReservationPreviewClock,statusFresh=false){
  const owner={uid:actor.uid,employeeId:actor.token.employeeId,companyId:intent.companyId},capturedClock={...fixedClock};
  try{
   const snap=await tx.get(db.collection('orders').doc(intent.orderId));
@@ -39,11 +35,22 @@ export async function prepareOrderStockReservationBasis(tx:Pick<Transaction,'get
   if(!object(order)||!stamp(snap.updateTime)||order.id!==undefined&&order.id!==intent.orderId)return blocked('invalid-order');
   if(order.companyId!==intent.companyId)return blocked('permission-denied');
   if(order.actorUid!==undefined&&order.actorUid!==owner.uid)return blocked('permission-denied');
-  if(!['PENDING','PROCESSING','ON_HOLD'].includes(order.status)||order.producedAt||order.shippedOut||['inventoryOperation','retirementId','retirementClaimPending','inventoryGenerationCompletion','inventorySnapshots','rawConsumedLots','productionRecordIndex','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.itemInventory&&Object.values(order.itemInventory).some((v:any)=>v?.applied))return blocked('unsupported-existing-work');
+  if(statusFresh&&(!['PENDING','PROCESSING','ON_HOLD'].includes(order.status)||order.producedAt||order.shippedOut||['inventoryOperation','retirementId','retirementClaimPending','inventoryGenerationCompletion','inventorySnapshots','rawConsumedLots','productionRecordIndex','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.itemInventory&&Object.values(order.itemInventory).some((v:any)=>v?.applied)))return blocked('unsupported-existing-work');
   if(!Array.isArray(order.items)||!order.items.length||order.items.length>500||!order.items.every((line:unknown)=>object(line)&&id(line.itemId)&&typeof line.quantity==='number'&&Number.isFinite(line.quantity)&&line.quantity>0&&(line.lineId===undefined||typeof line.lineId==='string')&&(line.isBoxUnit===undefined||typeof line.isBoxUnit==='boolean')&&['boxQuantity','unitsPerBox'].every(key=>line[key]===undefined||typeof line[key]==='number'&&Number.isFinite(line[key])&&line[key]>=0)))return blocked('invalid-order');
   const catalog=await assembleOrderProductionCatalogInputs(tx,db,{companyId:intent.companyId,policyVersion:SERVER_PREVIEW_POLICY});
   if(catalog.status==='blocked')return blocked(catalog.reason);
   if(catalog.observation.collections.slice(1).some(collection=>collection.documents.some(({data})=>['quantity','units_per_box','ratio','yield_rate'].some(key=>data[key]!=null&&Number(data[key])<0))))return blocked('invalid-catalog-quantity');
+  return {status:'source' as const,orderSnapshot:snap,order,catalog,owner,capturedClock};
+ }catch{return blocked('read-or-plan-failed');}
+}
+export async function prepareOrderStockReservationBasis(tx:Pick<Transaction,'get'>,db:Pick<Firestore,'collection'>,actor:ReservationPreviewActor|null|undefined,input:unknown,fixedClock:ReservationPreviewClock){
+ if(!object(input)||!plain(input)||Buffer.byteLength(JSON.stringify(input),'utf8')>16384||Reflect.ownKeys(input).some(k=>!['version','requestId','companyId','orderId','action','targetStatus','stockUsePlan'].includes(String(k)))||input.version!==1||!id(input.requestId)||!id(input.orderId)||!['taebaek','punghoe'].includes(input.companyId)||input.action!=='status-forward'||!['DISPATCHED','SHIPPED','DELIVERED'].includes(input.targetStatus)||own(input,'stockUsePlan')&&input.stockUsePlan===undefined)return blocked('invalid-input');
+ const intent=JSON.parse(JSON.stringify(input)) as ReservationPreviewIntent;
+ if(!actor||typeof actor.uid!=='string'||!actor.uid||!object(actor.token)||actor.token.companyId!==intent.companyId||typeof actor.token.employeeId!=='string'||!actor.token.employeeId.trim())return blocked('permission-denied');
+ if(!fixedClock||typeof fixedClock.now!=='string'||!Number.isFinite(fixedClock.nowMs)||!Number.isFinite(Date.parse(fixedClock.now))||Date.parse(fixedClock.now)!==fixedClock.nowMs||new Date(Date.parse(fixedClock.now)).toISOString()!==fixedClock.now)return blocked('invalid-clock');
+ try{
+  const source=await readOrderStockPlanningSource(tx,db,actor,intent,fixedClock,true);if(source.status!=='source')return source;
+  const {order,catalog,owner,capturedClock,orderSnapshot:snap}=source;
   const calculationOrder=order as ProductionOrder,ids=orderStockTouchedIds(calculationOrder,catalog.inputs.bom),dataByItem=new Map<string,Row>();
   for(const itemId of ids){const observed=catalog.observation.collections[0].documents.find(row=>row.id===itemId);if(!observed)return blocked('touched-item-missing');const data=observed.data;if(data.stock!==undefined&&(typeof data.stock!=='number'||!Number.isFinite(data.stock)||data.stock<0))return blocked('invalid-stock');if(Array.isArray(data.inventoryReservations)&&data.inventoryReservations.some((row:any)=>row?.orderId===intent.orderId))return blocked('unsupported-existing-work');dataByItem.set(itemId,data);}
   const planner=createOrderProductionPlanner(catalog),reservationDeltas=new Map<string,number>(),allocated=new Map<string,number>();

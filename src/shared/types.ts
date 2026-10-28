@@ -1,6 +1,5 @@
 import {TAEBAEK,companyOf,type ProductionRecord,type OrderProductionRecordIndexEntry} from '../../functions/src/shared/orderProductionRecordPlan';
 export {TAEBAEK,companyOf,type ProductionRecord,type OrderProductionRecordIndexEntry} from '../../functions/src/shared/orderProductionRecordPlan';
-import type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
 export type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
 import type { ProductStocktakeRequest } from './productStocktakeAttempt';
 import type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
@@ -345,36 +344,6 @@ export interface Order {
     actor: string;
     error?: string;
   } | null;
-}
-
-export interface OrderItemInventoryState {
-  version: 1;
-  lineId: string;
-  itemId: string;
-  applied: boolean;
-  attempt: number;
-  completedAt?: string;
-  reversedAt?: string;
-  rawConsumedLots: OrderRawInventoryTrace[];
-  autoBuilt: { itemId: string; qty: number }[];
-  producedUnits: { itemId: string; qty: number }[];
-  production: OrderInventorySnapshot;
-}
-
-export interface OrderInventoryAdjustment {
-  itemId: string;
-  delta: number;
-}
-
-export interface OrderInventorySnapshot {
-  capturedAt: string;
-  rawCalculationEvidence?: OrderRawCalculationEvidence[];
-  stockDeltas: OrderInventoryAdjustment[];
-  bomLines: { parentItemId: string; childItemId: string; quantity: number }[];
-  rawConsumedLots?: Order['rawConsumedLots'];
-  productConsumedLots?: Order['productConsumedLots'];
-  productProducedLots?: { itemId: string; lotId: string; qty: number }[];
-  rawLedgerIds?: string[];
 }
 
 export interface OrderStatusAudit {
@@ -1639,3 +1608,6 @@ export interface AdjustmentRequest {
   oemFeePerKg?: number;  // 가공단가(원/kg)
   oemTotal?: number;     // 가공비 합계(참고 표시용)
 }
+
+import type {OrderItemInventoryState,OrderInventoryAdjustment,OrderInventorySnapshot} from '../../functions/src/shared/orderLineInventory';
+export type {OrderItemInventoryState,OrderInventoryAdjustment,OrderInventorySnapshot} from '../../functions/src/shared/orderLineInventory';

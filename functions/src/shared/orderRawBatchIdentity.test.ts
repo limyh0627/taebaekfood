@@ -1,0 +1,3 @@
+import {expect,it} from 'vitest';
+import {orderRawBatchJobId,validateOrderRawBatchRequest} from './orderRawBatchIdentity';
+it('identity ID와 세대 검증',()=>{const generation={contractVersion:1 as const,companyId:'taebaek' as const,orderId:'order',operationId:'first',actorUid:'employee',startedAt:'2026-10-12T00:00:00.000Z'};const request={version:1 as const,generation,jobId:orderRawBatchJobId(generation),recordedAt:generation.startedAt,legacyJobIds:[],business:{orderText:'original'},plan:{},commands:[]};expect(request.jobId).toContain('order-raw-batch:v1:');expect(()=>validateOrderRawBatchRequest(request)).not.toThrow();expect(()=>validateOrderRawBatchRequest({...request,jobId:'wrong'})).toThrow();});

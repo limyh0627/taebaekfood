@@ -1,0 +1,4 @@
+import {expect,it} from 'vitest';
+import {orderRawBatchRequestHash,orderRawBatchReadsMatch} from './orderRawBatchProof';
+import {orderRawBatchJobId,type OrderRawBatchRequest} from './orderRawBatchIdentity';
+it('실 WebCrypto 원문 hash와 빈 읽기',async()=>{const generation={contractVersion:1 as const,companyId:'taebaek' as const,orderId:'order',operationId:'first',actorUid:'employee',startedAt:'2026-10-12T00:00:00.000Z'};const request:OrderRawBatchRequest={version:1,generation,jobId:orderRawBatchJobId(generation),recordedAt:generation.startedAt,legacyJobIds:[],business:{orderText:'original'},plan:{},commands:[]};expect(await orderRawBatchRequestHash(request)).toMatch(/^[a-f0-9]{64}$/);expect(orderRawBatchReadsMatch(request,[])).toBe(true);expect(orderRawBatchReadsMatch(request,[{} as any])).toBe(false);});

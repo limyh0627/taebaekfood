@@ -18,6 +18,13 @@ import type { CompanyId, RawMaterialLot } from './rawLot';
 import { buildReceiveLot, deductFromLots, nextLotNo } from './rawLot';
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
+const rawReverseDelta = (deltaKg:number) => r3(-deltaKg);
+export const rawReverseReportedDelta = (original:Pick<RawInventoryMovement,'reportedDeltaKg'>) => rawReverseDelta(original.reportedDeltaKg);
+export function rawReverseLotDeltas(original:Pick<RawInventoryMovement,'backdatedBeforeStocktake'|'appliedDeltaKg'|'lotChanges'>):{lotId:string;deltaKg:number}[]{
+ if(original.backdatedBeforeStocktake||original.appliedDeltaKg===0)return [];
+ return original.lotChanges.map(ch=>({lotId:ch.lotId,deltaKg:rawReverseDelta(ch.deltaKg)})).filter(ch=>ch.deltaKg!==0);
+}
+export const rawAppliedDelta = (beforeStockKg:number,afterStockKg:number) => r3(afterStockKg-beforeStockKg);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  상태 · 이력 · 취소 표
@@ -530,7 +537,7 @@ export function applyRawCommand(input: {
     const movement: RawInventoryMovement = {
       ...base, kind,
       reportedDeltaKg: r3(reportedDeltaKg),
-      appliedDeltaKg: r3(stockKg - state.stockKg),
+      appliedDeltaKg: rawAppliedDelta(state.stockKg, stockKg),
       balanceAfterKg: stockKg,
       lotChanges,
       ...extra,
@@ -746,7 +753,7 @@ export function applyRawCommand(input: {
 
       if (original.backdatedBeforeStocktake || original.appliedDeltaKg === 0) {
         //  재고를 안 움직인 줄이라 되돌릴 것도 없다. 이력만 남기고 guard 는 세운다.
-        const r = commit('reverse', working, [], r3(-original.reportedDeltaKg), { reversalOf: original.operationId });
+        const r = commit('reverse', working, [], rawReverseReportedDelta(original), { reversalOf: original.operationId });
         if (r.status !== 'applied') return r;
         const reversedState = original.kind === 'stocktake'
           ? { ...r.state, stocktakeAnchor: original.stocktakeAnchorBefore }
@@ -761,7 +768,7 @@ export function applyRawCommand(input: {
       const revived: RawMaterialLot[] = [];
       const changes: LotChange[] = [];
       for (const ch of original.lotChanges) {
-        const back = r3(-ch.deltaKg);
+        const back = rawReverseDelta(ch.deltaKg);
         if (back === 0) continue;
         const i = byId.get(ch.lotId);
         if (i != null) {
@@ -810,8 +817,8 @@ export function applyRawCommand(input: {
         },
         movement: {
           ...base, kind: 'reverse',
-          reportedDeltaKg: r3(-original.reportedDeltaKg),
-          appliedDeltaKg: r3(stockKg - state.stockKg),
+          reportedDeltaKg: rawReverseReportedDelta(original),
+          appliedDeltaKg: rawAppliedDelta(state.stockKg, stockKg),
           balanceAfterKg: stockKg,
           lotChanges: changes,
           reversalOf: original.operationId,

@@ -24,7 +24,7 @@ import {deriveNextProductionRecordIndex,validateOrderProductionRecordPlan,type O
 import { combineProductLotMutations, createOrderProductLotOperations, OrderInventoryPreconditionError,productionProductLotMutation, productionProductLots, reverseProductionProductLots, type OrderProductLotMutation } from './orderProductLots';
 import { OrderReservationExecutionConflictError,createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
 import { inspectOrderProduction, OrderProductionPreflightError } from './orderProductionPreflight';
-import { aggregateOrderLineInventory, ensureOrderLineIds } from '../../shared/orderLineInventory';
+import { aggregateOrderLineInventory, ensureOrderLineIds, completedLineAllocation as sharedCompletedLineAllocation } from '../../shared/orderLineInventory';
 
 export interface OrderStatusChangeContext {
   referenceToken?:InventoryReferenceToken;
@@ -591,18 +591,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   };
 
   /** 체크된 품목만 출고 전 배정으로 남긴다. 생산에 사용한 구성품은 이미 stock에서 빠져 있다. */
-  const completedLineAllocation = (
-    order: Order,
-    items: readonly OrderItem[],
-    states: Record<string, OrderItemInventoryState>,
-  ) => {
-    const completed = items.filter(item => !!item.lineId && states[item.lineId]?.applied);
-    const shipment = new Map<string, number>();
-    shipOrder({ ...order, items: completed }, shipment);
-    return new Map([...shipment]
-      .filter(([, delta]) => delta < 0)
-      .map(([itemId, delta]) => [itemId, -delta]));
-  };
+  const completedLineAllocation = (order: Order, items: readonly OrderItem[], states: Record<string, OrderItemInventoryState>) => sharedCompletedLineAllocation(order, items, states, shipOrder);
 
   /**
    * 주문 품목 한 줄의 작업완료/취소 경계.
