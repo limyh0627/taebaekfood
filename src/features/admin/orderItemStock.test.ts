@@ -298,6 +298,34 @@ function generationFixture(ids=['a']){
  const stock=createOrderItemStockOperations({db:{} as any,allItems:ids.map(item),getActorUid:()=>uid});
  return {stock,saved,setUid:(next:string)=>{uid=next;},order:{id:'order-a',items:saved.items},mutation:{orderId:'order-a',generation:gen,expectedOrderText:orderRawBatchOrderEvidence(saved),patch:{status:'DISPATCHED',inventoryOperation:null}}};
 }
+it('최종 확정은 무소모 빈 예약24개를 쓰지 않고 실제 한 품목과 완료표만 함께 저장한다',async()=>{
+ const ids=Array.from({length:25},(_,i)=>'final-noop-'+i),f=generationFixture(ids);
+ for(const id of ids)memory.docs.get('items/'+id)!.inventoryReservations=[];
+ const reservation=await f.stock.reserveOrderStock(f.order,gen.operationId,()=>new Map([[ids[0],-1]]),[],{generation:gen});
+ const before=structuredClone(memory.docs);memory.updatePaths=[];
+ expect(await f.stock.applyItemStockDeltas(new Map([[ids[0],-1]]),[],reservation,f.mutation)).toEqual([]);
+ expect(memory.updatePaths.sort()).toEqual(['items/'+ids[0],'orders/order-a'].sort());
+ for(const id of ids.slice(1))expect(memory.docs.get('items/'+id)).toEqual(before.get('items/'+id));
+ expect(memory.docs.get('items/'+ids[0])?.stock).toBe(9);expect(memory.docs.get('orders/order-a')?.inventoryOperation).toBeNull();
+ expect(memory.docs.get('orders/order-a')?.inventoryGenerationCompletion).toMatchObject({generation:gen,consumedLots:[]});
+ const completed=structuredClone(memory.docs);memory.updatePaths=[];await f.stock.applyItemStockDeltas(new Map([[ids[0],-1]]),[],reservation,f.mutation);expect(memory.updatePaths).toEqual([]);expect(memory.docs).toEqual(completed);
+});
+it.each(['empty','missing','other'] as const)('최종 확정의 동일 %s 예약은 품목을 쓰지 않아도 완료표를 남긴다',async kind=>{
+ const f=generationFixture(),row=memory.docs.get('items/a')!;
+ if(kind==='empty')row.inventoryReservations=[];
+ if(kind==='other')row.inventoryReservations=[{orderId:'other',operationId:'keep',qty:2,createdAt:'2000-01-01T00:00:00Z',state:'allocated',unknown:{preserve:true}}];
+ const before=structuredClone(row),reservation=f.stock.orderStockReservationCleanup(f.order);memory.updatePaths=[];
+ await f.stock.applyItemStockDeltas(new Map(),[],reservation,f.mutation);
+ expect(memory.updatePaths).toEqual(['orders/order-a']);expect(memory.docs.get('items/a')).toEqual(before);expect(memory.docs.get('orders/order-a')?.inventoryGenerationCompletion).toMatchObject({generation:gen});
+});
+it('최종 확정은 만료예약 청소와 새 할당을 실제 저장하고 다른 예약 전문을 보존한다',async()=>{
+ const f=generationFixture(),other={orderId:'other',operationId:'keep',qty:2,createdAt:'2000-01-01T00:00:00Z',state:'allocated',unknown:{preserve:true}},expired={orderId:'expired',operationId:'old',qty:1,createdAt:'2000-01-01T00:00:00Z',state:'processing'};
+ memory.docs.get('items/a')!.inventoryReservations=[other,expired];
+ const reservation=f.stock.orderStockReservationCleanup(f.order);reservation.allocationQuantities=new Map([['a',3]]);memory.updatePaths=[];
+ await f.stock.applyItemStockDeltas(new Map(),[],reservation,f.mutation);
+ expect(memory.updatePaths.sort()).toEqual(['items/a','orders/order-a'].sort());
+ expect(memory.docs.get('items/a')?.inventoryReservations).toEqual([other,expect.objectContaining({orderId:'order-a',qty:3,state:'allocated',generation:gen})]);
+});
 it('신규 예약은 수량이 없어도 주문을 읽고 claim→reservation을 같은 TX로 저장한다',async()=>{const f=generationFixture([]);await f.stock.reserveOrderStock(f.order,gen.operationId,()=>new Map(),[],{generation:gen});expect(memory.docs.get('orders/order-a')?.inventoryOperation).toMatchObject({stage:'reservation',id:gen.operationId,startedAt:gen.startedAt});});
 it.each(['startedAt','actorUid','missing-company'] as const)('같은 작업ID %s 다른 세대의 예약·복원·final은 쓰기0이다',async field=>{const f=generationFixture();const reservation=await f.stock.reserveOrderStock(f.order,gen.operationId,()=>new Map([['a',-2]]),[],{generation:gen});const live=memory.docs.get('orders/order-a')!;if(field==='missing-company')delete live.companyId;else (live.inventoryOperation as any)[field]=field==='startedAt'?'2026-10-13T00:00:00Z':'other';const before=structuredClone(memory.docs);await expect(f.stock.reserveOrderStock(f.order,gen.operationId,()=>new Map([['a',-2]]),[],{generation:gen})).rejects.toThrow();await expect(f.stock.releaseOrderStockReservation(reservation)).rejects.toThrow();await expect(f.stock.applyItemStockDeltas(new Map([['a',-2]]),[],reservation,f.mutation)).rejects.toThrow();expect(memory.docs).toEqual(before);});
 it('주문 세대가 같아도 item예약의 다른 startedAt·UID는 복원으로 삭제하지 않는다',async()=>{for(const field of ['startedAt','actorUid'] as const){memory.docs.clear();const f=generationFixture();const reservation=await f.stock.reserveOrderStock(f.order,gen.operationId,()=>new Map([['a',-2]]),[],{generation:gen});const row=(memory.docs.get('items/a')!.inventoryReservations as any[])[0];row.generation={...row.generation,[field]:field==='startedAt'?'2026-10-13T00:00:00Z':'other'};const before=structuredClone(memory.docs);await expect(f.stock.releaseOrderStockReservation(reservation)).rejects.toThrow();expect(memory.docs).toEqual(before);}});

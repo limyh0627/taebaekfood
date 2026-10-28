@@ -15,14 +15,15 @@ vi.mock('firebase/functions',async original=>({...await original<typeof import('
 
 const enabled=process.env.HACCP_EMULATOR_TEST==='true';
 const workerDiagnostic=process.env.ORDER_LIST_EMULATOR_PROJECT==='demo-order-workers-20261028';
-const projectId=workerDiagnostic?'demo-order-workers-20261028':'demo-order-list-20261027';
-const emulatorPort=workerDiagnostic?8288:8287;
+const finalNoopDiagnostic=process.env.ORDER_LIST_EMULATOR_PROJECT==='demo-order-final-noop-20261028';
+const projectId=finalNoopDiagnostic?'demo-order-final-noop-20261028':workerDiagnostic?'demo-order-workers-20261028':'demo-order-list-20261027';
+const emulatorPort=workerDiagnostic||finalNoopDiagnostic?8288:8287;
 const route={host:process.env.FIRESTORE_EMULATOR_HOST,project:process.env.ORDER_LIST_EMULATOR_PROJECT,optin:process.env.HACCP_EMULATOR_TEST};
 const host=new RegExp('^(127\\.0\\.0\\.1|localhost):'+emulatorPort+'$').exec(route.host??'');
 const prefix='reservation-sdk-'+randomUUID()+'-';
 const actor=prefix+'employee',time='2026-10-15T00:00:00.000Z';
 let env:RulesTestEnvironment|undefined,runtime:typeof import('@firebase/rules-unit-testing'),sdk:typeof import('firebase/firestore'),api:typeof import('./orderItemStock');
-const paths=new Set<string>(),observations:Record<string,unknown>[]=[];let sequence=0;
+const paths=new Set<string>(),observations:Record<string,unknown>[]=[];let sequence=0,cleanupConfirmed=false;
 function guard(){
  if(!enabled||!host||route.project!==projectId||process.env.FIRESTORE_EMULATOR_HOST!==route.host||process.env.ORDER_LIST_EMULATOR_PROJECT!==route.project||process.env.HACCP_EMULATOR_TEST!==route.optin)throw Error('root 소유 demo/8287 명시 격리 시험만 허용합니다.');
  for(const key of ['GCLOUD_PROJECT','GOOGLE_CLOUD_PROJECT'])if(process.env[key]&&process.env[key]!==projectId)throw Error('외부 프로젝트 환경을 제거해 주세요.');
@@ -72,7 +73,35 @@ function assertSuccess(f:Awaited<ReturnType<typeof fixture>>,before:Record<strin
 
 describe.skipIf(!enabled)('실제 주문 예약 거래의 Rules 한도 진단 (root 소유 SDK)',()=>{
  beforeAll(async()=>{guard();runtime=await import('@firebase/rules-unit-testing');guard();sdk=await import('firebase/firestore');guard();api=await import('./orderItemStock');guard();try{env=await runtime.initializeTestEnvironment({projectId,firestore:{host:host![1],port:emulatorPort,rules:readFileSync('firestore.rules','utf8')}});guard();}catch(error){await cleanupOwnedResources([()=>env?.cleanup()],error);throw error;}});
- afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env){guard();await env.withSecurityRulesDisabled(async ctx=>{for(const path of paths){guard();own(path);await sdk.deleteDoc(sdk.doc(ctx.firestore(),path));expect((await sdk.getDoc(sdk.doc(ctx.firestore(),path))).exists()).toBe(false);guard();}});}},()=>env?.cleanup()]);if(workerDiagnostic)writeFileSync('work/performance-orders-reservation-reentry-sdk-cleanup-20261028.json',JSON.stringify({projectId,prefix,ownedPaths:[...paths],cleanupConfirmed:true,rpcCalls:ports.rpcCalls,wholeClear:0},null,2));if(enabled&&process.env.ORDER_RESERVATION_OBSERVATIONS_PATH){const root=resolve('privatework/order-reservation-noop'),output=resolve(process.env.ORDER_RESERVATION_OBSERVATIONS_PATH);if(dirname(output)!==root||!/^observations-[a-f0-9-]+[.]json$/.test(basename(output)))throw Error('지정 private 관측 경로만 허용합니다.');mkdirSync(root,{recursive:true});if(realpathSync(root)!==root)throw Error('관측 경로의 junction은 허용하지 않습니다.');writeFileSync(output,JSON.stringify({observations,ownedPaths:paths.size,cleanupConfirmed:true,auth:'합성 getAuth 조회와 실제 Rules unit claims',realFirestoreSDK:true,realReservationAPI:true,operatingWrites:0,rpcCalls:ports.rpcCalls},null,2),{flag:'wx'});}});
+ afterAll(async()=>{await cleanupOwnedResources([async()=>{if(env){guard();await env.withSecurityRulesDisabled(async ctx=>{for(const path of paths){guard();own(path);await sdk.deleteDoc(sdk.doc(ctx.firestore(),path));expect((await sdk.getDoc(sdk.doc(ctx.firestore(),path))).exists()).toBe(false);guard();}});}},()=>env?.cleanup()]);cleanupConfirmed=true;if(finalNoopDiagnostic)writeFileSync('work/performance-orders-final-reservation-noop-sdk-cleanup-20261028.json',JSON.stringify({projectId,prefix,ownedPaths:[...paths],cleanupConfirmed,observations,rpcCalls:ports.rpcCalls,wholeClear:0},null,2));if(workerDiagnostic)writeFileSync('work/performance-orders-reservation-reentry-sdk-cleanup-20261028.json',JSON.stringify({projectId,prefix,ownedPaths:[...paths],cleanupConfirmed:true,rpcCalls:ports.rpcCalls,wholeClear:0},null,2));if(enabled&&process.env.ORDER_RESERVATION_OBSERVATIONS_PATH){const root=resolve('privatework/order-reservation-noop'),output=resolve(process.env.ORDER_RESERVATION_OBSERVATIONS_PATH);if(dirname(output)!==root||!/^observations-[a-f0-9-]+[.]json$/.test(basename(output)))throw Error('지정 private 관측 경로만 허용합니다.');mkdirSync(root,{recursive:true});if(realpathSync(root)!==root)throw Error('관측 경로의 junction은 허용하지 않습니다.');writeFileSync(output,JSON.stringify({observations,ownedPaths:paths.size,cleanupConfirmed:true,auth:'합성 getAuth 조회와 실제 Rules unit claims',realFirestoreSDK:true,realReservationAPI:true,operatingWrites:0,rpcCalls:ports.rpcCalls},null,2),{flag:'wx'});}});
+ it('final 무소모24 빈배열은 한 품목과 주문 완료만 원자 저장한다',async()=>{
+  const f=await fixture(25,{emptyArrays:true}),r=await reserve(f,1),reservation=await r.promise,before=await readAll(f.selected);
+  const {orderRawBatchOrderEvidence}=await import('../../shared/orderRawBatchAttempt');
+  const mutation={orderId:f.order.id,generation:f.generation,expectedOrderText:orderRawBatchOrderEvidence(f.order),patch:{inventoryOperation:null}};
+  const start=r.updates.mock.calls.length;
+  try{expect(await f.operations.applyItemStockDeltas(new Map([[f.ids[0],-1]]),[],reservation,mutation)).toEqual([]);}catch(error){expect(await readAll(f.selected)).toEqual(before);observations.push({case:'final 무소모24 거절',itemUpdateCalls:r.updates.mock.calls.slice(start).filter(([ref])=>ref.path.startsWith('items/')).length,wholeDocumentUnchanged:true});throw error;}
+  const after=await readAll(f.selected),writes=r.updates.mock.calls.slice(start).map(([ref])=>ref.path).sort();
+  expect(writes).toEqual([f.itemPaths[0],f.orderPath].sort());
+  for(const path of f.itemPaths.slice(1))expect(after[path]).toEqual(before[path]);
+  expect(after[f.itemPaths[0]]).toMatchObject({stock:9,inventoryReservations:[],inventoryWriteRevision:3});
+  expect(after[f.orderPath].inventoryOperation).toBeNull();expect(after[f.orderPath].inventoryGenerationCompletion).toMatchObject({generation:f.generation,consumedLots:[]});
+  const duplicateStart=r.updates.mock.calls.length;await f.operations.applyItemStockDeltas(new Map([[f.ids[0],-1]]),[],reservation,mutation);
+  expect(r.updates.mock.calls.length).toBe(duplicateStart);expect(await readAll(f.selected)).toEqual(after);
+  observations.push({case:'final 무소모24',readItems:25,changedItems:1,writePaths:writes,duplicateWrites:0,result:'allowed'});
+ });
+ it.each([['release',20],['release',21],['final',20],['final',21]] as const)('필수 실변경 %s %i개의 허용·거절은 거래 전체를 보존한다',async(action,count)=>{
+  const f=await fixture(count,{emptyArrays:true}),seed=await readAll(f.selected);
+  // 대량 예약이 이미 존재하는 경우를 격리 자료로 준비한다. 실제 client 예약 한도를 우회한 성공으로 보고하지 않는다.
+  for(const path of f.itemPaths)await put(path,{...seed[path],inventoryReservations:[{orderId:f.order.id,operationId:f.generation.operationId,qty:1,createdAt:new Date().toISOString(),state:'processing',generation:f.generation}]});
+  const reservation={...f.operations.orderStockReservationCleanup(f.order),generation:f.generation,operationId:f.generation.operationId},before=await readAll(f.selected);
+  const updates=vi.spyOn(sdk.Transaction.prototype,'update'),start=updates.mock.calls.length;
+  const {orderRawBatchOrderEvidence}=await import('../../shared/orderRawBatchAttempt');
+  const run=action==='release'?f.operations.releaseOrderStockReservation(reservation):f.operations.applyItemStockDeltas(new Map(f.ids.map(id=>[id,-1])),[],reservation,{orderId:f.order.id,generation:f.generation,expectedOrderText:orderRawBatchOrderEvidence(f.order),patch:{inventoryOperation:null}});
+  if(count===21){await expect(run).rejects.toMatchObject({code:'permission-denied'});expect(await readAll(f.selected)).toEqual(before);}
+  else{await run;const after=await readAll(f.selected);for(const path of f.itemPaths)expect(after[path]).toEqual({...before[path],stock:action==='final'?9:10,inventoryReservations:[],inventoryWriteRevision:2});if(action==='release')expect(after[f.orderPath]).toEqual(before[f.orderPath]);else{expect(after[f.orderPath].inventoryOperation).toBeNull();expect(after[f.orderPath].inventoryGenerationCompletion).toMatchObject({generation:f.generation});}}
+  expect(updates.mock.calls.slice(start).map(([ref])=>ref.path).sort()).toEqual((action==='final'?[...f.itemPaths,f.orderPath]:f.itemPaths).sort());
+  observations.push({case:'필수 실변경',action,count,result:count===21?'permission-denied/whole-document-unchanged':'allowed',seededReservations:true});
+ });
  it.each([1,19,20,21])('실제 %i개 예약과 주문 stage의 원자 허용·거절 경계를 관측한다',async count=>{
   const f=await fixture(count),before=await readAll(f.selected),r=await reserve(f,count);
   if(count<=20){await r.promise;assertSuccess(f,before,await readAll(f.selected),count);}else{await expect(r.promise).rejects.toMatchObject({code:'permission-denied'});expect(await readAll(f.selected)).toEqual(before);}

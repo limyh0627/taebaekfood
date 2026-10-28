@@ -342,7 +342,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
               ...(generation?{generation}:{}),
             });
           }
-          if (allocatedQty > 0 || Array.isArray(data.inventoryReservations)) {
+          // 같은 배열의 재저장도 품목별 퇴역 검사를 소모하므로 실제 예약 변화만 남긴다.
+          if ((allocatedQty > 0 || Array.isArray(data.inventoryReservations)) && !inventoryWriterSame(data.inventoryReservations,next)) {
             patch.inventoryReservations = next;
           }
         }
