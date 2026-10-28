@@ -1,6 +1,6 @@
 import {expect,it,vi} from 'vitest';
 import {Timestamp} from 'firebase-admin/firestore';
-import {prepareOrderStockReservationPreview,type OrderStockReservationPreviewResult} from './orderStockExecutionPlan';
+import {prepareOrderStockReservationBasis,prepareOrderStockReservationPreview,type OrderStockReservationPreviewResult} from './orderStockExecutionPlan';
 import {assembleOrderProductionCatalogInputs,SERVER_PREVIEW_POLICY} from './orderProductionCatalogInputs';
 import {planOrderStockReservation,orderStockTouchedIds} from './orderStockReservationPlan';
 import {createOrderStockEngine} from '../../../src/features/admin/orderStockEngine';
@@ -55,3 +55,6 @@ it('모호 pack·홀더는 내부 assembly 실패를 그대로 차단한다',asy
 it.each([-1,NaN,Infinity,'3',Number.MAX_VALUE])('신뢰 stock도 잘못된 값 %j면 조용히 정정하지 않는다',async stock=>{const f=fixture();f.rows.items[0].stock=stock;expect(await f.run()).toMatchObject({status:'blocked'});});
 it('음수 BOM과 무한 생산 산출은 차단한다',async()=>{const f=fixture();f.rows.item_bom[0].quantity=-1;expect(await f.run()).toMatchObject({reason:'invalid-catalog-quantity'});f.rows.item_bom[0].quantity=Number.MAX_VALUE;f.order.items[0].quantity=Number.MAX_VALUE;expect(await f.run()).toMatchObject({status:'blocked'});});
 it('명시 selection 접근자와 prototype 키는 권위 값으로 읽지 않는다',async()=>{const f=fixture(),getter=vi.fn(()=>({own:0})),stockUsePlan={};Object.defineProperty(stockUsePlan,'0',{get:getter,enumerable:true});expect(await f.run({...intent,stockUsePlan})).toMatchObject({reason:'invalid-input'});expect(getter).not.toHaveBeenCalled();expect(await f.run({...intent,stockUsePlan:JSON.parse('{"__proto__":{"own":0}}')})).toMatchObject({reason:'invalid-selection'});});
+
+it('basis는 주문1/assembly4 각1회로 생산직후 map과 출고map을 따로 보존하고 preview에 context를 유출하지 않는다',async()=>{const f=fixture();const b=await prepareOrderStockReservationBasis(f.tx as any,f.db as any,actor,intent,clock);expect(b.status).toBe('basis');if(b.status!=='basis')throw Error(b.reason);expect([...b.productionDeltas]).toEqual([['m',-2],['p',2]]);expect([...b.shipmentDeltas]).toEqual([['p',-3]]);expect(b.preview.reservationDeltas).toEqual([['m',-2],['p',-1]]);expect(f.tx.get.mock.calls.map(([q]:any[])=>q.name)).toEqual(['orders','items','item_bom','item_pack','item_formula']);const p=preview(await f.run());for(const key of ['catalog','orderSnapshot','productionDeltas','shipmentDeltas','calculationOrder'])expect(p).not.toHaveProperty(key);});
+it('CONFIRMED는 fresh status로 허용하지 않는다',async()=>{const f=fixture();f.order.status='CONFIRMED';expect(await f.run()).toMatchObject({reason:'unsupported-existing-work'});});

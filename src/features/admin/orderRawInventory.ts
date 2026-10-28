@@ -26,18 +26,8 @@ export interface OrderRawInventoryDeps {
 
 
 /** 주문 스냅샷에는 실제 Firestore 원장 문서 ID를 남긴다. */
-export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): string[] {
-  return [...new Set(traces.flatMap(trace =>
-    trace.ledgerId ? [trace.ledgerId] : trace.operationId ? [operationDocId(trace.operationId)] : [],
-  ))];
-}
-
-/** 순차·새 일괄 경로가 같은 실제 영수증에서 주문 소비 이력을 만든다. */
-export function orderRawTracesFromMovement(command:RawInventoryCommand,movement:RawInventoryMovement):OrderRawInventoryTrace[]{
- const base={material:command.materialSnapshot,rawItemId:command.rawItemId,operationId:command.operationId,ledgerId:movement.id};
- if(command.kind==='ledger-consume')return [{...base,supplierName:'임가공',kg:kg3(Math.abs(movement.reportedDeltaKg)),ledgerOnly:true}];
- return movement.lotChanges.filter(change=>change.deltaKg<0).map(change=>({...base,supplierName:change.supplierName??'',kg:kg3(-change.deltaKg),...(change.lotId?{lotId:change.lotId}:{}),...(change.lotNo?{lotNo:change.lotNo}:{}),...(change.receivedDate?{receivedDate:change.receivedDate}:{})}));
-}
+export {rawLedgerDocIds,orderRawTracesFromMovement} from '../../../functions/src/shared/orderRawCommandPlan';
+import {rawLedgerDocIds,orderRawTracesFromMovement} from '../../../functions/src/shared/orderRawCommandPlan';
 /** 여러 줄의 첫 계획을 한 원료 TX로 넘긴다. 재개 결과는 현재 계산값 대신 최초 plan을 돌려준다. */
 export async function applyOrderAtomicRawPlan(input:{order:Order;generation:OrderInventoryGeneration;selection:Record<string,unknown>;plan:Record<string,unknown>;commands:JobCommandInput[];legacyJobIds:string[]}){
  const request:OrderRawBatchRequest={version:1,generation:input.generation,jobId:orderRawBatchJobId(input.generation),recordedAt:input.generation.startedAt,

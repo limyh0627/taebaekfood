@@ -1,5 +1,6 @@
 import { rawHolderByName, rawLedgerKeys, type RawHolderItem } from './rawHolder';
 import { stock3 as kg3 } from './orderProductionDomain';
+import {operationDocId,type RawInventoryMovement} from './rawInventoryCore';
 import type { RawInventoryCommand } from './rawInventoryCore';
 import type { RawPrepareOptions } from './rawInventoryPrepare';
 import type { CompanyId, LotMixSetting } from './rawLot';
@@ -95,4 +96,33 @@ export function buildOrderRawCommands<T extends RawHolderItem & RawMixFields>(in
 
 
  return {commands,holderByMaterial,companyId,customerName};
+}
+
+export interface OrderRawInventoryTrace {
+  material: string;
+  /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
+  rawItemId?: string;
+  /** 이 원료 작업의 원자 명령. 취소는 이 명령을 reverse 한다. */
+  operationId?: string;
+  /** 실제 Firestore 원장 문서 ID. 옛 ID로 저장된 명령을 재개하면 현재 계산 ID와 다를 수 있다. */
+  ledgerId?: string;
+  /** 임가공 완제품에서 이미 실물이 빠져 원료 로트는 건드리지 않고 수불부에만 남긴 줄. */
+  ledgerOnly?: boolean;
+  lotId?: string;
+  lotNo?: string;
+  supplierName: string;
+  receivedDate?: string;
+  kg: number;
+}
+export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): string[] {
+  return [...new Set(traces.flatMap(trace =>
+    trace.ledgerId ? [trace.ledgerId] : trace.operationId ? [operationDocId(trace.operationId)] : [],
+  ))];
+}
+
+/** 순차·새 일괄 경로가 같은 실제 영수증에서 주문 소비 이력을 만든다. */
+export function orderRawTracesFromMovement(command:RawInventoryCommand,movement:RawInventoryMovement):OrderRawInventoryTrace[]{
+ const base={material:command.materialSnapshot,rawItemId:command.rawItemId,operationId:command.operationId,ledgerId:movement.id};
+ if(command.kind==='ledger-consume')return [{...base,supplierName:'임가공',kg:kg3(Math.abs(movement.reportedDeltaKg)),ledgerOnly:true}];
+ return movement.lotChanges.filter(change=>change.deltaKg<0).map(change=>({...base,supplierName:change.supplierName??'',kg:kg3(-change.deltaKg),...(change.lotId?{lotId:change.lotId}:{}),...(change.lotNo?{lotNo:change.lotNo}:{}),...(change.receivedDate?{receivedDate:change.receivedDate}:{})}));
 }

@@ -18,14 +18,8 @@ import type { RawMovementKind } from './rawInventoryCore';
  * shared/types/admin.ts 로 별도 분리를 권장합니다.
  */
 
-export enum OrderStatus {
-  PENDING = 'PENDING',
-  PROCESSING = 'PROCESSING',
-  SHIPPED = 'SHIPPED',
-  DISPATCHED = 'DISPATCHED',
-  DELIVERED = 'DELIVERED',
-  ON_HOLD = 'ON_HOLD'
-}
+export {OrderStatus} from '../../functions/src/shared/orderCompletion';
+import {OrderStatus} from '../../functions/src/shared/orderCompletion';
 
 export interface OrderItem {
   /** 주문 안에서 이 줄을 가리키는 안정적인 열쇠. 같은 품목이 두 줄이어도 재고 작업을 구분한다. */
@@ -221,22 +215,8 @@ export const INVOICE_TYPES: InvoiceType[] = ['A', 'B', 'C', 'D', 'E'];
  * `ledgerOnly`면 실물은 완제품 로트에서 이미 처리됐고 원료 원장 작업만 되돌린다.
  * 저장 필드명 `rawConsumedLots`는 기존 주문 호환 때문에 유지하지만, 내용은 로트에 한정되지 않는다.
  */
-export interface OrderRawInventoryTrace {
-  material: string;
-  /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
-  rawItemId?: string;
-  /** 이 원료 작업의 원자 명령. 취소는 이 명령을 reverse 한다. */
-  operationId?: string;
-  /** 실제 Firestore 원장 문서 ID. 옛 ID로 저장된 명령을 재개하면 현재 계산 ID와 다를 수 있다. */
-  ledgerId?: string;
-  /** 임가공 완제품에서 이미 실물이 빠져 원료 로트는 건드리지 않고 수불부에만 남긴 줄. */
-  ledgerOnly?: boolean;
-  lotId?: string;
-  lotNo?: string;
-  supplierName: string;
-  receivedDate?: string;
-  kg: number;
-}
+export type {OrderRawInventoryTrace} from '../../functions/src/shared/orderRawCommandPlan';
+import type {OrderRawInventoryTrace} from '../../functions/src/shared/orderRawCommandPlan';
 
 
 export interface Order {

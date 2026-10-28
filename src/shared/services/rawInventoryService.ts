@@ -1,7 +1,7 @@
 import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 import { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
 export { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
-import { normalizeRawInventoryState, normalizeRawMovement, toLedgerDoc, type LegacyLedgerFields } from '../../../functions/src/shared/rawInventoryDocument';
+import { normalizeRawInventoryState, normalizeRawMovement, type LegacyLedgerFields } from '../../../functions/src/shared/rawInventoryDocument';
 export { normalizeRawInventoryState, normalizeRawMovement, toLedgerDoc } from '../../../functions/src/shared/rawInventoryDocument';
 export type { LegacyLedgerFields } from '../../../functions/src/shared/rawInventoryDocument';
 /**
@@ -33,8 +33,7 @@ import { companyOf, type RawMaterialLot } from '../types';
 import { rawMirrorMatches } from '../rawMirror';
 import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../inventoryWriterProtocol';
 
-/** Firestore 는 `undefined` 필드를 거부한다 — 로트의 미입력 옵션들이 여기 걸린다. */
-const stripUndefined = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+import { buildPreparedRawWritePlan, stripRawWriteUndefined as stripUndefined } from '../../../functions/src/shared/rawPreparedWritePlan';
 
 /**
  * 트랜잭션 밖에서 미리 정하는 값들. **안에서 만들면 재시도마다 달라진다.**
@@ -94,21 +93,12 @@ export function writePreparedRawCommand(
   read: Awaited<ReturnType<typeof readRawCommandInTransaction>>,
   result: Extract<RawApplyResult, { status: 'applied' }>, options: RawCommandOptions = {},
 ) {
-  const originalSnap = read.originalSnap?.exists() ? read.originalSnap : read.oldOriginalSnap;
-  const original = originalSnap?.exists() ? normalizeRawMovement(originalSnap.data()) : null;
-  const 원장전용 = command.kind === 'ledger-consume' || (command.kind === 'reverse' && original?.kind === 'ledger-consume');
-    //  ③ 상태·이력·품목을 **같은 트랜잭션**에 쓴다. 한쪽만 남을 수 없다.
-    tx.set(read.stateRef, protectInventoryWriterPatch(read.stateSnap.exists()?read.stateSnap.data():undefined,stripUndefined(result.state)));
-    tx.set(read.movementRef, protectInventoryWriterPatch(read.movementSnap.exists()?read.movementSnap.data():undefined,stripUndefined(toLedgerDoc(result.movement, options.legacy))));
-    if (result.guard) tx.set(read.guardRef, protectInventoryWriterPatch(read.guardSnap?.exists()?read.guardSnap.data():undefined,stripUndefined(result.guard)));
-    if (options.mirrorToItem !== false && !원장전용 && read.itemSnap.exists()) {
-      //  화면이 보는 `lots` 는 활성·소진이 한 배열이다. 활성을 앞에 둬야 FIFO 순서가 산다.
-      const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
-      const patch: Record<string, unknown> = { lots: stripUndefined(lots) };
-      //  **재고 = 로트 합계.** 예외는 없다(2026-09-16 `lotsAreTotal` 을 걷어냈다).
-      patch.stock = result.state.stockKg;
-      tx.update(read.itemRef, protectItemInventoryPatch(read.itemSnap.data(),patch));
-    }
+  const plan = buildPreparedRawWritePlan(command, read, result, options);
+  tx.set(read.stateRef, protectInventoryWriterPatch(read.stateSnap.exists()?read.stateSnap.data():undefined,plan.state()));
+  tx.set(read.movementRef, protectInventoryWriterPatch(read.movementSnap.exists()?read.movementSnap.data():undefined,plan.movement()));
+  if (plan.hasGuard()) tx.set(read.guardRef, protectInventoryWriterPatch(read.guardSnap?.exists()?read.guardSnap.data():undefined,plan.guard()!));
+  const itemPatch = plan.itemPatch();
+  if (itemPatch) tx.update(read.itemRef, protectItemInventoryPatch(read.itemSnap.data(),itemPatch));
 }
 
 /**

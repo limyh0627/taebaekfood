@@ -66,3 +66,13 @@ describe('HEAD 실제 본문 oracle',()=>{
   const row=fixture([]); const result=appBuild(row as never); const commands:JobCommandInput[]=result.commands; expect(commands).toHaveLength(2);
  });
 });
+
+import {rawLedgerDocIds,orderRawTracesFromMovement} from './orderRawCommandPlan';
+import {operationDocId} from './rawInventoryCore';
+const oldLedger=instantiate(rawHead.slice(rawHead.indexOf('export function rawLedgerDocIds'),rawHead.indexOf('/** 순차·새 일괄')),['operationDocId'],[operationDocId],'rawLedgerDocIds');
+const oldTraces=instantiate(rawHead.slice(rawHead.indexOf('export function orderRawTracesFromMovement'),rawHead.indexOf('/** 여러 줄의 첫 계획')),['kg3'],[stock3],'orderRawTracesFromMovement');
+it('trace/ledger ID 단일이동은 HEAD 물리·원장전용·빈·falsy 순서와 입력을 보존한다',()=>{
+ for(const kind of ['consume','ledger-consume']){const c={kind,materialSnapshot:'원료',rawItemId:'raw',operationId:'op'},m={id:'실제옛ID',reportedDeltaKg:-1.23456,lotChanges:[{deltaKg:-1.23456,supplierName:'공급',lotId:'lot',lotNo:'no',receivedDate:'2026-10-28'},{deltaKg:0},{deltaKg:1},{deltaKg:-2,lotId:'',lotNo:'',receivedDate:''}]},before=JSON.stringify([c,m]);expect(orderRawTracesFromMovement(c as any,m as any)).toEqual(oldTraces(c,m));expect(JSON.stringify([c,m])).toBe(before);}
+ for(const traces of [[],[{material:'x',supplierName:'',kg:0}],[{ledgerId:'first',operationId:'op'},{ledgerId:'',operationId:'op'},{ledgerId:'first'},{operationId:''}]])expect(rawLedgerDocIds(traces as any)).toEqual(oldLedger(traces));
+ expect(()=>orderRawTracesFromMovement({kind:'consume'} as any,{lotChanges:null} as any)).toThrow();expect(()=>oldTraces({kind:'consume'},{lotChanges:null})).toThrow();
+});
