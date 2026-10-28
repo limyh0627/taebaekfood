@@ -27,32 +27,11 @@ export function prepareOrderStockFullLineBasis(source:FullPlanningSource,intent:
  if(before&&!jsonInput(before))fullReject('unsupported-native-target');
  if(!before||before.itemId!==intent.target.itemId||before.lineId!==intent.target.lineId||text(before)!==text(intent.expectedTarget))fullReject('target-evidence-conflict','conflict');
  if(before.checked||order.itemInventory?.[before.lineId!]?.applied)fullReject('unsupported-existing-work');
- const currentStates=(order.itemInventory??{}) as Record<string,OrderItemInventoryState>;
- if(!fullObject(currentStates))fullReject('invalid-line-history');
- for(const [lineId,state]of Object.entries(currentStates)){
-  const line=initialItems.find(row=>row.lineId===lineId);
-  if(!line||!fullObject(state)||state.version!==1||state.lineId!==lineId||state.itemId!==line.itemId||typeof state.applied!=='boolean'||state.applied&&line.checked!==true||!state.applied&&(typeof state.reversedAt!=='string'||!Number.isFinite(Date.parse(state.reversedAt))||Date.parse(state.reversedAt)<Date.parse(state.completedAt??''))||!Number.isSafeInteger(state.attempt)||state.attempt<1||typeof state.completedAt!=='string'||!Number.isFinite(Date.parse(state.completedAt))||!fullObject(state.production)||state.production.capturedAt!==state.completedAt||!Array.isArray(state.production.stockDeltas)||!Array.isArray(state.production.bomLines)||!Array.isArray(state.rawConsumedLots)||!Array.isArray(state.autoBuilt)||!Array.isArray(state.producedUnits)||text(state.production.rawConsumedLots??[])!==text(state.rawConsumedLots)||text(state.production.rawLedgerIds??[])!==text(rawLedgerDocIds(state.rawConsumedLots)))fullReject('invalid-line-history');
-  for(const trace of state.rawConsumedLots)if(!fullId(trace.rawItemId)||!Number.isFinite(trace.kg)||trace.kg<=0||trace.operationId!==`${trace.ledgerOnly?'production-ledger':'production'}:${intent.orderId}:${lineId}:a${state.attempt}:${trace.rawItemId}`||typeof trace.ledgerId!=='string')fullReject('invalid-line-history');
- }
- let terminalPatch:FullRow|undefined;
- if(order.inventoryGenerationCompletion!==undefined){const marker=order.inventoryGenerationCompletion;try{validateOrderInventoryGeneration(marker?.generation);}catch{fullReject('prior-line-completion-unproven');}if(!hasOrderInventoryGenerationCompletion({...order,id:intent.orderId} as any,marker.generation))fullReject('prior-line-completion-unproven');terminalPatch=JSON.parse(marker.requestText).patch;}
- for(const [lineId,state]of Object.entries(currentStates))if(!state.applied){
-  if(!terminalPatch||!fullObject(terminalPatch.itemInventory)||!Array.isArray(terminalPatch.items)||text(terminalPatch.itemInventory[lineId]??null)!==text(state)||!terminalPatch.items.some((line:FullRow)=>line.lineId===lineId&&line.itemId===state.itemId&&line.checked===false))fullReject('prior-line-completion-unproven');
-  const aggregate=aggregateOrderLineInventory(terminalPatch,terminalPatch.itemInventory);for(const [key,value]of Object.entries(aggregate))if(text(terminalPatch[key]??null)!==text(value))fullReject('prior-line-completion-unproven');
- }
- const hasStates=Object.keys(currentStates).length>0;
- if(hasStates){const aggregate=aggregateOrderLineInventory(order,currentStates);for(const [key,value]of Object.entries(aggregate))if(text(order[key]??null)!==text(value))fullReject('invalid-line-aggregate');try{validateProductionRecordIndex(order.productionRecordIndex??{},intent.companyId,intent.orderId);}catch{fullReject('invalid-production-record-index');}}
- else if((order.rawInventoryAttempt??0)!==0||order.producedAt||order.rawLotsDeducted||order.rawConsumedLots?.length||order.autoBuilt?.length||order.producedUnits?.length||order.inventorySnapshots||order.productionRecordIndex&&Object.keys(order.productionRecordIndex).length)fullReject('unsupported-existing-work');
+ const currentStates=validateFullLineHistory(order,intent,initialItems,text);
  const nextItems=initialItems.map((row,index)=>index===intent.target.index?{...row,checked:true,checkedBy:actorDisplay,checkedAt:clock.now}:row);
  const effectiveStatus=['PENDING','PROCESSING','DISPATCHED'].includes(order.status)?workStatusFromItems(nextItems):order.status;
  const pendingRows=nextItems.map((item,index)=>({item,index})).filter(row=>row.item.checked&&currentStates[row.item.lineId!]?.applied!==true);
- const planner=createOrderProductionPlanner(catalog),ids=new Set(orderStockTouchedIds({items:nextItems.filter(row=>row.checked)} as any,catalog.inputs.bom));
- for(const state of Object.values(currentStates))for(const row of state.production.stockDeltas)ids.add(row.itemId);
- const previousAllocationRows:{itemId:string;rows:FullRow[]}[]=[],dataByItem=new Map<string,FullRow>();
- const previousAllocation=isStockProduction(order)?new Map<string,number>():completedLineAllocation(order as any,initialItems,currentStates,planner.shipOrder);
- for(const id of previousAllocation.keys())ids.add(id);
- for(const observed of catalog.observation.collections[0].documents)if(Array.isArray(observed.data.inventoryReservations)&&observed.data.inventoryReservations.some((row:any)=>row?.orderId===intent.orderId))ids.add(observed.id);
- for(const id of ids){const data=catalog.observation.collections[0].documents.find(row=>row.id===id)?.data;if(!data)fullReject('touched-item-missing');if(data.stock!==undefined&&(typeof data.stock!=='number'||!Number.isFinite(data.stock)||data.stock<0))fullReject('invalid-stock');if(data.inventoryReservations!==undefined&&!Array.isArray(data.inventoryReservations))fullReject('invalid-reservations');const own=(data.inventoryReservations??[]).filter((row:any)=>row?.orderId===intent.orderId);if(own.some((row:any)=>row.state!=='allocated'||!Number.isFinite(row.qty)||row.qty<=0||typeof row.operationId!=='string'||!row.operationId||row.reservationAttemptId!==undefined&&(typeof row.reservationAttemptId!=='string'||!row.reservationAttemptId)||!Number.isFinite(Date.parse(row.createdAt))))fullReject('invalid-previous-allocation');if(stock3(own.reduce((sum:number,row:any)=>sum+row.qty,0))!==(previousAllocation.get(id)??0))fullReject('invalid-previous-allocation');for(const row of own)if(row.generation!==undefined){try{validateOrderInventoryGeneration(row.generation);}catch{fullReject('invalid-previous-allocation');}if(row.generation.companyId!==intent.companyId||row.generation.orderId!==intent.orderId||row.generation.operationId!==row.operationId)fullReject('invalid-previous-allocation');}if(own.length)previousAllocationRows.push({itemId:id,rows:own});dataByItem.set(id,data);}
+ const planner=createOrderProductionPlanner(catalog),{previousAllocationRows,dataByItem}=prepareFullLineAllocation(order,catalog,initialItems,currentStates,planner.shipOrder,intent,orderStockTouchedIds({items:nextItems.filter(row=>row.checked)} as any,catalog.inputs.bom));
  const productionDeltas=new Map<string,number>(),reservationDeltas=new Map<string,number>(),allocated=new Map<string,number>();
  const rows:{lineId:string;index:number;item:FullRow;attempt:number;production:ReturnType<typeof planner.planOrderProduction>;rowDeltas:Map<string,number>;lotBaseId:string}[]=[];
  const reservation=planOrderStockReservation(intent.orderId,dataByItem,stock=>{
@@ -73,4 +52,40 @@ export function prepareOrderStockFullLineBasis(source:FullPlanningSource,intent:
  const allocation=isStockProduction(order)?new Map<string,number>():completedLineAllocation(order as any,nextItems,nextStates,planner.shipOrder);
  const preview={intent,owner,stockSnapshot:[...reservation.available],available:[...reservation.available],quantities,allocationQuantities:[...allocation],reservationDeltas:[...reservationDeltas],fixedClock:clock,plannerAggregate:rows[0]?.production,orderText:text(order),orderHash:fullHash(text(order))};
  return {status:'basis' as const,preview,catalog,orderSnapshot,productionDeltas,shipmentDeltas:new Map<string,number>(),calculationOrder:order,lineRows:rows,nextItems,effectiveStatus,currentStates,previousAllocationRows};
+}
+
+/** 정상 A 행 검증을 완료·해제 양쪽에서 같은 본문으로 수행한다. */
+export function prepareFullLineAllocation(order:FullRow,catalog:FullPlanningSource['catalog'],initialItems:readonly FullRow[],currentStates:Record<string,OrderItemInventoryState>,shipOrder:(order:any,deltas:Map<string,number>)=>void,identity:{orderId:string;companyId:string},requestedIds:Iterable<string>){
+ const ids=new Set(requestedIds);
+ for(const state of Object.values(currentStates))for(const row of state.production.stockDeltas)ids.add(row.itemId);
+ const previousAllocationRows:{itemId:string;rows:FullRow[]}[]=[],dataByItem=new Map<string,FullRow>();
+ const previousAllocation=isStockProduction(order)?new Map<string,number>():completedLineAllocation(order as any,initialItems,currentStates,shipOrder);
+ for(const id of previousAllocation.keys())ids.add(id);
+ for(const observed of catalog.observation.collections[0].documents)if(Array.isArray(observed.data.inventoryReservations)&&observed.data.inventoryReservations.some((row:any)=>row?.orderId===identity.orderId))ids.add(observed.id);
+ for(const id of ids){const data=catalog.observation.collections[0].documents.find(row=>row.id===id)?.data;if(!data)fullReject('touched-item-missing');if(data.stock!==undefined&&(typeof data.stock!=='number'||!Number.isFinite(data.stock)||data.stock<0))fullReject('invalid-stock');if(data.inventoryReservations!==undefined&&!Array.isArray(data.inventoryReservations))fullReject('invalid-reservations');const own=(data.inventoryReservations??[]).filter((row:any)=>row?.orderId===identity.orderId);if(own.some((row:any)=>row.state!=='allocated'||!Number.isFinite(row.qty)||row.qty<=0||typeof row.operationId!=='string'||!row.operationId||row.reservationAttemptId!==undefined&&(typeof row.reservationAttemptId!=='string'||!row.reservationAttemptId)||!Number.isFinite(Date.parse(row.createdAt))))fullReject('invalid-previous-allocation');if(stock3(own.reduce((sum:number,row:any)=>sum+row.qty,0))!==(previousAllocation.get(id)??0))fullReject('invalid-previous-allocation');for(const row of own)if(row.generation!==undefined){try{validateOrderInventoryGeneration(row.generation);}catch{fullReject('invalid-previous-allocation');}if(row.generation.companyId!==identity.companyId||row.generation.orderId!==identity.orderId||row.generation.operationId!==row.operationId)fullReject('invalid-previous-allocation');}if(own.length)previousAllocationRows.push({itemId:id,rows:own});dataByItem.set(id,data);}
+ return {ids,previousAllocationRows,dataByItem,previousAllocation};
+}
+
+export const isFullLinePlainJson=jsonInput;
+
+/** 대상 클릭과 무관한 원줄/완료표/aggregate 관계를 같은 조건으로 검증한다. */
+export function validateFullLineHistory(order:FullRow,intent:Pick<FullLineIntent,'companyId'|'orderId'>,initialItems:readonly FullRow[],text:(value:unknown)=>string){
+ const currentStates=(order.itemInventory??{}) as Record<string,OrderItemInventoryState>;
+ if(!fullObject(currentStates))fullReject('invalid-line-history');
+ for(const [lineId,state]of Object.entries(currentStates)){
+  const line=initialItems.find(row=>row.lineId===lineId);
+  if(!line||!fullObject(state)||state.version!==1||state.lineId!==lineId||state.itemId!==line.itemId||typeof state.applied!=='boolean'||state.applied&&line.checked!==true||!state.applied&&(typeof state.reversedAt!=='string'||!Number.isFinite(Date.parse(state.reversedAt))||Date.parse(state.reversedAt)<Date.parse(state.completedAt??''))||!Number.isSafeInteger(state.attempt)||state.attempt<1||typeof state.completedAt!=='string'||!Number.isFinite(Date.parse(state.completedAt))||!fullObject(state.production)||state.production.capturedAt!==state.completedAt||!Array.isArray(state.production.stockDeltas)||!Array.isArray(state.production.bomLines)||!Array.isArray(state.rawConsumedLots)||!Array.isArray(state.autoBuilt)||!Array.isArray(state.producedUnits)||text(state.production.rawConsumedLots??[])!==text(state.rawConsumedLots)||text(state.production.rawLedgerIds??[])!==text(rawLedgerDocIds(state.rawConsumedLots)))fullReject('invalid-line-history');
+  for(const trace of state.rawConsumedLots)if(!fullId(trace.rawItemId)||!Number.isFinite(trace.kg)||trace.kg<=0||trace.operationId!==`${trace.ledgerOnly?'production-ledger':'production'}:${intent.orderId}:${lineId}:a${state.attempt}:${trace.rawItemId}`||typeof trace.ledgerId!=='string')fullReject('invalid-line-history');
+ }
+ let terminalPatch:FullRow|undefined;
+ if(order.inventoryGenerationCompletion!==undefined){const marker=order.inventoryGenerationCompletion;try{validateOrderInventoryGeneration(marker?.generation);}catch{fullReject('prior-line-completion-unproven');}if(!hasOrderInventoryGenerationCompletion({...order,id:intent.orderId} as any,marker.generation))fullReject('prior-line-completion-unproven');terminalPatch=JSON.parse(marker.requestText).patch;}
+ for(const [lineId,state]of Object.entries(currentStates))if(!state.applied){
+  if(state.rawReversalOrigin)continue; // 실제 새 reverse plan/receipt 관계는 같은 거래 Evidence가 검증한다.
+  if(!terminalPatch||!fullObject(terminalPatch.itemInventory)||!Array.isArray(terminalPatch.items)||text(terminalPatch.itemInventory[lineId]??null)!==text(state)||!terminalPatch.items.some((line:FullRow)=>line.lineId===lineId&&line.itemId===state.itemId&&line.checked===false))fullReject('prior-line-completion-unproven');
+  const aggregate=aggregateOrderLineInventory(terminalPatch,terminalPatch.itemInventory);for(const [key,value]of Object.entries(aggregate))if(text(terminalPatch[key]??null)!==text(value))fullReject('prior-line-completion-unproven');
+ }
+ const hasStates=Object.keys(currentStates).length>0;
+ if(hasStates){const aggregate=aggregateOrderLineInventory(order,currentStates);for(const [key,value]of Object.entries(aggregate))if(text(order[key]??null)!==text(value))fullReject('invalid-line-aggregate');try{validateProductionRecordIndex(order.productionRecordIndex??{},intent.companyId,intent.orderId);}catch{fullReject('invalid-production-record-index');}}
+ else if((order.rawInventoryAttempt??0)!==0||order.producedAt||order.rawLotsDeducted||order.rawConsumedLots?.length||order.autoBuilt?.length||order.producedUnits?.length||order.inventorySnapshots||order.productionRecordIndex&&Object.keys(order.productionRecordIndex).length)fullReject('unsupported-existing-work');
+ return currentStates;
 }

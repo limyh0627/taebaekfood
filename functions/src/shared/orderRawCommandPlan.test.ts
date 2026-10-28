@@ -76,3 +76,13 @@ it('trace/ledger ID 단일이동은 HEAD 물리·원장전용·빈·falsy 순서
  for(const traces of [[],[{material:'x',supplierName:'',kg:0}],[{ledgerId:'first',operationId:'op'},{ledgerId:'',operationId:'op'},{ledgerId:'first'},{operationId:''}]])expect(rawLedgerDocIds(traces as any)).toEqual(oldLedger(traces));
  expect(()=>orderRawTracesFromMovement({kind:'consume'} as any,{lotChanges:null} as any)).toThrow();expect(()=>oldTraces({kind:'consume'},{lotChanges:null})).toThrow();
 });
+import {cancellationRawCommands} from './orderRawCommandPlan';
+import {cancellationRawCommands as appCancellationRawCommands} from '../../../src/features/admin/orderRawInventory';
+const cancellationHead=execFileSync('git',['show','2c5e402:src/features/admin/orderRawInventory.ts'],{encoding:'utf8'});
+const cancellationOld=instantiate(cancellationHead.slice(cancellationHead.indexOf('export function cancellationRawCommands(')),['companyOf'],[companyOf],'cancellationRawCommands');
+describe('REV14 cancellationRawCommands 원body 단일이동',()=>{
+ for(const mode of ['normal','fallback','empty','falsy-actor','opaque','company-error','id-error']as const)it('RC14 '+mode,()=>{
+  const make=()=>{const events:string[]=[];const order={get id(){events.push('id');if(mode==='id-error')throw Error('원ID오류');return 'order/😀';},get companyId(){events.push('company');if(mode==='company-error')throw Error('원회사오류');return mode==='fallback'?undefined:'punghoe';}};const originals=new Map(mode==='empty'?[]:[['production:😀:a1:raw','raw1'],['production-ledger:😀:a1:raw','raw1']]);if(mode==='opaque')originals.set('constructor','raw2');return {order,originals,events};};
+  const a=make(),b=make(),c=make(),actor=mode==='falsy-actor'?'':mode==='fallback'?undefined:'담당';const capture=(fn:any,v:any)=>{try{return {commands:fn(v.order,v.originals,'2026-10-29T01:02:03.004Z',actor)};}catch(e){return {error:(e as Error).message};}};const before=[...b.originals];const expected=capture(cancellationOld,a);expect(capture(cancellationRawCommands,b)).toEqual(expected);expect(capture(appCancellationRawCommands,c)).toEqual(expected);expect(b.events).toEqual(a.events);expect(c.events).toEqual(a.events);expect([...b.originals]).toEqual(before);
+ });
+});

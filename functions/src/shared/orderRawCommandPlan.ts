@@ -126,3 +126,17 @@ export function orderRawTracesFromMovement(command:RawInventoryCommand,movement:
  if(command.kind==='ledger-consume')return [{...base,supplierName:'임가공',kg:kg3(Math.abs(movement.reportedDeltaKg)),ledgerOnly:true}];
  return movement.lotChanges.filter(change=>change.deltaKg<0).map(change=>({...base,supplierName:change.supplierName??'',kg:kg3(-change.deltaKg),...(change.lotId?{lotId:change.lotId}:{}),...(change.lotNo?{lotNo:change.lotNo}:{}),...(change.receivedDate?{receivedDate:change.receivedDate}:{})}));
 }
+
+import {companyOf} from './orderProductionRecordPlan';
+
+/** 원 명령 ID로만 취소 명령을 고정하고 현재 BOM으로 재계산하지 않는다. */
+export function cancellationRawCommands(
+  order: {id:string;companyId?:CompanyId}, originals: ReadonlyMap<string, string>, effectiveAt: string, actorName?: string,
+): RawInventoryCommand[] {
+  return [...originals].map(([originalOperationId, rawItemId]) => ({
+    operationId: `reverse:${originalOperationId}`, companyId: companyOf(order), rawItemId,
+    materialSnapshot: '', effectiveAt,
+    ...(actorName ? { actorName } : {}),
+    source: { type: 'reversal', id: order.id }, kind: 'reverse', originalOperationId,
+  }));
+}

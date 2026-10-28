@@ -18,6 +18,7 @@ export function ensureOrderLineIds<T extends {itemId:string;lineId?:string}>(ite
 
 
 export interface OrderRawEffectOrigin {protocol:'private-stock-full-v1';reference:{version:1;companyId:'taebaek'|'punghoe';orderId:string;requestId:string};owner:{uid:string;employeeId:string;companyId:'taebaek'|'punghoe'};lineId:string;attempt:number}
+export interface OrderRawReversalOrigin extends OrderRawEffectOrigin {sourceReference:OrderRawEffectOrigin['reference']}
 export interface OrderRawEffectReference extends OrderRawEffectOrigin {commandIndex:number;operationId:string;rawItemId:string;movementPath:string;source:{type:string;id:string};commandHash:string;movementHash:string}
 export interface OrderItemInventoryState {
   version: 1;
@@ -29,6 +30,7 @@ export interface OrderItemInventoryState {
   reversedAt?: string;
   rawEffectOrigin?:OrderRawEffectOrigin;
   rawEffectReferences?:OrderRawEffectReference[];
+  rawReversalOrigin?:OrderRawReversalOrigin;
   rawConsumedLots: OrderRawInventoryTrace[];
   autoBuilt: { itemId: string; qty: number }[];
   producedUnits: { itemId: string; qty: number }[];

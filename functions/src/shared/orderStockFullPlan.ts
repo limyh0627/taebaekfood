@@ -1,17 +1,13 @@
+import {createFullHistoricalEvidenceContext} from './orderStockFullEvidence';
 import type {FullReference} from './orderStockFullCommand';
-import {rawReverseReportedDelta,rawReverseLotDeltas,rawAppliedDelta,commandHash} from './rawInventoryCore';
-import {orderRawBatchJobId,type OrderRawBatchRequest} from './orderRawBatchIdentity';
-import {readOrderRawBatchJobRequest,orderRawBatchProofProblem,orderRawBatchRequestHash} from './orderRawBatchProof';
-import {sameOrderInventoryGeneration} from './orderInventoryCompletionEvidence';
+import {commandHash} from './rawInventoryCore';
 import {prepareOrderStockFullLineBasis,validateFullLineIntent} from './orderStockFullLinePlan';
-import {validateProductionRecordIndex} from './orderProductionRecordPlan';
-import {normalizeRawMovement} from './rawInventoryDocument';
 import {createHash} from 'node:crypto';
 import {Timestamp,DocumentReference,GeoPoint,type Firestore,type Transaction} from 'firebase-admin/firestore';
 import {encodeCatalogValue,decodeCatalogValue,type CatalogValueAdapter} from './catalogOrderReferenceProof';
 import {prepareOrderStockReservationBasis,readOrderStockPlanningSource,type ReservationPreviewActor,type ReservationPreviewClock} from './orderStockExecutionPlan';
 import {advanceInventoryWriterProtocol} from './inventoryWriterProtocol';
-import {ensureOrderLineIds,aggregateOrderLineInventory,type OrderItemInventoryState,type OrderRawEffectOrigin} from './orderLineInventory';
+import {ensureOrderLineIds,aggregateOrderLineInventory,type OrderRawEffectOrigin} from './orderLineInventory';
 import {buildOrderRawCommands,selectOrderRawUsageNames,orderRawTracesFromMovement,rawLedgerDocIds} from './orderRawCommandPlan';
 import {prepareRawCommand} from './rawInventoryPrepare';
 import {buildPreparedRawWritePlan} from './rawPreparedWritePlan';
@@ -78,7 +74,7 @@ export function validateFullReadEvidence(plan:OrderStockFullPlan,selfPath:string
 }
 
 export interface FullEffect {path:string;operation:'create'|'update';nativeText:string}
-export interface OrderStockFullPlan {version:1;protocol:typeof FULL_PROTOCOL;intent:FullRow;owner:FullRow;clock:ReservationPreviewClock;preview:FullRow;actorDisplay:string;partnerDisplay:string;readSet:FullEvidence[];effectSet:FullEffect[];orderPatch:FullRow;audit:FullRow;itemIds:string[];productionDeltas:[string,number][];shipmentDeltas:[string,number][];originalAllocationRows?:{itemId:string;rows:FullRow[]}[];linePlans?:FullRow[];readEvidenceVersion?:2;historyQueries?:FullHistoryQuery[]}
+export interface OrderStockFullPlan {version:1;protocol:typeof FULL_PROTOCOL;intent:FullRow;owner:FullRow;clock:ReservationPreviewClock;preview:FullRow;actorDisplay:string;partnerDisplay:string;readSet:FullEvidence[];effectSet:FullEffect[];orderPatch:FullRow;audit:FullRow;itemIds:string[];productionDeltas:[string,number][];shipmentDeltas:[string,number][];originalAllocationRows?:{itemId:string;rows:FullRow[]}[];linePlans?:FullRow[];readEvidenceVersion?:2;historyQueries?:FullHistoryQuery[];reversalOf?:{lineId:string;attempt:number;sourceReference:OrderRawEffectOrigin['reference'];sourceOwner:OrderRawEffectOrigin['owner'];sourceLineNativeSha256:string}}
 export function fullPath(path:string){const parts=path.split('/');if(parts.length!==2||!fullId(parts[1])||!['orders','employees','partners','items','inventoryWriterDeletions','rawInventories','rawMaterialLedger','rawInventoryReversalGuards','rawInventoryJobs','productionRecords','orderStatusAudits',FULL_ATTEMPTS].includes(parts[0]))fullReject('invalid-derived-document-path');}
 /** 에뮬레이터의 허용 범위보다 공식 Firestore 필드·깊이 제약을 우선한다. */
 export function validateFullDocument(value:unknown,depth=0):void {
@@ -93,18 +89,23 @@ export function fullBudget(db:Firestore,attempt:FullRow,writes:{path:string;data
  for(const write of writes){fullPath(write.path);if(paths.has(write.path))fullReject('duplicate-effect-path');paths.add(write.path);validateFullDocument(write.data);const size=Buffer.byteLength(text(write.data),'utf8');if(size>786432)fullReject('document-budget-exceeded');total+=size;}
  validateFullDocument(attempt);if(paths.size>202||Buffer.byteLength(text(attempt),'utf8')>786432||total>4194304)fullReject('write-budget-exceeded');
 }
+/** 문서/수량을 받지 않고 서버 내부 원 함수 참조만 연결한다. */
+export function createOrderStockFullEvidenceContext(tx:Pick<Transaction,'get'>,db:Firestore,actor:ReservationPreviewActor,intent:FullRow){
+ return createFullHistoricalEvidenceContext({tx,db,companyId:intent.companyId,orderId:intent.orderId,selfAttemptPath:FULL_ATTEMPTS+'/'+fullAttemptId({version:1,companyId:intent.companyId,orderId:intent.orderId,requestId:intent.requestId},actor.uid),codec:fullCodec(db),hash:fullHash,reject:fullReject,usable:fullUsable,materializeTerminal:materializeOrderStockFullTerminal,infrastructure:{protocol:FULL_PROTOCOL,attempts:FULL_ATTEMPTS,object:fullObject,id:fullId,path:fullPath,snapshotNative:fullSnapshotNative,nativeReads:fullNativeReads,validateReadEvidence:validateFullReadEvidence,attemptId:fullAttemptId,isRejected:error=>error instanceof FullRejected}});
+}
 export async function prepareOrderStockFullPlan(tx:Pick<Transaction,'get'>,db:Firestore,actor:ReservationPreviewActor|null|undefined,intent:unknown,clock:ReservationPreviewClock):Promise<{status:'planned';plan:OrderStockFullPlan}|{status:'blocked';reason:string}>{
  try{
-  let nativeFailure:string|undefined;
-  const nativeTx={get:async(ref:any)=>{const result:any=await tx.get(ref);try{for(const snapshot of result.docs??[result])fullSnapshotNative(db,snapshot);}catch(error){if(error instanceof FullRejected)nativeFailure=error.reason;throw error;}return result;}};
+  let context:ReturnType<typeof createOrderStockFullEvidenceContext>|undefined;
+  const historical=()=>context??=createOrderStockFullEvidenceContext(tx,db,actor!,intent as FullRow);
+  const nativeTx={get:async(ref:any)=>historical().tx.get(ref)};
   const {text}=fullCodec(db);let lineBasis:ReturnType<typeof prepareOrderStockFullLineBasis>|undefined;let preEmployee:any;
   let basis:Extract<Awaited<ReturnType<typeof prepareOrderStockReservationBasis>>,{status:'basis'}>|ReturnType<typeof prepareOrderStockFullLineBasis>;
   if(fullObject(intent)&&intent.action==='line-forward'){
    const input=validateFullLineIntent(intent);if(!clock||typeof clock.now!=='string'||!Number.isFinite(clock.nowMs)||!Number.isFinite(Date.parse(clock.now))||Date.parse(clock.now)!==clock.nowMs||new Date(clock.nowMs).toISOString()!==clock.now)fullReject('invalid-clock');if(!actor||!fullObject(actor.token)||actor.token.companyId!==input.companyId||!fullId(actor.token.employeeId)||!actor.uid)fullReject('permission-denied');
-   const source=await readOrderStockPlanningSource(nativeTx as Pick<Transaction,'get'>,db,actor,input,clock);if(source.status!=='source')return {status:'blocked',reason:nativeFailure??source.reason};
+   const source=await readOrderStockPlanningSource(nativeTx as Pick<Transaction,'get'>,db,actor,input,clock);if(source.status!=='source')return {status:'blocked',reason:context?.nativeFailure??source.reason};
    preEmployee=await nativeTx.get(db.doc('employees/'+actor.token.employeeId));const employee=preEmployee.data();if(!employee||employee.authUid!==actor.uid||(employee.companyId??'taebaek')!==input.companyId||employee.status==='out'||typeof employee.name!=='string'||!employee.name.trim())fullReject('permission-denied');
    lineBasis=prepareOrderStockFullLineBasis(source,input,employee.name,clock,text);basis=lineBasis;
-  }else {const result=await prepareOrderStockReservationBasis(nativeTx as Pick<Transaction,'get'>,db,actor,intent,clock);if(result.status!=='basis')return {status:'blocked',reason:nativeFailure??result.reason};basis=result;}
+  }else {const result=await prepareOrderStockReservationBasis(nativeTx as Pick<Transaction,'get'>,db,actor,intent,clock);if(result.status!=='basis')return {status:'blocked',reason:context?.nativeFailure??result.reason};basis=result;}
   const {catalog,orderSnapshot,productionDeltas,shipmentDeltas}=basis,preview:FullRow=basis.preview,company=preview.intent.companyId;
   async function buildFullEffectsFromRows(){
   const order=orderSnapshot.data()!;fullUsable(order,company,preview.intent.orderId);
@@ -112,90 +113,17 @@ export async function prepareOrderStockFullPlan(tx:Pick<Transaction,'get'>,db:Fi
   if(!lineBasis&&requiresCompleteItemsForStatusChange(order.status as OrderStatus,preview.intent.targetStatus as OrderStatus)&&!hasCompleteOrderItems(order.items))fullReject('incomplete-order-items');
   // 계산 입력 native도 path-only codec에 도달하기 전에 같은 DB인지 확인한다.
   for(const collection of catalog.observation.collections)for(const document of collection.documents)text(document.data);
-  const evidence=new Map<string,FullEvidence>(),original=new Map<string,FullRow|undefined>(),effects=new Map<string,FullRow>();
-  function remember(path:string,data:FullRow|undefined,version:Timestamp|undefined){fullPath(path);text(data??null);original.set(path,data);evidence.set(path,{kind:'native',path,exists:data!==undefined,version:version?{seconds:version.seconds,nanoseconds:version.nanoseconds}:null,nativeText:text(data??null)});}
-  remember('orders/'+preview.intent.orderId,order,orderSnapshot.updateTime);
-  const read=async(path:string)=>{fullPath(path);if(!evidence.has(path)){const snap=preEmployee&&path==='employees/'+preview.owner.employeeId?preEmployee:await nativeTx.get(db.doc(path));remember(path,snap.data(),snap.updateTime);}return original.get(path);};
-  // 큰 과거 원문은 검증 메모리에만 두고 새 계획에는 digest만 남긴다.
-  const historical=new Map<string,FullRow|undefined>(),historyWork=new Map<string,number>(),historyQueries=new Map<string,FullHistoryQuery>();
-  const trackHistorical=(path:string,row:FullRow|undefined,encodedBytes?:number)=>{if(!historyWork.has(path)){const known=evidence.get(path);historyWork.set(path,encodedBytes??Buffer.byteLength(known&&known.kind!=='digest'?known.nativeText:text(row??null),'utf8'));}if(historyWork.size>500||[...historyWork.values()].reduce((sum,value)=>sum+value,0)>16777216)fullReject('history-work-budget-exceeded');};
-  const readPast=async(path:string)=>{const row=await read(path);trackHistorical(path,row);return row;};
-  const readHistoricalEvidence=async(path:string)=>{fullPath(path);if(!['orderStockFullAttemptsV1','rawInventoryJobs'].includes(path.split('/')[0])||path===FULL_ATTEMPTS+'/'+fullAttemptId({version:1,companyId:company,orderId:preview.intent.orderId,requestId:preview.intent.requestId},preview.owner.uid)||original.has(path))fullReject('invalid-history-digest');if(!historical.has(path)){const snap=await nativeTx.get(db.doc(path)),row=snap.data(),native=text(row??null);historical.set(path,row);trackHistorical(path,row,Buffer.byteLength(native,'utf8'));evidence.set(path,{kind:'digest',path,exists:row!==undefined,version:snap.updateTime?{seconds:snap.updateTime.seconds,nanoseconds:snap.updateTime.nanoseconds}:null,nativeSha256:fullHash(native),encodedBytes:Buffer.byteLength(native,'utf8')});}return historical.get(path);};
-  const predecessor=async(rawItemId:string,sequence:number)=>{if(!Number.isSafeInteger(sequence)||sequence<1)fullReject('prior-balance-unproven');const key=text([company,rawItemId,sequence]);let query=historyQueries.get(key);if(!query){const result:any=await nativeTx.get(db.collection('rawMaterialLedger').where('companyId','==',company).where('rawItemId','==',rawItemId).where('sequence','==',sequence).limit(3));if(result.docs.length===0||result.docs.length>=3)fullReject('prior-balance-unproven');const orderedEvidence:FullNativeEvidence[]=[];for(const snap of result.docs){const row=snap.data(),path=snap.ref.path;if(!row||row.companyId!==company||row.rawItemId!==rawItemId||row.sequence!==sequence||typeof row.operationId!=='string'||![operationDocId(row.operationId),legacyOperationDocId(row.operationId)].includes(snap.id)||!Number.isFinite(row.balanceAfterKg))fullReject('prior-balance-unproven');remember(path,row,snap.updateTime);trackHistorical(path,row);orderedEvidence.push(evidence.get(path) as FullNativeEvidence);}orderedEvidence.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);query={companyId:company,rawItemId,sequence,limit:3,orderedEvidence};historyQueries.set(key,query);}
-   const values=query.orderedEvidence.map(row=>normalizeRawMovement(fullCodec(db).decode(row.nativeText)));if(values.length===2&&(values[0].operationId!==values[1].operationId||text(values[0])!==text(values[1])))fullReject('prior-balance-unproven');return values[0].balanceAfterKg;
-  };
+  const history=historical(),original=history.native,effects=new Map<string,FullRow>(),read=history.readNative;
+  await read('orders/'+preview.intent.orderId);
   const employeeId=preview.owner.employeeId;if(!fullId(employeeId))fullReject('permission-denied');
   const employee=await read('employees/'+employeeId);
   if(!employee||employee.authUid!==preview.owner.uid||(employee.companyId??'taebaek')!==company||employee.status==='out'||typeof employee.name!=='string'||!employee.name.trim())fullReject('permission-denied');
   let partnerDisplay=typeof order.partnerName==='string'?order.partnerName:'';
   if(order.partnerId){if(!fullId(order.partnerId))fullReject('invalid-partner');const partner=await read('partners/'+order.partnerId);if(partner){if((partner.companyId??'taebaek')!==company)fullReject('permission-denied');if(typeof partner.name==='string')partnerDisplay=partner.name;}}
   const itemIds=new Set<string>(preview.stockSnapshot.map(([id]:[string,number])=>id));
-  const item=async(id:string)=>{const path='items/'+id;if(!evidence.has(path)){const observed=catalog.observation.collections[0].documents.find(row=>row.id===id);if(!observed)fullReject('touched-item-missing');remember(path,observed.data,observed.updateTime);}const row=original.get(path)!;fullUsable(row,company,id);if(await read('inventoryWriterDeletions/'+company+'__'+id))fullReject('blocked-retired-or-history');itemIds.add(id);return row;};
+  const item=async(id:string)=>{const path='items/'+id;if(!original.has(path)){const observed=catalog.observation.collections[0].documents.find(row=>row.id===id);if(!observed)fullReject('touched-item-missing');await read(path);}const row=original.get(path)!;fullUsable(row,company,id);if(await read('inventoryWriterDeletions/'+company+'__'+id))fullReject('blocked-retired-or-history');itemIds.add(id);return row;};
   for(const id of itemIds)await item(id);
-  const legacyJobs=new Map<string,{request:OrderRawBatchRequest;job:FullRow}>();
   const originOf=(lineId:string,attempt:number):OrderRawEffectOrigin=>({protocol:FULL_PROTOCOL,reference:{version:1,companyId:company,orderId:preview.intent.orderId,requestId:preview.intent.requestId},owner:preview.owner,lineId,attempt});
-  const fullSource=async(lineId:string,state:OrderItemInventoryState)=>{
-   const origin=state.rawEffectOrigin;
-   if(!fullObject(origin)||origin.protocol!==FULL_PROTOCOL||!fullObject(origin.reference)||origin.reference.version!==1||origin.reference.companyId!==company||origin.reference.orderId!==preview.intent.orderId||!fullId(origin.reference.requestId)||!fullObject(origin.owner)||origin.owner.companyId!==company||typeof origin.owner.uid!=='string'||!origin.owner.uid||!fullId(origin.owner.employeeId)||origin.lineId!==lineId||origin.attempt!==state.attempt||!Array.isArray(state.rawEffectReferences))fullReject('invalid-full-raw-origin');
-   const attemptId=fullAttemptId(origin.reference,origin.owner.uid),saved=await readHistoricalEvidence(FULL_ATTEMPTS+'/'+attemptId);
-   if(!saved||saved.version!==1||saved.protocol!==FULL_PROTOCOL||saved.attemptId!==attemptId||saved.state!=='applied'||text(saved.reference)!==text(origin.reference)||text(saved.owner)!==text(origin.owner)||typeof saved.fullPlanText!=='string'||fullHash(saved.fullPlanText)!==saved.fullPlanHash||!fullObject(saved.receipt)||saved.receipt.state!=='applied'||fullHash(text(saved.receipt))!==saved.receiptHash||saved.receipt.fullPlanHash!==saved.fullPlanHash)fullReject('prior-full-provenance-unproven');
-   const prior=fullCodec(db).decode(saved.fullPlanText) as OrderStockFullPlan;
-   if(prior.version!==1||prior.protocol!==FULL_PROTOCOL||text(prior.owner)!==text(origin.owner)||prior.intent.companyId!==company||prior.intent.orderId!==preview.intent.orderId||prior.intent.requestId!==origin.reference.requestId||text(prior.intent)!==saved.intentText||fullHash(saved.intentText)!==saved.intentHash||!Array.isArray(prior.readSet)||!Array.isArray(prior.effectSet))fullReject('prior-full-provenance-unproven');
-   validateFullReadEvidence(prior,FULL_ATTEMPTS+'/'+attemptId);
-   const current=new Map<string,FullRow|undefined>(fullNativeReads(prior).map(row=>[row.path,fullCodec(db).decode(row.nativeText)]));
-   for(const row of saved.expectedB??[])current.set(row.path,fullCodec(db).decode(row.nativeText));
-   const terminal=materializeOrderStockFullTerminal(db,prior,saved,current,'apply',{now:saved.receipt.at,nowMs:Date.parse(saved.receipt.at)});
-   if(text(terminal.next.receipt)!==text(saved.receipt))fullReject('prior-full-receipt-unproven');
-   const persisted=prior.orderPatch.itemInventory?.[lineId],withoutReverse=(row:FullRow)=>{const {reversedAt:_reversed,applied:_applied,...rest}=row;return rest;};
-   if(!persisted||persisted.applied!==true||text(withoutReverse(persisted))!==text(withoutReverse(state)))fullReject('prior-full-line-unproven');
-   const lines=prior.linePlans?.filter(row=>row.lineId===lineId);
-   if(!lines||lines.length!==1||lines[0].attempt!==state.attempt||!Array.isArray(lines[0].commandIndices)||lines[0].commandIndices.length!==state.rawEffectReferences!.length)fullReject('prior-full-line-unproven');
-   return state.rawEffectReferences!.map((ref,index)=>{
-    if(text({protocol:ref.protocol,reference:ref.reference,owner:ref.owner,lineId:ref.lineId,attempt:ref.attempt})!==text(origin)||!Number.isSafeInteger(ref.commandIndex)||ref.commandIndex!==lines[0].commandIndices[index]||ref.movementPath!=='rawMaterialLedger/'+operationDocId(ref.operationId))fullReject('prior-full-command-unproven');
-    const effect=prior.effectSet.find(row=>row.path===ref.movementPath);if(!effect)fullReject('prior-full-command-unproven');
-    const raw=fullCodec(db).decode(effect.nativeText),before=fullNativeReads(prior).find(row=>row.path===ref.movementPath);if(!before||before.exists)fullReject('prior-full-command-unproven');
-    const actual=advanceInventoryWriterProtocol(undefined,raw);
-    if(fullHash(text(actual))!==ref.movementHash||actual.operationId!==ref.operationId||actual.rawItemId!==ref.rawItemId||actual.commandHash!==ref.commandHash||text(actual.source)!==text(ref.source))fullReject('prior-full-command-unproven');
-    return {operationId:ref.operationId,rawItemId:ref.rawItemId,movementHash:ref.movementHash};
-   });
-  };
-  const legacySource=async(lineId:string,state:OrderItemInventoryState)=>{
-   let generation=order.productionRecordIndex?.[lineId]?.generation;const marker=order.inventoryGenerationCompletion;
-   if(!generation&&marker?.generation?.startedAt===state.completedAt){const patch=JSON.parse(marker.requestText).patch;if(text(patch.itemInventory?.[lineId]??null)===text(state)&&patch.itemInventory?.[lineId]?.applied===true)generation=marker.generation;}
-   if(!generation){
-    const production=state.production,empty=(value:any)=>Array.isArray(value)&&value.length===0;
-    const zero=Object.prototype.hasOwnProperty.call(production,'rawCalculationEvidence')&&empty(production.rawCalculationEvidence)&&[state.rawConsumedLots,production.rawConsumedLots,production.rawLedgerIds,production.stockDeltas,production.productProducedLots,production.productConsumedLots,state.autoBuilt,state.producedUnits].every(empty);
-    const patch=marker?JSON.parse(marker.requestText).patch:undefined;
-    if(!order.productionRecordIndex?.[lineId]&&!state.rawEffectOrigin&&zero&&text(patch?.itemInventory?.[lineId]??null)===text(state))return [];
-    fullReject('legacy-raw-history-unproven');
-   }
-   if(generation.companyId!==company||generation.orderId!==preview.intent.orderId||generation.startedAt!==state.completedAt)fullReject('legacy-raw-history-unproven');
-   const jobId=orderRawBatchJobId(generation);let cached=legacyJobs.get(jobId);
-   if(!cached){
-    const job=await readHistoricalEvidence('rawInventoryJobs/'+jobId);if(!job)fullReject('legacy-raw-history-unproven');let request:OrderRawBatchRequest;
-    try{request=readOrderRawBatchJobRequest(job);}catch{fullReject('legacy-raw-history-unproven');}
-    if(!sameOrderInventoryGeneration(request!.generation,generation)||!Array.isArray(request!.plan.lines))fullReject('legacy-raw-history-unproven');
-    const reads=[];
-    for(const {command}of request!.commands){
-     const movement=await readPast('rawMaterialLedger/'+operationDocId(command.operationId)),legacyId=legacyOperationDocId(command.operationId),old=legacyId===operationDocId(command.operationId)?undefined:await readPast('rawMaterialLedger/'+legacyId),state=await readPast('rawInventories/'+inventoryDocId(company,command.rawItemId)),item=await readPast('items/'+command.rawItemId),snap=(row:any)=>({exists:()=>row!==undefined,data:()=>row});
-     reads.push({movementSnap:snap(movement),oldMovementSnap:legacyId===operationDocId(command.operationId)?null:snap(old),stateSnap:snap(state),itemSnap:snap(item)});
-    }
-    if(orderRawBatchProofProblem(job,request!,reads,await orderRawBatchRequestHash(request!)))fullReject('legacy-raw-proof-conflict');
-    const covered=new Set<number>(),lineIds=new Set<string>();
-    for(const row of request!.plan.lines as FullRow[]){
-     if(typeof row.lineId!=='string'||lineIds.has(row.lineId)||!Number.isSafeInteger(row.attempt)||row.attempt<1||!Array.isArray(row.commandIndices))fullReject('legacy-command-index-unproven');lineIds.add(row.lineId);
-     for(const index of row.commandIndices){const command=request!.commands[index]?.command;
-      if(!Number.isSafeInteger(index)||index<0||!command||covered.has(index)||command.operationId!==(command.kind==='ledger-consume'?'production-ledger':'production')+':'+preview.intent.orderId+':'+row.lineId+':a'+row.attempt+':'+command.rawItemId)fullReject('legacy-command-index-unproven');covered.add(index);
-     }
-    }
-    if(covered.size!==request!.commands.length)fullReject('legacy-command-index-unproven');cached={request:request!,job};legacyJobs.set(jobId,cached);
-   }
-   if(order.productionRecordIndex?.[lineId]&&order.productionRecordIndex[lineId].requestHash!==cached.job.requestHash)fullReject('legacy-record-request-conflict');
-   const matches=(cached.request.plan.lines as FullRow[]).filter(row=>row.lineId===lineId);
-   if(matches.length!==1||matches[0].attempt!==state.attempt||text(matches[0].rowDeltas)!==text(state.production.stockDeltas)||text(matches[0].bomLines)!==text(state.production.bomLines)||text(matches[0].production.rawCalculationEvidence??null)!==text(state.production.rawCalculationEvidence??null)||text(matches[0].production.autoBuilt)!==text(state.autoBuilt)||text(matches[0].production.producedUnits)!==text(state.producedUnits))fullReject('legacy-line-snapshot-unproven');
-   const indices=matches[0].commandIndices as number[],traces=indices.flatMap(index=>orderRawTracesFromMovement(cached!.request.commands[index].command,cached!.job.results[index].movement));
-   if(text(traces)!==text(state.rawConsumedLots))fullReject('legacy-line-snapshot-unproven');return indices.map(index=>({operationId:cached!.request.commands[index].command.operationId,rawItemId:cached!.request.commands[index].command.rawItemId,command:cached!.request.commands[index].command}));
-  };
 
   const attempt=(order.rawInventoryAttempt??0)+1;if(!Number.isSafeInteger(attempt)||attempt<1)fullReject('invalid-raw-attempt');
   const dayOf=(iso?:string)=>iso?.includes('T')&&Number.isFinite(Date.parse(iso))?kstDateOf(new Date(iso)):dateOfLocal(iso);
@@ -230,31 +158,7 @@ export async function prepareOrderStockFullPlan(tx:Pick<Transaction,'get'>,db:Fi
   }
   const normalizedItems=ensureOrderLineIds(order.items as ({itemId:string;quantity:number;lineId?:string})[]),normalizedOrder={...order,id:preview.intent.orderId,companyId:company,partnerName:partnerDisplay,items:lineBasis?lineBasis.lineRows.map(row=>row.item):normalizedItems};
   const generation={contractVersion:1 as const,companyId:company,orderId:preview.intent.orderId,operationId:FULL_PROTOCOL+':'+fullHash(text([company,preview.owner.uid,preview.intent.orderId,preview.intent.requestId])),actorUid:preview.owner.uid,startedAt:clock.now};
-  if(lineBasis){
-   try{validateProductionRecordIndex(order.productionRecordIndex??{},company,preview.intent.orderId);}catch{fullReject('invalid-production-record-index');}
-   const states=lineBasis.currentStates,index=order.productionRecordIndex??{};
-   for(const [lineId,entry]of Object.entries(index) as [string,any][]){const state=states[lineId];if(!state)fullReject('invalid-production-record-index');const record=await readPast('productionRecords/'+entry.recordId),relatedItems=new Set([state.itemId,...state.production.bomLines.filter(row=>row.parentItemId===state.itemId).map(row=>row.childItemId),...(state.production.productProducedLots??[]).map(row=>row.itemId)]);if(!record||record.companyId!==company||record.orderId!==preview.intent.orderId||record.lineId!==lineId||!relatedItems.has(record.itemId)||text(record.generation)!==text(entry.generation)||record.createdAt!==entry.generation.startedAt||record.supersededBy||state.completedAt!==entry.generation.startedAt)fullReject('invalid-prior-production-record');fullUsable(record,company,entry.recordId);}
-   for(const [lineId,state] of Object.entries(states)){
-    const operations=state.rawEffectOrigin?await fullSource(lineId,state):await legacySource(lineId,state);
-    for(const trace of operations){const operation=trace.operationId;
-     const canonical=operationDocId(operation),legacy=legacyOperationDocId(operation),a=await readPast('rawMaterialLedger/'+canonical),b=legacy===canonical?undefined:await readPast('rawMaterialLedger/'+legacy);
-     const select=(first:FullRow|undefined,second:FullRow|undefined)=>{if(first&&second&&text(normalizeRawMovement(first))!==text(normalizeRawMovement(second)))fullReject('conflicting-prior-raw-movements');return first??second;};
-     const original=select(a,b),movement=original?normalizeRawMovement(original):undefined;
-     const savedTraces=state.rawConsumedLots.filter(row=>row.operationId===operation),ledgerOnly=movement?.kind==='ledger-consume';
-     if(!movement||movement.operationId!==operation||movement.companyId!==company||movement.rawItemId!==trace.rawItemId||movement.source?.id!==preview.intent.orderId||movement.source?.type!==(ledgerOnly?'oem':'production')||!['ledger-consume','consume'].includes(movement.kind)||text(savedTraces)!==text(orderRawTracesFromMovement('command'in trace?trace.command as any:movement as any,movement))||savedTraces.some(row=>![canonical,legacy].includes(row.ledgerId!))||'movementHash'in trace&&fullHash(text(original))!==trace.movementHash)fullReject('invalid-prior-raw-movement');
-     fullUsable(original,company,movement.id);
-     const reverseOperation='reverse:'+operation,reverseCanonical=operationDocId(reverseOperation),reverseLegacy=legacyOperationDocId(reverseOperation),reverseA=await readPast('rawMaterialLedger/'+reverseCanonical),reverseB=reverseLegacy===reverseCanonical?undefined:await readPast('rawMaterialLedger/'+reverseLegacy),reverseRaw=select(reverseA,reverseB),guard=await readPast('rawInventoryReversalGuards/'+canonical);
-     if(state.applied){if(guard||reverseRaw)fullReject('prior-line-reversal-conflict');continue;}
-     const reverse=reverseRaw?normalizeRawMovement(reverseRaw):undefined;
-     if(!guard||guard.id!==canonical||guard.originalOperationId!==operation||guard.reverseOperationId!==reverseOperation||guard.companyId!==company||guard.rawItemId!==trace.rawItemId||typeof guard.createdAt!=='string'||!Number.isFinite(Date.parse(guard.createdAt))||!reverse||reverse.operationId!==reverseOperation||![reverseCanonical,reverseLegacy].includes(reverse.id)||reverse.kind!=='reverse'||reverse.reversalOf!==operation||reverse.companyId!==company||reverse.rawItemId!==trace.rawItemId||reverse.source?.type!=='reversal'||reverse.source.id!==preview.intent.orderId||reverse.recordedAt!==guard.createdAt||!Number.isFinite(reverse.reportedDeltaKg)||!Number.isFinite(reverse.appliedDeltaKg)||!Array.isArray(reverse.lotChanges)||reverse.lotChanges.some(row=>!Number.isFinite(row.deltaKg)||!Number.isFinite(row.beforeKg)||!Number.isFinite(row.afterKg)))fullReject(savedTraces.length===0?'prior-reporting-reversal-incomplete':'prior-line-reversal-unproven');
-     fullUsable(guard,company,canonical);fullUsable(reverseRaw,company,reverse.id);
-     if(!Array.isArray(original!.lotChanges)||original!.lotChanges.some((row:any)=>!fullObject(row.lotSnapshot)||row.lotSnapshot.id!==row.lotId)||!Array.isArray(reverseRaw!.lotChanges)||reverseRaw!.lotChanges.some((row:any)=>!fullObject(row.lotSnapshot)||row.lotSnapshot.id!==row.lotId||row.lotSnapshot.kgRemaining!==row.beforeKg||(row.lotSnapshot.supplierName??null)!==(row.supplierName??null)||(row.lotSnapshot.lotNo??null)!==(row.lotNo??null)||(row.lotSnapshot.receivedDate??null)!==(row.receivedDate??null)))fullReject('prior-reversal-lot-evidence-unproven');
-     if(typeof reverse.effectiveAt!=='string'||!Number.isFinite(Date.parse(reverse.effectiveAt))||reverse.commandHash!==commandHash({operationId:reverseOperation,companyId:company,rawItemId:trace.rawItemId,materialSnapshot:reverse.materialSnapshot,effectiveAt:reverse.effectiveAt,source:{type:'reversal',id:preview.intent.orderId},kind:'reverse',originalOperationId:operation}))fullReject('prior-line-reversal-unproven');
-     const expectedLots=rawReverseLotDeltas(movement);if(reverse.reportedDeltaKg!==rawReverseReportedDelta(movement)||reverse.lotChanges.length!==expectedLots.length||new Set(movement.lotChanges.map(row=>row.lotId)).size!==movement.lotChanges.length||reverse.lotChanges.some((row,index)=>row.lotId!==expectedLots[index].lotId||row.deltaKg!==expectedLots[index].deltaKg||rawAppliedDelta(row.beforeKg,row.afterKg)!==row.deltaKg||!row.lotSnapshot||row.lotSnapshot.id!==row.lotId||row.lotSnapshot.kgRemaining!==row.beforeKg))fullReject('invalid-prior-reversal-numerics');
-     if(!Number.isSafeInteger(reverse.sequence)||reverse.sequence<=1||reverse.appliedDeltaKg!==rawAppliedDelta(await predecessor(reverse.rawItemId,reverse.sequence-1),reverse.balanceAfterKg))fullReject('invalid-prior-reversal-numerics');
-    }
-   }
-  }
+  if(lineBasis)await history.verifyCurrentLineHistory();
   const records=buildOrderProductionRecordPlan(normalizedOrder as any,catalog.allItems,catalog.inputs,generation,{dateOf:iso=>dayOf(iso??clock.now)});
   const recordHash=fullHash(text(records));
   for(const record of records.records){if(await read('productionRecords/'+record.id))fullReject('orphan-production-record');for(const legacy of record.legacySourceCandidates??[])if(await read('productionRecords/'+legacy.recordId))fullReject('orphan-production-record');effects.set('productionRecords/'+record.id,record);}
@@ -283,7 +187,7 @@ export async function prepareOrderStockFullPlan(tx:Pick<Transaction,'get'>,db:Fi
   if(await read('orderStatusAudits/'+audit.id))fullReject('orphan-status-audit');
   if(itemIds.size>200)fullReject('item-budget-exceeded');
   const effectSet:FullEffect[]=[...effects].map(([path,data])=>({path,operation:original.get(path)?'update':'create',nativeText:text(data)}));
-  const plan:OrderStockFullPlan={version:1,readEvidenceVersion:2,historyQueries:[...historyQueries.values()],protocol:FULL_PROTOCOL,intent:preview.intent,owner:preview.owner,clock,preview,actorDisplay:employee.name,partnerDisplay,readSet:[...evidence.values()],effectSet,orderPatch:fullCodec(db).decode(text(withOrderListProjection(order,orderPatch,'patch'))),audit,itemIds:[...itemIds],productionDeltas:[...productionDeltas],shipmentDeltas:[...shipmentDeltas],...(lineBasis?{originalAllocationRows:lineBasis.previousAllocationRows,linePlans:rows.map((row,index)=>({lineId:row.lineId,index:row.index,attempt:row.attempt,production:row.production,rowDeltas:deltaRows(row.rowDeltas),bomLines:orderPatch.itemInventory[row.lineId!].production.bomLines,lotBaseId:row.lotBaseId,commandIndices:commandIndices[index]}))}:{})};
+  const plan:OrderStockFullPlan={version:1,readEvidenceVersion:2,historyQueries:history.historyQueries,protocol:FULL_PROTOCOL,intent:preview.intent,owner:preview.owner,clock,preview,actorDisplay:employee.name,partnerDisplay,readSet:history.readSet,effectSet,orderPatch:fullCodec(db).decode(text(withOrderListProjection(order,orderPatch,'patch'))),audit,itemIds:[...itemIds],productionDeltas:[...productionDeltas],shipmentDeltas:[...shipmentDeltas],...(lineBasis?{originalAllocationRows:lineBasis.previousAllocationRows,linePlans:rows.map((row,index)=>({lineId:row.lineId,index:row.index,attempt:row.attempt,production:row.production,rowDeltas:deltaRows(row.rowDeltas),bomLines:orderPatch.itemInventory[row.lineId!].production.bomLines,lotBaseId:row.lotBaseId,commandIndices:commandIndices[index]}))}:{})};
   for(const effect of effectSet)validateFullDocument(fullCodec(db).decode(effect.nativeText));validateFullDocument(plan.orderPatch);
   return {status:'planned' as const,plan};
   }
@@ -301,14 +205,14 @@ export function materializeOrderStockFullTerminal(db:Firestore,plan:OrderStockFu
  const advance=(before:FullRow|undefined,patch:FullRow)=>{try{return advanceInventoryWriterProtocol(before,patch);}catch{fullReject('invalid-writer-protocol');}};
  const writes=new Map<string,{operation:'create'|'update';data:FullRow}>();
  const add=(path:string,data:FullRow,operation:'create'|'update'='update')=>{fullPath(path);if(writes.has(path))fullReject('duplicate-effect-path','conflict');writes.set(path,{operation,data});};
- if(mode==='apply')for(const effect of plan.effectSet){fullPath(effect.path);const before=plan.readSet.find(row=>row.path===effect.path);if(!before||before.kind==='digest'||effect.operation!==(before.exists?'update':'create')||!['items','rawInventories','rawMaterialLedger','productionRecords'].includes(effect.path.split('/')[0]))fullReject('invalid-effect-collection','conflict');add(effect.path,decode(effect.nativeText),effect.operation);}
+ if(mode==='apply')for(const effect of plan.effectSet){fullPath(effect.path);const before=plan.readSet.find(row=>row.path===effect.path);if(!before||before.kind==='digest'||effect.operation!==(before.exists?'update':'create')||!['items','rawInventories','rawMaterialLedger','rawInventoryReversalGuards','productionRecords'].includes(effect.path.split('/')[0]))fullReject('invalid-effect-collection','conflict');if(effect.path.startsWith('rawInventoryReversalGuards/')&&plan.intent.action!=='line-reverse')fullReject('invalid-effect-collection','conflict');add(effect.path,decode(effect.nativeText),effect.operation);}
  const allocation=new Map<string,number>(plan.preview.allocationQuantities),previous=new Map((plan.originalAllocationRows??[]).map(row=>[row.itemId,row.rows]));
  for(const id of plan.itemIds){const path='items/'+id,before=current.get(path)!,ownedRow=saved.ownRows.find((row:FullRow)=>row.itemId===id),existing=writes.get(path),patch=existing?.data??{};if(mode==='cancel'&&!ownedRow)continue;const reservations=(before.inventoryReservations??[]).filter((row:FullRow)=>(!ownedRow||text(row)!==text(ownedRow.row))&&(mode!=='apply'||!(previous.get(id)??[]).some(prior=>text(prior)===text(row))));
   if(mode==='apply'&&allocation.has(id))reservations.push({reservationAttemptId:saved.lock.nonce,operationId:saved.lock.id,orderId:reference.orderId,qty:allocation.get(id),createdAt:plan.clock.now,state:'allocated'});
   if(ownedRow||existing||mode==='apply'&&(allocation.has(id)||previous.has(id)))writes.set(path,{operation:'update',data:advance(before,{...patch,...(ownedRow||mode==='apply'&&(allocation.has(id)||previous.has(id))?{inventoryReservations:reservations}:{})})});
  }
  // 같은 원료 경로는 최초 revision에서 한 번만 증가시킨다.
- for(const [path,write]of writes)if(path.startsWith('rawInventories/')||path.startsWith('rawMaterialLedger/'))write.data=advance(current.get(path),write.data);
+ for(const [path,write]of writes)if(path.startsWith('rawInventories/')||path.startsWith('rawMaterialLedger/')||path.startsWith('rawInventoryReversalGuards/'))write.data=advance(current.get(path),write.data);
  add(orderPath,withOrderListProjection(order,advance(order,mode==='apply'?plan.orderPatch:{inventoryOperation:null}),'patch'));
  const auditPath='orderStatusAudits/'+plan.audit.id,audit=current.get(auditPath);
  if(text(audit??null)!==expectedB.get(auditPath))fullReject('audit-conflict','conflict');

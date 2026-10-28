@@ -1,3 +1,4 @@
+import {prepareOrderStockFullReversalPlan} from './orderStockFullReversalPlan';
 import {type Firestore} from 'firebase-admin/firestore';
 import {randomUUID} from 'node:crypto';
 import {advanceInventoryWriterProtocol} from './inventoryWriterProtocol';
@@ -37,7 +38,7 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
    let plan:OrderStockFullPlan|undefined;
    if(saved){
     if(saved.version!==1||saved.protocol!==FULL_PROTOCOL||saved.attemptId!==attemptId||text(saved.owner)!==text(owner)||text(saved.reference)!==text(reference)||!['reserved','applied','cancelled'].includes(saved.state)||!fullObject(saved.receipt)||saved.receipt.state!==saved.state||fullHash(text(saved.receipt))!==saved.receiptHash||!fullObject(saved.clock))fullReject('invalid-attempt','conflict');
-    if(saved.fullPlanText!==undefined){if(typeof saved.fullPlanText!=='string'||fullHash(saved.fullPlanText)!==saved.fullPlanHash)fullReject('invalid-plan-hash','conflict');plan=decode(saved.fullPlanText);if(plan?.version!==1||plan.protocol!==FULL_PROTOCOL||text(plan.owner)!==text(owner)||plan.intent.orderId!==reference.orderId||plan.intent.requestId!==reference.requestId||plan.intent.companyId!==reference.companyId||text(plan.intent)!==saved.intentText||fullHash(saved.intentText)!==saved.intentHash||!Array.isArray(plan.readSet)||!Array.isArray(plan.effectSet)||!Array.isArray(plan.itemIds)||plan.intent.action==='line-forward'&&!Array.isArray(plan.originalAllocationRows))fullReject('invalid-plan-evidence','conflict');}
+    if(saved.fullPlanText!==undefined){if(typeof saved.fullPlanText!=='string'||fullHash(saved.fullPlanText)!==saved.fullPlanHash)fullReject('invalid-plan-hash','conflict');plan=decode(saved.fullPlanText);if(plan?.version!==1||plan.protocol!==FULL_PROTOCOL||text(plan.owner)!==text(owner)||plan.intent.orderId!==reference.orderId||plan.intent.requestId!==reference.requestId||plan.intent.companyId!==reference.companyId||text(plan.intent)!==saved.intentText||fullHash(saved.intentText)!==saved.intentHash||!Array.isArray(plan.readSet)||!Array.isArray(plan.effectSet)||!Array.isArray(plan.itemIds)||['line-forward','line-reverse'].includes(plan.intent.action)&&!Array.isArray(plan.originalAllocationRows))fullReject('invalid-plan-evidence','conflict');}
     if(plan)validateFullReadEvidence(plan,attemptRef.path);
     if(plan&&saved.state!=='reserved'){
      const terminalBasis=new Map<string,FullRow|undefined>(fullNativeReads(plan).map(row=>[row.path,decode(row.nativeText)]));for(const row of saved.expectedB)terminalBasis.set(row.path,decode(row.nativeText));
@@ -57,9 +58,9 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
     fullBudget(db,next,[{path:attemptRef.path,data:next}]);tx.create(attemptRef,next);return answer(next,false);
    }
    if(!saved){
-    const built=await prepareOrderStockFullPlan(tx,db,capturedActor,intent,clock);if(built.status!=='planned')fullReject(built.reason);plan=built.plan;validateFullReadEvidence(plan,attemptRef.path);
+    const built=await (intent.action==='line-reverse'?prepareOrderStockFullReversalPlan:prepareOrderStockFullPlan)(tx,db,capturedActor,intent,clock);if(built.status!=='planned')fullReject(built.reason);plan=built.plan;validateFullReadEvidence(plan,attemptRef.path);
     const original=new Map(fullNativeReads(plan).map(row=>[row.path,decode(row.nativeText)])),order=original.get(orderRef.path)!;
-    const lock={id:FULL_PROTOCOL+':'+attemptId,kind:plan.intent.action==='line-forward'?'line':'status',...(plan.intent.action==='line-forward'?{lineId:plan.intent.target.lineId}:{}),stage:'reservation',targetStatus:plan.orderPatch.status,state:'processing',startedAt:clock.now,actor:plan.actorDisplay,actorUid:owner.uid,fullProtocol:FULL_PROTOCOL,fullAttemptId:attemptId,fullReference:reference,nonce};
+    const lock={id:FULL_PROTOCOL+':'+attemptId,kind:['line-forward','line-reverse'].includes(plan.intent.action)?'line':'status',...(['line-forward','line-reverse'].includes(plan.intent.action)?{lineId:plan.intent.target.lineId}:{}),stage:'reservation',targetStatus:plan.orderPatch.status,state:'processing',startedAt:clock.now,actor:plan.actorDisplay,actorUid:owner.uid,fullProtocol:FULL_PROTOCOL,fullAttemptId:attemptId,fullReference:reference,nonce};
     const ownRows=plan.preview.quantities.map(([itemId,qty]:[string,number])=>({itemId,row:{reservationAttemptId:nonce,operationId:lock.id,orderId:reference.orderId,qty,createdAt:clock.now,state:'processing'}}));
     const writes:{path:string;data:FullRow}[]=[],expectedB:{path:string;nativeText:string}[]=[];
     for(const id of plan.itemIds){const before=original.get('items/'+id)!;const own=ownRows.find((row:FullRow)=>row.itemId===id);let after=before;if(own){const patch=advanceInventoryWriterProtocol(before,{inventoryReservations:[...(before.inventoryReservations??[]),own.row]});writes.push({path:'items/'+id,data:patch});after={...before,...patch};}if(own)expectedB.push({path:'items/'+id,nativeText:text(after)});}

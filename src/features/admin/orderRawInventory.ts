@@ -9,7 +9,7 @@ import { companyOf } from '../../shared/types';
 import { baseRawName } from '../../constants/formula';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { operationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
-import { buildOrderRawCommands as buildOrderRawCommandsPure, selectOrderRawUsageNames } from '../../../functions/src/shared/orderRawCommandPlan';
+import { buildOrderRawCommands as buildOrderRawCommandsPure, selectOrderRawUsageNames, cancellationRawCommands as cancellationRawCommandsPure } from '../../../functions/src/shared/orderRawCommandPlan';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../../shared/orderRawBatchAttempt';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
@@ -174,10 +174,5 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
 export function cancellationRawCommands(
   order: Order, originals: ReadonlyMap<string, string>, effectiveAt: string, actorName?: string,
 ): import('../../shared/rawInventoryCore').RawInventoryCommand[] {
-  return [...originals].map(([originalOperationId, rawItemId]) => ({
-    operationId: `reverse:${originalOperationId}`, companyId: companyOf(order), rawItemId,
-    materialSnapshot: '', effectiveAt,
-    ...(actorName ? { actorName } : {}),
-    source: { type: 'reversal', id: order.id }, kind: 'reverse', originalOperationId,
-  }));
+  return cancellationRawCommandsPure(order,originals,effectiveAt,actorName);
 }
