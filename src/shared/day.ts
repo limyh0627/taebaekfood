@@ -1,3 +1,5 @@
+import {isCalendarDay} from '../../functions/src/shared/orderPlanPrimitives';
+export {isCalendarDay, dateOfLocal} from '../../functions/src/shared/orderPlanPrimitives';
 export { kstDateOf } from '../../functions/src/shared/calculation';
 /**
  * **달력 날짜 셈 — 'YYYY-MM-DD' 문자열만 다룬다.**
@@ -13,24 +15,11 @@ export { kstDateOf } from '../../functions/src/shared/calculation';
  */
 
 const RE = /^(\d{4})-(\d{2})-(\d{2})/;
-const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export interface KstDateRangeUtc {
   startInclusive: string;
   endExclusive: string;
 }
-
-export const isCalendarDay = (value: string): boolean => {
-  const match = DAY_RE.exec(value);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
-};
 
 /** 한국 달력의 시작일 00:00 이상, 종료일 다음 날 00:00 미만을 UTC ISO로 바꾼다. */
 export function kstDateRangeUtc(start: string, end: string): KstDateRangeUtc {
@@ -66,16 +55,6 @@ export const today = (): string => {
  *
  * 짝은 `timeOfLocal`(같은 파일) — 날짜는 여기, 시각은 거기, **둘 다 로컬이다.**
  */
-export function dateOfLocal(iso?: string): string {
-  const v = String(iso ?? '');
-  if (!v) return '';
-  if (!v.includes('T')) return v.slice(0, 10);   // 이미 날짜다
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return v.slice(0, 10);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /**
  * **저장된 시각(ISO) → 그 자리 시간의 'HH:MM:SS'.**
  * `slice(11,19)` 로 자르면 UTC 라, 아침에 만든 기록이 전날 밤으로 읽힌다.

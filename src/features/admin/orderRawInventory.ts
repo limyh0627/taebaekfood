@@ -9,7 +9,7 @@ import { companyOf } from '../../shared/types';
 import { baseRawName } from '../../constants/formula';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { operationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
-import { lotMixSettingOf } from '../../shared/lotUtils';
+import { buildOrderRawCommands as buildOrderRawCommandsPure, selectOrderRawUsageNames } from '../../../functions/src/shared/orderRawCommandPlan';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../../shared/orderRawBatchAttempt';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
@@ -61,80 +61,12 @@ export async function applyOrderAtomicRawPlan(input:{order:Order;generation:Orde
 /** 원료 계획의 단위·작업번호·혼합 설정을 실제 적용과 사전검사가 함께 고정한다. */
 export function buildOrderRawCommands(input:{order:Order;physicalUsage:RawUsageKg;ledgerOnlyUsage?:RawUsageKg;attempt:number;lineId?:string;allItems:Item[];partners:Partner[];actorName?:string}) {
  const {order,physicalUsage,attempt,lineId,allItems,partners,actorName}=input,ledgerOnlyUsage=input.ledgerOnlyUsage??{};
-    const physicalNames = Object.keys(physicalUsage).filter(raw => kg3(physicalUsage[raw]) > 0);
-    const ledgerOnlyNames = Object.keys(ledgerOnlyUsage).filter(raw => kg3(ledgerOnlyUsage[raw]) > 0);
+ const names = selectOrderRawUsageNames(physicalUsage, ledgerOnlyUsage);
+ const businessDate = dateOfLocal(order.deliveredAt) || today();
+ const customerName = partners.find(partner => partner.id === order.partnerId)?.name || order.partnerName || '';
+ const companyId = companyOf(order);
+ return buildOrderRawCommandsPure({get orderId(){return order.id;},physicalUsage,ledgerOnlyUsage,attempt,lineId,allItems,companyId,businessDate,customerName,actorName,names});
 
-
-    const date = dateOfLocal(order.deliveredAt) || today();
-    const customerName = partners.find(partner => partner.id === order.partnerId)?.name
-      || order.partnerName || '';
-    const effectiveAt = `${date}T12:00:00+09:00`;
-    const companyId = companyOf(order);
-    const commands: JobCommandInput[] = [];
-    const holderByMaterial = new Map<string, Item>();
-
-    for (const material of physicalNames) {
-      const rawItem = rawHolderByName(allItems, material, companyId);
-      if (!rawItem) {
-        throw new Error(`원료 차감 중단: ${companyId} 회사의 '${material}' 원료 품목을 찾을 수 없다 (주문 ${order.id})`);
-      }
-      holderByMaterial.set(material, rawItem);
-      const operationId = `production:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}:${rawItem.id}`;
-      commands.push({
-        command: {
-          operationId,
-          ...rawLedgerKeys(rawItem),
-          materialSnapshot: material,
-          effectiveAt,
-          ...(actorName ? { actorName } : {}),
-          source: { type: 'production', id: order.id },
-          kind: 'consume',
-          kg: kg3(physicalUsage[material]),
-          ...(lotMixSettingOf(rawItem) ? { mix: lotMixSettingOf(rawItem) } : {}),
-        },
-        options: {
-          newLotId: `lot-${operationId}`,
-          carryOverLotId: `carry-${operationId}`,
-          legacy: {
-            note: `자동: ${customerName}`,
-            type: 'auto', orderId: order.id,
-            ...(actorName ? { addedBy: actorName } : {}),
-          },
-        },
-      });
-    }
-
-    for (const material of ledgerOnlyNames) {
-      const rawItem = rawHolderByName(allItems, material, companyId);
-      if (!rawItem) {
-        throw new Error(`임가공 원장 기록 중단: ${companyId} 회사의 '${material}' 원료 품목을 찾을 수 없다 (주문 ${order.id})`);
-      }
-      holderByMaterial.set(material, rawItem);
-      // 실제 차감 명령과 같은 원료가 섞여도 작업 번호가 겹치지 않는다.
-      const operationId = `production-ledger:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}:${rawItem.id}`;
-      commands.push({
-        command: {
-          operationId,
-          ...rawLedgerKeys(rawItem),
-          materialSnapshot: material,
-          effectiveAt,
-          ...(actorName ? { actorName } : {}),
-          source: { type: 'oem', id: order.id },
-          kind: 'ledger-consume',
-          kg: kg3(ledgerOnlyUsage[material]),
-        },
-        options: {
-          legacy: {
-            note: `자동(임가공): ${customerName}`,
-            type: 'auto', orderId: order.id,
-            ...(actorName ? { addedBy: actorName } : {}),
-          },
-        },
-      });
-    }
-
-
- return {commands,holderByMaterial,companyId,customerName};
 }
 
 export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {

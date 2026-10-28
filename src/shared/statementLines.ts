@@ -1,7 +1,9 @@
 import type { Item, Order, OrderItem, PartnerItem, StatementLineKind, PurchaseUnitSnapshot } from './types';
 import { lineAmount } from './lineAmount';
 import { purchaseUnitRowFields } from './purchaseUnitRow';
-import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
+import { boxDerivedUnitPrice, orderStockUnitInputs, type OrderUnitInputs } from './orderUnits';
+import * as orderResolvedItemModule from '../../functions/src/shared/orderResolvedItem';
+const { resolveOrderItem: resolveOrderItemFromInputs } = (Reflect.get(orderResolvedItemModule, 'default') ?? orderResolvedItemModule) as typeof orderResolvedItemModule;
 import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
@@ -140,51 +142,11 @@ export function manualLines(
 }
 
 /** 주문 한 줄이 실제로 무엇인지 — 박스면 낱개로 풀어서. */
-export interface ResolvedOrderItem {
-  /** 박스였으면 **낱개 품목**으로 바뀌어 있다 */
-  product?: Item;
-  /** 낱개 기준 수량 */
-  qty: number;
-  /** 박스를 풀었으면 개입수, 아니면 1 — **주문에 적힌 단가를 나눌 때 쓴다** */
-  perBox: number;
-  /** 품목을 못 찾음 — 박스가 안 풀렸을 수 있다 */
-  unknownItem: boolean;
-}
+export type ResolvedOrderItem = orderResolvedItemModule.ResolvedOrderItem<Item>;
 
-/**
- * 주문 줄 → 실제 품목·수량.
- *
- * **전표는 낱개 기준이다.** 박스 품목이면 낱개로 바꾸고 수량을 개입수만큼 늘린다.
- * 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
- * 같은 이름의 박스·낱개가 있으므로 이름으로 대신 찾지 않고 `unknownItem` 을 단다.
- */
+/** 주문 줄 → 실제 품목·수량. 입력이 없으면 호출 시점의 레지스트리를 사용한다. */
 export function resolveOrderItem(item: OrderItem, allItems: readonly Item[], inputs?: OrderUnitInputs): ResolvedOrderItem {
-  let product = item.itemId ? allItems.find(p => p.id === item.itemId) : undefined;
-  const unknownItem = !product;
-
-  const uc = unpackComponent(product, inputs);
-  let qty = item.quantity;
-  let perBox = 1;
-  if (uc) {
-    const loose = allItems.find(p => p.id === uc.itemId);
-    if (loose) {
-      //  몇 박스인가는 **orderUnits.boxCountOf 한 곳**이 답한다 — 재고 차감(stockUnits)과 같은 답이라야
-      //  전표에 찍힌 낱개 수와 재고에서 빠진 양이 안 갈린다.
-      const boxCount = boxCountOf(item);
-      product = loose;
-      qty = boxCount * uc.count;
-      perBox = uc.count;
-    }
-  } else if (item.isBoxUnit && item.boxQuantity) {
-    // 향미유처럼 재고는 낱개지만 주문은 박스로 받는 품목. 복사 주문의 옛 줄은
-    // quantity에도 박스 수가 들어가 있으므로 환산표를 읽어 전표에서 낱개로 바로잡는다.
-    const pack = item.unitsPerBox ?? unitsPerBoxOf(product, inputs);
-    if (pack > 1) {
-      qty = item.boxQuantity * pack;
-      perBox = pack;
-    }
-  }
-  return { product, qty, perBox, unknownItem };
+  return resolveOrderItemFromInputs(item, allItems, orderStockUnitInputs(inputs));
 }
 
 /**

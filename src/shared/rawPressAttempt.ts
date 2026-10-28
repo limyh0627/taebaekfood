@@ -1,3 +1,5 @@
+import {rawPressText} from '../../functions/src/shared/orderPlanPrimitives';
+export {rawPressText} from '../../functions/src/shared/orderPlanPrimitives';
 import type { CompanyId, RawMaterialEntry } from './types';
 import type { RawInventoryCommand } from './rawInventoryCore';
 import type { LegacyLedgerFields } from './services/rawInventoryService';
@@ -12,11 +14,6 @@ export interface RawPressRequest {
   derivedCommand: Extract<RawInventoryCommand, { kind: 'receive' }>;
   sourceLegacy: LegacyLedgerFields;
   derivedLegacy: LegacyLedgerFields;
-}
-export function rawPressText(value: unknown): string {
-  const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object'
-    ? Object.fromEntries(Object.keys(v).sort().filter(key => v[key] !== undefined).map(key => [key, canonical(v[key])])) : v;
-  return JSON.stringify(canonical(value));
 }
 /** 기존 압착 수율 셈을 안내·저장·원문 검증이 함께 사용한다. kg를 다시 환산하지 않는다. */
 export const rawPressYieldKg = (usedKg: number, rate: number): number => Math.round(usedKg * rate * 1000) / 1000;

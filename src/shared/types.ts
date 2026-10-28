@@ -1,3 +1,5 @@
+import {TAEBAEK,companyOf,type ProductionRecord,type OrderProductionRecordIndexEntry} from '../../functions/src/shared/orderProductionRecordPlan';
+export {TAEBAEK,companyOf,type ProductionRecord,type OrderProductionRecordIndexEntry} from '../../functions/src/shared/orderProductionRecordPlan';
 import type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
 export type {OrderRawCalculationEvidence} from '../../functions/src/shared/orderProductionDomain';
 import type { ProductStocktakeRequest } from './productStocktakeAttempt';
@@ -236,11 +238,7 @@ export interface OrderRawInventoryTrace {
   kg: number;
 }
 
-export interface OrderProductionRecordIndexEntry {
-  recordId:string;
-  generation:import('./orderInventoryGeneration').OrderInventoryGeneration;
-  requestHash:string;
-}
+
 export interface Order {
   productionRecordIndex?:Record<string,OrderProductionRecordIndexEntry>;
   id: string;
@@ -327,7 +325,7 @@ export interface Order {
    * 회수는 이걸 거꾸로 읽는다: 로트번호 → 나간 주문 → 거래처.
    * 출고취소 때도 이 스냅샷대로 되돌린다(FIFO를 다시 돌리면 그새 들어온 로트에 얹혀 어긋난다).
    */
-  productConsumedLots?: { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[];
+  productConsumedLots?: import('../../functions/src/shared/orderProductLotPlan').ProductConsumedLotTrace[];
   autoBuilt?: { itemId: string; qty: number }[];  // 구성품이 모자라 생산처리 때 먼저 만든 것 — 되돌리기용
   producedUnits?: { itemId: string; qty: number }[];  // 주문 품목을 실제로 몇 개 생산했나(기존 재고로 충당한 몫은 빠짐) — 되돌리기용.
                                                       // 없으면 옛 주문(주문량 전량 생산) → 되돌리기는 주문량으로 계산한다.
@@ -926,26 +924,7 @@ export interface RoomNotice {
 export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'lot-management' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'loan-management' | 'quotation' | 'mypage';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
-export interface ProductionRecord {
-  supersededBy?:OrderProductionRecordIndexEntry;
-  legacySourceCandidates?:{recordId:string;companyId:CompanyId;itemId:string;note:string}[];
-  id: string;
-  companyId?:CompanyId;
-  orderId?:string;
-  lineId?:string;
-  generation?:import('./orderInventoryGeneration').OrderInventoryGeneration;
-  date: string;               // YYYY-MM-DD
-  itemId: string;
-  itemName: string;
-  finishedQty: number;        // FINISHED 생산 수량
-  wipUsed?: number;           // WIP 투입 수량 (옵션)
-  wipItemId?: string;      // 투입한 WIP 품목 ID (옵션)
-  wipItemName?: string;    // 투입한 WIP 품목명 (옵션)
-  cost?: number;              // 건당 원가 (자동 계산 또는 수동 입력)
-  note?: string;
-  createdBy?: string;
-  createdAt: string;
-}
+
 
 // ── 비용관리 ──────────────────────────────────────────────────────────────────
 export type FixedCostCategory = '임차료' | '보험료' | '감가상각비' | '대출이자' | '공과금' | '인건비' | '기타';
@@ -1272,13 +1251,13 @@ export const poLines = (po: PurchaseOrder): PurchaseOrderItem[] =>
  * 완전히 분리할 때, 이 필드가 그대로 나누는 기준이 된다.
  */
 export type { CompanyId } from '../../functions/src/shared/rawLot';
-export const TAEBAEK: CompanyId = 'taebaek';
+
 export const COMPANIES: { id: CompanyId; name: string; short: string }[] = [
   { id: 'taebaek', name: '태백푸드', short: '태백' },
   { id: 'punghoe', name: '풍회유통', short: '풍회' },
 ];
 /** 회사가 안 붙은 기록은 태백 것으로 본다 */
-export const companyOf = (x: { companyId?: CompanyId } | undefined): CompanyId => x?.companyId ?? TAEBAEK;
+
 /** 회사별 기초잔액 문서 id. 태백은 옛 문서('main')를 그대로 쓴다. */
 export const openingDocId = (c: CompanyId): string => (c === TAEBAEK ? 'main' : `main-${c}`);
 /**

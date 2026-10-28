@@ -4,20 +4,13 @@ export { nextLotNo, deductFromLots } from '../../functions/src/shared/rawLot';
 import { buildProductLot as buildProductLotPure, withCarryOverProductLot as withCarryOverProductLotPure, lotQtyRemaining } from '../../functions/src/shared/productLot';
 export { lotQtyRemaining, deductLotsByQty } from '../../functions/src/shared/productLot';
 export type { ProductLotTake } from '../../functions/src/shared/productLot';
-import type { ProductLotTake } from '../../functions/src/shared/productLot';
-import type { Item, RawMaterialLot } from './types';
+import {pruneDepletedLotsAtCutoff} from '../../functions/src/shared/orderProductLotPlan';
+export {restoreLotsByQty} from '../../functions/src/shared/orderProductLotPlan';
+import type { RawMaterialLot } from './types';
 
 export type { LotMixSetting } from '../../functions/src/shared/rawLot';
 
-/** 새 로트별 혼합비를 우선하고, 예전 상위 2개 설정도 계속 읽는다. */
-export function lotMixSettingOf(item: Pick<Item, 'mixEnabled' | 'mixTopPercent' | 'mixLotRatios'>): LotMixSetting | undefined {
-  if (!item.mixEnabled) return undefined;
-  const ratios = (item.mixLotRatios ?? []).filter(row => row.lotId && Number(row.percent) > 0);
-  // 새 형식이 한 번이라도 저장됐으면 2개 이상 고르기 전에는 혼합하지 않는다.
-  // 필드 자체가 없는 옛 자료만 예전 상위 2개 설정으로 호환한다.
-  if (item.mixLotRatios !== undefined) return ratios.length >= 2 ? { ratios } : undefined;
-  return { topPercent: item.mixTopPercent ?? 50 };
-}
+export { lotMixSettingOf } from '../../functions/src/shared/orderRawCommandPlan';
 import { today as todayStr } from './day';
 export { receiptToKg } from '../../functions/src/shared/stockUnitMeasure';
 
@@ -119,8 +112,7 @@ export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6, a
   const cutoff = asOf ? new Date(asOf) : new Date();
   cutoff.setMonth(cutoff.getMonth() - retentionMonths);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  const kept = lots.filter(l => l.status !== 'depleted' || (l.receivedDate ?? '9999-99-99') >= cutoffStr);
-  return kept.length === lots.length ? lots : kept;
+  return pruneDepletedLotsAtCutoff(lots, cutoffStr);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,17 +140,7 @@ export function withCarryOverProductLot(lots: RawMaterialLot[], currentQty: numb
  * FIFO를 거꾸로 돌리지 않고 **스냅샷대로** 되돌리는 이유: 출고 뒤에 새 로트가 들어왔으면
  * 역FIFO는 엉뚱한 로트에 얹는다. 이미 지워진 로트(정리됨)는 건너뛴다.
  */
-export function restoreLotsByQty(lots: RawMaterialLot[], taken: ProductLotTake[]): RawMaterialLot[] {
-  const next = lots.map(l => ({ ...l }));
-  for (const t of taken) {
-    const l = next.find(x => x.id === t.lotId);
-    if (!l || t.qty <= 0) continue;
-    l.qtyRemaining = round3((l.qtyRemaining ?? 0) + t.qty);
-    l.kgRemaining = round3((l.qtyRemaining ?? 0) * (l.unitKg ?? 0));
-    if ((l.qtyRemaining ?? 0) > 0) l.status = 'active';
-  }
-  return next;
-}
+
 
 /**
  * 물질 축으로 로트를 모은다 — 벌크·박스가 어느 품목에 흩어져 있든 한 줄로 본다.

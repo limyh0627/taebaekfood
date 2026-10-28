@@ -1,10 +1,9 @@
+import {validateOrderInventoryGeneration} from '../../functions/src/shared/orderPlanPrimitives';
+export {validateOrderInventoryGeneration} from '../../functions/src/shared/orderPlanPrimitives';
 import {rawPressText} from './rawPressAttempt';
 import type { Order } from './types';
 import type {OrderInventoryGeneration} from '../../functions/src/shared/orderStockReservationPlan';
 export type {OrderInventoryGeneration} from '../../functions/src/shared/orderStockReservationPlan';
-export function validateOrderInventoryGeneration(generation:OrderInventoryGeneration):void {
- if(generation?.contractVersion!==1||!['taebaek','punghoe'].includes(generation.companyId)||![generation.orderId,generation.operationId,generation.actorUid,generation.startedAt].every(value=>typeof value==='string'&&value.trim().length>0&&value===value.trim())||!Number.isFinite(Date.parse(generation.startedAt)))throw Error('주문 재고 작업의 최초 세대를 확인해 주세요.');
-}
 export function sameOrderInventoryGeneration(a:OrderInventoryGeneration|undefined|null,b:OrderInventoryGeneration|undefined|null):boolean {
  if(!a||!b)return false;
  return a.contractVersion===1&&b.contractVersion===1&&a.companyId===b.companyId&&a.orderId===b.orderId&&a.operationId===b.operationId&&a.startedAt===b.startedAt&&a.actorUid===b.actorUid;

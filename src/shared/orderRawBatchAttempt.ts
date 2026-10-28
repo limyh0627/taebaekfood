@@ -1,3 +1,5 @@
+import {assertPlainOrderRawBatch} from '../../functions/src/shared/orderPlanPrimitives';
+export {assertPlainOrderRawBatch} from '../../functions/src/shared/orderPlanPrimitives';
 import {operationDocId,type RawInventoryCommand} from './rawInventoryCore';
 import {rawPressText} from './rawPressAttempt';
 import type {LegacyLedgerFields} from './services/rawInventoryService';
@@ -14,10 +16,6 @@ export interface OrderRawBatchRequest {
  business:Record<string,unknown>;plan:Record<string,unknown>;commands:OrderRawBatchCommand[];
 }
 export const orderRawBatchJobId=(generation:OrderInventoryGeneration)=>'order-raw-batch:v1:'+operationDocId(generation.operationId);
-export function assertPlainOrderRawBatch(value:unknown):void {
- const walk=(v:unknown)=>{if(v===null||typeof v==='string'||typeof v==='boolean')return;if(typeof v==='number'&&Number.isFinite(v))return;if(Array.isArray(v)){v.forEach(walk);return;}if(v&&typeof v==='object'&&Object.getPrototypeOf(v)===Object.prototype){Object.values(v).forEach(walk);return;}throw Error('원료 일괄 요청은 유한한 JSON 원문만 저장할 수 있습니다.');};
- walk(value);if(new TextEncoder().encode(JSON.stringify(value)).byteLength>700_000)throw Error('원료 일괄 요청 원문이 저장 한도를 초과했습니다.');
-}
 export function validateOrderRawBatchRequest(request:OrderRawBatchRequest):void {
  assertPlainOrderRawBatch(request);
  const g=request.generation;
