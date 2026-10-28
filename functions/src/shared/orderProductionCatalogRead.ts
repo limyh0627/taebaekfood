@@ -6,7 +6,7 @@ export type ProductionCatalogCollection=typeof PRODUCTION_CATALOG_COLLECTIONS[nu
 export const PRODUCTION_CATALOG_LIMITS={perCollection:2000,total:5000,bytes:8*1024*1024} as const;
 export interface CatalogObservedDocument {id:string;data:Record<string,unknown>;updateTime:Timestamp}
 export interface CatalogObservedCollection {name:ProductionCatalogCollection;where:readonly ['companyId','==','taebaek'|'punghoe'];documents:CatalogObservedDocument[];documentIds:string[];count:number;readTime:Timestamp}
-export type CatalogObservation={status:'observed';plannerReady:false;companyId:'taebaek'|'punghoe';collections:CatalogObservedCollection[];count:number;encodedBytes:number}|{status:'blocked';plannerReady:false;reason:'invalid-input'|'read-failed'|'collection-limit'|'total-limit'|'bytes-limit'|'invalid-document'|'reference-missing'|'snapshot-mismatch';collection?:ProductionCatalogCollection};
+export type CatalogObservation={status:'observed';plannerReady:false;companyId:'taebaek'|'punghoe';collections:CatalogObservedCollection[];count:number;encodedBytes:number}|{status:'blocked';plannerReady:false;reason:'invalid-input'|'read-failed'|'collection-limit'|'total-limit'|'bytes-limit'|'invalid-document'|'reference-missing';collection?:ProductionCatalogCollection};
 const adapter:Pick<CatalogValueAdapter,'special'>={special:value=>{
  if(value instanceof Timestamp)return ['timestamp',value.seconds,value.nanoseconds];
  if(value instanceof DocumentReference)return ['reference',value.path];
@@ -41,14 +41,14 @@ function validCalculationFields(name:ProductionCatalogCollection,data:Record<str
 export async function readOrderProductionCatalog(tx:Pick<Transaction,'get'>,db:Pick<Firestore,'collection'>,input:unknown):Promise<CatalogObservation>{
  const blocked=(reason:Extract<CatalogObservation,{status:'blocked'}>['reason'],collection?:ProductionCatalogCollection):CatalogObservation=>({status:'blocked',plannerReady:false,reason,...(collection?{collection}:{})});
  if(!object(input)||Object.keys(input).length!==1||typeof input.companyId!=='string'||!['taebaek','punghoe'].includes(input.companyId))return blocked('invalid-input');
- const companyId=input.companyId as 'taebaek'|'punghoe',collections:CatalogObservedCollection[]=[];let count=0,encodedBytes=0,readTime:Timestamp|undefined;
+ const companyId=input.companyId as 'taebaek'|'punghoe',collections:CatalogObservedCollection[]=[];let count=0,encodedBytes=0;
  for(const name of PRODUCTION_CATALOG_COLLECTIONS){
   let snapshot;
   try{snapshot=await tx.get(db.collection(name).where('companyId','==',companyId).limit(PRODUCTION_CATALOG_LIMITS.perCollection+1));}catch{return blocked('read-failed',name);}
   if(!snapshot||!Array.isArray(snapshot.docs)||snapshot.size!==snapshot.docs.length||!stamp(snapshot.readTime))return blocked('invalid-document',name);
   if(snapshot.size>PRODUCTION_CATALOG_LIMITS.perCollection)return blocked('collection-limit',name);
   count+=snapshot.size;if(count>PRODUCTION_CATALOG_LIMITS.total)return blocked('total-limit',name);
-  if(readTime&&!readTime.isEqual(snapshot.readTime))return blocked('snapshot-mismatch',name);readTime=snapshot.readTime;
+  // query 획득 시각은 같은 쓰기 거래에서도 다를 수 있다. 일관성은 호출자의 SDK 거래가 맡는다.
   const documents:CatalogObservedDocument[]=[],ids=new Set<string>();
   for(const document of snapshot.docs){
    const data=document.data();
