@@ -35,6 +35,8 @@ vi.mock('firebase/firestore', () => {
 });
 
 const { createOrderItemStockOperations } = await import('./orderItemStock');
+const { createOrderStockEngine } = await import('./orderStockEngine');
+const { OrderStatus } = await import('../../shared/types');
 
 const item = (id: string): Item => ({ id, name: id, stock: 0 } as Item);
 const order = (ids: string[]): Pick<Order, 'items'> => ({
@@ -52,6 +54,49 @@ beforeEach(() => {
 });
 
 describe('주문 품목 재고 DB 경계', () => {
+  it('실제 상태 엔진은 다른 주문이 예약한 몫을 포함하면 부족한 출고를 차단한다', async () => {
+    const goods = { id: 'a', name: '상품', type: '상품', stock: 10, unit: '개' } as Item;
+    const current = { id: 'own', status: OrderStatus.DISPATCHED, producedAt: '2026-10-01', items: [{ itemId: 'a', quantity: 7 }] } as Order;
+    memory.docs.set('items/a', { stock: 10 });
+    memory.docs.set('orders/own', current as unknown as Record<string, unknown>);
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [goods] });
+    await stock.reserveOrderStock(reservableOrder('other', ['a']), 'other-op', () => new Map([['a', -4]]));
+    const before = structuredClone(memory.docs);
+    const engine = createOrderStockEngine({ db: {} as never, allItems: [goods], submaterials: [], partners: [], allOrders: [current], orders: [current], buildFormula: () => [], updateItem: async () => undefined, addItem: async () => undefined });
+    let error: unknown;
+    try { await engine.reconcileOrderStock(current, OrderStatus.SHIPPED); } catch (caught) { error = caught; }
+    const after = memory.docs.get('items/a')!;
+    const live = after.inventoryReservations as { qty: number }[];
+    expect(Number(after.stock)).toBeGreaterThanOrEqual(live.reduce((sum, row) => sum + row.qty, 0));
+    expect(error).toBeInstanceOf(Error);
+    expect(memory.docs).toEqual(before);
+  });
+  it('실제 상태 엔진의 출고는 다른 주문이 정상 예약한 몫을 남긴다', async () => {
+    const goods = { id: 'a', name: '상품', type: '상품', stock: 10, unit: '개' } as Item;
+    const current = { id: 'own', status: OrderStatus.DISPATCHED, producedAt: '2026-10-01', items: [{ itemId: 'a', quantity: 6 }] } as Order;
+    memory.docs.set('items/a', { stock: 10 });
+    memory.docs.set('orders/own', current as unknown as Record<string, unknown>);
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [goods] });
+    await stock.reserveOrderStock(reservableOrder('other', ['a']), 'other-op', () => new Map([['a', -4]]));
+    const engine = createOrderStockEngine({ db: {} as never, allItems: [goods], submaterials: [], partners: [], allOrders: [current], orders: [current], buildFormula: () => [], updateItem: async () => undefined, addItem: async () => undefined });
+    await engine.reconcileOrderStock(current, OrderStatus.SHIPPED);
+    expect(memory.docs.get('items/a')).toMatchObject({ stock: 4, inventoryReservations: [expect.objectContaining({ orderId: 'other', qty: 4 })] });
+  });
+  it('실제 상태 엔진의 작업완료 배정은 출고 실패 시 다른 주문 예약과 함께 복원된다', async () => {
+    const goods = { id: 'a', name: '상품', type: '상품', stock: 10, unit: '개' } as Item;
+    const current = { id: 'own', status: OrderStatus.PENDING, items: [{ itemId: 'a', quantity: 6 }] } as Order;
+    memory.docs.set('items/a', { stock: 10 });
+    memory.docs.set('orders/own', current as unknown as Record<string, unknown>);
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [goods] });
+    await stock.reserveOrderStock(reservableOrder('other', ['a']), 'other-op', () => new Map([['a', -4]]));
+    const engine = createOrderStockEngine({ db: {} as never, allItems: [goods], submaterials: [], partners: [], allOrders: [current], orders: [current], buildFormula: () => [], createProductionRecordsForOrder: async () => {}, updateItem: async () => undefined, addItem: async () => undefined });
+    await engine.reconcileOrderStock(current, OrderStatus.DISPATCHED);
+    const before = structuredClone(memory.docs.get('items/a'));
+    expect(before).toMatchObject({ stock: 10, inventoryReservations: [expect.objectContaining({ orderId: 'other', qty: 4 }), expect.objectContaining({ orderId: 'own', qty: 6, state: 'allocated' })] });
+    const completed = memory.docs.get('orders/own') as unknown as Order;
+    await expect(engine.reconcileOrderStock(completed, OrderStatus.SHIPPED, undefined, false, undefined, undefined, stage => { if (stage === 'final-stock') throw Error('합성 실패'); })).rejects.toThrow('합성 실패');
+    expect(memory.docs.get('items/a')).toEqual({ ...before, inventoryWriteRevision: Number(before?.inventoryWriteRevision) + 2 });
+  });
   it('여러 품목 증감을 한 transaction에서 함께 반영한다', async () => {
     memory.docs.set('items/a', { stock: 10 });
     memory.docs.set('items/b', { stock: 20 });
