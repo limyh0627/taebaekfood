@@ -1,6 +1,7 @@
+import {assessOrderBoxConversion} from '../../functions/src/shared/orderResolvedItem';
 import { isGoodsItem } from './itemTaxonomy';
 import type { Item, Order, OrderPallet, OrderSource, Partner, PartnerItem, ShipMethod } from './types';
-import { boxDerivedUnitPrice, isBoxStockItem, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
+import { boxDerivedUnitPrice, isBoxStockItem, orderStockUnitInputs, type OrderUnitInputs } from './orderUnits';
 import { isDeliveryChannel } from './channelStyle';
 import { resolveDefaultShipMethod } from './partnerShipping';
 import { clampNote } from './orderNote';
@@ -34,7 +35,9 @@ export function buildNewOrderDraft(input: {
     if (stockProduction && (product.type !== 'product' || product.archived || isGoodsItem(product))) throw new Error('직접 생산 가능한 완제품만 선택해 주세요.');
     // 박스 SKU는 이미 박스 단위다. 낱개 SKU를 박스로 주문할 때만 개입수를 곱한다.
     const boxedLoose = line.isBoxUnit && !isBoxStockItem(product, input.orderUnitInputs);
-    const perBox = boxedLoose ? (line.unitsPerBox ?? unitsPerBoxOf(product, input.orderUnitInputs)) : 0;
+    const conversion = boxedLoose ? assessOrderBoxConversion({...line,quantity:line.quantity,boxQuantity:line.quantity},input.items,orderStockUnitInputs(input.orderUnitInputs)) : {kind:'not-box' as const};
+    if (conversion.kind === 'unresolved') throw new Error('박스당 수량을 확인해 주세요. 낱개 입수가 확인되기 전에는 주문을 저장할 수 없습니다.');
+    const perBox = conversion.kind === 'known' ? conversion.factor : 0;
     const quantity = boxedLoose && perBox > 0 ? line.quantity * perBox : line.quantity;
     const orderedAs = line.orderedAs?.trim();
     return [{

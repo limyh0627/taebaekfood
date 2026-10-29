@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { manualLines, manualAccountCode, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
+import { manualLines, manualAccountCode, orderLines, orderLinesChecked, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
 import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
 
 import { buildBomIndex, resetBomIndex, setBomIndex } from './bomIndex';
@@ -402,4 +402,21 @@ it('명시 원가 kg는 거래 수량과 전표 금액을 바꾸지 않는다', 
   expect(explicit).toMatchObject({ qty: 2, price: 22000, supply: 40000, tax: 4000, total: 44000, purchaseQuantityKg: 40 });
   expect(({ ...explicit, purchaseQuantityKg: undefined })).toEqual({ ...legacy, purchaseQuantityKg: undefined });
   expect(manualLines([row], '매출')[0]).not.toHaveProperty('purchaseQuantityKg');
+});
+
+it('checked 전표는 미확인 박스 하나라도 있으면 부분 성공 줄 대신 정확한 이유를 반환한다',()=>{
+ const unit={bom:buildBomIndex(목록,[]),pack:buildPackIndex([])},order=주문([{itemId:'loose',name:'낱개',quantity:5,boxQuantity:5,isBoxUnit:true,price:10000},{itemId:'loose',name:'낱개',quantity:3,price:10000}]),before=structuredClone(order);
+ const input={order,stmtType:'매출' as const,allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit};
+ expect(orderLinesChecked(input)).toEqual({kind:'unresolved',issues:[{lineIndex:0,reason:'missing-pack-factor'}]});expect(order).toEqual(before);
+ expect(orderLines(input)[0].qty).toBe(8);
+});
+it.each([0.5,1,3,7])('checked 전표는 확인된 %s개입을 공통 수량·단가 builder에 반영한다',factor=>{
+ const unit={bom:buildBomIndex(목록,[]),pack:buildPackIndex([])},order=주문([{itemId:'loose',name:'낱개',quantity:5,boxQuantity:5,isBoxUnit:true,unitsPerBox:factor,price:12000}]);
+ const result=orderLinesChecked({order,stmtType:'매출',allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit});
+ expect(result.kind).toBe('ready');if(result.kind==='ready')expect(result.lines[0]).toMatchObject({qty:5*factor,price:Math.round(12000/factor),total:Math.round(5*factor*Math.round(12000/factor))});
+});
+it('정상 박스 BOM과 낱개는 checked와 기존 builder의 행·순서·합계가 같다',()=>{
+ const unit={bom:buildBomIndex(목록,[{parent_id:'box',child_id:'loose',quantity:10}]),pack:buildPackIndex([])},order=주문([{itemId:'box',name:'박스',quantity:2,price:10000},{itemId:'loose',name:'낱개',quantity:3,price:1000}]);
+ const input={order,stmtType:'매출' as const,allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit},result=orderLinesChecked(input);
+ expect(result).toEqual({kind:'ready',lines:orderLines(input)});
 });

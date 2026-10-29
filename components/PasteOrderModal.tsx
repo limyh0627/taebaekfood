@@ -17,7 +17,9 @@ import type {OrderInterpretationRule} from '../src/shared/services/orderCopyServ
 import {buildOrderCopyScopedSources,classifyOrderCopyRow,mergeOrderCopyScopedResult,type OrderCopyScopeRow} from '../src/shared/orderCopyInterpretationScope';
 import { resolveDefaultShipMethod } from '../src/shared/partnerShipping';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
-import type { OrderUnitInputs } from '../src/shared/orderUnits';
+import {orderStockUnitInputs,type OrderUnitInputs} from '../src/shared/orderUnits';
+import * as orderBoxModule from '../functions/src/shared/orderResolvedItem';
+const orderBoxShared=(Reflect.get(orderBoxModule,'default')??orderBoxModule) as typeof orderBoxModule;
 import ModalShell from '../src/shared/components/ModalShell';
 import { clampNote, NOTE_MAX } from '../src/shared/orderNote';
 
@@ -127,6 +129,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [pasteText, setPasteText] = useState(initialText);
   useEffect(()=>{onSourceTextChange?.(pasteText);},[pasteText,onSourceTextChange]);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
+  const [boxFactors,setBoxFactors]=useState<Record<string,string>>({});
+  const boxFactorScope=JSON.stringify([companyId,actorUid,selectedClientId,pasteText]);
+  const boxFactorEpoch=useRef({scope:boxFactorScope,version:0});if(boxFactorEpoch.current.scope!==boxFactorScope)boxFactorEpoch.current={scope:boxFactorScope,version:boxFactorEpoch.current.version+1};
+  const boxFactorKey=(line:ParsedLine,index:number)=>JSON.stringify([boxFactorEpoch.current.version,index,line.rawText,line.selectedProductId,line.qty,line.isBox]);
   const sourceGeneration=useRef(0);
   const interpretationRules=useRef<OrderInterpretationRule[]>([]);
   const firstAnalysis=useRef<{sourceText:string;value:OrderInterpretationJsonObject}|null>(null);
@@ -263,7 +269,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if(firstAnalysis.current?.sourceText!==pasteText)firstAnalysis.current={sourceText:pasteText,value:{kind:'rules',lines:parsed.map(line=>({...line}))}};
     const interpreted=matchOrderInterpretationExpressions(pasteText,rules,selectedClientId??'');
     setOrderNote(current=>{const after=appendNotes(current,interpreted.notes);if(after!==current)automaticNote.current={partnerId:selectedClientId,sourceText:pasteText,before:automaticNote.current?.before??current,after};return after;});
-    setParsedLines(parsed);
+    setBoxFactors({});setParsedLines(parsed);
     setAiNote(aliasConflicted?{tone:'warn',text:'같은 표현에 서로 다른 품목이 승인되어 자동 선택을 해제했습니다. 원문과 규격을 확인하고 품목을 직접 선택해 주세요.'}:interpreted.conflicted?{tone:'warn',text:'승인 표현의 비고 연결이 충돌했습니다. 비고를 직접 확인해 주세요.'}:null);
     setStep('review');
   };
@@ -316,7 +322,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         validatedResult:JSON.parse(JSON.stringify({valid:읽은것.valid,results:읽은것.results,unresolvedSourceIds:읽은것.unresolvedSourceIds})) as OrderInterpretationJsonObject,
       }}};
       if(!읽은것.valid){setAiNote({tone:'bad',text:'AI 응답의 원문 연결을 확인하지 못했습니다. 기존 품목과 입력을 유지했습니다. 품목을 직접 확인해 주세요.'});return;}
-      setParsedLines(rows=>mergeOrderCopyScopedResult(rows,scopedSources,읽은것));
+      setBoxFactors({});setParsedLines(rows=>mergeOrderCopyScopedResult(rows,scopedSources,읽은것));
       const unresolved=읽은것.unresolvedSourceIds.length,matched=읽은것.results.reduce((sum,result)=>sum+result.lines.length,0);
       setAiNote({tone:unresolved?'warn':'good',text:matched?`애매한 원문에서 ${matched}개 품목을 읽었습니다. 확정된 품목과 직접 입력한 내용은 유지했습니다.${unresolved?` 원문 ${unresolved}곳은 직접 확인해 주세요.`:''}`:'애매한 원문을 확정하지 못했습니다. 기존 행을 유지했습니다. 품목을 직접 확인해 주세요.'});
     } catch (error) {
@@ -340,10 +346,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if (!selectedClient || !orderDate || !deadline) return null;
     const draft = buildNewOrderDraft({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
-      lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
+      lines: parsedLines.flatMap((line,index) => line.selectedProductId && line.qty > 0 ? [{
         itemId: line.selectedProductId!, quantity: line.qty, isBoxUnit: line.isBox,
+        ...(line.isBox&&boxFactors[boxFactorKey(line,index)]?.trim()?{unitsPerBox:Number(boxFactors[boxFactorKey(line,index)])}:{}),
         orderedAs: line.orderedAs?.trim()??line.rawText,
-      })),
+      }] : []),
       orderDate, deliveryDate: deadline, shipToId, shipMethod,
       note: orderNote, noteImportant, pallets,
     });
@@ -353,7 +360,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   let currentPayload:ReturnType<typeof buildPayload> = null;
   try { currentPayload = buildPayload(); } catch { /* 입력 중인 날짜는 저장 시 검증한다. */ }
   const draftSignature = JSON.stringify({
-    payload:currentPayload, pasteText, parsedLines, orderDate, deadline, selectedClient,
+    payload:currentPayload, pasteText, parsedLines, boxFactors, orderDate, deadline, selectedClient,
     shipToId, shipMethod, orderNote, noteImportant, pallets, expressionInputs,
     firstAnalysis:firstAnalysis.current,
   });
@@ -368,7 +375,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const handleSubmit = async () => {
     if (savingRef.current || recoveryBusy || saveBlocked || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
     invalidateAiRead();
-    const payload = buildPayload();
+    let payload:ReturnType<typeof buildPayload>;
+    try{payload=buildPayload();}catch(error){setSaveError(error instanceof Error?error.message:'박스당 수량을 확인해 주세요.');return;}
     if (!payload?.draft.items.length) return;
     savingRef.current = true;
     setIsSaving(true);
@@ -619,7 +627,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                           onChange={e => {
                             invalidateAiRead();
                             const val = e.target.value || null;
-                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val, manual:true } : l));
+                            setBoxFactors({});setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val, manual:true } : l));
                           }}
                           className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-4 pr-10 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         >
@@ -635,20 +643,23 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                           onChange={e => {
                             invalidateAiRead();
                             const qty = Math.max(1, parseInt(e.target.value) || 1);
-                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty, manual:true } : l));
+                            setBoxFactors({});setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty, manual:true } : l));
                           }}
                           className="h-11 w-20 rounded-xl border border-slate-200 bg-slate-50 px-2 text-center text-sm font-black text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         />
                         <div className="flex h-11 items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
                           {(['박스', '개'] as const).map(unit => (
                             <button key={unit} type="button"
-                              onClick={() => { invalidateAiRead(); setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스', manual:true } : l)); }}
+                              onClick={() => { invalidateAiRead(); setBoxFactors({});setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스', manual:true } : l)); }}
                               className={`h-9 min-w-12 rounded-lg px-2.5 text-xs font-bold transition-colors ${(unit === '박스') === line.isBox ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                             >{unit}</button>
                           ))}
                         </div>
                       </div>
                     </div>
+                    {matched&&line.isBox&&orderBoxShared.assessOrderBoxConversion({itemId:matched.id,quantity:line.qty,isBoxUnit:true,boxQuantity:line.qty},items,orderStockUnitInputs(orderUnitInputs)).kind==='unresolved'&&<label className="flex items-center gap-2 text-xs font-bold text-slate-700">박스당 수량 확인 (개)
+                      <input aria-label={`${matched.name} 박스당 수량`} type="text" inputMode="decimal" value={boxFactors[boxFactorKey(line,idx)]??''} onChange={event=>{invalidateAiRead();const value=event.target.value;setBoxFactors(current=>({...current,[boxFactorKey(line,idx)]:value}));}} className="w-24 rounded border px-2 py-1"/>
+                      <span>등록된 개입수가 없으면 직접 확인해 주세요.</span></label>}
                     {matched && (() => {
                       // 포장 부자재는 현재 BOM에서만 읽는다.
                       const subs = (orderUnitInputs ? orderUnitInputs.bom.of(matched.id) : bomOf(matched.id))

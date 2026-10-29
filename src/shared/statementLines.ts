@@ -184,7 +184,19 @@ export interface OrderLinesInput {
  * **같은 품목 ID·규격은 한 줄로 합친다**(`key`). 주문 카드가 여럿이거나 한 카드에 같은 품목이
  * 두 번 들어 있어도 전표에는 한 줄로 나가야 한다.
  */
+type OrderLineResolver=(item:OrderItem,allItems:readonly Item[],inputs:OrderUnitInputs|undefined,index:number)=>ResolvedOrderItem;
 export function orderLines(input: OrderLinesInput): LineItem[] {
+  return buildOrderLines(input,(item,allItems,inputs)=>resolveOrderItem(item,allItems,inputs));
+}
+export type CheckedOrderLines = {kind:'ready';lines:LineItem[]} | {kind:'unresolved';issues:Array<{lineIndex:number;reason:Extract<orderResolvedItemModule.OrderBoxConversionAssessment,{kind:'unresolved'}>['reason']}>};
+export function orderLinesChecked(input:OrderLinesInput):CheckedOrderLines {
+  const checked=input.order.items.map(item=>((Reflect.get(orderResolvedItemModule,'default')??orderResolvedItemModule) as typeof orderResolvedItemModule).resolveOrderItemChecked(item,input.allItems,orderStockUnitInputs(input.orderUnitInputs)));
+  const issues=checked.flatMap((row,lineIndex)=>row.kind==='unresolved'?[{lineIndex,reason:row.reason}]:[]);
+  if(issues.length)return{kind:'unresolved',issues};
+  const values=checked.flatMap(row=>row.kind==='resolved'?[row.value]:[]);
+  return{kind:'ready',lines:buildOrderLines(input,(_item,_allItems,_inputs,index)=>values[index])};
+}
+function buildOrderLines(input: OrderLinesInput, resolveLine:OrderLineResolver): LineItem[] {
   const {
     order, stmtType, allItems, partnerItems, partnerId,
     editablePrices = {}, taxExemptOverrides = {}, accountCodeOverrides = {},
@@ -194,7 +206,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
   let no = 1;
 
   for (const [orderItemIndex, item] of order.items.entries()) {
-    const { product, qty: qtyUnits, perBox, unknownItem } = resolveOrderItem(item, allItems, input.orderUnitInputs);
+    const { product, qty: qtyUnits, perBox, unknownItem } = resolveLine(item, allItems, input.orderUnitInputs, orderItemIndex);
     const displayName = product?.name || item.name;
     const spec = product?.spec || item.displaySize || '';
     const itemId = product?.id ?? item.itemId;

@@ -49,7 +49,10 @@ import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { serviceStatementErrors } from '../src/shared/serviceStatement';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { isRawPurchaseItem } from '../functions/src/shared/purchaseCost';
-import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { manualLines, orderLinesChecked, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import {orderStockUnitInputs} from '../src/shared/orderUnits';
+import * as orderBoxModule from '../functions/src/shared/orderResolvedItem';
+const orderBoxShared=(Reflect.get(orderBoxModule,'default')??orderBoxModule) as typeof orderBoxModule;
 import { buildStatementCommand, checkStatementCommand, type StatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
 import { 서류당사자ById, 서류당사자스냅샷우선 } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
@@ -1410,6 +1413,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     () => 거래처주문({ orders, partnerId: selectedClientId, isVouchered, onlyActive, dateFrom, dateTo }),
     [orders, selectedClientId, onlyActive, dateFrom, dateTo, isVouchered]);
 
+  const [boxConfirmations,setBoxConfirmations]=useState<Array<{token:object;key:string;factor:number}>>([]);
+  const boxSelectionRun=useRef<symbol|null>(null);
+  const boxSourceKey=(order:Order,index:number)=>JSON.stringify([companyId,issueActor,order.partnerId,order.id,index,order.items[index]]);
+  const currentOrders=useRef(orders);currentOrders.current=orders;
+  const currentSelection=useRef(selectedOrderIds);currentSelection.current=selectedOrderIds;
+  const currentPartner=useRef({value:selectedClientId,epoch:0});if(currentPartner.current.value!==selectedClientId)currentPartner.current={value:selectedClientId,epoch:currentPartner.current.epoch+1};
+  const boxInputs=useRef({allItems,orderUnitInputs});boxInputs.current={allItems,orderUnitInputs};
+  const confirmedOrder=(order:Order,confirmations=boxConfirmations):Order=>({...order,items:order.items.map((line,index)=>{
+    const value=confirmations.find(row=>row.token===cashEditScope.current.token&&row.key===boxSourceKey(order,index));
+    return value?{...line,unitsPerBox:value.factor}:line;
+  })});
+  const unresolvedOrder=(order:Order,confirmations=boxConfirmations)=>confirmedOrder(order,confirmations).items.some(line=>orderBoxShared.resolveOrderItemChecked(line,allItems,orderStockUnitInputs(orderUnitInputs)).kind==='unresolved');
+  const unresolvedSelected=!editingStmt&&selectedOrderIds.some(id=>{const order=orders.find(row=>row.id===id);return !order||unresolvedOrder(order);});
   const selectedOrder  = partnerOrders.find(o => o.id === selectedOrderId);
   const selectedClient = partners.find(c => c.id === selectedClientId);
 
@@ -1423,6 +1439,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .filter(p => companyOf(p) === companyId && !isBoxStockItem(p, orderUnitInputs) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
       .map(p => ({ itemId: p.id, name: p.name }));
   }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType, companyId, orderUnitInputs]);
+  const directOrderLines=useMemo(()=>selectedOrder&&!manualMode&&!editingStmt?orderLinesChecked({orderUnitInputs,order:confirmedOrder(selectedOrder),stmtType,allItems,partnerItems:stmtType==='매출'?partnerOut:partnerIn,partnerId:selectedClientId,editablePrices,taxExemptOverrides,accountCodeOverrides}):null,[selectedOrder,manualMode,editingStmt,orderUnitInputs,stmtType,allItems,partnerItems,selectedClientId,editablePrices,taxExemptOverrides,accountCodeOverrides,boxConfirmations,companyId,issueActor,cashEditScope.current.token]);
   const lineItems = useMemo((): LineItem[] => {
     if (editingStmt && !isEditMode) return editingStmt.items.map((row, index) => ({ ...row, key: `${editingStmt.id}-${index}`, no: index + 1 }));
     if (manualMode) {
@@ -1430,19 +1447,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  안 이으면 `partnerPriceWrites` 가 그 줄을 건너뛰어 단가·과세면세가 조용히 안 저장된다.
       return manualLines(manualItems, stmtType, linkedManualItems, allItems);
     }
-    if (!selectedOrder) return [];
-    return orderLines({
-      orderUnitInputs,
-      order: selectedOrder,
-      stmtType,
-      allItems,
-      partnerItems: stmtType === '매출' ? partnerOut : partnerIn,
-      partnerId: selectedClientId,
-      editablePrices,
-      taxExemptOverrides,
-      accountCodeOverrides,
-    });
-  }, [editingStmt, isEditMode, manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
+    return directOrderLines?.kind==='ready'?directOrderLines.lines:[];
+  }, [editingStmt, isEditMode, manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs, boxConfirmations, companyId, issueActor, directOrderLines]);
 
   const purchaseUnitLockedItemIds = new Set(purchaseUnitOrders.filter(po => companyOf(po) === companyId && po.linkedStatementId === editingStmt?.id && po.status === 'received').flatMap(po => po.items?.map(line => line.itemId) ?? [po.itemId]));
   const newRowPurchaseUnit = (row: ManualRow): ManualRow => !row.purchaseUnitId && stmtType === '매입' && row.itemId && isRawPurchaseItem(allItems.find(item => item.id === row.itemId)) ? { ...row, ...defaultManualPurchaseUnitRowFields(row.qty),purchaseQuantityKg:undefined } : row;
@@ -1545,6 +1551,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds, companyLease?: StatementCompanyInfoLease): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
+    if (unresolvedSelected) { alert('박스당 수량을 확인한 뒤 전표를 발행해 주세요. 원주문과 재고는 변경되지 않았습니다.'); return null; }
     if (!selectedClientId || lineItems.length === 0) return null;
     // 입력 실수는 저장 시도 원문을 만들기 전에 고친다. 실패 복구 목록은 송신 결과 확인에만 쓴다.
     if (!isCalendarDay(tradeDate)) { alert('전표일자를 확인해 주세요. 실제 존재하는 날짜를 YYYY-MM-DD 형식으로 입력한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
@@ -1808,6 +1815,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid;
     if (saveBusyRef.current) return;
     // 계정과목 미설정 품목이 있으면 발행 차단 (매출은 800 기본이라 대개 매입에서 걸림)
+    if(unresolvedSelected){alert('박스당 수량을 확인한 뒤 전표를 발행해 주세요. 원주문과 재고는 변경되지 않았습니다.');return;}
     if (!수량확인()) return;
     const 계정없음 = 걸린줄들('NO_ACCOUNT_CODE');
     if (계정없음.length > 0) {
@@ -1939,6 +1947,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handlePrint = () => {
     const signal=printSignal();if(!signal)return;
     if (editingStmt && !isEditMode) { handleDetailPrint(editingStmt); return; }
+    if(unresolvedSelected){alert('박스당 수량을 확인해 주세요. 원주문과 재고는 변경되지 않았습니다.');return;}
     const companyLease=companyGuard.acquire();if(!companyLease)return;
     const balance = printBalance(stmtType, selectedClient?.id || '', totalAmount, editingStmt ?? undefined);
     const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems, balance });
@@ -1956,11 +1965,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     void printStatementViaIframe(html, `${stmt.type}전표`, signal);
   };
 
-  const handleReceipt = () => { const companyLease=companyGuard.acquire();if(!companyLease)return; const signal=printSignal();if(!signal)return;return printStatementViaIframe(buildReceiptHtml({
+  const handleReceipt = () => { if(unresolvedSelected){alert('박스당 수량을 확인해 주세요. 원주문과 재고는 변경되지 않았습니다.');return;} const companyLease=companyGuard.acquire();if(!companyLease)return; const signal=printSignal();if(!signal)return;return printStatementViaIframe(buildReceiptHtml({
     companyInfo, tradeDate, docNo, partnerName: selectedClient?.name || '', items: lineItems,
     totals: { supply: totalSupply, tax: totalTax, amount: totalAmount },
   }), '영수증', signal); };
   const handleExcel = () => {
+    if(unresolvedSelected){alert('박스당 수량을 확인해 주세요. 원주문과 재고는 변경되지 않았습니다.');return;}
     const scope = excelScope.current;
     if (!scope || !scope.uid || !auth.currentUser?.uid || scope.companyId !== companyId || scope.uid !== auth.currentUser.uid || scope.controller.signal.aborted) return;
     return downloadStatementExcel({ signal: scope.controller.signal,
@@ -2197,59 +2207,53 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **같은 함수**를 쓴다. 예전엔 여기 따로 적혀 있어서, 박스 단가를 개입수로 나누는
    * 고침이 저쪽에만 들어가고 여기는 **열 배로 남아 있었다**(2026-09-05).
    */
-  const orderToRows = (o: Order): ManualRow[] => o.items.map(item => {
-    const r = resolveOrderItem(item, allItems, orderUnitInputs);
+  const orderToRows = (o: Order, confirmations=boxConfirmations): ManualRow[]|null => {
+    const items=confirmedOrder(o,confirmations).items,checkedRows=items.map(item=>orderBoxShared.resolveOrderItemChecked(item,allItems,orderStockUnitInputs(orderUnitInputs)));
+    if(checkedRows.some(row=>row.kind==='unresolved'))return null;
+    const values=checkedRows.flatMap(row=>row.kind==='resolved'?[row.value]:[]);
+    return items.map((item,index)=>{
+    const r=values[index];
     const pcEntry = partnerOut.find(pc => pc.itemId === r.product?.id && pc.partnerId === o.partnerId);
-    //  규격은 박스를 풀었을 때만 품목 것을 앞세운다 — 낱개는 주문에 적힌 표시규격이 맞다
-    const spec = r.perBox > 1
-      ? (r.product?.spec || item.displaySize || '')
-      : (item.displaySize || r.product?.spec || '');
-    return {
-      itemId: r.product?.id ?? item.itemId,
-      name: r.product?.name || item.name,
-      spec,
-      qty: String(r.qty),
-      price: String(orderItemPrice(r, item, pcEntry?.price)),
-      isTaxExempt: pcEntry?.taxType === '면세',
-      note: '',
-      accountCode: pcEntry?.Account_Code || undefined,
-    } as ManualRow;
-  });
+    const spec = r.perBox > 1 ? (r.product?.spec || item.displaySize || '') : (item.displaySize || r.product?.spec || '');
+    return {itemId:r.product?.id ?? item.itemId,name:r.product?.name || item.name,spec,qty:String(r.qty),price:String(orderItemPrice(r,item,pcEntry?.price)),isTaxExempt:pcEntry?.taxType==='면세',note:'',accountCode:pcEntry?.Account_Code || undefined} as ManualRow;
+  });};
 
-  const handleOrderClick = (o: Order) => {
-    const existing = mergedStatements.find(s => s.orderId === o.id);
-    if (existing && o.invoicePrinted) { setWarnDuplicate({ order: o, stmt: existing }); return; }
-    //  누른 것을 넣거나 뺀다. 고른 게 하나도 안 남으면 직접입력을 접는다.
-    const next = selectedOrderIds.includes(o.id)
-      ? selectedOrderIds.filter(id => id !== o.id)
-      : [...selectedOrderIds, o.id];
-    setSelectedOrderIds(next);
-    if (next.length === 0) {
-      setManualMode(false);
-      setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
-      return;
-    }
-    //  전표일자는 **발행하는 날**이 기본이다(주문 접수일이 아니라).
-    //  주문은 며칠 전에 들어와도 전표는 오늘 끊는 게 보통이라, 접수일을 물려받으면
-    //  매번 손으로 고쳐야 했다. 필요하면 날짜칸에서 바꾸면 된다.
-    setTradeDate(today());
-    setShowPreview(false);
-    setEditablePrices({});
-    setTaxExemptOverrides({});
-    //  고른 순서대로 줄을 이어 붙인다 — **합치지 않는다.**
-    //  빈 행은 자동으로 안 넣는다. 더 넣으려면 '+ 행 추가'.
-    //
-    //  **주문은 `orders` 전체에서 찾는다.** `partnerOrders` 는 고른 거래처로 걸러 놓은 것이라,
-    //  미발행 목록에서 거래처를 안 고르고 바로 누르면 비어 있다 — 그쪽은 같은 틱에
-    //  `setSelectedClientId` 를 부르지만 React 상태는 그 틱에 안 바뀐다.
-    //  그래서 품목이 한 줄도 안 들어왔다(2026-09-03 사장님 발견).
-    const pick = next.map(id => orders.find(x => x.id === id)).filter((x): x is Order => !!x);
-    setManualItems(pick.flatMap(orderToRows));
-    //  **목록에 남는다.** 예전엔 여기서 바로 양식으로 넘어갔는데(단건이라 그게 맞았다),
-    //  여러 건을 묶게 되면서 그러면 둘째를 고를 수가 없다 — 첫 클릭에 목록이 사라진다.
-    //  줄은 이미 담겼으니, 다 골랐으면 아래 '전표 작성' 으로 넘어간다.
+  const confirmOrderConversions=async (picked:Order[]):Promise<typeof boxConfirmations|null>=>{
+    if(boxSelectionRun.current)return null;
+    const run=Symbol(),token=cashEditScope.current.token,uid=auth.currentUser?.uid,prior=JSON.stringify(selectedOrderIds);
+    const snapshots=picked.map(order=>JSON.stringify(order)),partner=picked[0]?.partnerId??'',partnerStart=currentPartner.current;
+    boxSelectionRun.current=run;
+    const valid=()=>boxSelectionRun.current===run&&cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&JSON.stringify(currentSelection.current)===prior&&(currentPartner.current.epoch===partnerStart.epoch&&currentPartner.current.value===partnerStart.value||currentPartner.current.epoch===partnerStart.epoch+1&&currentPartner.current.value===partner)&&boxInputs.current.allItems===allItems&&boxInputs.current.orderUnitInputs===orderUnitInputs&&picked.every((order,index)=>JSON.stringify(currentOrders.current.find(row=>row.id===order.id))===snapshots[index]);
+    let next=boxConfirmations.filter(row=>row.token===token&&picked.some(order=>order.items.some((_,index)=>boxSourceKey(order,index)===row.key)));
+    try{
+      for(const order of picked)for(let index=0;index<order.items.length;index++){
+        let line=confirmedOrder(order,next).items[index];
+        const checked=orderBoxShared.resolveOrderItemChecked(line,allItems,orderStockUnitInputs(orderUnitInputs));
+        if(checked.kind==='resolved')continue;
+        if(checked.reason==='missing-box-count'||checked.reason==='invalid-box-count'){alert('원주문의 박스 수량을 확인해 주세요. 전표 줄은 아직 만들지 않았습니다.');return null;}
+        const answer=await appPrompt(`이 주문의 ${line.name} 1박스에 들어 있는 낱개 수량을 확인해 주세요. 이 확인은 전표에만 적용하며 원주문과 재고는 변경하지 않습니다.`);
+        if(answer===null||!valid())return null;
+        const factor=Number(answer.trim());if(!answer.trim()||!Number.isFinite(factor)||factor<=0){alert('박스당 수량은 확인한 양수로 입력해 주세요.');return null;}
+        const key=boxSourceKey(order,index);next=[...next.filter(row=>row.key!==key),{token,key,factor}];
+        line={...line,unitsPerBox:factor};
+        if(orderBoxShared.resolveOrderItemChecked(line,allItems,orderStockUnitInputs(orderUnitInputs)).kind==='unresolved'){alert('품목과 포장 구성을 먼저 확인해 주세요.');return null;}
+      }
+      return valid()?next:null;
+    }finally{if(boxSelectionRun.current===run)boxSelectionRun.current=null;}
   };
 
+  const handleOrderClick = async (o: Order) => {
+    const existing = mergedStatements.find(s => s.orderId === o.id);
+    if (existing && o.invoicePrinted) { setWarnDuplicate({ order: o, stmt: existing }); return; }
+    const next = selectedOrderIds.includes(o.id)?selectedOrderIds.filter(id=>id!==o.id):[...selectedOrderIds,o.id];
+    if(!next.length){setBoxConfirmations([]);setSelectedOrderIds([]);setManualMode(false);setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);return;}
+    const pick=next.map(id=>orders.find(row=>row.id===id)).filter((row):row is Order=>!!row);
+    if(pick.length!==next.length)return;
+    if(pick.some(order=>order.partnerId!==o.partnerId)){alert('같은 거래처의 주문만 함께 선택해 주세요.');return;}
+    const confirmed=await confirmOrderConversions(pick);if(!confirmed)return;
+    const rows=pick.map(order=>orderToRows(order,confirmed));if(rows.some(row=>row===null)){alert('주문 품목과 박스 수량을 다시 확인해 주세요. 전표 줄은 만들지 않았습니다.');return;}
+    setBoxConfirmations(confirmed);setSelectedOrderIds(next);setTradeDate(today());setShowPreview(false);setEditablePrices({});setTaxExemptOverrides({});setManualItems(rows.flatMap(row=>row??[]));
+  };
   /** 고르기를 끝내고 양식으로 — 목록 아래 단추가 부른다 */
   const goCompose = () => setManualMode(true);
 
@@ -2885,6 +2889,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     } : undefined }}
             />
 
+            {directOrderLines?.kind==='unresolved'&&<p role="alert">박스당 수량을 확인해야 합니다. 해당 주문을 다시 선택해 확인해 주세요. 원주문과 재고는 변경되지 않습니다.</p>}
             {/* ── 빠른 품목 입력 바 ── */}
             {/*  양식 쪽 문지기 — [OrderPicker](OrderPicker.tsx) 의 목록과 **정반대**여야 한다.
                  셋이 짝이라 한쪽만 고치면 목록과 양식이 같이 뜬다(2026-09-07). */}
@@ -3164,7 +3169,7 @@ ${names}
       {/* ── 중복 발행 경고 모달 ── */}
       {warnDuplicate && <StatementDuplicateWarning statement={warnDuplicate.stmt} formatAmount={fmt}
         onOpenExisting={()=>{openEdit(warnDuplicate.stmt);setWarnDuplicate(null);}}
-        onClose={()=>setWarnDuplicate(null)} onReissue={()=>{
+        onClose={()=>setWarnDuplicate(null)} onReissue={async()=>{
           const order=warnDuplicate.order;
           const purchaseOrder=warnDuplicate.po;
           setWarnDuplicate(null);
