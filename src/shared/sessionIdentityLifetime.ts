@@ -1,6 +1,10 @@
 export interface SessionIdentityObservation {readonly identity:unique symbol}
 export interface SessionIdentityTicket {readonly identity:unique symbol}
 
+export function sessionActorKey(scope:{uid:string;employeeId:unknown;companyId:unknown;isAdmin:boolean}):string {
+ return [scope.uid,scope.employeeId,scope.companyId,scope.isAdmin ? 'admin' : 'staff'].join(':');
+}
+
 /** 확인 중에는 결과 반영을 보류하고 실제로 관찰된 신원 변화만 이전 수명을 끝낸다. */
 export function createSessionIdentityLifetime(){
  let epoch=0,sequence=0,latest=0,uid:string|null=null,actor:string|null=null,ready=false,latestSucceeded=false;

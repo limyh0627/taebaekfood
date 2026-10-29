@@ -1,7 +1,14 @@
 import {describe,expect,it} from 'vitest';
-import {createSessionIdentityLifetime} from './sessionIdentityLifetime';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import {createSessionIdentityLifetime,sessionActorKey} from './sessionIdentityLifetime';
 const A='uid:employee:taebaek:staff',B='uid:employee:punghoe:staff';
 const setup=()=>{const lifetime=createSessionIdentityLifetime(),o=lifetime.begin('uid');lifetime.resolve(o,A);const ticket=lifetime.capture(A)!;return{lifetime,ticket};};
+describe('세션 actor key 기존 식',()=>{
+ it.each([{uid:'u',employeeId:'직원',companyId:'태백',isAdmin:false},{uid:'u',employeeId:'e',companyId:'c',isAdmin:true},{uid:'u',employeeId:undefined,companyId:null,isAdmin:false},{uid:'u',employeeId:42,companyId:['a','b'],isAdmin:true},{uid:'u',employeeId:{x:1},companyId:false,isAdmin:false}])('기존 join과 바이트가 같다: %j',scope=>{const old=[scope.uid,scope.employeeId,scope.companyId,scope.isAdmin?'admin':'staff'].join(':');expect(sessionActorKey(scope)).toBe(old);});
+ it('원래 순서대로 값 평가 후 join 변환한다',()=>{const events:string[]=[];const value=(name:string)=>({toString(){events.push('변환:'+name);return name;}}),employee=value('직원'),company=value('회사');const key=sessionActorKey({uid:'u',employeeId:employee,companyId:company,isAdmin:true});expect(key).toBe('u:직원:회사:admin');expect(events).toEqual(['변환:직원','변환:회사']);});
+ it('실제 훅의 verify와 logout 두 곳에서 공통 식을 사용한다',()=>{const text=readFileSync('src/shared/hooks/useEmployeeAuthSession.ts','utf8'),source=ts.createSourceFile('useEmployeeAuthSession.ts',text,ts.ScriptTarget.Latest,true),calls:ts.CallExpression[]=[];const visit=(n:ts.Node)=>{if(ts.isCallExpression(n)&&n.expression.getText(source)==='sessionActorKey')calls.push(n);ts.forEachChild(n,visit);};visit(source);expect(calls).toHaveLength(2);expect(calls[0].arguments[0].getText(source)).toBe('{uid:uid!,employeeId:claims.employeeId,companyId:claims.companyId,isAdmin:claims.isAdmin === true}');expect(calls[1].arguments[0].getText(source)).toBe('{uid:selectedUser.uid,employeeId:claims.employeeId,companyId:claims.companyId,isAdmin:claims.isAdmin === true}');});
+});
 describe('검증된 세션 수명',()=>{
  it('같은 신원 refresh는 pending 동안 기다리고 원 ticket과 초안을 유지한다',async()=>{const {lifetime,ticket}=setup();const o=lifetime.begin('uid');let settled=false;const waiting=lifetime.waitUntilReady(ticket).then(v=>{settled=true;return v;});await Promise.resolve();expect(settled).toBe(false);expect(lifetime.isCurrent(ticket)).toBe(false);lifetime.resolve(o,A);expect(await waiting).toBe(true);expect(lifetime.isCurrent(ticket)).toBe(true);});
  it.each(['B먼저','A먼저'])('같은 UID B→A의 %s 완료는 이전 수명을 복구하지 않는다',async order=>{const {lifetime,ticket}=setup(),b=lifetime.begin('uid'),a=lifetime.begin('uid'),waiting=lifetime.waitUntilReady(ticket);if(order==='B먼저'){lifetime.resolve(b,B);lifetime.resolve(a,A);}else{lifetime.resolve(a,A);lifetime.resolve(b,B);}expect(await waiting).toBe(false);expect(lifetime.isCurrent(ticket)).toBe(false);expect(lifetime.capture(A)).not.toBeNull();});

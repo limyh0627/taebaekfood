@@ -19,7 +19,7 @@ vi.mock('firebase/auth', () => ({ onAuthStateChanged: (_auth: unknown, callback:
 vi.mock('../src/shared/services/firebaseService', () => ({
   subscribeToDocument: (_collection: string, id: string, callback: (doc: { names: string[] } | null) => void) => {
     const stop = vi.fn(); fixture.subscriptions.push({ id, callback, stop }); return stop;
-  }, setDocument: (...args: unknown[]) => fixture.write(...args), fetchWhere: (...args: unknown[]) => fixture.fetch(...args),
+  }, setDocument: (...args: unknown[]) => fixture.write(...args), fetchWhereIn: (...args: unknown[]) => fixture.fetch(...args),
 }));
 vi.mock('../src/shared/deliveryTimeSlot', () => ({ subscribeDeliveryOrdering: () => () => {}, saveDeliveryTimeSlot: vi.fn() }));
 vi.mock('./OrderActivityLogModal', () => ({ default: ({ rows, onClose }: { rows: Array<{ what: string }>; onClose: () => void }) =>

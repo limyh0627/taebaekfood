@@ -1,5 +1,5 @@
 import React from 'react';
-import { CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
+import { CirclePlus, CircleSlash, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
 import ProductionCalculationEvidence from './ProductionCalculationEvidence';
 import type { Order, CompanyId } from '../src/shared/types';
 import type { OrderActivityRow } from '../src/shared/orderActivityLog';
@@ -24,6 +24,7 @@ interface Props {
 const 아이콘 = {
   create: CirclePlus, status: ArrowRightLeft, line: CheckCircle2,
   label: Tag, note: MessageSquare, ship: Truck, fail: TriangleAlert, edit: PencilLine,
+  'request-cancel': CircleSlash,
 } as const;
 
 const 색 = {
@@ -31,6 +32,7 @@ const 색 = {
   line: 'bg-emerald-50 text-emerald-600', label: 'bg-amber-50 text-amber-600',
   note: 'bg-sky-50 text-sky-600', ship: 'bg-violet-50 text-violet-600',
   fail: 'bg-rose-50 text-rose-600', edit: 'bg-slate-100 text-slate-600',
+  'request-cancel': 'bg-slate-100 text-slate-600',
 } as const;
 
 /** `2026-09-14T08:03:11.000Z` → `26.09.14 17:03` — 초는 버린다(줄이 길어지기만 한다). */

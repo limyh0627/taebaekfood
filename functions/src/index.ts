@@ -257,6 +257,7 @@ export {noticeCommand,cleanupLateNoticeUpload} from './noticeCommand';
 export { partnerAdvanceRecoveryCommand } from './partnerAdvanceCommand';
 export { workOrderCommand } from './workOrderCommand';
 export { productionRecordCommand } from './productionRecordCommand';
+export { orderStockFullRecoveryCommand } from './orderStockFullCommand';
 
 export { partnerEditCommand } from './partnerEditCommand';
 export { palletTransactionCommand } from './palletTransactionCommand';

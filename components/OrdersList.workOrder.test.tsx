@@ -11,7 +11,7 @@ import {reportWorkOrderNotice,type WorkOrderBindings,type WorkOrderEntry,type Wo
 const api=vi.hoisted(()=>({auth:{currentUser:{uid:'actor'} as {uid:string}|null},listeners:[] as Array<(user:{uid:string}|null)=>void>,prompt:vi.fn(),confirm:vi.fn()}));
 vi.mock('../src/shared/firebase',()=>({auth:api.auth,authReady:Promise.resolve(),functions:{}}));
 vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,listener:(user:{uid:string}|null)=>void)=>{api.listeners.push(listener);listener(api.auth.currentUser);return()=>{api.listeners=api.listeners.filter(row=>row!==listener);};}}));
-vi.mock('../src/shared/services/firebaseService',()=>({fetchWhere:async()=>[],subscribeToDocument:()=>()=>{}}));
+vi.mock('../src/shared/services/firebaseService',()=>({fetchWhereIn:async()=>[],subscribeToDocument:()=>()=>{}}));
 vi.mock('../src/shared/deliveryTimeSlot',()=>({subscribeDeliveryOrdering:()=>()=>{},saveDeliveryTimeSlot:vi.fn()}));
 vi.mock('../src/shared/components/appDialog',()=>({appPrompt:(...args:unknown[])=>api.prompt(...args),appConfirm:(...args:unknown[])=>api.confirm(...args),appNotice:async()=>{},appAlert:async()=>{}}));
 const products=[{id:'oil',name:'검수기름',type:'product',category:'기름',unit:'병',stock:20},{id:'sesame',name:'검수깨',type:'product',category:'깨',unit:'개',stock:20}] as Item[];

@@ -23,7 +23,7 @@ vi.mock('firebase/auth', () => ({ onAuthStateChanged: (_auth: unknown, callback:
 vi.mock('../src/shared/services/firebaseService', () => ({
   subscribeToDocument: (_collection: string, id: string, callback: (doc: { names: string[] } | null) => void) => {
     const stop = vi.fn(); fixture.subscriptions.push({ id, callback, stop }); return stop;
-  }, setDocument: (...args: unknown[]) => fixture.write(...args), fetchWhere: (...args: unknown[]) => fixture.fetch(...args),
+  }, setDocument: (...args: unknown[]) => fixture.write(...args), fetchWhereIn: (...args: unknown[]) => fixture.fetch(...args),
 }));
 vi.mock('../src/shared/deliveryTimeSlot', () => ({ subscribeDeliveryOrdering: () => () => {}, saveDeliveryTimeSlot: vi.fn() }));
 vi.mock('./OrderActivityLogModal', () => ({ default: ({ rows, onClose }: { rows: Array<{ what: string }>; onClose: () => void }) =>
@@ -98,6 +98,19 @@ it('회사 A→B→A에서 로그를 닫고 이전 회사 지연 응답을 새 �
   fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);fireEvent.click(screen.getByRole('button',{name:'로그'}));
   await act(async () => {}); expect(screen.queryByText('늦은A수정')).toBeNull();
 });
+it('회사 전환 뒤 다시 연 주문 로그의 두 조회는 새 회사와 정확한 주문을 전달한다', async () => {
+  const audits=deferred(),edits=deferred();fixture.fetch.mockReturnValueOnce(audits.promise).mockReturnValueOnce(edits.promise);
+  const p=props(),view=render(<OrdersList {...p}/>);openLog();
+  expect(fixture.fetch).toHaveBeenCalledWith('orderStatusAudits','orderId',['order-a'],'taebaek');
+  expect(fixture.fetch).toHaveBeenCalledWith('orderItemEdits','orderId',['order-a'],'taebaek');
+  fixture.claimCompany='punghoe';view.rerender(<OrdersList {...p} companyId="punghoe" orders={[{...order(),companyId:'punghoe'}]}/>);
+  await act(async()=>{audits.resolve([]);edits.resolve([{id:'old',changes:['이전 회사 로그'],at:today(),by:'검수'}]);});
+  fireEvent.click(screen.getAllByRole('button',{name:'검수거래처 주문 수정'})[0]);fireEvent.click(screen.getByRole('button',{name:'로그'}));
+  await act(async()=>{});
+  expect(fixture.fetch).toHaveBeenCalledWith('orderStatusAudits','orderId',['order-a'],'punghoe');
+  expect(fixture.fetch).toHaveBeenCalledWith('orderItemEdits','orderId',['order-a'],'punghoe');
+  expect(screen.queryByText('이전 회사 로그')).toBeNull();
+});
 it('부모 재렌더 없이 실제 로그인 UID가 바뀌면 로그를 닫고 늦은 응답을 버린다', async () => {
   const audits = deferred(), edits = deferred(); fixture.fetch.mockReturnValueOnce(audits.promise).mockReturnValueOnce(edits.promise);
   render(<OrdersList {...props()} />); openLog();
@@ -116,7 +129,8 @@ it('현재 회사와 로그인에서 정상 조회한 로그는 보이고 닫은
   expect(screen.queryByRole('region', { name: '검수 주문 로그' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '로그' })); await act(async () => {});
   expect(screen.getByText('정상 품목 수정')).toBeTruthy(); expect(fixture.fetch).toHaveBeenCalledTimes(4);
-  expect(fixture.fetch).toHaveBeenCalledWith('orderItemEdits', 'orderId', 'order-a');
+  expect(fixture.fetch).toHaveBeenCalledWith('orderStatusAudits', 'orderId', ['order-a'], 'taebaek');
+  expect(fixture.fetch).toHaveBeenCalledWith('orderItemEdits', 'orderId', ['order-a'], 'taebaek');
   expect(fixture.write).not.toHaveBeenCalled();
 });
 

@@ -5,7 +5,7 @@ import { employeeSession, readEmployeeSession } from '../employeeSession';
 import { capturePushActor, unregisterPush } from '../push';
 import type { Employee } from '../types';
 import {beginSessionWorkCheckpoint} from '../sessionWorkCheckpoint';
-import {sessionIdentityLifetime} from '../sessionIdentityLifetime';
+import {sessionActorKey,sessionIdentityLifetime} from '../sessionIdentityLifetime';
 
 const LOGOUT_INTENT_KEY = 'tb_logout_intent_v1';
 type LogoutIntent = { version: 1; attemptId: string; uid: string; companyId: string; employeeId: string };
@@ -118,7 +118,7 @@ export function useEmployeeAuthSession() {
             const claims = token.claims;
             const validActor = typeof claims.employeeId === 'string' && ['taebaek', 'punghoe'].includes(String(claims.companyId))
                 && (claims.employeeId !== 'admin' || claims.isAdmin === true);
-            const key = [uid, claims.employeeId, claims.companyId, claims.isAdmin === true ? 'admin' : 'staff'].join(':');
+            const key = sessionActorKey({uid:uid!,employeeId:claims.employeeId,companyId:claims.companyId,isAdmin:claims.isAdmin === true});
             if (!mounted.current || turn !== generation.current || auth.currentUser?.uid !== uid) {
                 if(validActor)sessionIdentityLifetime.resolve(observation,key);
                 return;
@@ -244,7 +244,7 @@ export function useEmployeeAuthSession() {
                 if (!current() || auth.currentUser !== selectedUser) return;
                 if (token && run.key) {
                     const claims = token.claims;
-                    const actorKey = [selectedUser.uid, claims.employeeId, claims.companyId, claims.isAdmin === true ? 'admin' : 'staff'].join(':');
+                    const actorKey = sessionActorKey({uid:selectedUser.uid,employeeId:claims.employeeId,companyId:claims.companyId,isAdmin:claims.isAdmin === true});
                     if (actorKey !== run.key) throw Error('로그인 계정 정보가 바뀌었습니다. 현재 계정을 다시 확인한 뒤 로그아웃해 주세요.');
                 }
             }

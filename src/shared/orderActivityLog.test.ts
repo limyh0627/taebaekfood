@@ -22,6 +22,19 @@ const 감사 = (over: Partial<OrderStatusAudit> = {}): OrderStatusAudit => ({
 } as OrderStatusAudit);
 
 describe('주문 로그', () => {
+  it('새 미반영 요청 취소는 실제 상태변경과 구분해 사람·시각을 보이고 기존 실패 기록을 보존한다', () => {
+    const newAudit = { kind: 'full-request-cancel', at: '2026-09-12T02:00:00.000Z', cancelledBy: { name: '동료' }, targetStatus: 'SHIPPED' } as unknown as OrderStatusAudit;
+    const rows = buildOrderActivityLog(주문(), [감사({state:'failed',error:'재고 부족'}),newAudit]);
+    expect(rows[0]).toMatchObject({kind:'request-cancel',what:'미반영 처리 요청 취소',who:'동료',at:'2026-09-12T02:00:00.000Z'});
+    expect(rows[0].what).not.toContain('출고완료');
+    expect(rows.find(row=>row.kind==='fail')?.detail).toBe('실패 — 재고 부족');
+  });
+
+  it.each([{at:7,cancelledBy:null},{at:'잘못된 날짜',cancelledBy:{name:33}},{at:null,cancelledBy:'잘못된 값'}])('손상된 취소 기록 %j는 다른 목록을 깨뜨리지 않고 미확인으로 표시한다', bad => {
+    const rows=buildOrderActivityLog(주문(),[감사(),{kind:'full-request-cancel',...bad} as unknown as OrderStatusAudit]);
+    expect(rows.find(row=>row.kind==='request-cancel')).toMatchObject({who:'미기록',what:'미반영 처리 요청 취소 기록 확인 필요'});
+    expect(rows.find(row=>row.kind==='status')?.what).toBe('작업중 → 작업완료');
+  });
   it('주문 넣은 사람과 일시가 맨 아래 한 줄로 선다', () => {
     const rows = buildOrderActivityLog(주문(), []);
     expect(rows).toHaveLength(1);

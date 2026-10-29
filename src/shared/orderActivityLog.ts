@@ -27,7 +27,7 @@ export interface OrderActivityRow {
   who: string;
   what: string;
   detail?: string;
-  kind: 'create' | 'status' | 'line' | 'label' | 'note' | 'ship' | 'fail' | 'edit';
+  kind: 'create' | 'status' | 'line' | 'label' | 'note' | 'ship' | 'fail' | 'edit' | 'request-cancel';
 }
 
 const 상태이름 = (s?: string) => ({
@@ -70,6 +70,15 @@ export function buildOrderActivityLog(
   });
 
   for (const audit of audits) {
+    const extra = audit as unknown as {kind?:unknown;at?:unknown;cancelledBy?:unknown};
+    if (extra?.kind === 'full-request-cancel') {
+      const actor = extra.cancelledBy && typeof extra.cancelledBy === 'object' ? extra.cancelledBy as {name?:unknown} : undefined;
+      const at = typeof extra.at === 'string' && extra.at.trim() && Number.isFinite(Date.parse(extra.at)) ? extra.at : undefined;
+      const name = typeof actor?.name === 'string' && actor.name.trim() ? actor.name : undefined;
+      rows.push({ at, who: 사람(name, nameOf), what: at && name ? '미반영 처리 요청 취소' : '미반영 처리 요청 취소 기록 확인 필요',
+        detail: at && name ? undefined : '취소 기록의 사람 또는 시각을 확인하지 못했습니다.', kind: 'request-cancel' });
+      continue;
+    }
     const 움직임 = (audit.stockAdjustments ?? []).filter(row => Number(row.delta) !== 0);
     rows.push({
       //  끝난 시각이 있으면 그것을 쓴다 — 승인 시각은 확인창을 띄운 때라 실제와 어긋난다.

@@ -83,7 +83,7 @@ import { shipMethodOf } from '../src/shared/channelStyle';
 import { groupStripes } from '../src/shared/groupStripe';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
-import { fetchWhere } from '../src/shared/services/firebaseService';
+import { fetchWhereIn } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
 import { clampNote, orderNotesForDisplay, noteEditLimit } from '../src/shared/orderNote';
 import { shipDeductions } from '../src/shared/shipDeduction';
@@ -489,8 +489,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
     setLogLoading(true); setLogError(undefined); setLogAudits([]); setLogEdits([]);
     //  둘 다 주문 문서 밖이다 — 한 번에 읽는다. 하나가 실패해도 나머지는 보여 준다.
     Promise.allSettled([
-      fetchWhere<OrderStatusAudit>('orderStatusAudits', 'orderId', logOrderId),
-      fetchWhere<OrderItemEdit>('orderItemEdits', 'orderId', logOrderId),
+      fetchWhereIn<OrderStatusAudit>('orderStatusAudits', 'orderId', [logOrderId], companyId),
+      fetchWhereIn<OrderItemEdit>('orderItemEdits', 'orderId', [logOrderId], companyId),
     ]).then(([상태, 수정]) => {
       if (!살아있나 || logScope.current !== scope || auth.currentUser?.uid !== scope.uid) return;
       if (상태.status === 'fulfilled') setLogAudits(상태.value);
