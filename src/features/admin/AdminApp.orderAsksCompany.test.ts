@@ -19,13 +19,11 @@ import { isStockProduction } from '../../shared/orderPurpose';
 import { OrderStatus } from '../../shared/types';
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
 const file = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-function actualRequest(deps: Record<string, unknown>) {
- let expression: ts.Expression | undefined;
- const visit = (node: ts.Node) => { if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'requestOrderStatus') expression = node.initializer; ts.forEachChild(node, visit); }; visit(file);
- if (!expression) throw new Error('실제 요청 본문 없음');
- const code = ts.transpileModule(`const request = ${expression.getText(file)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
- return new Function(...Object.keys(deps), `${code};return request;`)(...Object.values(deps)) as (id: string, status: OrderStatus) => Promise<void>;
-}
+
+function oneVariable(name:string,root:ts.Node=file):ts.Expression {const found:ts.Expression[]=[];const visit=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)===name&&node.initializer)found.push(node.initializer);ts.forEachChild(node,visit);};visit(root);expect(found,'실제 단일 선언 '+name).toHaveLength(1);return found[0];}
+function oneModalCallback(modal:string,prop:string,accept:(title:ts.JsxAttribute|undefined)=>boolean):ts.Expression {const found:ts.Expression[]=[];const visit=(node:ts.Node)=>{if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(file)===modal){const attrs=node.attributes.properties.filter(ts.isJsxAttribute),title=attrs.find(row=>row.name.getText(file)==='title');if(accept(title)){const attr=attrs.find(row=>row.name.getText(file)===prop);if(attr?.initializer&&ts.isJsxExpression(attr.initializer)&&attr.initializer.expression)found.push(attr.initializer.expression);}}ts.forEachChild(node,visit);};visit(file);expect(found,'실제 단일 모달 callback '+modal+'.'+prop).toHaveLength(1);return found[0];}
+
+function actualRequest(deps:Record<string,unknown>){const expression=oneVariable('requestOrderStatus');const code=ts.transpileModule('const request='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return request;')(...Object.values(deps)) as (id:string,status:OrderStatus)=>Promise<void>;}
 function deferred() { let resolve!: (value: unknown) => void; let reject!: (error: Error) => void; const promise = new Promise((done, fail) => { resolve = done; reject = fail; }); return {promise,resolve,reject}; }
 function harness(scopeOverride?: {current:{companyId:string;token:object}}) {
  const scope = scopeOverride ?? { current: { companyId: 'taebaek', token: {} } };
@@ -49,21 +47,7 @@ it('A→B→A 전환도 이전 세대의 준비 결과를 버린다', async () =
  expect(h.getAsk()).toBeNull();expect(h.writer).not.toHaveBeenCalled();
 });
 
-function actualConfirm(modal: 'ConfirmModal' | 'StockUseModal', deps: Record<string, unknown>) {
- let expression: ts.Expression | undefined;
- const visit = (node: ts.Node) => {
-  if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === modal) {
-   const title = node.attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.getText(file) === 'title') as ts.JsxAttribute | undefined;
-   if (modal === 'StockUseModal' || (title?.initializer && ts.isStringLiteral(title.initializer) && title.initializer.text === '되돌리기')) {
-    const attr=node.attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.getText(file)==='onConfirm') as ts.JsxAttribute;
-    expression=(attr.initializer as ts.JsxExpression).expression;
-   }
-  }
-  ts.forEachChild(node,visit);
- };visit(file);if(!expression)throw new Error('실제 확인 callback 없음');
- const code=ts.transpileModule(`const confirm=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- return new Function(...Object.keys(deps),`${code};return confirm;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
-}
+function actualConfirm(modal:'ConfirmModal'|'StockUseModal',deps:Record<string,unknown>){const expression=oneModalCallback(modal,'onConfirm',title=>modal==='StockUseModal'||!!title?.initializer&&ts.isStringLiteral(title.initializer)&&title.initializer.text==='되돌리기');const code=ts.transpileModule('const confirm='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return confirm;')(...Object.values(deps)) as (...args:any[])=>Promise<void>;}
 it('현재 회사의 정상 준비는 확인창을 열고, stale direct 상태 변경은 실행하지 않는다', async () => {
  const current=harness();const valid=current.request('A',OrderStatus.DISPATCHED);current.pending.resolve({order:current.order});await valid;
  expect(current.getAsk()).toMatchObject({orderId:'A',scope:current.scope.current.token});
@@ -125,19 +109,12 @@ it('현재 rollback 성공만 닫고 실패는 창과 오류를 유지하며 잠
  }
 });
 
-function actualLineSave(deps:Record<string,unknown>) {
- let outer:ts.Expression|undefined;let expression:ts.Expression|undefined;
- const findOuter=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='handleToggleItemChecked')outer=node.initializer;ts.forEachChild(node,findOuter);};findOuter(file);
- if(!outer)throw new Error('실제 품목 처리 없음');
- const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='save')expression=node.initializer;ts.forEachChild(node,find);};find(outer);if(!expression)throw new Error('실제 품목 저장 없음');
- const code=ts.transpileModule(`const save=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- return new Function(...Object.keys(deps),`${code};return save;`)(...Object.values(deps)) as ()=>Promise<void>;
-}
+function actualLineSave(deps:Record<string,unknown>){const expression=oneVariable('save',oneVariable('handleToggleItemChecked'));const code=ts.transpileModule('const save='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return save;')(...Object.values(deps)) as ()=>Promise<void>;}
 it('이전 품목 저장의 늦은 legacy 거절과 일반 오류는 새 회사 확인창이나 알림을 만들지 않는다',async()=>{
  for(const message of ['LEGACY_ORDER_ROLLBACK_REQUIRED','일반 오류']) {
   const pending=deferred();const token={};const orderAskScope={current:{token}};const requests=vi.fn();const notice=vi.fn();
   const completionSaving={current:new Set<string>()};const plan={status:OrderStatus.PROCESSING,items:[{lineId:'line',checked:true}]};
-  const save=actualLineSave({askScope:token,orderAskScope,completionSaving,orderId:'A',itemIdx:0,plan,order:{status:OrderStatus.PROCESSING},applying:true,requestOrderStatus:requests,changeOrderItemCompletion:()=>pending.promise,alert:notice,console:{error:vi.fn()}});
+  const save=actualLineSave({resumeCurrent:()=>orderAskScope.current.token===token,settle:vi.fn(),resumeRun:undefined,referenceToken:undefined,askScope:token,orderAskScope,completionSaving,orderId:'A',itemIdx:0,plan,order:{status:OrderStatus.PROCESSING},applying:true,requestOrderStatus:requests,changeOrderItemCompletion:()=>pending.promise,alert:notice,console:{error:vi.fn()}});
   const waiting=save();orderAskScope.current={token:{}};pending.reject(new Error(message));await waiting;
   expect(requests).not.toHaveBeenCalled();expect(notice).not.toHaveBeenCalled();expect(completionSaving.current.size).toBe(0);
  }
@@ -165,25 +142,18 @@ it('실제 hook 선언과 회사 조건을 React 재렌더·unmount에서 실행
 });
 
 function goodsHarness(stock:number) {
- let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='handleToggleItemChecked')expression=node.initializer;ts.forEachChild(node,find);};find(file);if(!expression)throw new Error('실제 품목 함수 없음');
+ const expression=oneVariable('handleToggleItemChecked');
  let ask:any=null;const token={};const scope={current:{token}};const refs={current:{goods:null as any}};const writer=vi.fn(async()=>{});
  const item={id:'goods',name:'사입품',type:'goods',stock,minStock:0,image:'',unit:'개'};
  const order={id:'A',partnerName:'태백 주문',status:OrderStatus.PENDING,items:[{itemId:item.id,name:item.name,quantity:2,lineId:'line'}]};
  const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;refs.current.goods=ask;};
- const deps={OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
+ const history=vi.fn().mockResolvedValue(undefined),revision=vi.fn();
+ const deps={requirePreviousRetirementClaimReview:history,companyId:'taebaek',auth:{currentUser:{uid:'fixture-viewer'}},setCancellationRevision:revision,OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
  const code=ts.transpileModule(`const toggle=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const toggle=new Function(...Object.keys(deps),`${code};return toggle;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
- return{toggle,scope,refs,writer,set,get:()=>ask};
+ return{toggle,scope,refs,writer,history,revision,notice:deps.setAppNotice,set,get:()=>ask};
 }
-function actualGoods(prop:'onConfirm'|'onCancel',deps:Record<string,unknown>) {
- let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{
- if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(file)==='ConfirmModal') {
-  const title=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='title') as ts.JsxAttribute|undefined;
-  if(title?.initializer?.getText(file).includes('goodsStockAsk.title')) {const attr=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)===prop) as ts.JsxAttribute;expression=(attr.initializer as ts.JsxExpression).expression;}
- }ts.forEachChild(node,find);};find(file);if(!expression)throw new Error('상품 실제 callback 없음');
- const code=ts.transpileModule(`const callback=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- return new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps)) as ()=>unknown;
-}
+function actualGoods(prop:'onConfirm'|'onCancel',deps:Record<string,unknown>){const expression=oneModalCallback('ConfirmModal',prop,title=>!!title?.initializer?.getText(file).includes('goodsStockAsk.title'));const code=ts.transpileModule('const callback='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return callback;')(...Object.values(deps)) as ()=>unknown;}
 it.each([1,3])('실제 상품 재고 %i 확인창의 이전 확인·취소는 새 회사 창을 지우지 않는다',async stock=>{
  for(const prop of ['onConfirm','onCancel'] as const) {
   const h=goodsHarness(stock);await h.toggle('A',0);const old=h.get();expect(old.title).toBe(stock<2?'재고부족':'작업완료');
@@ -215,11 +185,7 @@ it.each([1,3])('현재 상품 재고 %i 확인은 해당 창만 닫고 정상 �
  }
 });
 
-function actualNamed(name:string,deps:Record<string,unknown>) {
- let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)===name)expression=node.initializer;ts.forEachChild(node,find);};find(file);if(!expression)throw new Error(`실제 함수 없음: ${name}`);
- const code=ts.transpileModule(`const callback=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- return new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
-}
+function actualNamed(name:string,deps:Record<string,unknown>){const expression=oneVariable(name);const code=ts.transpileModule('const callback='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return callback;')(...Object.values(deps)) as (...args:any[])=>Promise<void>;}
 function catalogHarness() {
  const scope={current:{token:{}}};const current={current:null as any};let ask:any=null;
  const load=deferred();const writer=vi.fn(async(_writes:unknown[])=>{});const notice=vi.fn();const refresh=vi.fn();const alert=vi.fn();
@@ -276,9 +242,11 @@ it('품목 삭제 확인창은 회사 전환 시 숨고 이전 취소가 새 확
 });
 
 it('품목 화면은 동일 렌더의 명시 단위 입력을 전달한다',()=>{
- const expressions:ts.Expression[]=[];const find=(node:ts.Node)=>{if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(file)==='ItemList'){
+ const expressions:ts.Expression[]=[];const find=(node:ts.Node)=>{if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(file)==='ItemManager'){
  const prop=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='orderUnitInputs') as ts.JsxAttribute|undefined;
  expect(prop).toBeDefined();const expression=prop?.initializer&&ts.isJsxExpression(prop.initializer)?prop.initializer.expression:undefined;if(expression)expressions.push(expression);
  }ts.forEachChild(node,find);};find(file);expect(expressions).toHaveLength(1);
  const context={bom:{company:'A'},pack:{company:'A'}};const resolve=new Function('appData',`return ${expressions[0].getText(file)};`);expect(resolve({orderUnitInputs:context})).toBe(context);
 });
+it('QT-A01 정상history scope 인자를 전달하고 현재거절은 재조회안내만 만들며 쓰지 않는다',async()=>{const h=goodsHarness(3);h.history.mockRejectedValue(Error('history-unconfirmed'));expect(await h.toggle('A',0)).toEqual({status:'review-required'});expect(h.history).toHaveBeenCalledExactlyOnceWith('A','taebaek','fixture-viewer');expect(h.revision).toHaveBeenCalledOnce();expect(h.revision.mock.calls[0][0](4)).toBe(5);expect(h.notice).toHaveBeenCalledOnce();expect(h.writer).not.toHaveBeenCalled();expect(h.get()).toBeNull();});
+it.each(['완료','거절'])('QT-A02 늦은history %s는 회사ABA 후 새확인창/안내를 바꾸지 않는다',async outcome=>{const h=goodsHarness(3),history=deferred();h.history.mockImplementation(()=>history.promise);const running=h.toggle('A',0);expect(h.history).toHaveBeenCalledExactlyOnceWith('A','taebaek','fixture-viewer');h.scope.current={token:{}};h.scope.current={token:{}};const next={title:'새 회사 작업',scope:h.scope.current.token};h.set(next);if(outcome==='완료')history.resolve(undefined);else history.reject(Error('late-history'));await running;expect(h.get()).toBe(next);expect(h.writer).not.toHaveBeenCalled();expect(h.notice).not.toHaveBeenCalled();expect(h.revision).not.toHaveBeenCalled();});

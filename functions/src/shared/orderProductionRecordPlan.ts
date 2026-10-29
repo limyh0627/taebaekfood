@@ -1,6 +1,6 @@
 import type {CompanyId} from './rawLot';
 import type {OrderInventoryGeneration} from './orderStockReservationPlan';
-import type {ProductionItem,ProductionLine} from './orderProductionDomain';
+import {stock3,type ProductionItem,type ProductionLine} from './orderProductionDomain';
 import type {OrderStockUnitInputs} from './orderStockUnits';
 import {resolveOrderItemChecked} from './orderResolvedItem';
 import {assertPlainOrderRawBatch,rawPressText,validateOrderInventoryGeneration,isCalendarDay} from './orderPlanPrimitives';
@@ -83,6 +83,7 @@ export function buildOrderProductionRecordPlan(order:RecordOrder,allItems:readon
   if(checked.kind==='unresolved')throw Error('박스당 수량을 확인해 주세요. 낱개 입수가 확인되기 전에는 생산기록을 만들 수 없습니다.');
   const resolved=checked.value,product=resolved.product??original;
   if(companyOf(product)!==generation.companyId)throw Error('다른 회사 구성품으로 생산기록을 만들 수 없습니다.');
+  if(checked.conversion.kind==='known'&&checked.conversion.source!=='bom'&&(!Number.isFinite(line.quantity)||!Number.isFinite(resolved.qty)||stock3(line.quantity)!==stock3(resolved.qty)))throw Error('주문의 박스 수·박스당 수량과 저장된 낱개 수량이 다릅니다. 수량을 확인하기 전에는 새 생산기록을 만들 수 없습니다.');
   if(!line.lineId)throw Error('최초 주문 줄 번호가 없어 생산기록을 생성하지 않았습니다.');
   records.push({id:orderProductionRecordId(generation,line.lineId),companyId:generation.companyId,orderId:order.id,lineId:line.lineId,generation,legacySourceCandidates:[{recordId:`pr-${order.id}-${line.lineId}`,companyId:generation.companyId,itemId:product.id,note:`주문 자동 연동 (${order.partnerName})`},{recordId:`pr-${order.id}-${finishedIndex}-${product.id}`,companyId:generation.companyId,itemId:product.id,note:`주문 자동 연동 (${order.partnerName})`},{recordId:`pr-${order.id}-${line.itemId}`,companyId:generation.companyId,itemId:line.itemId,note:`주문 자동 연동 (${order.partnerName})`}],date:policy.dateOf(order.deliveredAt??generation.startedAt),itemId:product.id,itemName:product.name,finishedQty:resolved.qty,...(product.cost!==undefined?{cost:product.cost}:{}),note:`주문 자동 연동 (${order.partnerName})`,createdAt:generation.startedAt});
  }
