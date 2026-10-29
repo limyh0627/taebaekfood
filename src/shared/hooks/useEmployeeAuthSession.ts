@@ -5,6 +5,7 @@ import { employeeSession, readEmployeeSession } from '../employeeSession';
 import { capturePushActor, unregisterPush } from '../push';
 import type { Employee } from '../types';
 import {beginSessionWorkCheckpoint} from '../sessionWorkCheckpoint';
+import {sessionIdentityLifetime} from '../sessionIdentityLifetime';
 
 const LOGOUT_INTENT_KEY = 'tb_logout_intent_v1';
 type LogoutIntent = { version: 1; attemptId: string; uid: string; companyId: string; employeeId: string };
@@ -60,6 +61,7 @@ export function useEmployeeAuthSession() {
     const candidate = useRef<Employee | null>(null);
     const freshLoginAfterNull = useRef(false);
     const clearSession = useCallback(() => {
+        sessionIdentityLifetime.dispose();
         uidLifetime.current.epoch++;
         generation.current++;
         verifiedUid.current = null;
@@ -79,12 +81,14 @@ export function useEmployeeAuthSession() {
         if (!user && auth.currentUser !== null) return;
         if(user&&auth.currentUser?.uid!==user.uid)return;
         const observedUid=user&&!user.isAnonymous?user.uid:null;
+        const observation=sessionIdentityLifetime.begin(observedUid);
         if(uidLifetime.current.uid!==observedUid){uidLifetime.current.uid=observedUid;uidLifetime.current.epoch++;checkpointRun.current?.release();checkpointRun.current=null;setCheckpointState('idle');setCheckpointError('');}
         const epoch=uidLifetime.current.epoch;
         const pending = logoutRun.current;
         if (pending && !user && pending.running) {
             pending.sawNull = true;
             freshLoginAfterNull.current = true;
+            sessionIdentityLifetime.reject(observation);
             return;
         }
         // 새 계정 이벤트는 옛 요청부터 무효화하되, 새 토큰 검증 전에 업무 화면은 열지 않는다.
@@ -105,20 +109,24 @@ export function useEmployeeAuthSession() {
             setLogoutState('idle');
             setLogoutError('');
             setAuthChecked(true);
+            sessionIdentityLifetime.reject(observation);
             return;
         }
         if (verifiedUid.current !== uid) setSession(null);
         try {
             const token = await user.getIdTokenResult();
-            if (!mounted.current || turn !== generation.current || auth.currentUser?.uid !== uid) return;
             const claims = token.claims;
+            const validActor = typeof claims.employeeId === 'string' && ['taebaek', 'punghoe'].includes(String(claims.companyId))
+                && (claims.employeeId !== 'admin' || claims.isAdmin === true);
+            const key = [uid, claims.employeeId, claims.companyId, claims.isAdmin === true ? 'admin' : 'staff'].join(':');
+            if (!mounted.current || turn !== generation.current || auth.currentUser?.uid !== uid) {
+                if(validActor)sessionIdentityLifetime.resolve(observation,key);
+                return;
+            }
             const observed = readLogoutIntent();
             const activeCandidate = candidate.current;
             if (login && verifiedUid.current === uid && activeCandidate && claims.employeeId === activeCandidate.id && claims.companyId === activeCandidate.companyId
                 && (claims.employeeId !== login.id || claims.companyId !== login.companyId)) return;
-            const validActor = typeof claims.employeeId === 'string' && ['taebaek', 'punghoe'].includes(String(claims.companyId))
-                && (claims.employeeId !== 'admin' || claims.isAdmin === true);
-            const key = [uid, claims.employeeId, claims.companyId, claims.isAdmin === true ? 'admin' : 'staff'].join(':');
             if (logoutRun.current && (logoutRun.current.key === key || logoutRun.current.key === '' && logoutRun.current.uid === uid)) {
                 if (validActor) logoutRun.current.key = key;
                 return;
@@ -150,6 +158,7 @@ export function useEmployeeAuthSession() {
             localStorage.setItem('tb_user', JSON.stringify(safe));
             localStorage.removeItem('tb_company');
             setSession(previous => previous?.key === key && previous.epoch===epoch ? previous : { user: safe, key, epoch, mountKey:key+':'+epoch });
+            sessionIdentityLifetime.resolve(observation,key);
         } catch {
             if (!mounted.current || turn !== generation.current || auth.currentUser?.uid !== uid || logoutRun.current) return;
             const observed = readLogoutIntent();
@@ -162,6 +171,7 @@ export function useEmployeeAuthSession() {
             setSession(null);
             removeSavedEmployee();
         } finally {
+            sessionIdentityLifetime.reject(observation);
             if (mounted.current && turn === generation.current) setAuthChecked(true);
         }
     }, [initialIntent, restoreLogoutCheckFailure]);
@@ -184,7 +194,7 @@ export function useEmployeeAuthSession() {
                 setLogoutError('');
                 setAuthChecked(true);
             });
-        return () => { live = false; mounted.current = false; generation.current++; logoutRun.current = null;checkpointRun.current?.release();checkpointRun.current=null; stop?.(); };
+        return () => { live = false; mounted.current = false; generation.current++; sessionIdentityLifetime.dispose(); logoutRun.current = null;checkpointRun.current?.release();checkpointRun.current=null; stop?.(); };
     }, [verify, clearSession, initialIntent, restoreLogoutCheckFailure]);
     const performLogout = useCallback(async (retry = false): Promise<void> => {
         if (!mounted.current || logoutRun.current && (!retry || logoutRun.current.running)) return;
@@ -196,6 +206,7 @@ export function useEmployeeAuthSession() {
             sawNull: false, running: false, raw: null, storageError: false };
         run.running = true;
         logoutRun.current = run;
+        sessionIdentityLifetime.dispose();
         generation.current++;
         setLogoutState('pending');
         setLogoutError('');

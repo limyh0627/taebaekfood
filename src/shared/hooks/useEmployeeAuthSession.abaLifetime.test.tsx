@@ -13,6 +13,7 @@ vi.mock('../firebase',()=>({auth:fake.auth,authReady:Promise.resolve()}));
 vi.mock('../push',()=>({capturePushActor:fake.capture,unregisterPush:fake.unregister}));
 vi.mock('firebase/auth',()=>({signOut:fake.signOut,onIdTokenChanged:vi.fn((_auth:unknown,listener:(user:any)=>void)=>{fake.tokenListeners.add(listener);queueMicrotask(()=>{if(fake.tokenListeners.has(listener))listener(fake.auth.currentUser);});return()=>{fake.tokenListeners.delete(listener);};})}));
 import {useEmployeeAuthSession} from './useEmployeeAuthSession';
+import {sessionIdentityLifetime} from '../sessionIdentityLifetime';
 import {useOutputScope} from './useOutputScope';
 import {useOfficeTalkSelfSend} from '../../features/chat/hooks/useOfficeTalkSelfSend';
 type Token={claims:{employeeId:string;companyId:string;isAdmin:boolean}};
@@ -79,4 +80,36 @@ it('최종 commit 전 UID ABA의 옛 방 ACK도 후속 메시지를 보내지 �
  const tokenA=deferred<Token>(),tokenB=deferred<Token>();let beforeCommit:unknown;
  await act(async()=>{emit(user('uid-b',false,tokenB.promise));emit(user('uid-a',false,tokenA.promise));room.resolve(undefined);await old;beforeCommit=snapshot('old-ack-before-final-A-verification');tokenA.resolve({claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:false}});await microtasks();});
  evidence={initial,beforeCommit,afterCommit:snapshot('after-final-commit')};expect(sendMessage).not.toHaveBeenCalled();expect(success).not.toHaveBeenCalled();
+});
+
+it('실제 토큰 refresh 대기 동안 결과를 보류하고 같은 신원이면 기존 수명을 유지한다',async()=>{
+ await start();const key='uid-a:emp-a:taebaek:staff',ticket=sessionIdentityLifetime.capture(key)!;expect(ticket).toBeTruthy();const token=deferred<Token>();let finished=false;let waiting!:Promise<boolean>;
+ act(()=>{emit(user('uid-a',false,token.promise));waiting=sessionIdentityLifetime.waitUntilReady(ticket).then(value=>{finished=true;return value;});});await act(microtasks);expect(finished).toBe(false);expect(sessionIdentityLifetime.isCurrent(ticket)).toBe(false);
+ await act(async()=>{token.resolve({claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:false}});await microtasks();});expect(await waiting).toBe(true);expect(sessionIdentityLifetime.isCurrent(ticket)).toBe(true);expect(mounts).toBe(1);
+});
+
+it.each(['B먼저','A먼저'] as const)('실제 동일 UID 토큰 B→A가 %s 완료돼도 이전 ticket은 무효다',async order=>{
+ await start();const key='uid-a:emp-a:taebaek:staff',ticket=sessionIdentityLifetime.capture(key)!;const b=deferred<Token>(),a=deferred<Token>();act(()=>{emit(user('uid-a',true,b.promise));emit(user('uid-a',false,a.promise));});expect(sessionIdentityLifetime.isCurrent(ticket)).toBe(false);
+ await act(async()=>{const bResult={claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:true}},aResult={claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:false}};if(order==='B먼저'){b.resolve(bResult);await microtasks();a.resolve(aResult);}else{a.resolve(aResult);await microtasks();b.resolve(bResult);}await microtasks();});
+ expect(await sessionIdentityLifetime.waitUntilReady(ticket)).toBe(false);expect(sessionIdentityLifetime.isCurrent(ticket)).toBe(false);expect(sessionIdentityLifetime.capture(key)).not.toBeNull();
+});
+
+it('StrictMode 재설정과 언마운트 뒤 이전 ticket이 새 singleton 수명에서 되살아나지 않는다',async()=>{
+ localStorage.setItem('tb_user',JSON.stringify(employee));fake.auth.currentUser=user();const key='uid-a:emp-a:taebaek:staff';const first=render(<React.StrictMode><Parent/></React.StrictMode>);
+ await waitFor(()=>expect(sessionIdentityLifetime.capture(key)).not.toBeNull());const ticket=sessionIdentityLifetime.capture(key)!;first.unmount();expect(await sessionIdentityLifetime.waitUntilReady(ticket)).toBe(false);
+ const next=render(<React.StrictMode><Parent/></React.StrictMode>);await waitFor(()=>expect(sessionIdentityLifetime.capture(key)).not.toBeNull());expect(sessionIdentityLifetime.isCurrent(ticket)).toBe(false);next.unmount();
+});
+
+it('실제 훅에서 이전 UID 토큰이 미결이어도 새 UID 성공은 기다리지 않고 늦은 이전 결과를 무시한다',async()=>{
+ await start();const oldTicket=sessionIdentityLifetime.capture('uid-a:emp-a:taebaek:staff')!,old=deferred<Token>();
+ await act(async()=>{emit(user('uid-a',false,old.promise));emit(user('uid-b'));await microtasks();});
+ const key='uid-b:emp-a:taebaek:staff',fresh=sessionIdentityLifetime.capture(key);expect(fresh).not.toBeNull();expect(sessionIdentityLifetime.isCurrent(fresh!)).toBe(true);expect(await sessionIdentityLifetime.waitUntilReady(oldTicket)).toBe(false);
+ await act(async()=>{old.resolve({claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:true}});await microtasks();});expect(sessionIdentityLifetime.isCurrent(fresh!)).toBe(true);
+});
+
+it('실제 훅 UID A→B→A 뒤 미결 최초 A 결과는 새 A 수명을 변경하지 않는다',async()=>{
+ await start();const oldTicket=sessionIdentityLifetime.capture('uid-a:emp-a:taebaek:staff')!,old=deferred<Token>();
+ await act(async()=>{emit(user('uid-a',false,old.promise));emit(user('uid-b'));await microtasks();emit(user('uid-a'));await microtasks();});
+ const fresh=sessionIdentityLifetime.capture('uid-a:emp-a:taebaek:staff');expect(fresh).not.toBeNull();expect(sessionIdentityLifetime.isCurrent(oldTicket)).toBe(false);
+ await act(async()=>{old.resolve({claims:{employeeId:employee.id,companyId:'taebaek',isAdmin:true}});await microtasks();});expect(sessionIdentityLifetime.isCurrent(fresh!)).toBe(true);
 });

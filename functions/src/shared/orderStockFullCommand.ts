@@ -9,7 +9,7 @@ import type {ReservationPreviewActor,ReservationPreviewClock} from './orderStock
 
 export interface FullServerOptions {authorityVersion?:1}
 export interface FullReference {version:1;companyId:'taebaek'|'punghoe';orderId:string;requestId:string}
-export interface FullResult {status:'missing-unknown'|'reserved'|'applied'|'cancelled'|'blocked'|'conflict'|'unknown';publicEnabled:false;reason?:string;reference?:FullReference;serverPlanHash?:string;targetStatus?:string;requestedAt?:string;originalPresent?:boolean;canApply:boolean;duplicate?:boolean;attemptId?:string;warning?:'missing-delivered-at'}
+export interface FullResult {status:'missing-unknown'|'reserved'|'applied'|'cancelled'|'blocked'|'conflict'|'unknown';publicEnabled:false;reason?:string;reference?:FullReference;serverPlanHash?:string;targetStatus?:string;requestedAt?:string;originalPresent?:boolean;canApply:boolean;canCancel?:boolean;duplicate?:boolean;attemptId?:string;warning?:'missing-delivered-at'}
 const plain=(v:unknown,seen=new Set<object>()):boolean=>{if(v===null||['string','boolean'].includes(typeof v))return true;if(typeof v==='number')return Number.isFinite(v);if(!v||typeof v!=='object'||seen.has(v)||!Array.isArray(v)&&!fullObject(v))return false;seen.add(v);const valid=Reflect.ownKeys(v).every(k=>{if(Array.isArray(v)&&k==='length')return true;const d=Object.getOwnPropertyDescriptor(v,k)!;return typeof k==='string'&&d.enumerable&&'value'in d&&plain(d.value,seen);});seen.delete(v);return valid;};
 const keys=(v:FullRow,expected:string)=>Object.keys(v).sort().join(',')===expected;
 export {fullAttemptId,materializeOrderStockFullTerminal} from './orderStockFullPlan';
@@ -19,11 +19,21 @@ const FULL_TERMINAL_BUDGET_CLOCK:ReservationPreviewClock={now:new Date(864000000
 
 /** 모든 효과는 새 full receipt와 같은 거래에 속한다. 호출 실패를 미실행으로 해석하지 않는다. */
 export async function executePrivateOrderStockFull(db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,fixedClock:ReservationPreviewClock,serverOptions?:FullServerOptions):Promise<FullResult>{
- const fail=(status:FullResult['status'],reason:string):FullResult=>({status,reason,publicEnabled:false,canApply:false});
+ return executeFullCommand(db,actor,input,fixedClock,serverOptions,false);
+}
+
+/** 타담당의 미반영 요청도 현재 회사 직원이 복구한다. 원 요청의 owner/계획은 바꾸지 않는다. */
+export async function executePrivateOrderStockFullDelegated(db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,fixedClock:ReservationPreviewClock):Promise<FullResult>{
+ return executeFullCommand(db,actor,input,fixedClock,undefined,true);
+}
+
+async function executeFullCommand(db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,fixedClock:ReservationPreviewClock,serverOptions:FullServerOptions|undefined,delegated:boolean):Promise<FullResult>{
+ const fail=(status:FullResult['status'],reason:string):FullResult=>({status,reason,publicEnabled:false,canApply:false,...(delegated?{canCancel:false}:{})});
  try{
-  if(!fullObject(input)||!plain(input)||Buffer.byteLength(JSON.stringify(input),'utf8')>32768||!['prepare-reserve','inspect','apply','cancel'].includes(input.mode))fullReject('invalid-input');
+  if(!fullObject(input)||!plain(input)||Buffer.byteLength(JSON.stringify(input),'utf8')>32768||!(delegated?['inspect','cancel']:['prepare-reserve','inspect','apply','cancel']).includes(input.mode))fullReject('invalid-input');
   const mode=input.mode as 'prepare-reserve'|'inspect'|'apply'|'cancel';
-  if(!keys(input,mode==='prepare-reserve'?'intent,mode':mode==='apply'?'expectedPlanHash,mode,reference':'mode,reference'))fullReject('invalid-input');
+  if(!keys(input,delegated?'mode,originalOwnerUid,reference':mode==='prepare-reserve'?'intent,mode':mode==='apply'?'expectedPlanHash,mode,reference':'mode,reference'))fullReject('invalid-input');
+  if(delegated&&(typeof input.originalOwnerUid!=='string'||!input.originalOwnerUid))fullReject('invalid-input');
   const raw=mode==='prepare-reserve'?input.intent:input.reference;
   if(!fullObject(raw)||raw.version!==1||!['taebaek','punghoe'].includes(raw.companyId)||!fullId(raw.orderId)||!fullId(raw.requestId))fullReject('invalid-input');
   if(mode!=='prepare-reserve'&&!keys(raw,'companyId,orderId,requestId,version'))fullReject('invalid-input');
@@ -32,22 +42,25 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
   if(!fixedClock||!Number.isFinite(fixedClock.nowMs)||typeof fixedClock.now!=='string'||!Number.isFinite(Date.parse(fixedClock.now))||Date.parse(fixedClock.now)!==fixedClock.nowMs||new Date(fixedClock.nowMs).toISOString()!==fixedClock.now)fullReject('invalid-clock');
   if(serverOptions!==undefined){if(!fullObject(serverOptions)||Reflect.ownKeys(serverOptions).some(key=>key!=='authorityVersion'))fullReject('invalid-authority-version');const descriptor=Object.getOwnPropertyDescriptor(serverOptions,'authorityVersion');if(descriptor&&(!descriptor.enumerable||!('value'in descriptor)||descriptor.value!==undefined&&descriptor.value!==1))fullReject('invalid-authority-version');}
   const authorityVersion=serverOptions?.authorityVersion;
-  const reference:FullReference={version:1,companyId:raw.companyId,orderId:raw.orderId,requestId:raw.requestId},owner={uid:actor.uid,employeeId:actor.token.employeeId,companyId:reference.companyId},clock={...fixedClock},nonce=randomUUID(),attemptId=fullAttemptId(reference,owner.uid),intent=mode==='prepare-reserve'?JSON.parse(JSON.stringify(raw)):undefined;
+  const reference:FullReference={version:1,companyId:raw.companyId,orderId:raw.orderId,requestId:raw.requestId},owner={uid:actor.uid,employeeId:actor.token.employeeId,companyId:reference.companyId},clock={...fixedClock},nonce=randomUUID(),originalOwnerUid=delegated?input.originalOwnerUid:owner.uid,attemptId=fullAttemptId(reference,originalOwnerUid),intent=mode==='prepare-reserve'?JSON.parse(JSON.stringify(raw)):undefined;
   const {text,decode}=fullCodec(db),attemptRef=db.collection(FULL_ATTEMPTS).doc(attemptId),orderRef=db.collection('orders').doc(reference.orderId),capturedActor={uid:owner.uid,token:{companyId:owner.companyId,employeeId:owner.employeeId}};
   return await db.runTransaction(async tx=>{
    const savedSnap=await tx.get(attemptRef);fullSnapshotNative(db,savedSnap);const saved=savedSnap.data();
    // terminal 복구도 현재 로그인 직원의 실제 관계를 확인한 다음 최소 요약만 반환한다.
    const employee=(await tx.get(db.collection('employees').doc(owner.employeeId))).data();
    assertFullEmployeeScope(employee,owner);
-   const answer=(row:FullRow,duplicate:boolean,canApply=false):FullResult=>({status:row.state,reference,attemptId,publicEnabled:false,canApply,duplicate,originalPresent:typeof row.fullPlanText==='string',...(row.fullPlanHash?{serverPlanHash:row.fullPlanHash}:{}),...(row.targetStatus?{targetStatus:row.targetStatus}:{}),requestedAt:row.clock.now,...(plan?.shipment?.version===1&&plan.preview.warning==='missing-delivered-at'?{warning:'missing-delivered-at' as const}:{})});
+   const answer=(row:FullRow,duplicate:boolean,canApply=false):FullResult=>({status:row.state,reference,attemptId,publicEnabled:false,canApply:delegated?false:canApply,...(delegated?{canCancel:false}:{}),duplicate,originalPresent:typeof row.fullPlanText==='string',...(row.fullPlanHash?{serverPlanHash:row.fullPlanHash}:{}),...(row.targetStatus?{targetStatus:row.targetStatus}:{}),requestedAt:row.clock.now,...(plan?.shipment?.version===1&&plan.preview.warning==='missing-delivered-at'?{warning:'missing-delivered-at' as const}:{})});
    let plan:OrderStockFullPlan|undefined;
    if(saved){
-    plan=validateStoredFullAttempt(db,saved,reference,owner);
+    if(delegated&&(!fullObject(saved.owner)||!keys(saved.owner,'companyId,employeeId,uid')||saved.owner.uid!==originalOwnerUid||saved.owner.companyId!==reference.companyId||!fullId(saved.owner.employeeId)))fullReject('invalid-original-owner','conflict');
+    plan=validateStoredFullAttempt(db,saved,reference,delegated?saved.owner:owner);
     if(mode==='prepare-reserve'&&saved.intentText!==undefined&&text(intent)!==saved.intentText)fullReject('attempt-intent-conflict','conflict');
     if(saved.state!=='reserved'){if(mode==='apply'&&saved.state==='applied'&&input.expectedPlanHash!==saved.fullPlanHash)fullReject('plan-confirmation-conflict','conflict');return answer(saved,true);}
     if(!plan)fullReject('missing-full-plan','conflict');
     if(mode==='prepare-reserve')return answer(saved,true);
-   }else if(mode==='inspect'||mode==='apply')return {...fail('missing-unknown','attempt-unobserved'),reference,attemptId,originalPresent:false};
+   }else if(mode==='inspect'||mode==='apply'||delegated)return {...fail('missing-unknown','attempt-unobserved'),reference,attemptId,originalPresent:false};
+   const delegatedAuditRef=delegated?db.collection('orderStatusAudits').doc('full-request-cancel:'+attemptId):undefined;
+   if(delegatedAuditRef){const priorAudit=await tx.get(delegatedAuditRef);fullSnapshotNative(db,priorAudit);if(priorAudit.exists)fullReject('delegated-cancel-audit-conflict','conflict');}
    if(!saved&&mode==='cancel'){
     const order=(await tx.get(orderRef)).data();fullUsable(order,reference.companyId,reference.orderId);
     if(order!.inventoryOperation?.fullAttemptId===attemptId)fullReject('unobserved-own-lock','conflict');
@@ -94,11 +107,15 @@ export async function executePrivateOrderStockFull(db:Firestore,actor:Reservatio
     const original=decode(expectedB.get('items/'+id)??fullNativeReads(plan!).find(row=>row.path==='items/'+id)!.nativeText);if(plan!.authorityVersion===1||Object.prototype.hasOwnProperty.call(item,'fullReservationRows')||Object.prototype.hasOwnProperty.call(original,'fullReservationRows')){fullReservationRowsTransition(db,item!,[],[],item!.inventoryReservations??[],plan!.authorityVersion,reference.orderId,clock.nowMs);const related=(row:FullRow)=>row&&(row.orderId===reference.orderId||row.operationId===saved.lock.id||row.reservationAttemptId===saved.lock.nonce);if(Object.prototype.hasOwnProperty.call(original,'fullReservationRows')&&!Object.prototype.hasOwnProperty.call(item,'fullReservationRows')||text((item!.fullReservationRows??[]).filter(related))!==text((original.fullReservationRows??[]).filter(related)))owned=false;}
     const rows=(item!.inventoryReservations??[]).filter((row:FullRow)=>row&&(row.orderId===reference.orderId||row.operationId===saved.lock.id||row.reservationAttemptId===saved.lock.nonce)),expected=[...(plan!.originalAllocationRows??[]).find(row=>row.itemId===id)?.rows??[],...saved.ownRows.filter((row:FullRow)=>row.itemId===id).map((row:FullRow)=>row.row)];if(rows.length!==expected.length||rows.some((row:FullRow,i:number)=>text(row)!==text(expected[i])))owned=false;
    }
+   const delegatedAdmission=()=>{const terminal=materializeOrderStockFullTerminal(db,plan!,saved,current,'cancel',clock),delegatedAudit={version:1,kind:'full-request-cancel',companyId:reference.companyId,orderId:reference.orderId,attemptId,reference,originalOwnerUid,cancelledBy:{uid:owner.uid,employeeId:owner.employeeId,name:employee!.name},at:clock.now,terminalReceiptHash:terminal.next.receiptHash};fullBudget(db,terminal.next,[...[...terminal.writes].map(([path,write])=>({path,data:write.data})),{path:attemptRef.path,data:terminal.next},{path:delegatedAuditRef!.path,data:delegatedAudit}]);return {...terminal,delegatedAudit};};
+   if(delegated&&mode==='inspect'){if(!owned)return {...answer(saved,true),reason:'current-evidence-changed'};try{delegatedAdmission();return {...answer(saved,true),canCancel:true,...(matches?{}:{reason:'current-evidence-changed'})};}catch(error){if(error instanceof FullRejected)return {...answer(saved,true),reason:error.reason};throw error;}}
    if(mode==='inspect')return {...answer(saved,true,matches&&owned),...(matches&&owned?{}:{reason:'current-evidence-changed'})};
    if(!owned||mode==='apply'&&!matches)fullReject('current-evidence-conflict','conflict');
    if(mode!=='apply'&&mode!=='cancel')fullReject('invalid-input');
-   const {writes,next}=materializeOrderStockFullTerminal(db,plan!,saved,current,mode,clock);
+   const delegatedPrepared=delegated?delegatedAdmission():undefined;
+   const {writes,next}=delegatedPrepared??materializeOrderStockFullTerminal(db,plan!,saved,current,mode,clock),delegatedAudit=delegatedPrepared?.delegatedAudit;
    for(const [path,write]of writes)if(write.operation==='delete')tx.delete(db.doc(path));else if(write.operation==='create')tx.create(db.doc(path),write.data!);else if(path.startsWith('rawInventories/'))tx.set(db.doc(path),write.data!);else tx.update(db.doc(path),write.data!);
+   if(delegatedAudit)tx.create(delegatedAuditRef!,delegatedAudit);
    tx.update(attemptRef,next);return answer(next,false);
   },mode==='inspect'?{readOnly:true}:{});
  }catch(error){return error instanceof FullRejected?fail(error.status,error.reason):fail('unknown','transaction-result-unconfirmed');}
