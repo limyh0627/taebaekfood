@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { readProductionRecordFullSource, ProductionRecordSourceRejected } from './shared/productionRecordFullSource';
 import { createHash } from 'node:crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { protectInventoryWriterPatch } from './shared/inventoryWriterProtocol';
@@ -117,10 +118,20 @@ export async function executeProductionRecordCommand(db: admin.firestore.Firesto
         };
         if (input.mode === 'cancel')
             return finish(result('cancelled', null, '미처리 생산기록 요청을 중단했습니다. 이미 적용된 생산기록은 되돌리지 않습니다.'));
-        const target = await tx.get(targetRef);
         const reject = (message: string) => { if (input.mode === 'open')
             throw new HttpsError('failed-precondition', message); return finish(result('rejected', hash, message)); };
-        if (target.exists && target.get('companyId') !== companyId)
+        let sourceRecord: Awaited<ReturnType<typeof readProductionRecordFullSource>>;
+        try { sourceRecord = await readProductionRecordFullSource(tx, db, {companyId, targetId:ref.targetId, actor}); }
+        catch (error) {
+            if (!(error instanceof ProductionRecordSourceRejected)) throw error;
+            if (error.reason === 'company')
+                return reject('생산기록의 소속 회사가 일치하지 않아 처리하지 않았습니다. 소속 정보를 확인해 주세요.');
+            if (error.reason === 'actor-scope')
+                return reject('현재 회사의 직원 권한을 확인하지 못해 생산기록을 변경하지 않았습니다. 로그인과 직원 상태를 확인한 뒤 다시 시도해 주세요.');
+            return reject('생산기록의 원래 서버 생산 근거를 확인하지 못해 기록을 변경하지 않았습니다. 원래 주문의 완료 상태를 확인해 주세요.');
+        }
+        const target = sourceRecord.kind === 'absent' ? undefined : sourceRecord.snapshot;
+        if (target?.exists && target.get('companyId') !== companyId)
             return reject('생산기록의 소속 회사가 일치하지 않아 처리하지 않았습니다. 소속 정보를 확인해 주세요.');
         const source = input.mode === 'open' ? opened!.source : request!.action === 'sync' ? request!.source : undefined;
         let sourceSnapshot: admin.firestore.DocumentSnapshot | undefined;
@@ -137,23 +148,23 @@ export async function executeProductionRecordCommand(db: admin.firestore.Firesto
                 return reject('원래 주문이 확인 후 변경됐습니다. 최초 동기화 원문을 보존하고 현재 주문을 다시 확인해 주세요.');
         }
         if (input.mode === 'open') {
-            const opening = productionRecordOpening(target.data(), codec);
+            const opening = productionRecordOpening(target?.data(), codec);
             if (JSON.stringify(opening) !== JSON.stringify(opened!.opening))
                 return reject('선택한 생산기록이 바뀌었습니다. 현재 목록에서 다시 열어 주세요.');
-            return { reference: ref, actorUid: actor.uid, opening, expectedVersion: version(target), ...(source && sourceSnapshot ? { source: { ...source, expectedVersion: version(sourceSnapshot)! } } : {}) };
+            return { reference: ref, actorUid: actor.uid, opening, expectedVersion: target ? version(target) : null, ...(source && sourceSnapshot ? { source: { ...source, expectedVersion: version(sourceSnapshot)! } } : {}) };
         }
         const req = request!;
-        if (version(target) !== req.expectedVersion)
+        if ((target ? version(target) : null) !== req.expectedVersion)
             return reject('생산기록이 확인 후 수정·삭제되거나 다시 만들어졌습니다. 현재 목록에서 다시 열어 주세요.');
         if (req.action === 'create' || req.action === 'sync') {
-            if (target.exists)
+            if (target?.exists)
                 return reject('같은 번호의 생산기록이 이미 있어 덮어쓰지 않았습니다. 현재 목록을 확인해 주세요.');
             if (req.action === 'sync' && ref.targetId !== `pr-${req.source.orderId}-${req.record.itemId}`)
                 return reject('동기화 기록 번호와 원래 주문·품목이 일치하지 않습니다.');
             tx.create(targetRef, protectInventoryWriterPatch(undefined, { ...req.record, companyId }));
         }
         else {
-            if (!target.exists)
+            if (!target?.exists)
                 return reject('수정·삭제할 생산기록이 없어 처리하지 않았습니다. 현재 목록을 확인해 주세요.');
             if (req.action === 'date') {
                 let patch: Record<string, unknown>;
@@ -165,10 +176,13 @@ export async function executeProductionRecordCommand(db: admin.firestore.Firesto
                 }
                 tx.update(targetRef, patch);
             }
-            else
+            else {
+                if (sourceRecord.kind === 'verified-source')
+                    return reject('이 생산기록은 원료와 재고 처리에 연결되어 있어 이 화면에서 기록만 삭제할 수 없습니다. 원래 주문의 완료 체크 상태를 확인해 주세요.');
                 tx.delete(targetRef);
+            }
         }
-        const itemName = req.action === 'create' || req.action === 'sync' ? req.record.itemName : target.get('itemName');
+        const itemName = req.action === 'create' || req.action === 'sync' ? req.record.itemName : target?.get('itemName');
         const label = typeof itemName === 'string' && itemName ? `${itemName} 생산기록` : '생산기록';
         return finish(result('applied', hash, req.action === 'delete' ? `${label}을 삭제했습니다.` : req.action === 'date' ? `${label}의 생산일을 변경했습니다.` : `${label}을 등록했습니다.`));
     });

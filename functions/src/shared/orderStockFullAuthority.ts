@@ -55,7 +55,12 @@ export function assertProductionRecordBusinessMatches(original:Record<string,unk
   const before=dataEntries(original),after=dataEntries(current);
   if (!before || !after || !options || typeof options.text!=='function') throw new Error('생산 기록 원문 형식을 확인해 주세요.');
   const pick=(entries:[string,unknown][],excluded:readonly string[])=>Object.fromEntries(entries.filter(([key])=>!excluded.includes(key)));
-  const first=pick(before,['date','inventoryWriteRevision']),last=pick(after,['date','inventoryWriteRevision']);
+  const originalTransportAbsent=!own(original,'inventoryWriterProtocolVersion')&&!own(original,'inventoryWriteRevision');
+  const currentTransportPresent=own(current,'inventoryWriterProtocolVersion')||own(current,'inventoryWriteRevision');
+  const introducedTransport=originalTransportAbsent&&currentTransportPresent;
+  if (introducedTransport && (!own(current,'inventoryWriterProtocolVersion')||current.inventoryWriterProtocolVersion!==1||!own(current,'inventoryWriteRevision')||!Number.isSafeInteger(current.inventoryWriteRevision)||(current.inventoryWriteRevision as number)<1)) throw new Error('생산 기록의 쓰기 전이 형식을 확인해 주세요.');
+  const excluded=['date','inventoryWriteRevision',...(introducedTransport?['inventoryWriterProtocolVersion']:[])];
+  const first=pick(before,excluded),last=pick(after,excluded);
   const firstSup=pick(before.filter(([key])=>key==='supersededBy'),[]),lastSup=pick(after.filter(([key])=>key==='supersededBy'),[]);
   if (options.text(firstSup)!==options.text(lastSup)) {
     if (typeof options.assertSupersession!=='function') throw new Error('생산 기록의 후속 전이 근거를 확인해 주세요.');

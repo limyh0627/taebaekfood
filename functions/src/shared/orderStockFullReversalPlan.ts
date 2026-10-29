@@ -1,8 +1,9 @@
+import {markNewFullEffect,type FullEffectAuthorityV1} from './orderStockFullAuthority';
 import {planOrderStockReservation} from './orderStockReservationPlan';
 import type {Firestore,Transaction} from 'firebase-admin/firestore';
 import type {ReservationPreviewActor,ReservationPreviewClock} from './orderStockExecutionPlan';
 import {readOrderStockPlanningSource} from './orderStockExecutionPlan';
-import {createOrderStockFullEvidenceContext,fullCodec,fullHash,fullId,fullObject,fullReject,FullRejected,fullUsable,validateFullDocument,FULL_PROTOCOL,type FullRow,type FullEffect,type OrderStockFullPlan} from './orderStockFullPlan';
+import {createOrderStockFullEvidenceContext,fullEffectContext,fullCodec,fullHash,fullId,fullObject,fullReject,FullRejected,fullUsable,validateFullDocument,FULL_PROTOCOL,type FullRow,type FullEffect,type OrderStockFullPlan} from './orderStockFullPlan';
 import {isFullLinePlainJson,validateFullLineHistory,prepareFullLineAllocation} from './orderStockFullLinePlan';
 import {ensureOrderLineIds,aggregateOrderLineInventory,completedLineAllocation,type OrderRawReversalOrigin} from './orderLineInventory';
 import {createOrderProductionPlanner} from './orderProductionPlanner';
@@ -19,8 +20,8 @@ import {withOrderListProjection} from './orderListProjectionWrite';
 import {kstDateOf} from './calculation';
 
 export interface FullLineReversalIntent {version:1;requestId:string;companyId:'taebaek'|'punghoe';orderId:string;action:'line-reverse';target:{index:number;lineId:string;itemId:string;attempt:number};expectedTarget:FullRow}
-export async function appendVerifiedFullRawReversalEffects(input:{verified:Awaited<ReturnType<ReturnType<typeof createOrderStockFullEvidenceContext>['verifyCurrentLineHistory']>>['operationsByLine'] extends Map<string,infer Rows>?Rows:never;companyId:'taebaek'|'punghoe';orderId:string;actorDisplay:string;clock:ReservationPreviewClock;readNative:ReturnType<typeof createOrderStockFullEvidenceContext>['readNative'];readItem:(id:string)=>Promise<FullRow>;effects:Map<string,FullRow>;overlappingItemIds:ReadonlySet<string>}):Promise<void>{
- const {verified,companyId:company,orderId,actorDisplay,clock,readNative:read,readItem:item,effects,overlappingItemIds}=input;
+export async function appendVerifiedFullRawReversalEffects(input:{verified:Awaited<ReturnType<ReturnType<typeof createOrderStockFullEvidenceContext>['verifyCurrentLineHistory']>>['operationsByLine'] extends Map<string,infer Rows>?Rows:never;companyId:'taebaek'|'punghoe';orderId:string;actorDisplay:string;clock:ReservationPreviewClock;readNative:ReturnType<typeof createOrderStockFullEvidenceContext>['readNative'];readItem:(id:string)=>Promise<FullRow>;effects:Map<string,FullRow>;overlappingItemIds:ReadonlySet<string>;effectAuthority?:FullEffectAuthorityV1}):Promise<void>{
+ const {verified,companyId:company,orderId,actorDisplay,clock,readNative:read,readItem:item,effects,overlappingItemIds,effectAuthority}=input;
   // 원 producer와 같은 original.sequence 내림차순이며 동률은 원 순서를 보존한다.
   const ordered=verified.map((row,index)=>({...row,index})).sort((a,b)=>b.movement.sequence-a.movement.sequence||a.index-b.index),originals=new Map<string,string>();
   for(const row of ordered){if(originals.has(row.operationId))fullReject('duplicate-raw-operation-path');originals.set(row.operationId,row.rawItemId);}
@@ -34,7 +35,7 @@ export async function appendVerifiedFullRawReversalEffects(input:{verified:Await
    if(movement||oldMovement||guard)fullReject('unconfirmed-existing-raw-reversal');if(rawState)fullUsable(rawState,company,inventoryDocId(company,command.rawItemId));
    const snap=(row:any)=>({exists:()=>row!==undefined,data:()=>row}),rawRead={movementSnap:snap(movement),oldMovementSnap:snap(oldMovement),stateSnap:snap(rawState),itemSnap:snap(rawItem),originalSnap:snap(originalMovement),oldOriginalSnap:snap(oldOriginal),guardSnap:snap(guard)};
    const result=prepareRawCommand(command,rawRead,{now:clock.now},virtual.get(command.rawItemId));if(result.status!=='applied')fullReject('raw-command-'+result.status+('code'in result?':'+result.code:''));
-   const materializer=buildPreparedRawWritePlan(command,rawRead,result);effects.set(statePath,materializer.state());effects.set(movementPath,materializer.movement());if(!materializer.hasGuard())fullReject('missing-reversal-guard');effects.set(guardPath,materializer.guard()!);const patch=materializer.itemPatch();if(patch)effects.set('items/'+command.rawItemId,{...(effects.get('items/'+command.rawItemId)??{}),...patch});virtual.set(command.rawItemId,{state:result.state,itemData:{...(virtual.get(command.rawItemId)?.itemData??rawItem),...patch}});
+   const materializer=buildPreparedRawWritePlan(command,rawRead,result);effects.set(statePath,materializer.state());effects.set(movementPath,effectAuthority?markNewFullEffect(materializer.movement(),effectAuthority):materializer.movement());if(!materializer.hasGuard())fullReject('missing-reversal-guard');const guardData=materializer.guard()!;effects.set(guardPath,effectAuthority?markNewFullEffect(guardData as unknown as FullRow,effectAuthority):guardData);const patch=materializer.itemPatch();if(patch)effects.set('items/'+command.rawItemId,{...(effects.get('items/'+command.rawItemId)??{}),...patch});virtual.set(command.rawItemId,{state:result.state,itemData:{...(virtual.get(command.rawItemId)?.itemData??rawItem),...patch}});
   }
 }
 export function validateFullLineReversalIntent(input:unknown):FullLineReversalIntent{
@@ -42,18 +43,18 @@ export function validateFullLineReversalIntent(input:unknown):FullLineReversalIn
  return input as FullLineReversalIntent;
 }
 /** 저장된 줄 snapshot과 검증된 원명령을 되돌린다. 현재 BOM으로 과거 수량을 만들지 않는다. */
-export async function prepareOrderStockFullReversalPlan(tx:Pick<Transaction,'get'>,db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,clock:ReservationPreviewClock):Promise<{status:'planned';plan:OrderStockFullPlan}|{status:'blocked';reason:string}>{
+export async function prepareOrderStockFullReversalPlan(tx:Pick<Transaction,'get'>,db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,clock:ReservationPreviewClock,authorityVersion?:1):Promise<{status:'planned';plan:OrderStockFullPlan}|{status:'blocked';reason:string}>{
  let history:ReturnType<typeof createOrderStockFullEvidenceContext>|undefined;
  try{
   const intent=validateFullLineReversalIntent(input);
   if(!clock||typeof clock.now!=='string'||!Number.isFinite(clock.nowMs)||!Number.isFinite(Date.parse(clock.now))||Date.parse(clock.now)!==clock.nowMs||new Date(clock.nowMs).toISOString()!==clock.now)fullReject('invalid-clock');
   if(!actor||!fullObject(actor.token)||actor.token.companyId!==intent.companyId||!fullId(actor.token.employeeId)||!actor.uid)fullReject('permission-denied');
-  history=createOrderStockFullEvidenceContext(tx,db,actor,intent);const source=await readOrderStockPlanningSource(history.tx,db,actor,intent,clock);if(source.status!=='source')return {status:'blocked',reason:history.nativeFailure??source.reason};
+  history=createOrderStockFullEvidenceContext(tx,db,actor,intent);const source=await readOrderStockPlanningSource(history.tx,db,actor,intent,clock,false,history.verifyRetirementHistory);if(source.status!=='source')return {status:'blocked',reason:history.retirementFailure?.reason??history.nativeFailure??source.reason};
   const {catalog,owner}=source,company=intent.companyId,{text,decode}=fullCodec(db),read=history.readNative,original=history.native,effects=new Map<string,FullRow>(),itemIds=new Set<string>();
   const order=(await read('orders/'+intent.orderId))!;fullUsable(order,company,intent.orderId);
   const employee=await read('employees/'+owner.employeeId);if(!employee||employee.authUid!==owner.uid||(employee.companyId??'taebaek')!==company||employee.status==='out'||typeof employee.name!=='string'||!employee.name.trim())fullReject('permission-denied');
   if(!['PENDING','PROCESSING','DISPATCHED','ON_HOLD'].includes(order.status))fullReject('unsupported-status');
-  if(order.shippedOut||['inventoryOperation','retirementId','retirementClaimPending','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.inventorySnapshots?.shipment)fullReject('unsupported-existing-work');
+  if(order.shippedOut||['inventoryOperation','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.inventorySnapshots?.shipment)fullReject('unsupported-existing-work');
   const initialItems=ensureOrderLineIds(order.items as (FullRow&{itemId:string;lineId?:string;checked?:boolean})[]),before=initialItems[intent.target.index];
   if(before&&!isFullLinePlainJson(before))fullReject('unsupported-native-target');
   if(!before||before.itemId!==intent.target.itemId||before.lineId!==intent.target.lineId||text(before)!==text(intent.expectedTarget))fullReject('target-evidence-conflict','conflict');
@@ -71,7 +72,7 @@ export async function prepareOrderStockFullReversalPlan(tx:Pick<Transaction,'get
   const item=async(id:string)=>{const observed=catalog.observation.collections[0].documents.find(row=>row.id===id);if(!observed)fullReject('touched-item-missing');const row=await read('items/'+id);fullUsable(row,company,id);if(await read('inventoryWriterDeletions/'+company+'__'+id))fullReject('blocked-retired-or-history');itemIds.add(id);return row!;};
   for(const id of itemIds)await item(id);
   const allocationQuantities=isStockProduction(order)?new Map<string,number>():completedLineAllocation(order as any,nextItems,nextStates,planner.shipOrder);
-  await appendVerifiedFullRawReversalEffects({verified,companyId:company,orderId:intent.orderId,actorDisplay:employee.name,clock,readNative:read,readItem:item,effects,overlappingItemIds:new Set([...productionDeltas.keys(),...requested])});
+  await appendVerifiedFullRawReversalEffects({verified,companyId:company,orderId:intent.orderId,actorDisplay:employee.name,clock,readNative:read,readItem:item,effects,effectAuthority:authorityVersion===1?fullEffectContext(owner,intent):undefined,overlappingItemIds:new Set([...productionDeltas.keys(),...requested])});
   const lotClock={now:clock.now,date:kstDateOf(new Date(clock.nowMs)),id:'full-product-reversal'},lots=createOrderProductLotPlanner({allItems:catalog.allItems,unitInputs:catalog.inputs,shipQtyOf:(line,product)=>shipQtyOfLine(line,product,catalog.inputs),lotPolicy:{buildProductLot:params=>buildProductLot(params,lotClock),withCarryOverProductLot:(rows,stock,material,kg,carry)=>withCarryOverProductLot(rows,stock,material,kg,carry,lotClock)}}),mutations=lots.combineProductLotMutations([...lots.reverseProductionProductLots(state.production.productProducedLots),...lots.restoreProductLotsForOrder({items:[before]as any,productConsumedLots:state.production.productConsumedLots??[]})]);
   for(const mutation of mutations){const row=await item(mutation.itemId),result=mutation.apply(row.lots??[],row.stock??0);effects.set('items/'+mutation.itemId,{...(effects.get('items/'+mutation.itemId)??{}),lots:pruneDepletedLotsAtCutoff(result.lots,productLotKstCutoff(clock.now))});}
   for(const [id,delta]of productionDeltas){const row=await item(id),stock=stock3((row.stock??0)+delta);if(!Number.isFinite(stock)||stock<0)fullReject('invalid-final-stock');if(delta)effects.set('items/'+id,{...(effects.get('items/'+id)??{}),stock});}
@@ -81,7 +82,7 @@ export async function prepareOrderStockFullReversalPlan(tx:Pick<Transaction,'get
   const audit={id:FULL_PROTOCOL+':'+fullHash(text([company,owner.uid,intent.orderId,intent.requestId])),companyId:company,orderId:intent.orderId,from:order.status,to:status,actor:employee.name,actorUid:owner.uid,createdAt:clock.now,state:'processing'};if(await read('orderStatusAudits/'+audit.id))fullReject('orphan-audit');
   if(itemIds.size>200)fullReject('item-budget-exceeded');const effectSet:FullEffect[]=[...effects].map(([path,data])=>({path,operation:original.get(path)?'update':'create',nativeText:text(data)}));
   const preview={intent,owner,stockSnapshot:[...allocation.dataByItem].map(([id,row])=>[id,row.stock??0]),available:[...allocation.dataByItem].map(([id,row])=>[id,row.stock??0]),quantities:[],allocationQuantities:[...allocationQuantities],reservationDeltas:[],fixedClock:clock,orderText:text(order),orderHash:fullHash(text(order))};
-  const plan:OrderStockFullPlan={version:1,protocol:FULL_PROTOCOL,intent,owner,clock,preview,actorDisplay:employee.name,partnerDisplay:typeof order.partnerName==='string'?order.partnerName:'',readSet:history.readSet,readEvidenceVersion:2,historyQueries:history.historyQueries,effectSet,orderPatch,audit,itemIds:[...itemIds],productionDeltas:[...productionDeltas],shipmentDeltas:[],originalAllocationRows:allocation.previousAllocationRows,reversalOf:{lineId:intent.target.lineId,attempt:state.attempt,...(sourceProof.sourceLegacy?{sourceLegacy:sourceProof.sourceLegacy as any}:{sourceReference:state.rawEffectOrigin!.reference,sourceOwner:state.rawEffectOrigin!.owner}),sourceLineNativeSha256:fullHash(text(state))}};
+  const plan:OrderStockFullPlan={version:1,...(authorityVersion===1?{authorityVersion}:{}),protocol:FULL_PROTOCOL,intent,owner,clock,preview,actorDisplay:employee.name,partnerDisplay:typeof order.partnerName==='string'?order.partnerName:'',readSet:history.readSet,readEvidenceVersion:2,historyQueries:history.historyQueries,effectSet,orderPatch,audit,itemIds:[...itemIds],productionDeltas:[...productionDeltas],shipmentDeltas:[],originalAllocationRows:allocation.previousAllocationRows,reversalOf:{lineId:intent.target.lineId,attempt:state.attempt,...(sourceProof.sourceLegacy?{sourceLegacy:sourceProof.sourceLegacy as any}:{sourceReference:state.rawEffectOrigin!.reference,sourceOwner:state.rawEffectOrigin!.owner}),sourceLineNativeSha256:fullHash(text(state))}};
   for(const effect of effectSet)validateFullDocument(decode(effect.nativeText));validateFullDocument(orderPatch);return {status:'planned',plan};
- }catch(error){return {status:'blocked',reason:history?.nativeFailure??(error instanceof FullRejected?error.reason:'read-or-full-reversal-plan-failed')};}
+ }catch(error){return {status:'blocked',reason:history?.retirementFailure?.reason??history?.nativeFailure??(error instanceof FullRejected?error.reason:'read-or-full-reversal-plan-failed')};}
 }

@@ -1,3 +1,4 @@
+import {assertFullRetirementReadAccess,type FullRetirementReadAccess} from './orderStockFullEvidence';
 import {hasOrderInventoryGenerationCompletion} from './orderInventoryCompletionEvidence';
 import {readOrderStockPlanningSource,type ReservationPreviewClock} from './orderStockExecutionPlan';
 import {createOrderProductionPlanner,type StockUsePlan} from './orderProductionPlanner';
@@ -10,19 +11,20 @@ import {validateOrderInventoryGeneration} from './orderPlanPrimitives';
 import {validateProductionRecordIndex} from './orderProductionRecordPlan';
 import {fullReject,fullObject,fullId,fullHash,type FullRow} from './orderStockFullPlan';
 
-export interface FullLineIntent {version:1;requestId:string;companyId:'taebaek'|'punghoe';orderId:string;action:'line-forward';target:{index:number;lineId:string;itemId:string};expectedTarget:FullRow;stockUsePlan?:StockUsePlan}
+export interface FullLineIntent {version:1;requestId:string;companyId:'taebaek'|'punghoe';orderId:string;action:'line-forward';target:{index:number;lineId:string;itemId:string};expectedTarget:FullRow;stockUsePlan?:StockUsePlan;retirementHandoff?:{version:1;retirementId:string;releaseId:string}}
 export type FullPlanningSource=Extract<Awaited<ReturnType<typeof readOrderStockPlanningSource>>,{status:'source'}>;
 const jsonInput=(value:unknown,seen=new Set<object>()):boolean=>{if(value===null||['string','boolean'].includes(typeof value))return true;if(typeof value==='number')return Number.isFinite(value);if(!value||typeof value!=='object'||seen.has(value)||!Array.isArray(value)&&!fullObject(value))return false;seen.add(value);const result=Reflect.ownKeys(value).every(key=>{if(Array.isArray(value)&&key==='length')return true;const d=Object.getOwnPropertyDescriptor(value,key)!;return typeof key==='string'&&d.enumerable&&'value'in d&&jsonInput(d.value,seen);});seen.delete(value);return result;};
 export function validateFullLineIntent(input:unknown):FullLineIntent {
  if(!jsonInput(input)||Buffer.byteLength(JSON.stringify(input),'utf8')>16384)fullReject('invalid-input');
- if(!fullObject(input)||Object.keys(input).some(key=>!['version','requestId','companyId','orderId','action','target','expectedTarget','stockUsePlan'].includes(key))||input.version!==1||!fullId(input.requestId)||!fullId(input.orderId)||!['taebaek','punghoe'].includes(input.companyId)||input.action!=='line-forward'||!fullObject(input.target)||Object.keys(input.target).sort().join(',')!=='index,itemId,lineId'||!Number.isSafeInteger(input.target.index)||input.target.index<0||typeof input.target.lineId!=='string'||!input.target.lineId||!fullId(input.target.itemId)||!fullObject(input.expectedTarget)||Object.prototype.hasOwnProperty.call(input,'stockUsePlan')&&input.stockUsePlan===undefined)fullReject('invalid-input');
+ if(!fullObject(input)||Object.keys(input).some(key=>!['version','requestId','companyId','orderId','action','target','expectedTarget','stockUsePlan','retirementHandoff'].includes(key))||input.version!==1||!fullId(input.requestId)||!fullId(input.orderId)||!['taebaek','punghoe'].includes(input.companyId)||input.action!=='line-forward'||!fullObject(input.target)||Object.keys(input.target).sort().join(',')!=='index,itemId,lineId'||!Number.isSafeInteger(input.target.index)||input.target.index<0||typeof input.target.lineId!=='string'||!input.target.lineId||!fullId(input.target.itemId)||!fullObject(input.expectedTarget)||Object.prototype.hasOwnProperty.call(input,'stockUsePlan')&&input.stockUsePlan===undefined)fullReject('invalid-input');
  return input as FullLineIntent;
 }
 /** 클릭 줄만 최신 원문에 병합하고 원 index 순서의 pending 줄에 공유 계산 상태를 적용한다. */
-export function prepareOrderStockFullLineBasis(source:FullPlanningSource,intent:FullLineIntent,actorDisplay:string,clock:ReservationPreviewClock,text:(v:unknown)=>string){
+export function prepareOrderStockFullLineBasis(source:FullPlanningSource,intent:FullLineIntent,actorDisplay:string,clock:ReservationPreviewClock,text:(v:unknown)=>string,retirementAccess?:FullRetirementReadAccess){
  const {order,catalog,owner,orderSnapshot}=source;
  if(!['PENDING','PROCESSING','DISPATCHED','ON_HOLD'].includes(order.status))fullReject('unsupported-status');
- if(order.shippedOut||['inventoryOperation','retirementId','retirementClaimPending','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.inventorySnapshots?.shipment)fullReject('unsupported-existing-work');
+ if(order.retirementId!=null&&order.retirementId!==false||order.retirementClaimPending!=null&&order.retirementClaimPending!==false){try{assertFullRetirementReadAccess(retirementAccess,order,intent);}catch{fullReject('retirement-history-unproven');}}
+ if(order.shippedOut||['inventoryOperation','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false)||order.inventorySnapshots?.shipment)fullReject('unsupported-existing-work');
  const initialItems=ensureOrderLineIds(order.items as (FullRow & {itemId:string;lineId?:string;checked?:boolean})[]),before=initialItems[intent.target.index];
  if(before&&!jsonInput(before))fullReject('unsupported-native-target');
  if(!before||before.itemId!==intent.target.itemId||before.lineId!==intent.target.lineId||text(before)!==text(intent.expectedTarget))fullReject('target-evidence-conflict','conflict');

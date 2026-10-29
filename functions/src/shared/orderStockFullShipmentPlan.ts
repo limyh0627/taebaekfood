@@ -39,11 +39,11 @@ export async function prepareOrderStockFullShipmentDraft(tx:Pick<Transaction,'ge
   assertFullActorScope(actor,intent.companyId);
   const owner={uid:actor.uid,employeeId:actor.token.employeeId,companyId:intent.companyId},reference={version:1 as const,companyId:intent.companyId,orderId:intent.orderId,requestId:intent.requestId};
   history=createOrderStockFullEvidenceContext(tx,db,actor,intent);const read=history.readNative,{text}=fullCodec(db);
-  const source=await readOrderStockPlanningSource(history.tx,db,actor,intent,clock);if(source.status!=='source')return {status:'blocked',reason:history.nativeFailure??source.reason};
+  const source=await readOrderStockPlanningSource(history.tx,db,actor,intent,clock,false,history.verifyRetirementHistory);if(source.status!=='source')return {status:'blocked',reason:history.retirementFailure?.reason??history.nativeFailure??source.reason};
   const {order,catalog}=source;await read('orders/'+intent.orderId);fullUsable(order,intent.companyId,intent.orderId);
   const employee=await read('employees/'+owner.employeeId);assertFullEmployeeScope(employee,owner);
   if(order.actorUid!==undefined&&order.actorUid!==owner.uid)fullReject('permission-denied');
-  if(['inventoryOperation','retirementId','retirementClaimPending','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false))fullReject('unsupported-existing-work');
+  if(['inventoryOperation','rawInventoryJobId'].some(key=>order[key]!=null&&order[key]!==false))fullReject('unsupported-existing-work');
   if(fullShipmentTargetSha(db,intent.companyId,intent.orderId,intent.targetStatus,order)!==intent.expectedOrder.nativeSha256)fullReject('target-evidence-conflict','conflict');
   if(isStockProduction(order))fullReject('stock-production-cannot-ship');
   if(!((order.status==='DISPATCHED'&&!order.shippedOut)||(order.status==='SHIPPED'&&order.shippedOut===true&&intent.targetStatus==='DELIVERED')))fullReject('unsupported-status');
@@ -77,14 +77,13 @@ export async function prepareOrderStockFullShipmentDraft(tx:Pick<Transaction,'ge
      if(data.inventoryReservations!==undefined&&!Array.isArray(data.inventoryReservations))fullReject('invalid-reservations');
      const own=(data.inventoryReservations??[]).filter((row:FullRow)=>row?.orderId===intent.orderId),qty=quantities.get(id);
      if(own.length!==(qty===undefined?0:1))fullReject('invalid-previous-allocation');
-     if(qty!==undefined){const row=own[0];if(proof.kind==='full'){
-      const expected={reservationAttemptId:proof.reservationAttemptId,operationId:proof.operationId,orderId:intent.orderId,qty,createdAt:proof.createdAt,state:'allocated',...(proof.authorityVersion===1?{serverProtocol:'full-v1'}:{})};
-      if(text(row)!==text(expected))fullReject('invalid-previous-allocation');
-     }else if(!fullObject(row)||row.orderId!==intent.orderId||row.operationId!==proof.operationId||row.qty!==qty||row.state!=='allocated'||text(row.generation)!==text(proof.generation)||typeof row.createdAt!=='string'||!Number.isFinite(Date.parse(row.createdAt)))fullReject('invalid-previous-allocation');
+     if(qty!==undefined){const row=own[0];if(!fullObject(row)||row.orderId!==intent.orderId||row.qty!==qty||row.state!=='allocated'||typeof row.createdAt!=='string'||!Number.isFinite(Date.parse(row.createdAt)))fullReject('invalid-previous-allocation');
       originalAllocationRows.push({itemId:id,rows:own});
      }
      dataByItem.set(id,data);itemIds.add(id);
     }
+    await history.verifyCurrentAllocationIssuerRows();
+    allocationIssuerNotApplicable=quantities.size===0&&originalAllocationRows.length===0;
     const reservation=planOrderStockReservation(intent.orderId,dataByItem,()=>shipmentDeltas,{nowMs:clock.nowMs});if(reservation.shortages.length)fullReject('stock-shortage');
    }
    const item=async(id:string)=>{if(!fullId(id))fullReject('invalid-derived-document-path');const row=await read('items/'+id);fullUsable(row,intent.companyId,id);if(await read('inventoryWriterDeletions/'+intent.companyId+'__'+id))fullReject('blocked-retired-or-history');itemIds.add(id);return row!;};
@@ -104,5 +103,5 @@ export async function prepareOrderStockFullShipmentDraft(tx:Pick<Transaction,'ge
   const preview={intent,owner,...(allocationIssuerNotApplicable?{allocationIssuerNotApplicable:true}:{}),quantities:[],allocationQuantities:[],reservationDeltas:[],fixedClock:clock,orderText:text(order),orderHash:fullHash(text(order))};
   const plan:OrderStockFullPlan={version:1,protocol:FULL_PROTOCOL,intent,owner,clock,preview,actorDisplay:employee!.name,partnerDisplay,readSet:history.readSet,readEvidenceVersion:2,historyQueries:history.historyQueries,...(history.aggregateSourceQueries.length?{aggregateSourceQueries:history.aggregateSourceQueries}:{}),effectSet,orderPatch:withOrderListProjection(order,orderPatch,'patch'),audit,itemIds:[...itemIds],productionDeltas:[],shipmentDeltas:[...shipmentDeltas],originalAllocationRows};
   return {status:'draft',executionAllowed:false,terminalValidated:false,plan};
- } catch(error) {return {status:'blocked',reason:history?.nativeFailure??(error instanceof FullRejected?error.reason:'read-or-shipment-plan-failed')};}
+ } catch(error) {return {status:'blocked',reason:history?.retirementFailure?.reason??history?.nativeFailure??(error instanceof FullRejected?error.reason:'read-or-shipment-plan-failed')};}
 }

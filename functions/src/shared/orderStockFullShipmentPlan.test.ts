@@ -1,6 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {validateFullShipmentIntent,fullShipmentTargetSha} from './orderStockFullShipmentPlan';
 import {Timestamp} from 'firebase-admin/firestore';
+import {readFileSync} from 'node:fs';
+it('SHP17-UNIT01 aggregate는생산수량을유지하고현재발급행은공통latestissuer로한번검증한다',()=>{const source=readFileSync('functions/src/shared/orderStockFullShipmentPlan.ts','utf8'),start=source.indexOf('const {allocationEvidence:proof}'),end=source.indexOf('   const item=async',start),aggregate=source.slice(start,end);expect(start).toBeGreaterThan(0);expect(aggregate.split('await history.verifyCurrentAllocationIssuerRows();')).toHaveLength(2);expect(aggregate).toContain("if(own.length!==(qty===undefined?0:1))");expect(aggregate).toContain("row.qty!==qty||row.state!=='allocated'");expect(aggregate).toContain('stock3(-delta)!==(quantities.get(id)??0)');expect(aggregate).not.toContain("proof.kind==='full'");expect(aggregate).not.toContain('proof.reservationAttemptId');});
 const intent={version:1,requestId:'요청',companyId:'taebaek',orderId:'주문',action:'shipment-forward',targetStatus:'DELIVERED',expectedOrder:{version:1,nativeSha256:'a'.repeat(64)},deliveredAt:'2026-10-29T00:00:00.000Z'};
 describe('출고 초안 입력 원문',()=>{
  it('유효 날짜·원 식별자를 보존한다',()=>{expect(validateFullShipmentIntent(intent)).toEqual(intent);expect(()=>validateFullShipmentIntent({...intent,targetStatus:'SHIPPED',deliveredAt:undefined})).toThrow();});

@@ -4,6 +4,8 @@ import {readFullEffectAuthority,markNewFullEffect,assertProductionRecordBusiness
 const context:FullEffectAuthorityV1={version:1,protocol:'full-v1',companyId:'taebaek',orderId:' 주문/😀 ',ownerUid:'사용자',attemptId:'시도/1'};
 const text=(value:unknown):string=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
 const hash=(value:unknown)=>createHash('sha256').update(text(value)).digest('hex');
+it.each([1,Number.MAX_SAFE_INTEGER])('PBE-RECORD01 원transport부재→date RPC protocol1/revision%s 추가만현재형식으로비교',revision=>{const original={id:'record',finishedQty:3,date:'2026-10-27'},current={...original,date:'2026-10-28',inventoryWriterProtocolVersion:1,inventoryWriteRevision:revision},before=text(original);expect(()=>assertProductionRecordBusinessMatches(original,current,{text})).not.toThrow();expect(text(original)).toBe(before);});
+it.each([{inventoryWriterProtocolVersion:1},{inventoryWriteRevision:1},{inventoryWriterProtocolVersion:null,inventoryWriteRevision:1},{inventoryWriterProtocolVersion:2,inventoryWriteRevision:1},{inventoryWriterProtocolVersion:1,inventoryWriteRevision:0},{inventoryWriterProtocolVersion:1,inventoryWriteRevision:NaN},{inventoryWriterProtocolVersion:1,inventoryWriteRevision:Number.MAX_SAFE_INTEGER+1}])('PBE-RECORD02 원transport부재→불명추가 %j거절',patch=>expect(()=>assertProductionRecordBusinessMatches({id:'record'},{id:'record',...patch},{text})).toThrow());
 const compare=(a:Record<string,unknown>,b:Record<string,unknown>,options:Parameters<typeof assertProductionRecordBusinessMatches>[2]={text})=>assertProductionRecordBusinessMatches(a,b,options);
 describe('원 효과 권위 표식 형식',()=>{
  it('없는 표식과 invalid 입력, 상속 표식을 구별한다',()=>{

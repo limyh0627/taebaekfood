@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
-import {retirementText,retirementHash,retirementIdentity,retirementInventoryManifest,validateRetirementManifest} from './shared/orderRetirementHandoff';
+import {retirementText,retirementHash,retirementIdentity,retirementInventoryManifest,validateRetirementManifest,exactClaimCompletion} from './shared/orderRetirementHandoff';
 import {advanceInventoryWriterProtocol} from './shared/inventoryWriterProtocol';
 import {selectOrderRawBatchOrderEvidence,assertArchiveOldGenerationAbsent as assertArchiveGeneration} from './shared/orderRawBatchOrderEvidence';
 
@@ -75,19 +75,6 @@ export const retireOrderRequestCommand=onCall({region:'asia-northeast3'},async r
  if(!['taebaek','punghoe'].includes(companyId)||typeof request.auth.token.employeeId!=='string'||!request.auth.token.employeeId.trim())throw new HttpsError('permission-denied','현재 회사 직원만 최초 요청을 확인할 수 있습니다.');
  return retireOrderRequest(admin.firestore(),companyId,request.auth.uid,request.data as RetirementInput);
 });
-
-/** 완료된 첫 claim을 새 세대에 다시 설치하지 않는다. */
-function exactClaimCompletion(order:any,g:any):boolean{
- const marker=order.inventoryGenerationCompletion;
- try{
-  const request=JSON.parse(marker.requestText);
-  return order.inventoryOperation==null&&retirementText(marker.generation)===retirementText(g)&&retirementText(request.generation)===retirementText(g)
-   &&retirementText(request)===marker.requestText&&Array.isArray(request.deltas)&&request.deltas.every((row:any)=>Array.isArray(row)&&row.length===2&&docId(row[0])&&Number.isFinite(row[1]))
-   &&Array.isArray(request.lotItemIds)&&request.lotItemIds.every(docId)&&request.patch&&typeof request.patch==='object'&&!Array.isArray(request.patch)
-   &&Array.isArray(marker.consumedLots)&&marker.consumedLots.every((row:any)=>docId(row.itemId)&&docId(row.lotId)&&Number.isFinite(row.qty)&&row.qty>0)
-   &&retirementText(marker.consumedLots)===marker.consumedLotsText&&typeof marker.completedAt==='string'&&Number.isFinite(Date.parse(marker.completedAt));
- }catch{return false;}
-}
 export async function claimRetiredOrderInventoryOperation(db:admin.firestore.Firestore,companyId:string,actorUid:string,input:RetirementInput){
  if(!input||typeof input.requestText!=='string'||Buffer.byteLength(input.requestText)>700000||retirementHash(input.requestText)!==input.requestHash)deny('첫 재고 claim 원문과 해시를 확인해 주세요.');
  let request:any;try{request=JSON.parse(input.requestText);}catch{return deny('첫 재고 claim 원문을 읽을 수 없습니다.');}

@@ -576,6 +576,12 @@ service cloud.firestore {
         && data.get('kind', '') in ['consume', 'receive', 'stocktake']
         && source.get('type', '') in ['adjustment', 'stocktake']);
     }
+    // 서버가 원문과 함께 고정한 말단 효과는 웹에서 수정하지 않는다.
+    function fullEffectWriteOk(c) {
+      let guarded = c in ['rawMaterialLedger', 'rawInventoryReversalGuards', 'productionRecords'];
+      return !guarded || (!(resource != null && 'fullEffectAuthority' in resource.data)
+        && !(request.resource != null && 'fullEffectAuthority' in request.resource.data));
+    }
     function rawWriterOk(c) {
       let before = resource == null ? {} : resource.data;
       return (c != 'rawMaterialLedger' || (!rawManualCorrectionMarked(before) && !rawManualCorrectionMarked(request.resource.data)))
@@ -772,12 +778,14 @@ service cloud.firestore {
                             && createUpdateOk()
                             && inventoryQuantityOk(collection)
                             && rawWriterOk(collection)
+                            && fullEffectWriteOk(collection)
                             && oemCostFieldsOk(collection)
                             && payrollWriteAllowed(collection);
       allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath() && !workOrderProtectedPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk()
                     && !rawWriterCollection(collection)
+                    && fullEffectWriteOk(collection)
                     && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null)
                     && payrollWriteAllowed(collection);
     }
