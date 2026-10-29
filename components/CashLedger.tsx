@@ -42,7 +42,7 @@ export default function CashLedger({
   );
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
   // 과거 공란 기록은 실계좌에 추정 귀속하거나 현재 잔액에 합치지 않는다.
-  const unknownEntries = cashEntries.filter(entry => companyOf(entry) === companyId && !entry.cashAccountId);
+  const unknownEntries = cashEntries.filter(entry => companyOf(entry) === companyId && !entry.cashAccountId && entry.dir !== '대체');
   const unknownAccountSection = unknownEntries.length > 0 && (
     <section aria-label="계좌 미지정" className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
       <h3 className="text-sm font-black text-amber-900">계좌 미지정</h3>

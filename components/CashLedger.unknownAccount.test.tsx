@@ -40,3 +40,40 @@ it('계좌가 없어도 공란 기록을 숨기지 않으며 가상계좌 새입
   view.rerender(<CashLedger {...props} companyId="punghoe" cashAccounts={[]} cashEntries={[unknown]} />);
   expect(screen.queryByText('과거 대출 상환')).toBeNull();
 });
+
+it.each([true, false])('계좌 존재 %s에서 대체전표만 있으면 계좌 미지정 경고를 보이지 않는다', hasAccount => {
+  const offset: CashEntry = { ...unknown, id: 'offset', dir: '대체', amount: 110, note: '상계 대체',
+    lines: [{ accountCode: '251', amount: 110, side: '차변' }, { accountCode: '108', amount: 110, side: '대변' }] };
+  const before = structuredClone(offset);
+  const journalBefore = journalizeCashEntry(offset);
+  expect(journalBefore?.lines).toMatchObject([
+    { accountCode: '251', debit: 110, credit: 0 }, { accountCode: '108', debit: 0, credit: 110 },
+  ]);
+  render(<CashLedger {...props} cashAccounts={hasAccount ? [account] : []} cashEntries={[offset]} />);
+  expect(screen.queryByRole('region', { name: '계좌 미지정' })).toBeNull();
+  if (hasAccount) expect(screen.getByRole('button', { name: /확인된 통장/ }).textContent).toContain('1,000');
+  else expect(screen.getByRole('button', { name: '계좌 등록' })).toBeTruthy();
+  expect(offset).toEqual(before);
+  expect(journalizeCashEntry(offset)).toEqual(journalBefore);
+});
+
+it.each([true, false])('계좌 존재 %s에서 대체와 섞인 실제 입출금 공란만 같은 회사 경고에 남는다', hasAccount => {
+  const rows: CashEntry[] = [
+    { ...unknown, id: 'offset', dir: '대체', note: '상계 대체' },
+    { ...unknown, id: 'in', dir: '입금', note: '계좌 없는 입금' },
+    { ...unknown, id: 'out', dir: '출금', note: '계좌 없는 출금' },
+    { ...unknown, id: 'foreign', companyId: 'punghoe', note: '다른 회사 입출금' },
+  ];
+  const before = structuredClone(rows);
+  const journalsBefore = rows.map(entry => journalizeCashEntry(entry));
+  render(<CashLedger {...props} cashAccounts={hasAccount ? [account] : []} cashEntries={rows} />);
+  const section = screen.getByRole('region', { name: '계좌 미지정' });
+  expect(within(section).getByText('계좌 없는 입금')).toBeTruthy();
+  expect(within(section).getByText('계좌 없는 출금')).toBeTruthy();
+  expect(within(section).queryByText('상계 대체')).toBeNull();
+  expect(within(section).queryByText('다른 회사 입출금')).toBeNull();
+  if (hasAccount) expect(screen.getByRole('button', { name: /확인된 통장/ }).textContent).toContain('1,000');
+  else expect(screen.getByRole('button', { name: '계좌 등록' })).toBeTruthy();
+  expect(rows).toEqual(before);
+  expect(rows.map(entry => journalizeCashEntry(entry))).toEqual(journalsBefore);
+});
