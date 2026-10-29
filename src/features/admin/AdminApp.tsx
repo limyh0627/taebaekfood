@@ -45,6 +45,7 @@ import { confirmPendingPurchaseOrder } from '../../shared/services/confirmPendin
 import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
 import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
 import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,type OrderInventoryResumeRun,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
+import {readFullRecoveryCopies,type FullRecoveryLocator,type FullRecoveryScope} from '../../shared/services/orderStockFullService';
 import {normalizeViewAlias} from '../../shared/startView';
 import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
@@ -1777,11 +1778,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [pendingCancellations, setPendingCancellations] = useState<string[]>([]);
   const [pendingRetirementClaims,setPendingRetirementClaims]=useState<RetainedRetirementClaimDescriptor[]>([]);
   const [pendingInventoryRecoveries,setPendingInventoryRecoveries] = useState<PendingOrderInventoryRecovery[]>([]);
+  const [fullRecoverySnapshot,setFullRecoverySnapshot]=useState<{scope:string;copies:FullRecoveryLocator[];error:string}>({scope:'',copies:[],error:''});
+  const fullHostKey=JSON.stringify([companyId,auth.currentUser?.uid??'',currentUser.id,currentUser.adminAccess===true]);
+  const fullHostIdentity=useRef({key:fullHostKey,token:{}}),fullHostLock=useRef<object|null>(null);
+  if(fullHostIdentity.current.key!==fullHostKey){fullHostIdentity.current={key:fullHostKey,token:{}};fullHostLock.current=null;}
+  const [fullHost,setFullHost]=useState<{token:object;run:object;entry:{order?:Order;locator:FullRecoveryLocator}}|null>(null);
   useEffect(() => {
     // 삭제 응답을 잃으면 주문 자체가 목록에서 사라질 수 있어 별도 재조회 진입점을 남긴다.
     const refresh = () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) { setPendingCancellations([]);setPendingInventoryRecoveries([]);setPendingRetirementClaims([]); return; }
+      if (!uid) { setPendingCancellations([]);setPendingInventoryRecoveries([]);setPendingRetirementClaims([]);setFullRecoverySnapshot({scope:'',copies:[],error:''}); return; }
+      const fullScope:FullRecoveryScope={companyId,actorUid:uid,employeeId:currentUser.id,isAdmin:currentUser.adminAccess===true};
+      const fullRead=readFullRecoveryCopies(fullScope);setFullRecoverySnapshot({scope:JSON.stringify(fullScope),copies:fullRead.kind==='ready'?fullRead.copies:[],error:fullRead.kind==='local-error'?fullRead.message:''});
       const prefix = `order-cancellation:${uid}:${companyId}:`;
       try {
         setPendingRetirementClaims(readPendingRetirementClaims(companyId,uid));
@@ -1795,7 +1803,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     window.addEventListener('order-inventory-recovery-pending',refresh);
     window.addEventListener('order-retirement-claim-pending',refresh);
     return () => {window.removeEventListener('storage', refresh);window.removeEventListener('order-inventory-recovery-pending',refresh);window.removeEventListener('order-retirement-claim-pending',refresh);};
-  }, [companyId, currentUser.id, cancellationRevision]);
+  }, [companyId, currentUser.id, currentUser.adminAccess, cancellationRevision]);
   /** 확인과 삭제를 한 곳에서 맡아 목록의 이중 확인·실패 직후 닫기를 막는다. */
   const handleDeleteOrder = async (id: string): Promise<boolean> => {
     if (deletingOrders.current.has(id)) return false;
@@ -1922,15 +1930,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 주문 복구는 해당 카드에서만 확인한다. 원 주문이 사라진 응답 유실 기록은 목록 기록카드로 남긴다.
   const recoveryDisplayScope=cancellationScope.current;
   const recoveryActorUid=auth.currentUser?.uid??'';
+  const fullRecoveryScope:FullRecoveryScope={companyId,actorUid:recoveryActorUid,employeeId:currentUser.id,isAdmin:currentUser.adminAccess===true};
+  const pendingFullRecoveries=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.copies:[];
+  const fullRecoveryReadError=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.error:'';
   const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
     const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
     const retirementClaims=pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.orderId===orderId&&row.state!=='unsent');
     const hasCancellation=pendingCancellations.includes(orderId)||processingCancellationIds.includes(orderId);
-    if(!hasCancellation&&!pending.length&&!retirementClaims.length&&!order?.inventoryOperation)return null;
+    const fullCopies=pendingFullRecoveries.filter(row=>row.reference.companyId===companyId&&row.reference.orderId===orderId);
+    if(!hasCancellation&&!pending.length&&!retirementClaims.length&&!fullCopies.length&&!order?.inventoryOperation)return null;
     return <div key={companyId+':'+recoveryActorUid+':'+orderId} aria-label={'주문 처리 확인 '+orderId}>
       {hasCancellation&&<button type="button" disabled={processingCancellationIds.includes(orderId)} className="mt-2 text-sm font-bold text-indigo-700 underline"
         onClick={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)void handleDeleteOrder(orderId);}}>{processingCancellationIds.includes(orderId)?'확인·처리 중':'처리 결과 확인'}</button>}
-      <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending} retirementClaims={retirementClaims}
+      <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending} retirementClaims={retirementClaims} fullRecoveryScope={fullRecoveryScope} fullRecoveryCopies={fullCopies} fullRecoveryReadError={fullRecoveryReadError} onOpenFullRecovery={entry=>{if(fullHostLock.current||auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;const run={};fullHostLock.current=run;setFullHost({token:fullHostIdentity.current.token,run,entry});}} onFullRecoveryCopiesChanged={()=>setCancellationRevision(value=>value+1)} onFullRecoverySettled={()=>{if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;setCancellationRevision(value=>value+1);orderListRead?.retry();}}
         onResumeLine={run=>handleToggleItemChecked(orderId,run.intent.itemIndex,currentUser?.name,run)}
         isCurrentActor={()=>auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={(result,expectedSaved)=>{
         if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope||result.orderId!==orderId)return;
@@ -1940,9 +1952,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     </div>;
   };
   const renderOrderRecovery=(order:Order):React.ReactNode=>companyOf(order)===companyId?renderOrderRecoveryForId(order.id,order):null;
-  const orderRecoveryOrphanIds=[...new Set([...pendingCancellations,...processingCancellationIds,...pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.state!=='unsent').map(row=>row.orderId),...pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid).map(row=>row.orderId)])]
+  const orderRecoveryOrphanIds=[...new Set([...pendingCancellations,...processingCancellationIds,...pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.state!=='unsent').map(row=>row.orderId),...pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid).map(row=>row.orderId),...pendingFullRecoveries.filter(row=>row.reference.companyId===companyId).map(row=>row.reference.orderId)])]
     .filter(id=>!allOrders.some(order=>order.id===id&&companyOf(order)===companyId));
-  const orderRecoveryOrphans=orderRecoveryOrphanIds.length>0?<>{orderRecoveryOrphanIds.map(id=><div key={id} className="rounded-lg border border-amber-200 p-2"><p className="text-xs font-bold">원 주문을 찾을 수 없는 처리 기록 · {id}</p>{renderOrderRecoveryForId(id)}</div>)}</>:null;
+  const orderRecoveryOrphans=orderRecoveryOrphanIds.length>0||fullRecoveryReadError?<>{fullRecoveryReadError&&<p role="alert">{fullRecoveryReadError}</p>}{orderRecoveryOrphanIds.map(id=><div key={id} className="rounded-lg border border-amber-200 p-2"><p className="text-xs font-bold">원 주문을 찾을 수 없는 처리 기록 · {id}</p>{renderOrderRecoveryForId(id)}</div>)}</>:null;
 
   // 입고대기 발주카드 수정: 새 수량으로 즉시 입고확정(received+재고 반영) + 연결된 매입전표 수정 요청 생성
   const handleRequestPoEdit = async (poId: string, newLines: { itemId: string; quantity: number }[], reason: string) => {
@@ -2475,6 +2487,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
+      {fullHost&&fullHost.token===fullHostIdentity.current.token&&<OrderInventoryRecoveryPanel key={fullHost.entry.locator.reference.orderId} companyId={companyId} actorUid={recoveryActorUid} orders={allOrders.filter(row=>row.id===fullHost.entry.locator.reference.orderId)} fullRecoveryScope={fullRecoveryScope} fullRecoveryCopies={pendingFullRecoveries.filter(row=>row.reference.orderId===fullHost.entry.locator.reference.orderId)} initialFullRecovery={fullHost.entry} onCloseFullRecovery={()=>{if(fullHostLock.current===fullHost.run){fullHostLock.current=null;setFullHost(null);}}} isCurrentActor={()=>fullHost.token===fullHostIdentity.current.token&&auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={()=>{}} onFullRecoveryCopiesChanged={()=>{if(fullHost.token===fullHostIdentity.current.token)setCancellationRevision(value=>value+1);}} onFullRecoverySettled={()=>{if(fullHost.token!==fullHostIdentity.current.token||auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;setCancellationRevision(value=>value+1);orderListRead?.retry();}}/>}
       {helpOpen && helpOpen === helpSessionKey && menuIdentity && <React.Suspense fallback={<p role="status">도움말을 여는 중입니다.</p>}><HelpChat key={helpSessionKey} companyId={companyId} userId={menuIdentity.uid} mode={isAdmin?'admin':'staff'} currentView={currentView} onClose={()=>setHelpOpen(null)} onNavigate={id=>{
         if(menuIdentity.uid!==auth.currentUser?.uid)return false;
         const editingDialog=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')).some(node=>node.isConnected&&node.getAttribute('aria-labelledby')!=='help-chat-title'&&!node.closest('[hidden], [aria-hidden="true"]')&&getComputedStyle(node).display!=='none'&&getComputedStyle(node).visibility!=='hidden'&&node.getClientRects().length>0);

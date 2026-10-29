@@ -334,6 +334,9 @@ export interface Order {
     /** 최초 생산기록 계획까지 고정한 새 claim만 사용한다. 옛 실패에는 추정해 붙이지 않는다. */
     productionRecordContractVersion?:1;
     actorUid?: string;
+    fullProtocol?: string;
+    fullAttemptId?: string;
+    fullReference?: {version:1;companyId:CompanyId;orderId:string;requestId:string};
     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */
     kind?: 'line' | 'status';
     lineId?: string;
