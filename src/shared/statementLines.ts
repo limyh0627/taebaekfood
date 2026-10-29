@@ -152,13 +152,15 @@ export function resolveOrderItem(item: OrderItem, allItems: readonly Item[], inp
 /**
  * 이 줄에 붙일 단가. **거래처 단가 > 주문에 적힌 값**.
  *
- * **주문 값으로 물러설 때는 개입수로 나눈다.** 주문은 박스로 받는데(`10개입 180,000`)
- * 위에서 수량을 낱개로 풀었다. 안 나누면 낱개 10개에 180,000씩 붙어 **열 배로 끊긴다.**
+ * 주문 품목과 전표 품목이 같으면 주문 단가는 이미 해당 낱개 SKU의 단가다.
+ * 서로 다른 BOM 박스 SKU를 낱개로 풀 때는 박스 단가를 개입수로 나눈다.
+ * 식별자가 없는 과거 호출은 기존 나눗셈을 유지한다.
  */
 export function orderItemPrice(
-  r: Pick<ResolvedOrderItem, 'perBox'>, item: Pick<OrderItem, 'price'>, pcPrice?: number,
+  r: Pick<ResolvedOrderItem, 'perBox'> & Partial<Pick<ResolvedOrderItem, 'product'>>, item: Pick<OrderItem, 'price'> & Partial<Pick<OrderItem, 'itemId'>>, pcPrice?: number,
 ): number {
-  const 주문단가 = item.price !== undefined ? Math.round(item.price / r.perBox) : undefined;
+  const sameSku = typeof item.itemId === 'string' && item.itemId.trim().length > 0 && typeof r.product?.id === 'string' && r.product.id.trim().length > 0 && item.itemId === r.product.id;
+  const 주문단가 = item.price !== undefined ? Math.round(item.price / (sameSku ? 1 : r.perBox)) : undefined;
   return pcPrice ?? 주문단가 ?? 0;
 }
 
@@ -206,7 +208,8 @@ function buildOrderLines(input: OrderLinesInput, resolveLine:OrderLineResolver):
   let no = 1;
 
   for (const [orderItemIndex, item] of order.items.entries()) {
-    const { product, qty: qtyUnits, perBox, unknownItem } = resolveLine(item, allItems, input.orderUnitInputs, orderItemIndex);
+    const resolved = resolveLine(item, allItems, input.orderUnitInputs, orderItemIndex);
+    const { product, qty: qtyUnits, unknownItem } = resolved;
     const displayName = product?.name || item.name;
     const spec = product?.spec || item.displaySize || '';
     const itemId = product?.id ?? item.itemId;
@@ -218,8 +221,8 @@ function buildOrderLines(input: OrderLinesInput, resolveLine:OrderLineResolver):
     const pcPrice = pcEntry?.price ?? boxDerivedUnitPrice(product, partnerId, partnerItems as any, input.orderUnitInputs);
     const pcTaxType = pcEntry?.taxType;   // '과세' | '면세' | undefined(=과세 기본)
 
-    //  단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값(개입수로 나눠서)
-    const defaultPrice = orderItemPrice({ perBox }, item, pcPrice);
+    //  단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값(SKU 기준 환산)
+    const defaultPrice = orderItemPrice(resolved, item, pcPrice);
     const unitPrice = editablePrices[key] !== undefined
       ? (parseFloat(editablePrices[key]) || 0) : defaultPrice;
 

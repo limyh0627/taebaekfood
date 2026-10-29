@@ -6,6 +6,7 @@ import TradeStatement from './TradeStatement';
 import {buildBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex} from '../src/shared/packIndex';
 import {OrderStatus} from '../src/shared/types';
+import {buildNewOrderDraft} from '../src/shared/newOrderDraft';
 const m=vi.hoisted(()=>({prompt:vi.fn(),confirm:vi.fn(),auth:{currentUser:{uid:'actor'},onAuthStateChanged:()=>()=>{}}}));
 vi.mock('../src/shared/firebase',()=>({auth:m.auth,db:{}}));
 vi.mock('../src/shared/components/appDialog',()=>({appConfirm:m.confirm,appPrompt:m.prompt,appNotice:vi.fn()}));
@@ -26,3 +27,19 @@ it.each([1,0.5])('사용자 확인 %s개입도 checked resolver 수량을 사용
 it('실제 주문 선택에서 확인한 개입수만 발행 요청 전표 수량으로 전달한다',async()=>{m.prompt.mockResolvedValue('7');const apply=vi.fn<(input:Parameters<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>[0])=>Promise<'applied'>>(async()=> 'applied');render(<TradeStatement {...props} onApplyStatement={apply}/>);fireEvent.click(screen.getByRole('button',{name:'거래명세서'}));fireEvent.click(screen.getByRole('button',{name:'매출전표'}));fireEvent.click(screen.getByRole('button',{name:/미발행 주문 선택/}));fireEvent.click(await screen.findByRole('button',{name:/^전표 작성 →$/}));expect(await screen.findByLabelText('1행 거래 수량')).toHaveValue('35');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0]).toMatchObject({statement:{items:[{itemId:'oil',qty:35}]}});expect(row.items[0].quantity).toBe(5);});
 it.each([undefined,NaN])('박스 수량 근거가 %s이면 알려 주고 부분 전표 선택을 만들지 않는다',async boxQuantity=>{const broken={...row,items:[{...row.items[0],unitsPerBox:7,boxQuantity}]};render(<TradeStatement {...props} orders={[broken]}/>);fireEvent.click(screen.getByRole('button',{name:'거래명세서'}));fireEvent.click(screen.getByRole('button',{name:'매출전표'}));fireEvent.click(screen.getByRole('button',{name:/미발행 주문 선택/}));await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('원주문의 박스 수량')));expect(m.prompt).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:/^전표 작성 →$/})).toBeNull();expect(screen.queryByLabelText('1행 거래 수량')).toBeNull();});
 it('확인 뒤 원주문 줄이 바뀌면 남은 수동행이 있어도 실제 발행 요청을 보내지 않는다',async()=>{m.prompt.mockResolvedValue('7');const apply=vi.fn();const view=render(<TradeStatement {...props} onApplyStatement={apply}/>);fireEvent.click(screen.getByRole('button',{name:'거래명세서'}));fireEvent.click(screen.getByRole('button',{name:'매출전표'}));fireEvent.click(screen.getByRole('button',{name:/미발행 주문 선택/}));fireEvent.click(await screen.findByRole('button',{name:/^전표 작성 →$/}));expect(await screen.findByLabelText('1행 거래 수량')).toHaveValue('35');const changed={...row,items:[{...row.items[0],quantity:6,boxQuantity:6}]};view.rerender(<TradeStatement {...props} orders={[changed]} onApplyStatement={apply}/>);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'저장'})));expect(apply).not.toHaveBeenCalled();expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('박스당 수량'));expect(row.items[0].quantity).toBe(5);});
+
+it.each(['same-sku','zero','bom'] as const)('신규 주문 %s는 실제 전표 선택과 저장에서 단가 기준을 보존한다',async kind=>{
+ const box:any={id:'box',companyId:'taebaek',name:'합성박스',type:'product',unit:'박스'},allItems=[product,box];
+ const units={bom:buildBomIndex(allItems,kind==='bom'?[{parent_id:'box',child_id:'oil',quantity:5}]:[]),pack:buildPackIndex(kind==='bom'?[]:[{item_id:'oil',units_per_box:5}])};
+ const link:any={id:'link',companyId:'taebaek',itemId:'oil',partnerId:'p',Direction:'out',price:1000,taxType:'면세',Account_Code:'800'};
+ const draft=buildNewOrderDraft({partner,items:allItems,partnerItems:[link],lines:[{itemId:kind==='bom'?'box':'oil',quantity:5,isBoxUnit:true}],orderDate:'2026-10-28',deliveryDate:'2026-10-29',pallets:[],orderUnitInputs:units});
+ const order={...draft,id:'new-order',companyId:'taebaek',status:OrderStatus.PENDING};
+ const apply=vi.fn<(input:Parameters<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>[0])=>Promise<'applied'>>(async()=> 'applied');
+ render(<TradeStatement {...props} orders={[order]} allItems={allItems} partnerItems={kind==='zero'?[{...link,price:0}]:[]} orderUnitInputs={units} onApplyStatement={apply}/>);
+ fireEvent.click(screen.getByRole('button',{name:'거래명세서'}));fireEvent.click(screen.getByRole('button',{name:'매출전표'}));fireEvent.click(screen.getByRole('button',{name:/미발행 주문 선택/}));fireEvent.click(await screen.findByRole('button',{name:/^전표 작성 →$/}));
+ const quantity=await screen.findByLabelText('1행 거래 수량');expect(quantity).toHaveValue('25');expect(quantity.closest('td')?.nextElementSibling?.querySelector('input')).toHaveValue(kind==='zero'?'0':'1000');
+ m.confirm.mockResolvedValue(false);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'저장'})));
+ if(kind==='zero'){expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('단가가 0'));expect(apply).not.toHaveBeenCalled();return;}
+ await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('발행은 완료됐지만 거래조건 후속 처리를 확인하지 못했습니다'));
+ expect(apply.mock.calls[0][0]).toMatchObject({statement:{items:[{itemId:'oil',qty:25,price:1000,total:25000}]}});expect(draft.totalAmount).toBe(25000);
+});

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { manualLines, manualAccountCode, orderLines, orderLinesChecked, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
 import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
+import { buildNewOrderDraft } from './newOrderDraft';
 
 import { buildBomIndex, resetBomIndex, setBomIndex } from './bomIndex';
 afterEach(() => { resetPackIndex(); resetBomIndex(); });
@@ -126,7 +127,7 @@ describe('orderLines — 박스를 낱개로 푼다', () => {
       itemId: 'flavor-oil', name: '향미유', quantity: 8,
       isBoxUnit: true, boxQuantity: 8, price: 12000,
     }]) });
-    expect(r[0]).toMatchObject({ qty: 96, price: 1000 });
+    expect(r[0]).toMatchObject({ qty: 96, price: 12000 });
   });
 
   it('품목을 못 찾으면 표시를 단다 — 박스가 안 풀린 채 들어가면 수량이 10배 틀린다', () => {
@@ -296,6 +297,15 @@ describe('resolveOrderItem — 주문 줄이 실제로 무엇인가', () => {
 });
 
 describe('orderItemPrice — 박스 단가를 낱개로 나눈다', () => {
+  it('동일 SKU만 주문 단가를 유지하며 식별자 누락과 다른 SKU는 기존 환산을 쓴다',()=>{
+    const r={perBox:5,product:낱개};
+    expect(orderItemPrice(r,{itemId:'loose',price:1000})).toBe(1000);
+    expect(orderItemPrice(r,{itemId:'box',price:5000})).toBe(1000);
+    expect(orderItemPrice(r,{price:1000})).toBe(200);
+    expect(orderItemPrice({perBox:5},{itemId:'loose',price:1000})).toBe(200);
+    expect(orderItemPrice(r,{itemId:'loose',price:1000},0)).toBe(0);
+    expect(orderItemPrice(r,{itemId:'loose',price:1000},1500)).toBe(1500);
+  });
   it('거래처 단가가 있으면 그게 이긴다 (이미 낱개 값이라 안 나눈다)', () => {
     expect(orderItemPrice({ perBox: 10 }, { price: 180000 } as any, 18500)).toBe(18500);
   });
@@ -391,8 +401,8 @@ it('옛 박스 주문의 포장표 환산은 명시 입력을 쓰고 저장 개�
  setBomIndex(own.bom);setPackIndex(buildPackIndex([{item_id:'loose',units_per_box:6}]));
  const item={itemId:'loose',name:'낱개',quantity:2,boxQuantity:2,isBoxUnit:true,price:12000};
  const input={order:주문([item]),stmtType:'매출' as const,allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:own};
- expect(orderLines(input)[0]).toMatchObject({qty:24,price:1000});
- expect(orderLines({...input,order:주문([{...item,unitsPerBox:10}])})[0]).toMatchObject({qty:20,price:1200});
+ expect(orderLines(input)[0]).toMatchObject({qty:24,price:12000});
+ expect(orderLines({...input,order:주문([{...item,unitsPerBox:10}])})[0]).toMatchObject({qty:20,price:12000});
 });
 
 it('명시 원가 kg는 거래 수량과 전표 금액을 바꾸지 않는다', () => {
@@ -413,10 +423,29 @@ it('checked 전표는 미확인 박스 하나라도 있으면 부분 성공 줄 
 it.each([0.5,1,3,7])('checked 전표는 확인된 %s개입을 공통 수량·단가 builder에 반영한다',factor=>{
  const unit={bom:buildBomIndex(목록,[]),pack:buildPackIndex([])},order=주문([{itemId:'loose',name:'낱개',quantity:5,boxQuantity:5,isBoxUnit:true,unitsPerBox:factor,price:12000}]);
  const result=orderLinesChecked({order,stmtType:'매출',allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit});
- expect(result.kind).toBe('ready');if(result.kind==='ready')expect(result.lines[0]).toMatchObject({qty:5*factor,price:Math.round(12000/factor),total:Math.round(5*factor*Math.round(12000/factor))});
+ expect(result.kind).toBe('ready');if(result.kind==='ready')expect(result.lines[0]).toMatchObject({qty:5*factor,price:12000,total:Math.round(5*factor*12000)});
 });
 it('정상 박스 BOM과 낱개는 checked와 기존 builder의 행·순서·합계가 같다',()=>{
  const unit={bom:buildBomIndex(목록,[{parent_id:'box',child_id:'loose',quantity:10}]),pack:buildPackIndex([])},order=주문([{itemId:'box',name:'박스',quantity:2,price:10000},{itemId:'loose',name:'낱개',quantity:3,price:1000}]);
  const input={order,stmtType:'매출' as const,allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit},result=orderLinesChecked(input);
  expect(result).toEqual({kind:'ready',lines:orderLines(input)});
+});
+
+it.each([5, 1, 0.5])('실제 신규 낱개 SKU 주문의 %s개입은 거래처 단가가 없어도 저장 단가를 보존한다', factor => {
+ const partner=단가({id:'p',name:'거래처',type:'일반'}), price=단가({itemId:'loose',partnerId:'p',Direction:'out',price:1000});
+ const unit={bom:buildBomIndex(목록,[]),pack:buildPackIndex([])};
+ const draft=buildNewOrderDraft({partner,items:목록,partnerItems:[price],lines:[{itemId:'loose',quantity:5,isBoxUnit:true,unitsPerBox:factor}],orderDate:'2026-10-28',deliveryDate:'2026-10-29',pallets:[],orderUnitInputs:unit});
+ const input={order:{...draft,id:'o',status:'PENDING'} as any,stmtType:'매출' as const,allItems:목록,partnerId:'p',partnerItems:[],orderUnitInputs:unit};
+ const result=orderLinesChecked(input);expect(result.kind).toBe('ready');if(result.kind!=='ready')throw Error('주문 변환 실패');
+ expect(draft.items[0]).toMatchObject({quantity:5*factor,price:1000,unitsPerBox:factor});expect(draft.totalAmount).toBe(5*factor*1000);
+ expect(result.lines[0]).toMatchObject({qty:5*factor,price:1000,total:5*factor*1000});
+ const zero=orderLinesChecked({...input,partnerItems:[{...price,price:0}]});expect(zero.kind).toBe('ready');if(zero.kind==='ready')expect(zero.lines[0].price).toBe(0);
+ const override=orderLinesChecked({...input,editablePrices:{'loose||1750ml':'2100'}});expect(override.kind).toBe('ready');if(override.kind==='ready')expect(override.lines[0].price).toBe(2100);
+});
+it('실제 신규 BOM 박스 주문은 박스 단가를 낱개로 나눈다',()=>{
+ const partner=단가({id:'p',name:'거래처',type:'일반'}),price=단가({itemId:'loose',partnerId:'p',Direction:'out',price:1000});
+ const unit={bom:buildBomIndex(목록,[{parent_id:'box',child_id:'loose',quantity:5}]),pack:buildPackIndex([])};
+ const draft=buildNewOrderDraft({partner,items:목록,partnerItems:[price],lines:[{itemId:'box',quantity:5,isBoxUnit:true}],orderDate:'2026-10-28',deliveryDate:'2026-10-29',pallets:[],orderUnitInputs:unit});
+ const result=orderLinesChecked({order:{...draft,id:'o',status:'PENDING'} as any,stmtType:'매출',allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:unit});
+ expect(draft.items[0]).toMatchObject({quantity:5,price:5000});expect(draft.totalAmount).toBe(25000);expect(result.kind).toBe('ready');if(result.kind==='ready')expect(result.lines[0]).toMatchObject({qty:25,price:1000,total:25000});
 });
