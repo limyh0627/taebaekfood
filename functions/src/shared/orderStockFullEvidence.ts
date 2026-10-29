@@ -10,7 +10,7 @@ import {orderRawBatchJobId,type OrderRawBatchRequest} from './orderRawBatchIdent
 import {readOrderRawBatchJobRequest,orderRawBatchProofProblem,orderRawBatchRequestHash} from './orderRawBatchProof';
 import {hasOrderInventoryGenerationCompletion,sameOrderInventoryGeneration} from './orderInventoryCompletionEvidence';
 export {ownLineIndexEntry} from './orderProductionRecordPlan';
-import {ownLineIndexEntry,deriveNextProductionRecordIndex,validateOrderProductionRecordPlan,validateProductionRecordIndex} from './orderProductionRecordPlan';
+import {ownLineIndexEntry,deriveNextProductionRecordIndex,makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,validateProductionRecordIndex} from './orderProductionRecordPlan';
 import {orderRawTracesFromMovement} from './orderRawCommandPlan';
 import {normalizeRawMovement} from './rawInventoryDocument';
 import {advanceInventoryWriterProtocol} from './inventoryWriterProtocol';
@@ -20,6 +20,14 @@ export type FullRetirementReadAccess={readonly [retirementReadBrand]:true};
 const retirementReads=new WeakMap<object,{companyId:string;orderId:string;orderText:string;text:(value:unknown)=>string}>();
 /** JSON/boolean으로 만들 수 없고 같은 reader가 검증한 원주문 전체와만 맞는다. */
 export function assertFullRetirementReadAccess(access:FullRetirementReadAccess|undefined,order:FullRow,identity:{companyId:string;orderId:string}):void {const proof=access&&retirementReads.get(access);if(!proof||proof.companyId!==identity.companyId||proof.orderId!==identity.orderId||proof.text(order)!==proof.orderText)throw Error('retirement-history-unproven');}
+export interface VerifiedOriginalProductionLine {
+ kind:'verified-original-production-line-v1';lineId:string;
+ source:{generation:FullRow;jobId:string;requestHash:string};
+ line:FullRow;state:FullRow;recordProof:{entry:FullRow;record:FullRow};
+ rawCommands:FullRow[];rawReceipts:FullRow[];rawTraces:FullRow[];
+ evidenceCoverage:{canonicalRawJob:'verified';targetLine:'verified';productionRecord:'verified';productAndPackagingAtomicApplication:'unproven'};
+ currentAtomicCompletion:false;executionAllowed:false;
+}
 export interface FullHistoricalEvidenceInput {
  tx:Pick<Transaction,'get'>;db:Firestore;companyId:'taebaek'|'punghoe';orderId:string;selfAttemptPath:string;actorUid:string;retirementRequest?:unknown;
  codec:{text:(value:unknown)=>string;decode:(value:string)=>any};hash:(value:string)=>string;
@@ -140,6 +148,27 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    if(matches.length!==1||matches[0].attempt!==state.attempt||text(matches[0].rowDeltas)!==text(state.production.stockDeltas)||text(matches[0].bomLines)!==text(state.production.bomLines)||text(matches[0].production.rawCalculationEvidence??null)!==text(state.production.rawCalculationEvidence??null)||text(matches[0].production.autoBuilt)!==text(state.autoBuilt)||text(matches[0].production.producedUnits)!==text(state.producedUnits))fullReject('legacy-line-snapshot-unproven');
    const indices=matches[0].commandIndices as number[],traces=indices.flatMap(index=>orderRawTracesFromMovement(cached!.request.commands[index].command,cached!.job.results[index].movement));
    if(text(traces)!==text(state.rawConsumedLots))fullReject('legacy-line-snapshot-unproven');if(requireAtomic)sourceLines.set(lineId,{state,sourceLegacy:{kind:'legacy-atomic-v1',generation,jobId,requestHash:cached.job.requestHash,lineId,attempt:state.attempt,sourceLineNativeSha256:fullHash(text(state)),completionNativeSha256:fullHash(text(marker))},recordProof:{entry:ownLineIndexEntry(deriveNextProductionRecordIndex(cached.request.plan.productionRecords as any,cached.job.requestHash),lineId),record:(cached.request.plan.productionRecords as any).records.find((row:FullRow)=>row.lineId===lineId)}});return indices.map(index=>({operationId:cached!.request.commands[index].command.operationId,rawItemId:cached!.request.commands[index].command.rawItemId,command:cached!.request.commands[index].command}));
+  };
+
+  // 출고 완료표는 원 생산 세대가 아니다. 현재 해제 권위와 역사 원문 조회를 분리한다.
+  const readVerifiedOriginalProductionLine=async(lineId:string):Promise<VerifiedOriginalProductionLine>=>{
+   if(!fullId(lineId))fullReject('legacy-line-snapshot-unproven');
+   const live=await read('orders/'+orderId);fullUsable(live,company,orderId);
+   const entry=ownLineIndexEntry<FullRow>(live!.productionRecordIndex,lineId),state=ownLineIndexEntry<OrderItemInventoryState>(live!.itemInventory,lineId);
+   if(!entry||!state||state.lineId!==lineId||state.applied!==true||state.rawEffectOrigin||state.rawReversalOrigin)fullReject('legacy-raw-history-unproven');
+   try{validateProductionRecordIndex({[lineId]:entry} as Parameters<typeof validateProductionRecordIndex>[0],company,orderId);}catch{fullReject('invalid-production-record-index');}
+   await legacySource(lineId,state,live!,false);
+   const {request,job}=await loadVerifiedLegacyJob(entry.generation,true),plan=request.plan as FullRow;
+   try{validateOrderProductionRecordPlan(plan.productionRecords);}catch{fullReject('legacy-aggregate-record-unproven');}
+   const expectedEntry=ownLineIndexEntry<FullRow>(deriveNextProductionRecordIndex(plan.productionRecords,job.requestHash),lineId),expectedRecord=plan.productionRecords.records.find((row:FullRow)=>row.lineId===lineId);
+   if(text(plan.productionRecords.generation)!==text(entry.generation)||!expectedEntry||text(expectedEntry)!==text(entry)||!expectedRecord||text(job.productionRecordReceipt??null)!==text(makeOrderProductionRecordReceipt(plan.productionRecords,job.requestHash)))fullReject('legacy-record-request-conflict');
+   const record=await readPast('productionRecords/'+entry.recordId);
+   if(!record||record.supersededBy||record.itemId!==state.itemId||['id','companyId','orderId','lineId','generation','createdAt','itemId','finishedQty','wipUsed','wipItemId'].some(key=>text(record[key]??null)!==text(expectedRecord[key]??null)))fullReject('invalid-prior-production-record');
+   fullUsable(record,company,entry.recordId);
+   const line=plan.lines.find((row:FullRow)=>row.lineId===lineId),verified:VerifiedOperation[]=[];
+   const operations=line.commandIndices.map((index:number)=>({operationId:request.commands[index].command.operationId,rawItemId:request.commands[index].command.rawItemId,command:request.commands[index].command}));
+   await appendVerifiedOriginals(operations,state,verified);
+   return codec.decode(text({kind:'verified-original-production-line-v1',lineId,source:{generation:entry.generation,jobId:job.id,requestHash:job.requestHash},line,state,recordProof:{entry,record},rawCommands:line.commandIndices.map((index:number)=>request.commands[index].command),rawReceipts:line.commandIndices.map((index:number)=>job.results[index]),rawTraces:state.rawConsumedLots,evidenceCoverage:{canonicalRawJob:'verified',targetLine:'verified',productionRecord:'verified',productAndPackagingAtomicApplication:'unproven'},currentAtomicCompletion:false,executionAllowed:false}));
   };
 
   type SourceOperation={operationId:string;rawItemId:string;command?:any;movementHash?:string};
@@ -286,5 +315,5 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
  return {order,states:lineBasis.currentStates,operationsByLine,sourceLines};
  };
 
- return {tx:nativeTx as Pick<Transaction,'get'>,verifyRetirementHistory,verifyRetirementAccess,get retirementAccess(){return retirementAccess;},get retirementHandoff(){return freshRetirement;},get retirementFailure(){return retirementFailure;},get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,get aggregateSourceQueries(){return [...aggregateSourceQueries.values()];},verifyCurrentAggregateProduction,verifyCurrentShipment,verifyCurrentLineHistory,verifyCurrentAllocationIssuerRows};
+ return {tx:nativeTx as Pick<Transaction,'get'>,verifyRetirementHistory,verifyRetirementAccess,get retirementAccess(){return retirementAccess;},get retirementHandoff(){return freshRetirement;},get retirementFailure(){return retirementFailure;},get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,get aggregateSourceQueries(){return [...aggregateSourceQueries.values()];},verifyCurrentAggregateProduction,verifyCurrentShipment,verifyCurrentLineHistory,verifyCurrentAllocationIssuerRows,readVerifiedOriginalProductionLine};
 }

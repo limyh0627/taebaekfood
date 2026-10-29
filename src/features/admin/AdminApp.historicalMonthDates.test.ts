@@ -12,14 +12,18 @@ let body = '';
 let monthDependencies = '';
 let statementBody = '';
 let statementDependencies = '';
+let monthMatches = 0;
+let statementMatches = 0;
 function visit(node: ts.Node) {
   if (ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect') {
     const callback = node.arguments[0];
     if (callback && ts.isArrowFunction(callback) && /loadHistoricalOrders\(start, end\)/.test(callback.body.getText(source))) {
+      monthMatches++;
       body = callback.body.getText(source);
       monthDependencies = node.arguments[1].getText(source);
     }
     if (callback && ts.isArrowFunction(callback) && /loadHistoricalOrders\('2020-01-01', today\(\)\)/.test(callback.body.getText(source))) {
+      statementMatches++;
       statementBody = callback.body.getText(source);
       statementDependencies = node.arguments[1].getText(source);
     }
@@ -27,6 +31,7 @@ function visit(node: ts.Node) {
   ts.forEachChild(node, visit);
 }
 visit(source);
+if (monthMatches !== 1 || statementMatches !== 1) throw Error(`실제 조회 effect가 유일하지 않음: ${monthMatches}, ${statementMatches}`);
 afterEach(cleanup);
 
 // 실제 부모의 본문과 의존성을 함께 실행해 콜백 세대가 바뀐 같은 화면을 검증한다.
@@ -65,8 +70,15 @@ it('전표는 같은 메뉴에서 새 로더 세대의 전체 이력을 다시 �
 const day = ts.transpileModule(readFileSync('src/shared/day.ts', 'utf8').replace(/^export \{ kstDateOf \}[^\r\n]*\r?\n/m, ''), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
+const primitives = ts.transpileModule(readFileSync('functions/src/shared/orderPlanPrimitives.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
 it.each(['UTC', 'Asia/Seoul'])('과거 생성일 조회 실제 effect는 %s에서도 전월 첫날부터 월말까지 포함한다', zone => {
-  const script = `const exports = {}; ${day}
+  const script = `const primitiveExports = {};
+    new Function('exports', ${JSON.stringify(primitives)})(primitiveExports);
+    const exports = {};
+    const requireDay = path => { if (path !== '../../functions/src/shared/orderPlanPrimitives') throw Error('unexpected dependency: '+path); return primitiveExports; };
+    new Function('exports', 'require', ${JSON.stringify(day)})(exports, requireDay);
     const cases = ['2026-09', '2027-01', '2028-02', '2026-02', '', '잘못된월', '2026-00', '2026-9'];
     const result = cases.map(month => {
       let range = null;

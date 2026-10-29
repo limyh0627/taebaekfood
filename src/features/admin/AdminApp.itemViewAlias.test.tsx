@@ -11,10 +11,11 @@ import {normalizeViewAlias} from '../../shared/startView';
 const source=readFileSync(process.env.TODO039_CANDIDATE_SOURCE || 'src/features/admin/AdminApp.tsx','utf8');
 const parsed=ts.createSourceFile('AdminApp.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const effects:ts.ArrowFunction[]=[];const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&node.expression.getText(parsed)==='useEffect'&&ts.isArrowFunction(node.arguments[0]))effects.push(node.arguments[0]);ts.forEachChild(node,visit);};visit(parsed);
-function effectContaining(marker:string,currentView:string,setCurrentView:(view:string)=>void){const callback=effects.find(node=>node.getText(parsed).includes(marker));if(!callback)throw Error('실제 effect 없음: '+marker);const js=ts.transpileModule('const callback='+callback.getText(parsed),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function('normalizeViewAlias','currentView','setCurrentView',js+';return callback;')(normalizeViewAlias,currentView,setCurrentView) as ()=>void;}
-const branch=source.match(/\{([^\n]+) && \(\s*<div className="flex flex-col h-full overflow-y-auto">\s*\{true && \(\s*<ItemManager/);
-if(!branch)throw Error('현대 ItemManager 분기를 찾지 못함');
-const itemBranch=new Function('normalizeViewAlias','currentView','return '+branch[1]);
+function effectContaining(marker:string,currentView:string,setCurrentView:(view:string)=>void){const matches=effects.filter(node=>node.getText(parsed).includes(marker));if(matches.length!==1)throw Error('실제 effect가 유일하지 않음: '+marker+' '+matches.length);const callback=matches[0];const js=ts.transpileModule('const callback='+callback.getText(parsed),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function('normalizeViewAlias','currentView','setCurrentView',js+';return callback;')(normalizeViewAlias,currentView,setCurrentView) as ()=>void;}
+const branches:ts.BinaryExpression[]=[];
+function findBranch(node:ts.Node){if(ts.isBinaryExpression(node)&&node.operatorToken.kind===ts.SyntaxKind.AmpersandAmpersandToken&&node.left.getText(parsed)==="normalizeViewAlias(currentView) === 'item-management'"){let count=0;function findItem(child:ts.Node){if((ts.isJsxOpeningElement(child)||ts.isJsxSelfClosingElement(child))&&child.tagName.getText(parsed)==='ItemManager')count++;ts.forEachChild(child,findItem);}findItem(node.right);if(count===1)branches.push(node);}ts.forEachChild(node,findBranch);}findBranch(parsed);
+if(branches.length!==1)throw Error('현대 ItemManager 분기가 유일하지 않음: '+branches.length);
+const itemBranch=new Function('normalizeViewAlias','currentView','return '+branches[0].left.getText(parsed));
 const edit=vi.fn();
 const item={id:'current',companyId:'taebaek',name:'현대 참기름',type:'product',unit:'개',spec:'350ml',stock:0,minStock:0,image:''} as Item;
 const sw=new EventTarget();
