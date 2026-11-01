@@ -2284,7 +2284,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
   const recoveryFailureCount=visibleIssuePendings.filter(entry=>!entry.deleted).length+statementEditor.failureCount;
   const openRecovery=(view:'failure'|'history')=>{refreshIssuePendings();setRecoverySelection(null);setEditRecoveryView(view);setEditTermsOpen(false);setRecoveryOpen(true);if(view==='history')void statementEditor.loadHistory();};
-  const recoveryEntryButtons=<><ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('history')}>처리 기록</ActionButton>{recoveryFailureCount>0&&<ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('failure')}>실패 {recoveryFailureCount}</ActionButton>}</>;
+  const recoveryFailureButton=recoveryFailureCount>0&&<ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('failure')}>실패 {recoveryFailureCount}</ActionButton>;
+  const recoveryEntryButtons=<><ActionButton tone="recovery" disabled={isSaving||statementEditor.busy} onClick={()=>openRecovery('history')}>처리 기록</ActionButton>{recoveryFailureButton}</>;
   const recoveryDialogs=()=> <>
     {recoveryOpen&&!recoverySelection&&<LargeModalShell title="실패 작업 목록" onClose={()=>{if(!isSaving)setRecoveryOpen(false);}}>
       <StatementEditRecoveryPanel key={statementEditor.recoveryScopeKey+editRecoveryView} initialView={editRecoveryView} recoveryMessage={statementEditor.recoveryMessage} discardLabel={entry=>entry.reference?'이 기기 수정 사본 정리':'이 기기의 손상된 복구 정보만 정리'} failureRows={statementEditor.failureRows} historyRows={statementEditor.historyRows} busy={statementEditor.busy} readLoading={statementEditor.readLoading} readError={statementEditor.readError} historyLoading={statementEditor.historyLoading} historyError={statementEditor.historyError} historyMore={statementEditor.historyMore} refresh={statementEditor.refresh} loadHistory={statementEditor.loadHistory} nextHistory={statementEditor.nextHistory} inspect={statementEditor.inspect} retry={statementEditor.retry} stop={statementEditor.stop} discardCopy={statementEditor.discardCopy} canInspect={statementEditor.canInspect} canRetry={statementEditor.canRetry} canStop={statementEditor.canStop} canDiscard={statementEditor.canDiscard} describe={entry=>entry.description} onOpenTerms={()=>{termsEditor.refresh();setEditTermsOpen(true);}}/>
@@ -2365,7 +2366,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {recoveryDialogs()}
       <PartnerItemTermsRecovery editor={termsEditor}/>
       {(linkSaveSummary.confirmed.length>0||linkSaveSummary.unconfirmed)&&<p role="status" className="text-xs text-slate-600">{linkSaveSummary.confirmed.length>0&&`연결 저장 확인: ${linkSaveSummary.confirmed.join(', ')}. `}{linkSaveSummary.unconfirmed&&`저장 확인이 필요한 품목: ${linkSaveSummary.unconfirmed}. 위에서 결과를 확인하거나 요청을 중단한 뒤 현재 내용을 다시 열어 주세요.`}</p>}
-      {composerOnly&&!createMode&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2">{recoveryEntryButtons}</div>}
+      {composerOnly&&!createMode&&recoveryFailureCount>0&&<div className="flex min-w-0 flex-wrap border-b border-slate-200 pb-2">{recoveryFailureButton}</div>}
       {!composerOnly && <>
       <PageHeader
         actions={mainTab === 'history' ? (
@@ -2836,7 +2837,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
 
           <div className="px-4 py-2">{companyInfoNotice}</div>
-          <div className="flex flex-wrap gap-2 px-4 py-2">{recoveryEntryButtons}</div>
+          {recoveryFailureCount>0&&<div className="flex flex-wrap gap-2 px-4 py-2">{recoveryFailureButton}</div>}
           {statementEditor.notice && <p role="status" className="px-4 py-2 text-sm">{statementEditor.notice}</p>}
           {statementEditor.error && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{statementEditor.error}</p>}
           {statementEditor.message && !statementEditor.error && <p role="status" className="px-4 py-2">{statementEditor.message}</p>}
