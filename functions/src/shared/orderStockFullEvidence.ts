@@ -28,6 +28,25 @@ export interface VerifiedOriginalProductionLine {
  evidenceCoverage:{canonicalRawJob:'verified';targetLine:'verified';productionRecord:'verified';productAndPackagingAtomicApplication:'unproven'};
  currentAtomicCompletion:false;executionAllowed:false;
 }
+type LegacyLineReject=(reason:string)=>never;
+/** 기존 호출자의 reject를 그대로 쓰며 순수 검사 성공을 DB·실행 권위로 바꾸지 않는다. */
+export function assertLegacyJobLineCommandCoverage(request:OrderRawBatchRequest,orderId:string,reject:LegacyLineReject):void {
+    const covered=new Set<number>(),lineIds=new Set<string>();
+    for(const row of request.plan.lines as FullRow[]){
+     if(typeof row.lineId!=='string'||lineIds.has(row.lineId)||!Number.isSafeInteger(row.attempt)||row.attempt<1||!Array.isArray(row.commandIndices))reject('legacy-command-index-unproven');lineIds.add(row.lineId);
+     for(const index of row.commandIndices){const command=request.commands[index]?.command;
+      if(!Number.isSafeInteger(index)||index<0||!command||covered.has(index)||command.operationId!==(command.kind==='ledger-consume'?'production-ledger':'production')+':'+orderId+':'+row.lineId+':a'+row.attempt+':'+command.rawItemId)reject('legacy-command-index-unproven');covered.add(index);
+     }
+    }
+    if(covered.size!==request.commands.length)reject('legacy-command-index-unproven');}
+export function assertLegacyJobLineSnapshot(request:OrderRawBatchRequest,job:FullRow,lineId:string,state:OrderItemInventoryState,indexEntry:FullRow|undefined,{text,reject}:{text:(value:unknown)=>string;reject:LegacyLineReject}){
+   if(indexEntry&&indexEntry.requestHash!==job.requestHash)reject('legacy-record-request-conflict');
+   const matches=(request.plan.lines as FullRow[]).filter(row=>row.lineId===lineId);
+   if(matches.length!==1||matches[0].attempt!==state.attempt||text(matches[0].rowDeltas)!==text(state.production.stockDeltas)||text(matches[0].bomLines)!==text(state.production.bomLines)||text(matches[0].production.rawCalculationEvidence??null)!==text(state.production.rawCalculationEvidence??null)||text(matches[0].production.autoBuilt)!==text(state.autoBuilt)||text(matches[0].production.producedUnits)!==text(state.producedUnits))reject('legacy-line-snapshot-unproven');
+   const indices=matches[0].commandIndices as number[],traces=indices.flatMap(index=>orderRawTracesFromMovement(request.commands[index].command,job.results[index].movement));
+   if(text(traces)!==text(state.rawConsumedLots))reject('legacy-line-snapshot-unproven');return {line:matches[0],indices,traces,operations:indices.map(index=>({operationId:request.commands[index].command.operationId,rawItemId:request.commands[index].command.rawItemId,command:request.commands[index].command}))};
+}
+
 export interface FullHistoricalEvidenceInput {
  tx:Pick<Transaction,'get'>;db:Firestore;companyId:'taebaek'|'punghoe';orderId:string;selfAttemptPath:string;actorUid:string;retirementRequest?:unknown;
  codec:{text:(value:unknown)=>string;decode:(value:string)=>any};hash:(value:string)=>string;
@@ -134,20 +153,10 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    if(generation.companyId!==company||generation.orderId!==preview.intent.orderId||generation.startedAt!==state.completedAt)fullReject('legacy-raw-history-unproven');
    const jobId=orderRawBatchJobId(generation),cached=await loadVerifiedLegacyJob(generation,true);
    if(!validatedLineJobs.has(jobId)){
-    const covered=new Set<number>(),lineIds=new Set<string>();
-    for(const row of cached.request.plan.lines as FullRow[]){
-     if(typeof row.lineId!=='string'||lineIds.has(row.lineId)||!Number.isSafeInteger(row.attempt)||row.attempt<1||!Array.isArray(row.commandIndices))fullReject('legacy-command-index-unproven');lineIds.add(row.lineId);
-     for(const index of row.commandIndices){const command=cached.request.commands[index]?.command;
-      if(!Number.isSafeInteger(index)||index<0||!command||covered.has(index)||command.operationId!==(command.kind==='ledger-consume'?'production-ledger':'production')+':'+preview.intent.orderId+':'+row.lineId+':a'+row.attempt+':'+command.rawItemId)fullReject('legacy-command-index-unproven');covered.add(index);
-     }
-    }
-    if(covered.size!==cached.request.commands.length)fullReject('legacy-command-index-unproven');validatedLineJobs.add(jobId);
+    assertLegacyJobLineCommandCoverage(cached.request,preview.intent.orderId,input.reject);validatedLineJobs.add(jobId);
    }
-   if(ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)&&ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId)!.requestHash!==cached.job.requestHash)fullReject('legacy-record-request-conflict');
-   const matches=(cached.request.plan.lines as FullRow[]).filter(row=>row.lineId===lineId);
-   if(matches.length!==1||matches[0].attempt!==state.attempt||text(matches[0].rowDeltas)!==text(state.production.stockDeltas)||text(matches[0].bomLines)!==text(state.production.bomLines)||text(matches[0].production.rawCalculationEvidence??null)!==text(state.production.rawCalculationEvidence??null)||text(matches[0].production.autoBuilt)!==text(state.autoBuilt)||text(matches[0].production.producedUnits)!==text(state.producedUnits))fullReject('legacy-line-snapshot-unproven');
-   const indices=matches[0].commandIndices as number[],traces=indices.flatMap(index=>orderRawTracesFromMovement(cached!.request.commands[index].command,cached!.job.results[index].movement));
-   if(text(traces)!==text(state.rawConsumedLots))fullReject('legacy-line-snapshot-unproven');if(requireAtomic)sourceLines.set(lineId,{state,sourceLegacy:{kind:'legacy-atomic-v1',generation,jobId,requestHash:cached.job.requestHash,lineId,attempt:state.attempt,sourceLineNativeSha256:fullHash(text(state)),completionNativeSha256:fullHash(text(marker))},recordProof:{entry:ownLineIndexEntry(deriveNextProductionRecordIndex(cached.request.plan.productionRecords as any,cached.job.requestHash),lineId),record:(cached.request.plan.productionRecords as any).records.find((row:FullRow)=>row.lineId===lineId)}});return indices.map(index=>({operationId:cached!.request.commands[index].command.operationId,rawItemId:cached!.request.commands[index].command.rawItemId,command:cached!.request.commands[index].command}));
+   const {operations}=assertLegacyJobLineSnapshot(cached.request,cached.job,lineId,state,ownLineIndexEntry<FullRow>(sourceOrder.productionRecordIndex,lineId),{text,reject:input.reject});
+   if(requireAtomic)sourceLines.set(lineId,{state,sourceLegacy:{kind:'legacy-atomic-v1',generation,jobId,requestHash:cached.job.requestHash,lineId,attempt:state.attempt,sourceLineNativeSha256:fullHash(text(state)),completionNativeSha256:fullHash(text(marker))},recordProof:{entry:ownLineIndexEntry(deriveNextProductionRecordIndex(cached.request.plan.productionRecords as any,cached.job.requestHash),lineId),record:(cached.request.plan.productionRecords as any).records.find((row:FullRow)=>row.lineId===lineId)}});return operations;
   };
 
   // 출고 완료표는 원 생산 세대가 아니다. 현재 해제 권위와 역사 원문 조회를 분리한다.

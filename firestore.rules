@@ -124,7 +124,7 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['orderStatusAudits', 'orderStockFullAttemptsV1', 'rawManualCorrectionReceipts', 'palletTransactionOperations', 'partnerEditOperations', 'productionRecordOperations', 'workOrderItems', 'workOrderOperations', 'workOrderFences', 'noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['orderStatusAudits', 'orderStockFullAttemptsV1', 'orderManualCorrectionsV1', 'rawManualCorrectionReceipts', 'palletTransactionOperations', 'partnerEditOperations', 'productionRecordOperations', 'workOrderItems', 'workOrderOperations', 'workOrderFences', 'noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
     }
 
@@ -132,6 +132,7 @@ service cloud.firestore {
     // 명시 거절만으로 포괄 허용을 이길 수 없으므로 위 hasOwnRule에서도 제외한다.
     // 최초 주문 원문과 규칙 승인은 RPC에서 회사·직원·관리자 권한을 확인한다.
     match /orderStockFullAttemptsV1/{document=**} { allow read, write: if false; }
+    match /orderManualCorrectionsV1/{document=**} { allow read, write: if false; }
     match /orderStatusAudits/{id} {
       allow get: if getOk();
       allow list: if readOk();
@@ -593,6 +594,11 @@ service cloud.firestore {
       return !guarded || (!(resource != null && 'fullEffectAuthority' in resource.data)
         && !(request.resource != null && 'fullEffectAuthority' in request.resource.data));
     }
+    // 수동 박스 정정의 원료 효과는 최초 서버 증빙과 함께 불변으로 보관한다.
+    function manualCorrectionEffectWriteOk(c) {
+      return c != 'rawMaterialLedger' || (!(resource != null && 'orderManualCorrectionEffectAuthority' in resource.data)
+        && !(request.resource != null && 'orderManualCorrectionEffectAuthority' in request.resource.data));
+    }
     function rawWriterOk(c) {
       let before = resource == null ? {} : resource.data;
       return (c != 'rawMaterialLedger' || (!rawManualCorrectionMarked(before) && !rawManualCorrectionMarked(request.resource.data)))
@@ -686,6 +692,10 @@ service cloud.firestore {
           : (('inventoryExecutionProtocol' in before) == ('inventoryExecutionProtocol' in next)
             && before.get('inventoryExecutionProtocol', null) == next.get('inventoryExecutionProtocol', null)))
         && (!('inventoryExecutionProtocol' in before) || !next.diff(before).affectedKeys().hasAny(fullSensitive))
+        && (resource == null ? !('orderManualCorrectionRefsV1' in next)
+          : (('orderManualCorrectionRefsV1' in before) == ('orderManualCorrectionRefsV1' in next)
+            && before.get('orderManualCorrectionRefsV1', null) == next.get('orderManualCorrectionRefsV1', null)))
+        && (!('orderManualCorrectionRefsV1' in before) || !next.diff(before).affectedKeys().hasAny(fullSensitive))
         && next.get('retirementId', null) == before.get('retirementId', null)
         && next.get('retirementClaimPending', null) == before.get('retirementClaimPending', null)
         && !(before.get('retirementClaimPending', false) == true && next.get('inventoryOperation', null) != before.get('inventoryOperation', null))
@@ -753,6 +763,7 @@ service cloud.firestore {
       let audit = /databases/$(database)/documents/orderStatusAudits/$(operation.id);
       let after = getAfter(audit).data;
       return !('inventoryExecutionProtocol' in resource.data)
+        && !('orderManualCorrectionRefsV1' in resource.data)
         && writerBeforeOk(resource.data) && !exists(audit) && after.companyId == resource.data.companyId
         && after.orderId == id && after.id == operation.id && after.state == 'completed'
         && after.cancellation.action == 'delete' && after.cancellation.deleted == true
@@ -790,6 +801,7 @@ service cloud.firestore {
                             && inventoryQuantityOk(collection)
                             && rawWriterOk(collection)
                             && fullEffectWriteOk(collection)
+                            && manualCorrectionEffectWriteOk(collection)
                             && oemCostFieldsOk(collection)
                             && payrollWriteAllowed(collection);
       allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath() && !workOrderProtectedPath()
@@ -797,6 +809,7 @@ service cloud.firestore {
                     && deleteOk()
                     && !rawWriterCollection(collection)
                     && fullEffectWriteOk(collection)
+                    && manualCorrectionEffectWriteOk(collection)
                     && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null)
                     && payrollWriteAllowed(collection);
     }
