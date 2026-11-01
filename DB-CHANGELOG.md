@@ -1,5 +1,13 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-11-01 — 주문 재고 복구·취소 보호 배포
+
+사용자 배포 지시에 따라 main 소스 `202d9b6`을 Firestore Rules → 공개 Functions70개 → 관리자·직원 Hosting 순서로 배포했다. Rules 원문 SHA256 `22857abc5a71701951c56ade3f8002c8a1d32fbd55baa1d5f50425cf23803ba3`가 원격 ruleset `a1403941-3c3f-4236-b515-2bbff20197f2`와 일치한다. 서버 전부 ACTIVE·Node22이며 업로드 소스 ZIP의 컴파일 코드196파일을 로컬 검증본과 대조했고, 양 Hosting 공개179파일 SHA도 일치했다. 신규 공개 함수는 `orderStockFullRecoveryCommand`와 `inspectOrderInventoryExecutionCommand`이며, 인증 없는 요청이 업무 처리 전에401로 거절됨을 확인했다. 공개 정정 apply는 추가하지 않았다.
+
+원료·제품·포장재·로트의 취소는 다른 주문 예약을 보호하며 원료 native 메타데이터를 보존한다. 서버 전체 재고 효과 및 정정 근거에 대한 직접 Web 쓰기 보호 규칙이 포함된다. 운영 자료 이관·기초잔액/주문 정정·새 인덱스·Storage Rules 변경·별도 IAM 역할 추가는 하지 않았다. 기존 구세대 수량 변경의 분리 취소·재생산 한계와 공개 정정 실행/생산표시25개 미완을 유지한다.
+
+되돌릴 때는 Hosting 직전 릴리스와 그에 대응하는 서버·Rules 소스를 확인해 같은 계약으로 재배포한다. 새 처리 기록이나 재고 자료를 삭제해 되돌리지 않는다. 이전 릴리스의 계약이 새 서버 보호 표식을 지원하는지 먼저 확인한다. 배포 및 대조 원문은 `work/deploy-202d9b6-*-20261101.*`에 보관했다.
+
 ## 2026-10-27 — 주문 조회 값 보존 규칙 배포 · 후속 전수 감사
 
 검수 소스 a651538을 origin/main에 정상 푸시하고 양 Hosting을 13:56:43 KST, strict Firestore Rules를 13:58:41 KST에 반영했다. Rules 원문 SHA256은 3c894205232acf8adbff450b467144fd4303759c22c1c56758d5cb928c48fadf이며 원격 release와 일치한다. 최초 임시 work 설정의 상위 경로 오류는 업로드 전 실패였으며 루트의 임시 배포 설정으로 정상 배포 후 해당 임시 파일을 제거했다. 새 컬렉션·인덱스·함수·IAM 또는 운영 업무 자료 쓰기는 없다.
