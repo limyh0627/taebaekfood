@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumokAt, docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel } from './docOil';
+import { docPumokAt, docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel, DOC_SHEET_GROUPS, DEFAULT_SHEET_TITLE, mixLabel } from './docOil';
 import { buildBomIndex, getBomIndex, setBomIndex } from './bomIndex';
 import { buildPackIndex } from './packIndex';
 
@@ -60,6 +60,7 @@ describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
     expect(addOilByRaw({}, '시골향참기름2', 100)).toEqual({ 통깨참기름: 50, 깨분참기름: 50 });
     expect(addOilByRaw({}, '시골향참기름4', 100)).toEqual({ 통깨참기름: 10, 깨분참기름: 90 });
     expect(addOilByRaw({}, '시골향들기름2', 100)).toEqual({ 수입들기름: 100 });   // 수입산 100% (2026-08-12)
+    expect(addOilByRaw({}, '시골향들기름3', 100)).toEqual({ 통들깨들기름: 50, 수입들기름: 50 });
     expect(addOilByRaw({}, '시골향생들기름', 100)).toEqual({ 수입들기름: 100 });
     expect(addOilByRaw({}, '하남댁들기름', 100)).toEqual({ 통들깨들기름: 25, 수입들기름: 75 });
     expect(addOilByRaw({}, '하남댁맑음들기름', 100)).toEqual({ 통들깨들기름: 50, 수입들기름: 50 });
@@ -362,6 +363,56 @@ describe('명시 BOM 입력으로 서류 환산', () => {
       expect(getBomIndex()).toBe(foreign);
       expect(docSaleLines(box, 1, find)).toEqual([]);
     } finally { setBomIndex(previous); }
+  });
+});
+
+describe('시골향들기름3 — 들기름2와 같은 서류 경로', () => {
+  const 경로 = (품목: string) => {
+    const loose = { id: `${품목}-loose`, name: '들기름/1800ml', type: 'product', spec: '1800ml', 품목 } as import('./types').Item;
+    const box = { id: `${품목}-box`, name: '들기름/1800ml', type: 'product', spec: '1800ml * 10' } as import('./types').Item;
+    const set = { id: `${품목}-set`, name: '선물세트', type: 'product' } as import('./types').Item;
+    const other = { id: `${품목}-other`, name: '참기름/350ml', type: 'product', spec: '350ml', 품목: '시골향참기름1' } as import('./types').Item;
+    const items = [loose, box, set, other];
+    const inputs = { bom: buildBomIndex(items, [
+      { parent_id: box.id, child_id: loose.id, quantity: 10 },
+      { parent_id: set.id, child_id: loose.id, quantity: 1 },
+      { parent_id: set.id, child_id: other.id, quantity: 1 },
+    ]), pack: buildPackIndex() };
+    const find = (id: string) => items.find(item => item.id === id);
+    return {
+      낱개: docSaleLines(loose, 3, find, inputs),
+      박스: docSaleLines(box, 2, find, inputs),
+      세트: docSaleLines(set, 4, find, inputs),
+      판매일지: journalSaleLines(box, { quantity: 20, boxQuantity: 2, name: '들기름/1800ml' }, find, inputs),
+    };
+  };
+
+  it('낱개·박스·세트·판매일지 줄은 들기름2와 품목명만 다르다', () => {
+    const 이 = 경로('시골향들기름2');
+    const 삼 = 경로('시골향들기름3');
+    expect(삼).toEqual(JSON.parse(JSON.stringify(이).split('시골향들기름2').join('시골향들기름3')));
+    expect(삼.낱개).toEqual([{ 품목: '시골향들기름3', spec: '1800ml', qty: 3 }]);
+    expect(삼.박스).toEqual([{ 품목: '시골향들기름3', spec: '1800ml', qty: 20 }]);
+    expect(삼.세트).toEqual([
+      { 품목: '시골향들기름3', spec: '1800ml', qty: 4 },
+      { 품목: '시골향참기름1', spec: '350ml', qty: 4 },
+    ]);
+    expect(삼.판매일지).toEqual([{ 품목: '시골향들기름3', spec: '1800ml', qty: 20 }]);
+  });
+
+  it('시트 순서·제목과 표시 배합을 보존한다', () => {
+    const cats = DOC_SHEET_GROUPS.find(group => group.brand === '시골향')!.cats;
+    expect(cats).toContain('시골향들기름2');
+    expect(cats).toContain('시골향들기름3');
+    expect(cats.indexOf('시골향들기름3')).toBe(cats.indexOf('시골향들기름2') + 1);
+    expect(DEFAULT_SHEET_TITLE.시골향들기름3).toBe('시골향들기름③');
+    expect(mixLabel('시골향들기름3').split(' + ').sort()).toEqual(['수입 50%', '통들깨 50%'].sort());
+  });
+
+  it('원료수불부에서 판매 무게를 두 원료로 나눈다', () => {
+    const kg = docOilKg('1800ml', 20);
+    expect(reconcileSaleVsRaw({ '2026-10-08': { 시골향들기름3: kg } })).toEqual([]);
+    expect(addOilByRaw({}, '시골향들기름3', 200)).toEqual({ 통들깨들기름: 100, 수입들기름: 100 });
   });
 });
 
