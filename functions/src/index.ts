@@ -123,9 +123,16 @@ export const monthlyInventorySnapshot = onSchedule(
      *              BOM 롤업을 여기 또 옮겨 적으면 갈릴 자리만 하나 더 는다.
      */
     const itemsSnap = await db.collection('items').get();
-    const 회사별 = valueInventory(itemsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id })), yearMonth);
+    const 품목: (admin.firestore.DocumentData & { id: string })[] = itemsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    const 품목별 = new Map(품목.map(item => [item.id, item]));
+    const 회사별 = valueInventory(품목, yearMonth);
 
-    for (const { companyId: co, value } of 회사별) {
+    for (const { companyId: co, value, lines } of 회사별) {
+      const items = lines.map(line => {
+        const 원본 = 품목별.get(line.id)!;
+        return { itemId: line.id, name: typeof 원본.name === 'string' ? 원본.name : '',
+          ...(typeof 원본.spec === 'string' ? { spec: 원본.spec } : {}), qty: line.stock, value: line.value };
+      });
       //  문서 id 규칙은 앱의 invSnapDocId 와 같다 — 태백은 옛 문서 이름을 그대로 쓴다
       const id = co === 'taebaek' ? `inv-snap-${yearMonth}` : `inv-snap-${co}-${yearMonth}`;
       const ref = db.collection('inventorySnapshots').doc(id);
@@ -133,7 +140,7 @@ export const monthlyInventorySnapshot = onSchedule(
         const releaseSnap = await tx.get(releaseGateRef(db));
         assertReleaseActive(releaseSnap, releaseId);
         if ((await tx.get(ref)).exists) return false;
-        tx.create(ref, { id, yearMonth, value, companyId: co, recordedAt: new Date().toISOString() });
+        tx.create(ref, { id, yearMonth, value, companyId: co, items, recordedAt: new Date().toISOString() });
         return true;
       });
       if (!created) {

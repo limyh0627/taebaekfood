@@ -1646,7 +1646,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {sortedSnapshots.map(snap => {
-                        const hasItems = Array.isArray(snap.items) && snap.items.length > 0;
+                        const hasItems = Array.isArray(snap.items) && snap.items.length > 0 && snap.items.every(it =>
+                          it != null && typeof it === 'object' && typeof it.itemId === 'string' && typeof it.name === 'string' &&
+                          typeof it.qty === 'number' && Number.isFinite(it.qty) && typeof it.value === 'number' && Number.isFinite(it.value));
+                        const malformedItems = snap.items != null && (!Array.isArray(snap.items) || (snap.items.length > 0 && !hasItems));
                         const open = expandedSnapId === snap.id;
                         /**
          * 펼친 스냅샷도 **타입별로** 묶어 보여준다 — 500줄 평면 목록은 못 읽는다.
@@ -1690,17 +1693,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           : [];
                         return (
                           <React.Fragment key={snap.id}>
-                          <tr onClick={() => hasItems && setExpandedSnapId(open ? null : snap.id)}
-                            className={`transition-colors ${hasItems ? 'cursor-pointer hover:bg-slate-50' : ''} ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
+                          <tr className={`transition-colors hover:bg-slate-50 ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
                             <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap">
-                              {hasItems && <span className="mr-1.5 text-slate-300">{open ? '▾' : '▸'}</span>}
-                              {snap.yearMonth}
+                              <button type="button" aria-expanded={open} aria-label={`${snap.yearMonth} 품목 내역 ${open ? '닫기' : '보기'}`} onClick={() => setExpandedSnapId(open ? null : snap.id)}>
+                                <span className="mr-1.5 text-slate-300">{open ? '▾' : '▸'}</span>{snap.yearMonth}
+                              </button>
                               {snap.yearMonth === currentYm && <span className="ml-2 text-[10px] bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full">이번달</span>}
                               {hasItems && <span className="ml-2 text-[10px] text-slate-400">{snap.items!.length}품목</span>}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
                             <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
                           </tr>
+                          {open && !hasItems && <tr className="bg-slate-50/60"><td colSpan={3} className="pl-9 pr-4 py-3 text-xs text-slate-500">{malformedItems ? '저장된 품목별 내역을 확인할 수 없습니다. 당시 원본 자료를 확인해야 합니다.' : '저장된 품목별 내역이 없습니다. 당시 원본 자료를 확인해야 합니다.'}</td></tr>}
                           {open && snapGroups.map(([g, list]) => (
                             <React.Fragment key={snap.id + '-g-' + g}>
                               <tr className="bg-slate-100/80">
