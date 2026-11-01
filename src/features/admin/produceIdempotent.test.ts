@@ -13,13 +13,12 @@ import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble'
  *
  * 두 번 처리되는 이유는 바깥 가드(`wantProduced && !order.producedAt`)가 **화면 상태**라서다.
  * 다른 탭에서 이미 처리했거나 버튼을 두 번 누르면 그 값이 낡은 채로 통과한다.
- * → DB 완료는 중복을 막고, 미완료 주문에 생산 근거가 남으면 재처리를 거절한다.
+ * → produceOrder가 DB에서 주문을 다시 읽어, 이미 빼둔 몫이 있으면 되돌리고 새로 뺀다.
  */
 
 // ── 가짜 Firestore ────────────────────────────────────────────────────────────
 const dbx = vi.hoisted(() => ({
   lots: new Map<string, any[]>(), rawStates: new Map<string, any>(), stock: new Map<string, number>(),   // items.stock — 트랜잭션이 읽고 쓴다
-  txCalls: 0,
   orders: new Map<string, any>(),     // orders — getDoc이 읽는다(화면 상태가 아니라 DB)
   ledger: new Map<string, any>(),     // rawMaterialLedger — id가 같으면 덮어써진다(진짜와 같게)
 }));
@@ -28,13 +27,10 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (ref: any, data: any) => { dbx.ledger.set(ref.id, data); },
   deleteDoc: async (ref: any) => { dbx.ledger.delete(ref.id); },
-  getDocFromServer: async (ref:any)=>{const snap=await (async (ref: any) => ref.col === 'items'
-    ? { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id) }) }
-    : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) })(ref);return {...snap,metadata:{fromCache:false,hasPendingWrites:false}};},
   getDoc: async (ref: any) => ref.col === 'items'
     ? { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id) }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) },
-  runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => {dbx.txCalls++;return fn({
+  runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>dbx.rawStates.has(ref.id),data:()=>dbx.rawStates.get(ref.id)}) : ref.col === 'orders'
       ? { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }
       : { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) ?? [] }) },
@@ -43,7 +39,7 @@ vi.mock('firebase/firestore', () => ({
       if (ref.col === 'orders') Object.assign(dbx.orders.get(ref.id), data);
       else { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); if (data.lots !== undefined) dbx.lots.set(ref.id, data.lots); }
     },
-  });},
+  }),
 }));
 
 const { createOrderStockEngine } = await import('./orderStockEngine');
@@ -78,13 +74,12 @@ function harness(items: Item[], order: Order, runnerOverride?: any) {
 
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
-  const rawJob=vi.fn((runnerOverride ?? runRawJob) as typeof runRawJob),production=vi.fn(async()=>{});
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
     buildFormula: () => [{ raw: '생들기름', ratio: 1 }],
-    createProductionRecordsForOrder: production,
-    runRawInventoryJob: rawJob,
+    createProductionRecordsForOrder: async () => {},
+    runRawInventoryJob: runnerOverride ?? runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }
       if (col === 'orders') {
@@ -96,10 +91,10 @@ function harness(items: Item[], order: Order, runnerOverride?: any) {
     addItem: async () => undefined,
   });
   const lotKg = (id: string) => Math.round((lotState.get(id) ?? []).reduce((s, l: any) => s + Number(l.kgRemaining || 0), 0) * 1000) / 1000;
-  return { engine, lotKg, lots: lotState,rawJob,production };
+  return { engine, lotKg, lots: lotState };
 }
 
-beforeEach(() => { dbx.txCalls=0; dbx.lots.clear(); dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
+beforeEach(() => { dbx.lots.clear(); dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
 
 const 원장줄 = () => [...dbx.ledger.values()].filter(e => e.material === '생들기름');
 
@@ -135,17 +130,27 @@ describe('같은 주문을 두 번 생산 처리해도 원료는 한 번만 빠�
     expect(Math.round((LOT_IN - lotKg('oil')) * 1000) / 1000).toBe(rows[0].used);
   });
 
-  it('옛 생산 근거가 남은 수량 변경은 원효과와 생산기록을 보존하고 사전 거절한다', async () => {
-    const items=[기름(),병()],order=주문(1000),{engine,lotKg,lots,rawJob,production}=harness(items,order);
-    await engine.reconcileOrderStock(order,OrderStatus.DISPATCHED);
-    expect(lotKg('oil')).toBe(Math.round((LOT_IN-277.2)*1000)/1000);
-    const fixed={...order,producedAt:'',items:[{itemId:'bottle',name:'생들기름/병/해피유통/300ml',quantity:900}]} as unknown as Order;
-    dbx.orders.set(order.id,structuredClone(fixed));
-    const before={order:structuredClone(dbx.orders.get(order.id)),raw:structuredClone(dbx.rawStates),lots:structuredClone(lots),ledger:structuredClone(dbx.ledger),product:dbx.stock.get('bottle'),productLots:structuredClone(dbx.lots.get('bottle')),attempt:dbx.orders.get(order.id).rawInventoryAttempt};
-    const tx=dbx.txCalls,rawCalls=rawJob.mock.calls.length,records=production.mock.calls.length;
-    await expect(engine.reconcileOrderStock(fixed,OrderStatus.DISPATCHED)).rejects.toThrow('기존 생산 근거');
-    expect(dbx.txCalls).toBe(tx);expect(rawJob).toHaveBeenCalledTimes(rawCalls);expect(production).toHaveBeenCalledTimes(records);
-    expect(dbx.orders.get(order.id)).toEqual(before.order);expect(dbx.rawStates).toEqual(before.raw);expect(lots).toEqual(before.lots);expect(dbx.ledger).toEqual(before.ledger);expect(dbx.stock.get('bottle')).toBe(1000);expect(dbx.stock.get('bottle')).toBe(before.product);expect(dbx.lots.get('bottle')).toEqual(before.productLots);expect(dbx.orders.get(order.id).rawInventoryAttempt).toBe(1);expect(before.attempt).toBe(1);
+  it('수량을 고쳐 재처리하면 새 수량으로 맞는다 (되돌린 뒤 다시 뺀다)', async () => {
+    const items = [기름(), 병()];
+    const order = 주문(1000);
+    const { engine, lotKg } = harness(items, order);
+
+    await engine.reconcileOrderStock(order, OrderStatus.DISPATCHED);
+    expect(lotKg('oil')).toBe(Math.round((LOT_IN - 277.2) * 1000) / 1000);
+
+    // 900병으로 고쳐서 다시 처리 → 249.48kg만 나가야 한다 (277.2가 남아 있으면 안 된다)
+    const fixed = { ...order, producedAt: '', items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: 900 }] } as unknown as Order;
+    dbx.orders.set(order.id, { ...fixed });
+    await engine.reconcileOrderStock(fixed, OrderStatus.DISPATCHED);
+
+    expect(lotKg('oil')).toBe(Math.round((LOT_IN - 249.48) * 1000) / 1000);
+    const 마지막차감 = 원장줄().filter(x => x.kind === 'consume').at(-1);
+    expect(마지막차감?.used).toBe(249.48);
+    expect(dbx.orders.get(order.id)?.rawInventoryAttempt).toBe(2);
+    expect(dbx.stock.get('bottle')).toBe(900);
+    expect(dbx.lots.get('bottle')?.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0)).toBe(900);
+    expect(dbx.orders.get(order.id)?.inventorySnapshots.production.stockDeltas).toContainEqual({ itemId: 'bottle', delta: 900 });
+    expect(dbx.orders.get(order.id)?.inventorySnapshots.production.productProducedLots).toHaveLength(1);
   });
 
   it('세 번을 눌러도 한 번과 같다', async () => {

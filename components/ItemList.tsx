@@ -1292,7 +1292,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
 
   return (
-    <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto' : 'h-full'} flex flex-col relative`}>
+    <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
       {onPreparePurchaseOrderBatch && <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         <button type="button" onClick={purchaseCart.openRecovery}>
           {purchaseCart.attempt && !['applied', 'cancelled'].includes(purchaseCart.recoveryResult?.status ?? '') ? '발주 확인 필요 1' : '발주 처리 기록'}
@@ -1873,7 +1873,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
-        <div className="flex flex-col gap-3 flex-none min-h-0">
+        <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
           <QueryFilterPanel id="lot-query-title" onReset={() => { setLotSearch(''); setLotKind('all'); setLotStatus('all'); setActiveTab('lots'); setLotFrom(''); setLotTo(''); setLotQuick('전체'); }}
  dateRow={<><div className={QUERY_FILTER_DATE_CLASS}><span>로트 입고일</span><DateRangeFilter label="로트 입고일" from={lotFrom} to={lotTo} quick={lotQuick} onChange={(from,to,quick)=>{setLotFrom(from);setLotTo(to);setLotQuick(quick);}}/></div></>}
  conditionRow={<><label className={QUERY_FILTER_FIELD_CLASS}>종류<SearchableSelect ariaLabel="로트 종류" className={QUERY_FILTER_CONTROL_CLASS} value={lotKind} onChange={value=>setLotKind(value as typeof lotKind)} options={[{value:'all',label:'전체'},{value:'raw',label:'벌크'},{value:'packed',label:'완제품'}]}/></label>
@@ -1898,7 +1898,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
               </button>
             </div></div>
 
-          <div className="flex-none min-h-0 custom-scrollbar">
+          <div className="flex-none lg:flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar">
             <div className="min-w-0">
             {lotView === 'list' ? (
               <section>

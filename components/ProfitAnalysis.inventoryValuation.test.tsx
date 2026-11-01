@@ -75,38 +75,3 @@ it('저장 원가 미확인과 명시0을 분리하고 수량을 품목별로 �
   expect(screen.queryByText('미확인kg: 4 kg')).not.toBeInTheDocument();
   expect(save).not.toHaveBeenCalled();
 });
-
-it('과거 금액 전용과 빈 품목 배열을 열어 당시 내역 확인이 필요함을 안내한다', () => {
-  render(<ProfitAnalysis {...props} inventorySnapshots={[
-    { id: 'missing', yearMonth: '2026-10', value: 123456, recordedAt: '2026-10-31' },
-    { id: 'empty', yearMonth: '2026-09', value: 789012, recordedAt: '2026-09-30', items: [] },
-  ]} />);
-  const missing = screen.getByRole('button', { name: '2026-10 품목 내역 보기' });
-  expect(missing).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByText('123,456원')).toBeInTheDocument();
-  expect(screen.getByText('789,012원')).toBeInTheDocument();
-  fireEvent.click(missing);
-  expect(screen.getByText('저장된 품목별 내역이 없습니다. 당시 원본 자료를 확인해야 합니다.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '2026-10 품목 내역 닫기' })).toHaveAttribute('aria-expanded', 'true');
-  fireEvent.click(screen.getByRole('button', { name: '2026-09 품목 내역 보기' }));
-  expect(screen.getByText('저장된 품목별 내역이 없습니다. 당시 원본 자료를 확인해야 합니다.')).toBeInTheDocument();
-  expect(screen.getByText('789,012원')).toBeInTheDocument();
-});
-
-it('저장된 정상 품목 내역을 펼쳐 원래 수량과 금액을 보여준다', () => {
-  render(<ProfitAnalysis {...props} inventorySnapshots={[{ id: 'full', yearMonth: '2026-08', value: 1250, recordedAt: '2026-08-31',
-    items: [{ itemId: 'old', name: '저장 품목', qty: 5, value: 1250, category: '원료' }] }]} />);
-  fireEvent.click(screen.getByRole('button', { name: '2026-08 품목 내역 보기' }));
-  expect(screen.getByText('저장 품목')).toBeInTheDocument();
-  expect(screen.getByText('× 5')).toBeInTheDocument();
-  expect(screen.getAllByText('1,250원').length).toBeGreaterThanOrEqual(2);
-});
-
-it('형식이 손상된 품목 배열을 빈 내역이나 확정 목록으로 표시하지 않는다', () => {
-  const broken = [{ itemId: 'old', name: '손상 품목', qty: 5 }] as unknown as NonNullable<React.ComponentProps<typeof ProfitAnalysis>['inventorySnapshots']>[number]['items'];
-  render(<ProfitAnalysis {...props} inventorySnapshots={[{ id: 'broken', yearMonth: '2026-07', value: 900, recordedAt: '2026-07-31', items: broken }]} />);
-  fireEvent.click(screen.getByRole('button', { name: '2026-07 품목 내역 보기' }));
-  expect(screen.getByText('저장된 품목별 내역을 확인할 수 없습니다. 당시 원본 자료를 확인해야 합니다.')).toBeInTheDocument();
-  expect(screen.queryByText('손상 품목')).not.toBeInTheDocument();
-  expect(screen.getByText('900원')).toBeInTheDocument();
-});

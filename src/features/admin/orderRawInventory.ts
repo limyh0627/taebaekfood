@@ -156,7 +156,18 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
     return traces;
   };
 
-  return { applyOrderRawUsage };
+  const reverseOrderRawUsage = async (order: Order, lineId?: string): Promise<void> => {
+    const plan=buildOrderRawReversalPlan({order,lineId,allItems,actorName,effectiveAt:new Date().toISOString()});
+    if(!plan)return;
+    const { job, results } = await runRawJob({jobId:plan.jobId,companyId:plan.companyId,source:plan.source,commands:plan.commands,options:{db}});
+    const failed = results.find(row => row.result.status === 'conflict' || row.result.status === 'rejected');
+    if (job.status !== 'complete' || failed) {
+      const detail = failed?.result.status === 'rejected' ? `${failed.result.code} ${failed.result.message}` : failed?.result.status === 'conflict' ? '작업 번호 충돌' : job.lastError ?? '';
+      throw new Error(`원료 복원 실패: 주문 ${order.id} ${detail}`);
+    }
+  };
+
+  return { applyOrderRawUsage, reverseOrderRawUsage };
 }
 
 

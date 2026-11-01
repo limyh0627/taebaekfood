@@ -9,22 +9,13 @@ it('배송지 미소유 객체는 공개 대조에서 제외하고 조회에는 
     expect(partnerEditPatch(initial, { ...initial, note: '메모' })).toEqual({ note: '메모' });
     expect(partnerEditPatch(initial, { ...initial, shipTos: [{ ...initial.shipTos[0], hidden: new Hidden() }] })).toEqual({});
 });
-it('수정 공개 필드만 허용하고 빈 이름·공백·명시 빈값에 새 정책을 만들지 않는다', () => {
-    expect(PARTNER_EDIT_FIELDS).toHaveLength(16);
+it('수정 공개15필드만 허용하고 빈 이름·공백·명시 빈값에 새 정책을 만들지 않는다', () => {
+    expect(PARTNER_EDIT_FIELDS).toHaveLength(15);
     expect(normalizePartnerEditRequest(request).patch).toEqual({ name: '' });
     expect(normalizePartnerEditRequest({ ...request, patch: { name: ' ', note: '' } }).patch).toEqual({ name: ' ', note: '' });
     for (const key of ['id', 'companyId', 'archived', 'region', 'isOemFactory', 'purchaseItems'])
         expect(() => normalizePartnerEditRequest({ ...request, patch: { [key]: '숨은변경' } })).toThrow();
     expect(() => normalizePartnerEditRequest({ ...request, patch: {} })).toThrow();
-});
-it('OEM 품목별 명시 조건은 0원과 단위·면세를 보존하고 누락·중복·오염을 거절한다', () => {
-    const rate={unit:'kg',grossUnitPrice:0,taxExempt:false};
-    const terms={version:2,rows:[{itemId:'품목',processing:rate,vendorPackaging:{unit:'box',grossUnitPrice:120,taxExempt:true}}]};
-    expect(normalizePartnerEditRequest({...request,patch:{oemReceiptTermsV2:terms}}).patch).toEqual({oemReceiptTermsV2:terms});
-    expect(partnerEditPatch({name:'상호'},{name:'상호',oemReceiptTermsV2:terms})).toEqual({oemReceiptTermsV2:terms});
-    for(const invalid of [{...terms,rows:[terms.rows[0],terms.rows[0]]},{...terms,rows:[{...terms.rows[0],processing:{...rate,grossUnitPrice:-1}}]},{...terms,rows:[{...terms.rows[0],processing:{...rate,grossUnitPrice:NaN}}]},{...terms,rows:[{...terms.rows[0],processing:{...rate,taxExempt:undefined}}]},{...terms,rows:[{...terms.rows[0],vendorPackaging:undefined}]},{...terms,rows:[{...terms.rows[0],extra:true}]}])
-      expect(()=>normalizePartnerEditRequest({...request,patch:{oemReceiptTermsV2:invalid}})).toThrow();
-    expect(decodePartnerEditOpening(partnerEditOpening({oemReceiptTermsV2:{version:9,rows:'손상'}}))).toEqual({oemReceiptTermsV2:{version:9,rows:'손상'}});
 });
 it('첫 선택은 회사와 보관 여부·공개값의 존재를 구분하고 숨은 필드를 노출하지 않는다', () => {
     const raw = { companyId: 'taebaek', name: '상호', archived: false, region: '숨음', isOemFactory: true };

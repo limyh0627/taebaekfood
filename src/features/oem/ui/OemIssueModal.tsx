@@ -7,27 +7,19 @@ import { readOemExternalStockEvidence, type OemExternalStockEvidenceRow } from '
 import type { OemExternalRow } from '../../admin/oemExternalStock';
 import type {IssueInput} from '../domain/oemManager';
 import {formatNumberKo as fmt} from '../../../shared/numberDisplay';
-import {OemConditionModal} from './OemConditionModal';
 
 // ── 외주 발주 (원료 내보내기) ────────────────────────────────────────────────
-export function IssueModal({ companyId, actorUid, partners, oemItems = [], rawItems, rawStockKg, issueDrafts, purchaseOrders, busy, onClose, onSubmit }: {
+export function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, purchaseOrders, busy, onClose, onSubmit }: {
   companyId:CompanyId; partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; busy: boolean;
-  actorUid?:string; oemItems?:Item[];
   purchaseOrders?: PurchaseOrder[];
   onClose: () => void;
   onSubmit: (v: IssueInput) => void;
 }) {
   const {partnerId,setPartnerId,date,setDate,rows,setRows,note,setNote,packagingSupply,setPackagingSupply,packagingConfirmed,setPackagingConfirmed,costStatus,shortage,canSave,submit,close}=useOemIssueDraft({companyId,partners,rawItems,rawStockKg,busy,onClose,onSubmit});
-  const [conditionsOpen,setConditionsOpen]=useState(false);
-  const candidates=partners.filter(p=>p.isOemFactory===true||(Array.isArray(p.oemReceiptTermsV2?.rows)&&p.oemReceiptTermsV2.rows.length>0));
-  const visiblePartners=candidates.length?candidates:partners;
-  const selectedOutside=partners.find(p=>p.id===partnerId&&!visiblePartners.some(candidate=>candidate.id===p.id));
 
   return (
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={close} bodyClassName="space-y-4">
         <ExternalDispatchEvidence companyId={companyId} orders={purchaseOrders ?? issueDrafts} />
-        <button type="button" disabled={busy} onClick={()=>setConditionsOpen(true)}>OEM 조건 관리</button>
-        {conditionsOpen&&<OemConditionModal companyId={companyId} actorUid={actorUid} partners={partners} items={oemItems} onClose={()=>setConditionsOpen(false)} />}
         <fieldset disabled={busy} className="contents"><p className="text-[11px] text-slate-400 leading-snug">
           우리 원료를 외주공장에 보냅니다. <b>본재고에서 빠지고 외주로 나갑니다</b>(전표 없음 — 우리 것의 이동).
           발주하면 <b>입고대기</b>에 뜨고, 돌아오면 거기서 가공입고 하시면 됩니다.
@@ -39,8 +31,9 @@ export function IssueModal({ companyId, actorUid, partners, oemItems = [], rawIt
             <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300">
               <option value="">— 선택 —</option>
-              {selectedOutside&&<option value={selectedOutside.id}>{selectedOutside.name} (선택 유지)</option>}
-              {visiblePartners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {/* 외주공장으로 표시된 거래처만 (isOemFactory). 없으면 하위호환으로 전체. */}
+              {(partners.some(p => p.isOemFactory) ? partners.filter(p => p.isOemFactory) : partners)
+                .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>

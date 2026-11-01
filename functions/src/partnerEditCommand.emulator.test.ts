@@ -33,18 +33,6 @@ describe.skipIf(!enabled)('거래처 편집 실제 영수증 트랜잭션', () =
             expect((await db.collection(name).get()).empty).toBe(true);
         await app.delete();
     });
-    it('OEM 품목 조건은 같은 요청 재시도와 원문 CAS를 지키며 미소유 거래처 필드를 보존한다', async () => {
-        const sentinel=own('partners/sentinel-'+randomUUID());await sentinel.set({companyId:'taebaek',note:'별도 관찰'});const untouched=await sentinel.get();
-        const reference=ref();await seed(reference,{isOemFactory:true,hidden:{keep:true}});
-        const terms={version:2 as const,rows:[{itemId:'합성품목',processing:{unit:'kg' as const,grossUnitPrice:0,taxExempt:false},vendorPackaging:{unit:'box' as const,grossUnitPrice:120,taxExempt:true}}]};
-        const input=await request(reference,{oemReceiptTermsV2:terms});
-        expect((await apply(input)).status).toBe('applied');expect((await apply(input)).status).toBe('applied');
-        expect((await target(reference).get()).data()).toMatchObject({oemReceiptTermsV2:terms,isOemFactory:true,hidden:{keep:true}});
-        const next=ref(reference.targetId), stale=await request(next,{oemReceiptTermsV2:{version:2,rows:[]}});
-        await target(reference).update({note:'동시 수정'});
-        expect((await apply(stale)).status).toBe('rejected');expect((await target(reference).get()).get('oemReceiptTermsV2')).toEqual(terms);
-        const after=await sentinel.get();expect(after.data()).toEqual(untouched.data());expect(after.updateTime?.isEqual(untouched.updateTime!)).toBe(true);
-    }, 20000);
     it('배송지 미소유 SDK Timestamp가 있어도 무관 메모 편집을 허용하고 원문 객체를 보존한다', async () => {
         const reference = ref(), stamp = admin.firestore.Timestamp.fromMillis(1234);
         await seed(reference, { shipTos: [{ id: '', name: null, internalUpdatedAt: stamp }] });

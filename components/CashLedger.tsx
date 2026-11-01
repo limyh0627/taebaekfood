@@ -83,7 +83,7 @@ export default function CashLedger({
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-4">
+    <div className="space-y-4">
       {unknownAccountSection}
       {/* ── 자금 현황 ── */}
       <div className="flex items-stretch gap-3 flex-wrap">
@@ -114,7 +114,7 @@ export default function CashLedger({
       </div>
 
       {/* ── 원장 ── */}
-      <div className="min-w-0 max-w-full bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Wallet size={16} className="text-slate-400" />
@@ -138,9 +138,8 @@ export default function CashLedger({
         {/*  **표는 좁은 화면에서 가로로 민다.** `w-full` 만 있으면 폭에 맞춰 칸이 찌그러지고,
              한글이 한 글자씩 세로로 쌓여 아예 못 읽는다(2026-09-03 사장님 지적).
              최소 너비를 줘야 `overflow-x-auto` 가 실제로 넘쳐서 스크롤이 생긴다. */}
-        <div className="min-w-0 max-w-full overflow-x-auto">
-          <table className="w-full min-w-[1060px] table-fixed text-xs">
-            <colgroup><col className="w-[72px]"/><col/><col className="w-[140px]"/><col className="w-[160px]"/><col className="w-[140px]"/><col className="w-[140px]"/><col className="w-[150px]"/><col className="w-[64px]"/></colgroup>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[880px] text-xs">
             <thead className="bg-slate-50/70 text-slate-400">
               <tr>
                 <th className="px-2 sm:px-4 py-2.5 text-left font-black whitespace-nowrap">일자</th>
@@ -163,26 +162,24 @@ export default function CashLedger({
               {ledger?.rows.map(({ entry, balance, adjustmentDelta: appliedAdjustment, confirmedAccountBalance }) => {
                 const rowAdjustment = appliedAdjustment ?? entry.balanceAdjustment?.delta;
                 const open = unmatchedCash(entry, settlements);
-                const matchedCount = new Set(settlements.filter(s => s.cashEntryId === entry.id && typeof s.statementId === 'string' && s.statementId.trim().length > 0).map(s => s.statementId)).size;
+                const matchedCount = settlements.filter(s => s.cashEntryId === entry.id).length;
                 return (
                   <tr key={entry.id} className="hover:bg-slate-50/50 group">
                     <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{entry.date.slice(5)}</td>
-                    <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-800 whitespace-normal [overflow-wrap:anywhere]">
+                    <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-800 min-w-[180px] whitespace-nowrap">
                       {entry.balanceAdjustment ? `${confirmedAccountBalance || entry.balanceAdjustment.confirmedBalance ? '확정 잔액' : '잔액 조정'} · 회계 미분류 — ${entry.balanceAdjustment.reason}` : entry.note || '-'}
                       {entry.balanceAdjustment && <p className="text-[11px] font-normal text-slate-500">{fmt(balance - (rowAdjustment ?? 0))}원 → {fmt(balance)}원 · 조정 {fmt(rowAdjustment ?? 0)}원</p>}
                       {matchedCount > 0 && (
-                        !entry.balanceAdjustment && !confirmedAccountBalance
-                          ? <button type="button" onClick={() => setMatchTarget(entry)} className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded hover:text-indigo-700">연결 전표 {matchedCount}건</button>
-                          : <span className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">연결 전표 {matchedCount}건</span>
+                        <span className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">전표 {matchedCount}건</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500 whitespace-normal [overflow-wrap:anywhere]">{entry.partnerName || '-'}</td>
-                    <td className="px-4 py-2.5 text-slate-400 whitespace-normal [overflow-wrap:anywhere]">
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{entry.partnerName || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">
                       {/* 쪼갠 줄(대출상환 원금+이자)이면 줄마다 계정 배지를 단다 */}
                       {(entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0).length ? (
                         <span className="flex flex-wrap gap-1">
                           {entry.lines!.filter(l => l.accountCode && l.amount !== 0).map((l, i) => (
-                            <span key={i} className="min-w-0 text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded whitespace-normal [overflow-wrap:anywhere]">
+                            <span key={i} className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
                               {l.note ? `${l.note} ` : ''}{l.accountCode} {codeName.get(l.accountCode) ?? ''} {fmt(l.amount)}
                             </span>
                           ))}
@@ -191,9 +188,9 @@ export default function CashLedger({
                         ? <span className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded">{entry.accountCode} {codeName.get(entry.accountCode) ?? ''}</span>
                         : <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">{entry.balanceAdjustment ? '회계 미분류' : '미지정'}</span>}
                     </td>
-                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums whitespace-nowrap">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) > 0 ? fmt(rowAdjustment ?? 0) : '') : entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
-                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-rose-600 tabular-nums whitespace-nowrap">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) < 0 ? fmt(Math.abs(rowAdjustment ?? 0)) : '') : entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
-                    <td className={`px-4 py-2.5 text-right font-black tabular-nums whitespace-nowrap ${balance < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(balance)}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) > 0 ? fmt(rowAdjustment ?? 0) : '') : entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-rose-600 tabular-nums">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) < 0 ? fmt(Math.abs(rowAdjustment ?? 0)) : '') : entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
+                    <td className={`px-4 py-2.5 text-right font-black tabular-nums ${balance < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(balance)}</td>
                     <td className="px-2 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
                         {!confirmedAccountBalance && <button disabled={!!entry.balanceAdjustment} onClick={() => { if (!entry.balanceAdjustment) setMatchTarget(entry); }} title="전표 매칭"

@@ -197,7 +197,7 @@ export async function editIssuedStatementCommand(id: string, patch: Partial<Issu
   await call({ statementId: id, patch: stripUndefined(patch), expectedRevision, operationId, releaseId, ...(approval ?? {}) });
 }
 
-export async function issueOemFeeVoucherCommand(input: { poId: string; perKg?: number; statement: IssuedStatement }): Promise<string> {
+export async function issueOemFeeVoucherCommand(input: { poId: string; perKg: number; statement: IssuedStatement }): Promise<string> {
   const releaseId = await activeReleaseId();
   const scoped = await companyScopedWriteData('issuedStatements', stripUndefined(input.statement) as Record<string, unknown>);
   const reason = statementBlockReason(scoped as Partial<IssuedStatement>);
@@ -217,7 +217,6 @@ export async function getOemReceiptRecoveryContext(companyId:CompanyId,poId:stri
 export async function receiveOemFinishedGoodsCommand(input: {
   poId: string; operationId: string; date: string; returns: { itemId: string; qty: number }[]; unitPricePerKg?: number;
   oemCostEvidence?: OemCostEvidence;
-  feeTermsV2?: import('../oemFeePlan').OemFeeTermsV2;
   bulk?: { material: string; kg: number; rawItemId?: string }[];
   releaseId?:string;
 },expectedCompanyId?:CompanyId,expectedActorUid?:string): Promise<{ status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }> {

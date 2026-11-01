@@ -2,7 +2,7 @@ import { encodeCatalogValue, decodeCatalogValue, type CatalogValue } from './cat
 import { cleanupValidId } from './partnerItemCleanup';
 import { documentId } from './documentId';
 export type { CatalogValue } from './catalogOrderReferenceProof';
-export const PARTNER_EDIT_FIELDS = ['name', 'ownerName', 'bizNo', 'tel', 'mobile', 'phone', 'fax', 'email', 'partnerType', 'type', 'defaultShipMethod', 'address', 'addressDetail', 'shipTos', 'note', 'oemReceiptTermsV2'] as const;
+export const PARTNER_EDIT_FIELDS = ['name', 'ownerName', 'bizNo', 'tel', 'mobile', 'phone', 'fax', 'email', 'partnerType', 'type', 'defaultShipMethod', 'address', 'addressDetail', 'shipTos', 'note'] as const;
 export type PartnerEditField = typeof PARTNER_EDIT_FIELDS[number];
 export const PARTNER_EDIT_OPERATIONS = 'partnerEditOperations';
 export interface PartnerEditReference {
@@ -76,28 +76,8 @@ export type PartnerEditShipTo = {
     archived?: unknown;
     defaultShipMethod?: unknown;
 };
-export type OemReceiptRateV2 = {unit:'kg'|'piece'|'box';grossUnitPrice:number;taxExempt:boolean};
-export type OemReceiptTermsV2 = {version:2;rows:{itemId:string;processing:OemReceiptRateV2;vendorPackaging:OemReceiptRateV2}[]};
-export function normalizeOemReceiptTermsV2(value: unknown): OemReceiptTermsV2 {
-    exact(value, ['version', 'rows']);
-    if (value.version !== 2 || !Array.isArray(value.rows)) throw Error('OEM 조건 형식을 확인해 주세요.');
-    const seen = new Set<string>();
-    const rate = (input: unknown): OemReceiptRateV2 => {
-        exact(input, ['unit', 'grossUnitPrice', 'taxExempt']);
-        if (!['kg', 'piece', 'box'].includes(String(input.unit)) || typeof input.grossUnitPrice !== 'number' || !Number.isFinite(input.grossUnitPrice) || input.grossUnitPrice < 0 || typeof input.taxExempt !== 'boolean') throw Error('OEM 단가와 단위를 확인해 주세요.');
-        return {unit:input.unit as OemReceiptRateV2['unit'],grossUnitPrice:input.grossUnitPrice,taxExempt:input.taxExempt};
-    };
-    const rows=value.rows.map(row => {
-        exact(row, ['itemId', 'processing', 'vendorPackaging']);
-        if (!documentId(row.itemId) || seen.has(row.itemId as string)) throw Error('OEM 조건 품목을 확인해 주세요.');
-        seen.add(row.itemId as string);
-        return {itemId:row.itemId as string,processing:rate(row.processing),vendorPackaging:rate(row.vendorPackaging)};
-    });
-    return {version:2,rows};
-}
-export type PartnerEditPatch = Partial<Record<Exclude<PartnerEditField, 'shipTos'|'oemReceiptTermsV2'>, string>> & {
+export type PartnerEditPatch = Partial<Record<Exclude<PartnerEditField, 'shipTos'>, string>> & {
     shipTos?: PartnerEditShipTo[];
-    oemReceiptTermsV2?: OemReceiptTermsV2;
 };
 const own = (row: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(row, key);
 const SHIP_FIELDS = ['id', 'name', 'archived', 'defaultShipMethod'] as const;
@@ -146,9 +126,6 @@ export function normalizePartnerEditRequest(v: unknown): PartnerEditRequest {
             if ((v.patch[k] as Record<string, unknown>[]).some(row => Object.keys(row).some(key => !SHIP_FIELDS.includes(key as typeof SHIP_FIELDS[number]))))
                 throw Error('배송지의 공개 편집 필드만 보내 주세요.');
             patch.shipTos = rows;
-        }
-        else if (k === 'oemReceiptTermsV2') {
-            patch.oemReceiptTermsV2 = normalizeOemReceiptTermsV2(v.patch[k]);
         }
         else {
             if (typeof v.patch[k] !== 'string')

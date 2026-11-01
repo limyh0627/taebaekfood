@@ -104,18 +104,3 @@ it('로트 입고일을 바꾸면 목록 페이지는 첫 페이지로 돌아간
  const items=[{id:'raw-many',companyId:'taebaek',name:'다수원료',type:'raw',subtype:'벌크',unit:'kg',stock:31,lots:Array.from({length:31},(_,i)=>({id:'lot-'+i,lotNo:'LOT-'+i,supplierName:'공급'+i,receivedDate:i===0?'2026-09-30':'2026-10-01',status:'active',kgIn:1,kgRemaining:1,createdAt:'2026-10-01T00:00:00Z'}))}] as React.ComponentProps<typeof ItemList>['items'];
  view({mode:'lots',items});fireEvent.click(screen.getByRole('button',{name:'다음'}));expect(screen.getByText('2 / 2')).toBeInTheDocument();fireEvent.change(screen.getByLabelText('로트 입고일 시작일'),{target:{value:'2026-09-01'}});expect(screen.getByText('1 / 2')).toBeInTheDocument();
 });
-
-it('로트는 부모 페이지에서 스크롤하고 일반 재고는 기존 높이를 유지한다',()=>{
- const {container,rerender}=view({mode:'lots'});
- const root=container.firstElementChild as HTMLElement;
- expect(root).toHaveClass('h-auto');expect(root).not.toHaveClass('lg:h-full');
- const query=screen.getByRole('region',{name:'검색조건'});
- const lotContainer=query.parentElement!;
- expect(lotContainer).toHaveClass('flex-none');expect(lotContainer).not.toHaveClass('lg:flex-1');
- const table=screen.getByRole('table');
- const resultContainer=table.closest('section')!.parentElement!.parentElement!;
- expect(resultContainer).toHaveClass('flex-none');expect(resultContainer).not.toHaveClass('lg:flex-1','lg:overflow-y-auto');
- rerender(<ItemList companyId="taebaek" items={[]} partners={[]} orderRequests={[]} confirmedOrders={[]} receivedOrders={[]} returnRequests={[]} inboundPartners={[]} rawMaterialLedger={[]}
- onUpdateItem={vi.fn()} onAddItem={vi.fn()} onUpdateOrderRequestQty={vi.fn()} onToggleConfirmRequestQty={vi.fn()} onConfirmRequest={vi.fn()} onConfirmRequests={vi.fn()} onBulkAddConfirmedOrders={vi.fn()} onConfirmAllRequests={vi.fn()} onFinishConfirmedOrder={vi.fn()} onUpdateConfirmedQty={vi.fn()} onRemoveConfirmedOrder={vi.fn()} onEditProduct={vi.fn()} onDeleteItem={vi.fn()} onAddAdjustmentRequest={vi.fn()} onAddRawMaterialEntry={vi.fn()} onDeleteRawMaterialEntry={vi.fn()} />);
- expect(container.firstElementChild).toHaveClass('h-full');expect(container.firstElementChild).not.toHaveClass('h-auto');
-});

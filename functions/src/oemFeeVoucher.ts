@@ -1,5 +1,5 @@
 import { preserveInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
-import { buildOemFeePlan, buildOemFeePlanV2,normalizeOemFeeTermsV2, oemFeeLineAmount as lineAmount, type OemFeeProductInput,type OemFeeSnapshotV2 } from './shared/oemFeePlan';
+import { buildOemFeePlan, oemFeeLineAmount as lineAmount, type OemFeeProductInput } from './shared/oemFeePlan';
 import { buildOemBatchCostPreview, finalizeOemBatchCost, oemFeeUnitKgFromSavedReceipt, validateOemCostIssueFingerprint, type OemBatchCost } from './shared/oemBatchCost';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
@@ -10,7 +10,7 @@ import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from '.
 import { commandHash, inventoryDocId, operationDocId } from './shared/rawInventoryCore';
 
 type Row = Record<string, any>;
-type Input = { poId: string; perKg?: number; statement: Row; releaseId: string };
+type Input = { poId: string; perKg: number; statement: Row; releaseId: string };
 const fail = (message: string): never => { throw new HttpsError('failed-precondition', message); };
 const invalid = (message: string): never => { throw new HttpsError('invalid-argument', message); };
 const ownCompany = (row: Row) => row.companyId ?? 'taebaek';
@@ -42,7 +42,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)) invalid('배포 전환 ID가 필요합니다.');
   const { poId, perKg, statement: supplied } = input;
   if (typeof poId !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(poId)
-    || (perKg !== undefined && (!finite(perKg) || perKg <= 0)) || !supplied || typeof supplied !== 'object' || Array.isArray(supplied)) invalid('가공비 입력이 잘못되었습니다.');
+    || !finite(perKg) || perKg <= 0 || !supplied || typeof supplied !== 'object' || Array.isArray(supplied)) invalid('가공비 입력이 잘못되었습니다.');
   const stmt = supplied as Row;
   const statementId = `OEMFEE-${poId}`;
   if (stmt.id !== statementId || stmt.orderId !== poId || stmt.type !== '매입'
@@ -63,7 +63,9 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     || sums.some((n: number, i: number) => n !== [stmt.totalSupply, stmt.totalTax, stmt.totalAmount][i])) invalid('가공비 전표 합계가 일치하지 않습니다.');
   const exempt = stmt.items.every((line: Row) => line.isTaxExempt === true);
   const taxable = stmt.items.every((line: Row) => line.isTaxExempt === false);
+  if (!exempt && !taxable) invalid('가공비 과세 기준이 섞였습니다.');
   const semantic = { ...business(stmt), companyId };
+  const payloadHash = hash({ statement: semantic, perKg });
   const poRef = db.collection('purchaseOrders').doc(poId);
   const statementRef = db.collection('issuedStatements').doc(statementId);
   const feeRef = db.collection('adjustmentRequests').doc(statementId);
@@ -72,38 +74,18 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
   const codeQuery = db.collection('accountCodes');
   const releaseGate = releaseGateRef(db);
   return db.runTransaction(async tx => {
-    const [poSnap, stmtSnap, feeSnap, batchStatements, codes, releaseSnap, receiptSnap] = await Promise.all([
+    const [poSnap, stmtSnap, feeSnap, batchStatements, codes, releaseSnap] = await Promise.all([
       tx.get(poRef), tx.get(statementRef), tx.get(feeRef), tx.get(sameBatchQuery), tx.get(codeQuery), tx.get(releaseGate),
-      tx.get(db.collection('oemReceiptOperations').doc(`oem-receive:${poId}`)),
     ]);
     assertReleaseActive(releaseSnap, input.releaseId);
     assertVoucherDateAllowed(releaseSnap, companyId, date);
     if (!poSnap.exists) fail('OEM 배치가 없습니다.');
     const po = poSnap.data()!;
-    let receiptData: Row | undefined = receiptSnap.data();
-    const serverTerms=receiptData?.oemFeeTermsV2,hasV2=serverTerms!==undefined;
-    let snapshotV2:OemFeeSnapshotV2|undefined;
-    if(hasV2){
-      if(perKg!==undefined)invalid('품목별 조건에는 이전 단일 kg 단가를 함께 보낼 수 없습니다.');
-      let terms;try{terms=normalizeOemFeeTermsV2(serverTerms);}catch{return fail('OEM 원입고 품목별 조건이 손상되었습니다.');}
-      const fee=feeSnap.data();
-      if(!receiptSnap.exists||receiptData?.companyId!==companyId||receiptData?.poId!==poId||po.oemReceiptOperationId!==`oem-receive:${poId}`||!feeSnap.exists||fee?.oemPoId!==poId||ownCompany(fee!)!==companyId||!po.oemFeeTermsV2||!fee?.oemFeeTermsV2||!po.oemFeeSnapshotV2||!fee?.oemFeeSnapshotV2
-        ||terms.companyId!==companyId||terms.partnerId!==(po.oemPartnerId??po.partnerId)||hash(terms)!==hash(po.oemFeeTermsV2)||hash(terms)!==hash(fee?.oemFeeTermsV2)
-        ||!receiptData.oemFeeSnapshotV2||hash(receiptData.oemFeeSnapshotV2)!==hash(po.oemFeeSnapshotV2)||hash(receiptData.oemFeeSnapshotV2)!==hash(fee?.oemFeeSnapshotV2))fail('OEM 원입고 품목별 조건·증빙이 변경되었습니다.');
-      snapshotV2=receiptData!.oemFeeSnapshotV2 as OemFeeSnapshotV2;
-      if(snapshotV2.version!==2||snapshotV2.companyId!==companyId||snapshotV2.partnerId!==terms.partnerId||!Array.isArray(snapshotV2.rows)||!Array.isArray(snapshotV2.bulk)||snapshotV2.rows.length!==terms.rows.length
-        ||snapshotV2.nonDuplicatePackagingConfirmed!==terms.nonDuplicatePackagingConfirmed
-        ||snapshotV2.rows.some(row=>{const term=terms.rows.find(entry=>entry.itemId===row.itemId);return !term||hash({...row.processing,quantity:undefined})!==hash(term.processing)||hash({...row.vendorPackaging,quantity:undefined})!==hash(term.vendorPackaging);})
-        ||snapshotV2.bulk.some(row=>!terms.bulk||row.grossUnitPrice!==terms.bulk.grossUnitPrice||row.taxExempt!==terms.bulk.taxExempt))fail('OEM 원입고 품목별 행 근거가 다릅니다.');
-    }else{
-      if(po.oemFeeTermsV2!==undefined||po.oemFeeSnapshotV2!==undefined||feeSnap.data()?.oemFeeTermsV2!==undefined||!finite(perKg)||perKg!<=0)invalid('가공비 단가 또는 원입고 조건이 잘못되었습니다.');
-      if(!exempt&&!taxable)invalid('가공비 과세 기준이 섞였습니다.');
-    }
-    const payloadHash=hasV2?hash({statement:semantic,feeTermsV2:serverTerms}):hash({statement:semantic,perKg});
+    let receiptData: Row | undefined;
     if(po.oemCostEvidenceSource==='receipt'){
       const receiptId=po.oemReceiptOperationId;
       if(typeof receiptId!=='string' || receiptId!==`oem-receive:${poId}`)fail('OEM 원가의 원입고 작업 ID가 없습니다.');
-      const receipt=receiptSnap;
+      const receipt=await tx.get(db.collection('oemReceiptOperations').doc(receiptId));
       receiptData=receipt.data();
       if(!receipt.exists || receipt.data()!.companyId!==companyId || receipt.data()!.poId!==poId || po.oemCostEvidence===undefined
         || hash(receipt.data()!.oemCostEvidence)!==hash(po.oemCostEvidence))fail('OEM 입고 시 고정한 원가 근거가 변경되었습니다.');
@@ -115,7 +97,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     if (feeSnap.exists) {
       const fee = feeSnap.data()!;
       if (ownCompany(fee) !== companyId || fee.type !== 'oem_fee' || fee.oemPoId !== poId
-        || (!hasV2&&fee.oemFeePerKg !== perKg) || fee.status !== 'pending' && fee.status !== 'processed') {
+        || fee.oemFeePerKg !== perKg || fee.status !== 'pending' && fee.status !== 'processed') {
         fail('OEM 가공비 확인 요청이 입고와 일치하지 않습니다.');
       }
     }
@@ -124,9 +106,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     const partner = await tx.get(db.collection('partners').doc(partnerId));
     if (!partner.exists || ownCompany(partner.data()!) !== companyId) fail('OEM 거래처 회사가 일치하지 않습니다.');
     if (!finite(po.oemReceivedKg) || po.oemReceivedKg <= 0) fail('가공입고 중량이 확인되지 않았습니다.');
-    const v2Plan=snapshotV2?buildOemFeePlanV2({...snapshotV2,accountCode:'540'}):undefined;
-    const gross = v2Plan?v2Plan.totalAmount:Math.round(po.oemReceivedKg * perKg!);
-    if(v2Plan&&(gross!==receiptData!.oemFeeTotalV2||gross!==feeSnap.data()!.oemTotal))fail('OEM 원입고 품목별 금액이 다릅니다.');
+    const gross = Math.round(po.oemReceivedKg * perKg);
     if (feeSnap.exists && feeSnap.data()!.oemTotal !== gross) fail('OEM 가공비 확인 요청 금액이 입고와 다릅니다.');
     if (gross <= 0 || stmt.totalAmount !== gross) fail('가공입고 중량·단가와 전표 금액이 다릅니다.');
     const poItems: Row[] = (po.items ?? []).filter((item: Row) => Number(item.quantity) > 0);
@@ -183,35 +163,31 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     const childDocs = await Promise.all(childIds.map(id => tx.get(db.collection('items').doc(id))));
     const children = new Map(childDocs.filter(snap => snap.exists).map(snap => [snap.id, snap.data()!]));
     const savedUnitKg = oemFeeUnitKgFromSavedReceipt(po as {items:{itemId:string;quantity:number}[]});
-    if(snapshotV2&&(snapshotV2.rows.length!==poItems.length||snapshotV2.rows.some(row=>!poItems.some(item=>item.itemId===row.itemId&&item.quantity===row.receivedQty))
-      ||snapshotV2.bulk.length!==bulk.length||snapshotV2.bulk.some(row=>!bulk.some(item=>item.rawItemId===row.rawItemId&&item.lotId===row.lotId&&item.kg===row.kg))
-      ||Math.round([...snapshotV2.rows.map(row=>row.receivedKg),...snapshotV2.bulk.map(row=>row.kg)].reduce((a,b)=>a+b,0)*1000)/1000!==po.oemReceivedKg))fail('OEM 원입고 품목·수량 근거가 다릅니다.');
     const productInputs: OemFeeProductInput[] = [];
     for (const [index, product] of products.entries()) {
       const poItem = poItems[index];
       if (!product.exists || ownCompany(product.data()!) !== companyId) fail('현재 회사의 OEM 전표 품목을 찾을 수 없습니다.');
       const item = product.data()!;
-      if (savedUnitKg || snapshotV2) {
+      if (savedUnitKg) {
         const lots: Row[] = Array.isArray(item.lots) ? item.lots : [];
         const matches = lots.filter(lot => lot.id === `lot-oem-${poId}-${poItem.itemId}`);
-        const row = snapshotV2?snapshotV2.rows.find(entry=>entry.itemId===poItem.itemId):po.oemBatchCost.rows.find((entry: Row) => entry.itemId === poItem.itemId);
-        if(!row) return fail('OEM 원입고 품목 근거가 없습니다.');
-        if (matches.length !== 1 || matches[0].poId !== poId || matches[0].qtyIn !== poItem.quantity || matches[0].kgIn !== (snapshotV2?(row as OemFeeSnapshotV2['rows'][number]).receivedKg:(row as Row).kg))
+        const row = po.oemBatchCost.rows.find((row: Row) => row.itemId === poItem.itemId);
+        if (matches.length !== 1 || matches[0].poId !== poId || matches[0].qtyIn !== poItem.quantity || matches[0].kgIn !== row.kg)
           fail('OEM 원입고 로트 수량·중량이 변경되었습니다.');
       }
       const finishedChildren = bomRows[index].docs.map(snap => snap.data())
         .filter(row => ['product', '완제품'].includes(children.get(row.child_id)?.type));
       const boxed = (finishedChildren.length === 1 && Number(finishedChildren[0].quantity ?? 1) > 1)
         || item.unit === '박스';
-      const kg = snapshotV2?snapshotV2.rows.find(row=>row.itemId===poItem.itemId)!.unitKg:savedUnitKg?.get(poItem.itemId) ?? (item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1));
+      const kg = savedUnitKg?.get(poItem.itemId) ?? (item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1));
       // 앱의 입력칸 coerce 정책으로 서버의 손상된 저장 kg가 0/fallback으로 바뀌지 않게 한다.
-      if (!Number.isFinite(kg * (perKg ?? 1))) fail('가공비 전표 줄이 OEM 입고 내역과 다릅니다.');
+      if (!Number.isFinite(kg * perKg)) fail('가공비 전표 줄이 OEM 입고 내역과 다릅니다.');
       productInputs.push({name:poItem.name,spec:item.spec ?? poItem.unit ?? '',qty:poItem.quantity,unitKg:kg});
     }
     const sent = (po.oemSent ?? []).reduce((sum: number, row: Row) => sum + Number(row.kg || 0), 0);
     let expected: ReturnType<typeof buildOemFeePlan>['lines'];
     try {
-      expected = v2Plan?v2Plan.lines:buildOemFeePlan({receivedKg:po.oemReceivedKg,sentKg:sent,perKg:perKg!,exempt,
+      expected = buildOemFeePlan({receivedKg:po.oemReceivedKg,sentKg:sent,perKg,exempt,
         accountCode:'540',products:productInputs,bulk:bulk.map(row => ({material:row.material,kg:row.kg}))}).lines;
     } catch { return fail('가공입고 중량과 전표 줄이 일치하지 않습니다.'); }
     if (hash(stmt.items) !== hash(expected)
@@ -291,11 +267,11 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
         || (existing.issueOperationId && (existing.issueOperationId !== statementId || existing.issuePayloadHash !== payloadHash
           || existing.issueVoucherNo !== existing.docNo))) fail('기존 가공비 전표와 요청 내용이 다릅니다.');
       if (!po.linkedStatementId) {
-        if (!hasV2&&po.oemFeePerKg !== undefined && po.oemFeePerKg !== perKg) fail('기존 가공비 단가가 변경되었습니다.');
-        tx.update(poRef, { linkedStatementId: statementId, ...(!hasV2?{oemFeePerKg:perKg}:{}), ...(batchCost ? {oemBatchCost:batchCost}: {}) });
+        if (po.oemFeePerKg !== undefined && po.oemFeePerKg !== perKg) fail('기존 가공비 단가가 변경되었습니다.');
+        tx.update(poRef, { linkedStatementId: statementId, oemFeePerKg: perKg, ...(batchCost ? {oemBatchCost:batchCost}: {}) });
       }
-      else if (!hasV2&&((existing.issueOperationId && po.oemFeePerKg !== perKg)
-        || (po.oemFeePerKg !== undefined && po.oemFeePerKg !== perKg))) fail('기존 가공비 단가가 변경되었습니다.');
+      else if ((existing.issueOperationId && po.oemFeePerKg !== perKg)
+        || (po.oemFeePerKg !== undefined && po.oemFeePerKg !== perKg)) fail('기존 가공비 단가가 변경되었습니다.');
       if (feeSnap.exists && feeSnap.data()!.status === 'pending') tx.update(feeRef, { status: 'processed', processedAt: new Date().toISOString() });
       return statementId;
     }
@@ -308,7 +284,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     for(const update of costLotUpdates.values()) tx.update(update.ref,update.patch);
     tx.create(statementRef, { ...stmt, companyId, docNo, issueOperationId: statementId,
       issuePayloadHash: payloadHash, issueVoucherNo: docNo });
-    tx.update(poRef, { linkedStatementId: statementId, ...(!hasV2?{oemFeePerKg:perKg}:{}), ...(batchCost ? {oemBatchCost:batchCost}: {}) });
+    tx.update(poRef, { linkedStatementId: statementId, oemFeePerKg: perKg, ...(batchCost ? {oemBatchCost:batchCost}: {}) });
     if (feeSnap.exists && feeSnap.data()!.status === 'pending') tx.update(feeRef, { status: 'processed', processedAt: new Date().toISOString() });
     return statementId;
   });

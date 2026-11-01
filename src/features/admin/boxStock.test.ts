@@ -28,9 +28,6 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
-  getDocFromServer: async (ref:any)=>{const snap=await (async (ref: any) => ref.col === 'items'
-    ? { exists: () => store.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
-    : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) })(ref);return {...snap,metadata:{fromCache:false,hasPendingWrites:false}};},
   getDoc: async (ref: any) => ref.col === 'items'
     ? { exists: () => store.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
     : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) },

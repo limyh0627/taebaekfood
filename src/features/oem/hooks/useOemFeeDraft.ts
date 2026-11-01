@@ -1,4 +1,3 @@
-import {buildOemFeePlanV2} from '../../../shared/oemFeePlan';
 import { useEffect, useRef, useState } from 'react';
 import { today } from '../../../shared/day';
 import type { CompanyId, Item, PurchaseOrder } from '../../../shared/types';
@@ -37,15 +36,12 @@ export function useOemFeeDraft(options: OemFeeDraftOptions) {
         return; captured.fee = value; paint(n => n + 1); };
     const date = captured.date, fee = captured.fee;
     const kg = po.oemReceivedKg ?? 0;
-    let snapshotPlan: ReturnType<typeof buildOemFeePlanV2> | undefined, snapshotError = '';
-    if (po.oemFeeSnapshotV2) try { snapshotPlan = buildOemFeePlanV2({...po.oemFeeSnapshotV2,accountCode:'540'}); } catch(e) { snapshotError=(e as Error).message; }
-    const money = snapshotPlan ? {supply:snapshotPlan.totalSupply,tax:snapshotPlan.totalTax,total:snapshotPlan.totalAmount} : processingFee(kg, Number(fee) || 0);
+    const money = processingFee(kg, Number(fee) || 0);
     const reconciliation = reconcileOemBatch(po, items, companyId, orderUnitInputs);
-    const canSubmit = !(busy || kg <= 0 || !!po.oemFeeSnapshotV2 && (!snapshotPlan || snapshotPlan.totalAmount === 0));
-    const submit = () => { if (!editable() || (latest.current.po.oemReceivedKg ?? 0) <= 0) return;
-        if (latest.current.po.oemFeeSnapshotV2) { try { if (buildOemFeePlanV2({...latest.current.po.oemFeeSnapshotV2,accountCode:'540'}).totalAmount===0) return; } catch { return; } }
-        options.onSubmit({ unitPricePerKg: Number(fee) || 0, date }); };
+    const canSubmit = !(busy || kg <= 0);
+    const submit = () => { if (!editable() || (latest.current.po.oemReceivedKg ?? 0) <= 0)
+        return; options.onSubmit({ unitPricePerKg: Number(fee) || 0, date }); };
     const close = () => { if (editable())
         options.onClose(); };
-    return { date, fee, setDate, setFee, kg, money, snapshotPlan, snapshotError, reconciliation, canSubmit, submit, close };
+    return { date, fee, setDate, setFee, kg, money, reconciliation, canSubmit, submit, close };
 }

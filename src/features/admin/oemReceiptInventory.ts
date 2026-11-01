@@ -15,7 +15,6 @@ export interface OemReceiptItemChange {
 
 export interface OemReceiptInventoryInput {
   oemCostEvidence?: OemCostEvidence;
-  feeTermsV2?: import('../../shared/oemFeePlan').OemFeeTermsV2;
   companyId: CompanyId;
   poId: string;
   operationId: string;

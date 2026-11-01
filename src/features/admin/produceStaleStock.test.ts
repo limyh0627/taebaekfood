@@ -27,11 +27,6 @@ vi.mock('firebase/firestore', () => ({
   setDoc: async (ref: any, data: any) => { dbx.ledger.set(ref.id, data); },
   deleteDoc: async (ref: any) => { dbx.ledger.delete(ref.id); },
   //  items도 읽는다 — 재고 판정이 DB를 보게 됐으므로 진짜와 같게 흉내낸다.
-  getDocFromServer: async (ref:any)=>{const snap=await (async (ref: any) => (ref.col === 'items'
-    ? { exists: () => dbx.stock.has(ref.id), data: () => ({
-        stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
-      }) }
-    : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }))(ref);return {...snap,metadata:{fromCache:false,hasPendingWrites:false}};},
   getDoc: async (ref: any) => (ref.col === 'items'
     ? { exists: () => dbx.stock.has(ref.id), data: () => ({
         stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
