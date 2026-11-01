@@ -1,5 +1,12 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+
+## 2026-11-02 c7b11e3 배포와 코드 대조
+
+2026-11-02 c7b11e3 소스의 함수 4개와 양 Hosting을 배포하고 공개 파일 181개 SHA 일치를 확인했다. 다른 함수 66개의 revision과 updateTime은 배포 전후 동일하다. FCM 서비스워커 해시는 유지됐다. 전체 함수가 c7 소스로 새로 배포된 것은 아니다. 실제 업무 데이터 쓰기 시험, Rules·index·Storage·IAM 변경은 수행하지 않았다. 품목별 OEM 편의조건은 partners의 oemReceiptTermsV2에 보관한다. 편의조건은 회사나 품목의 권위 증거가 아니며 입고 처리에서 독립 검증한다. 입고 시 purchaseOrders와 adjustmentRequests에 각각 oemFeeTermsV2·oemFeeSnapshotV2, oemReceiptOperations에 두 필드와 oemFeeTotalV2를 조건부로 저장한다. 근거는 functions/src/shared/partnerEditCommand.ts와 functions/src/oemReceiptCommand.ts다.
+
+기존 inventorySnapshots.items는 월말 자동 저장에서도 같은 재고 평가 줄을 기록한다(functions/src/index.ts). 기존 월 문서는 덮어쓰지 않으며 과거 빈 배열이나 누락을 재고 0으로 단정하지 않는다. 108개 표와 원래 도형·관계는 유지하고 운영 문서 수는 새로 측정하지 않았다. 미완성 부분생산·분할 변경은 이번 배포에 포함하지 않는다.
+
 ## 2026-11-01 배포 상태 동기화
 
 배포 소스202d9b6의 공개 Functions70개·Rules·양 Hosting 원격 대조를 완료했다. 첨부 양식 ERD의108개 표와 기존 도형·필드 이름·형식·관계를 유지하고 배포일·설명만 갱신했다. 문서 수는 여전히10/21 역사 관측이며 신규 표의 운영 문서 수는 측정하지 않았다. 내부 수동 정정 모듈이 배포 소스에 포함된 사실과 공개 정정 실행·운영 적용이 미완인 상태를 구분한다. 아래10/29 SHA와 미배포 설명은 그 당시의 이력이며, 현재 배포 결과는 이 절과 DB-CHANGELOG.md를 따른다.
