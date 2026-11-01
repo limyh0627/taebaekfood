@@ -1,10 +1,37 @@
-import {expect,it,vi} from 'vitest';
+import {expect,it,vi,afterAll} from 'vitest';
 import {Timestamp} from 'firebase-admin/firestore';
-import {options,parseOriginals,buildLocalPlan,run,paths,selfCheck,type Dependencies} from './execute-account-noncash-removal-20261015.mts';
-import {prepareAccountNoncashRemoval,SOURCE_HASHES,type Document} from './shared/accountNoncashRemoval.ts';
-import {encode,hash} from './shared/zeroItemPriceBackup.ts';
+import type {Dependencies} from './execute-account-noncash-removal-20261015.mts';
+import type {Document} from './shared/accountNoncashRemoval.ts';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {resolve,dirname} from 'node:path';
+import {require as loadTs} from 'tsx/cjs/api';
+const currentRoot=resolve('.'),snapshot=mkdtempSync(resolve('work/execute-account-history-'));
+const commit='427125907c984ba94f85d3ca8c9746608c57736b';
+const scripts=['scripts/execute-account-noncash-removal-20261015.mts','scripts/diag-account-noncash-equivalence-readonly-20261015.mts','scripts/shared/accountNoncashRemoval.ts','scripts/diag-zero-item-price-20261015.mts','scripts/prepare-zero-item-price-dry-20261015.mts','scripts/shared/zeroItemPriceMigration.ts','scripts/shared/zeroItemPriceBackup.ts'];
+let cleaned=false;
+function cleanup(){if(cleaned)return;process.chdir(currentRoot);if(!snapshot.startsWith(resolve(currentRoot,'work')+'\\'))throw Error('snapshot path outside work');rmSync(snapshot,{recursive:true});cleaned=true;}
+afterAll(cleanup);
+let api:typeof import('./execute-account-noncash-removal-20261015.mts'), domain:typeof import('./shared/accountNoncashRemoval.ts'),backup:typeof import('./shared/zeroItemPriceBackup.ts'),diagnostic:typeof import('./diag-account-noncash-equivalence-readonly-20261015.mts');
+try{
+ for(const file of [...scripts,'src/features/admin/financials.ts','src/shared/autoJournal.ts','src/shared/accountChart.ts','src/shared/types.ts','src/shared/services/firebaseService.ts','functions/src/shared/cashLineProjection.ts']){const target=resolve(snapshot,file);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,execFileSync('git',['show',commit+':'+file]));}
+ for(const file of scripts){const normalize=(path:string)=>readFileSync(path,'utf8').replace(/\r\n/g,'\n');if(normalize(resolve(snapshot,file))!==normalize(resolve(currentRoot,file)))throw Error('현재 실행 스크립트 변경: '+file);}
+ for(const path of ['src/features/admin/financials.ts','src/shared/autoJournal.ts','src/shared/accountChart.ts']){const target=resolve(snapshot,path),bytes=readFileSync(target,'utf8');writeFileSync(target,bytes.replace(/\r?\n/g,'\r\n'));}
+ loadTs(resolve(currentRoot,'src/shared/accountChart.ts'),import.meta.url);
+ process.chdir(snapshot);
+ api=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scripts[0])).href);
+ domain=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scripts[2])).href);
+ backup=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scripts[6])).href);
+ diagnostic=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scripts[1])).href);
+}catch(error){cleanup();throw error;}
+const {options,parseOriginals,buildLocalPlan,run,paths,selfCheck,readCurrent}=api;
+const {prepareAccountNoncashRemoval,SOURCE_HASHES}=domain;
+const {encode,hash}=backup;
 const docs=():Document[]=>Array.from({length:4},(_,i)=>({path:'accountCodes/p'+i,data:{companyId:i<2?'taebaek':'punghoe',noncash:true,name:'합성',id:'stored-'+i},version:{seconds:10,nanoseconds:i+1}}));
 function harness(){const data=new Map<string,string>(),writes:string[]=[];const plan=prepareAccountNoncashRemoval(docs(),SOURCE_HASHES);const token=vi.fn(async()=> 'synthetic');const read=vi.fn(async()=>docs());const io={exists:(p:string)=>data.has(p),read:(p:string)=>data.get(p)??'source',write:(p:string,t:string)=>{if(data.has(p))throw Error('존재');data.set(p,t);writes.push(p);},remove:(p:string)=>{data.delete(p);}};const dep:Dependencies={io,build:()=>plan,token,read};return {data,writes,plan,token,read,dep};}
+it('원본에 쓰기 호출을 주입하면 계획 출력이나 인증 전에 차단한다',async()=>{const h=harness(),target=resolve(snapshot,'src/shared/services/firebaseService.ts'),original=readFileSync(target);try{writeFileSync(target,Buffer.concat([original,Buffer.from('\nupdateDoc(docRef, {stock: 1});\n')]));await expect(run(['--prepare'],h.dep)).rejects.toThrow();expect(h.writes).toEqual([]);expect(h.token).not.toHaveBeenCalled();expect(h.read).not.toHaveBeenCalled();}finally{writeFileSync(target,original);}});
+it('현재 원본은 역사 고정 SHA와 달라 거절한다',()=>{expect(()=>diagnostic.verifySources((path:string)=>readFileSync(resolve(currentRoot,path.slice(snapshot.length+1))))).toThrow();});
 it('자체검증은 인증·조회·출력 없이 종료한다',()=>{expect(selfCheck()).toMatchObject({productionRead:false,productionWrites:0,outputWritten:false});});
 it.each([['--apply'],['--undo','--auth=firebase-cli'],['--apply','--undo'],['--prepare','--auth=firebase-cli'],['--inspect','--auth=other'],['--prepare','--unknown'],['--apply','--auth=firebase-cli','--approved-hash=x']].map(args=>({args})))('모드·승인 누락  거절한다',({args})=>{expect(()=>options(args)).toThrow();});
 it('원본SHA가 다르면 계획을 만들지 않는다',()=>{expect(()=>buildLocalPlan('{}','{}')).toThrow('SHA');});
@@ -18,4 +45,4 @@ it('실제4응답+사후원문이맞아야receipt를쓰고중복은차단한다'
 it('사후조회나receipt저장실패는unknown으로보존하고모든쓰기재개를막는다',async()=>{for(const kind of ['after','receipt']){const h=harness();await run(['--prepare'],h.dep);h.dep.transport=vi.fn(async()=>({status:200,body:{writeResults:h.plan.documents.map(()=>({updateTime:'2026-10-15T00:00:00.123456789Z'}))}}));h.read.mockResolvedValueOnce(docs()).mockResolvedValueOnce(kind==='after'?docs():h.plan.documents.map(r=>({path:r.path,data:r.after,version:{seconds:1792022400,nanoseconds:123456789}})));if(kind==='receipt'){const write=h.dep.io.write;h.dep.io.write=(p,t)=>{if(p===paths.applyReceipt)throw Error('디스크');write(p,t);};}await expect(run(['--apply','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep)).rejects.toThrow('불확실');expect(h.data.has(paths.lock)).toBe(true);expect(h.data.has(paths.applyReceipt)).toBe(false);expect(JSON.parse(h.data.get(paths.applyFailure)!).outcome).toBe('unknown');await expect(run(['--undo','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep)).rejects.toThrow();}});
 it('같은계획적용뒤실receipt와intent연결로만복원하고복원뒤재적용은막는다',async()=>{const h=harness();await run(['--prepare'],h.dep);const applied={seconds:1792022400,nanoseconds:123456789},undone={seconds:1792022401,nanoseconds:1};const after=h.plan.documents.map(r=>({path:r.path,data:r.after,version:applied})),before=h.plan.documents.map(r=>({path:r.path,data:r.before,version:undone}));h.read.mockResolvedValueOnce(docs()).mockResolvedValueOnce(after);h.dep.transport=vi.fn(async()=>({status:200,body:{writeResults:h.plan.documents.map(()=>({updateTime:'2026-10-15T00:00:00.123456789Z'}))}}));await run(['--apply','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep);h.read.mockResolvedValueOnce(after).mockResolvedValueOnce(before);h.dep.transport=vi.fn(async()=>({status:200,body:{writeResults:h.plan.documents.map(()=>({updateTime:'2026-10-15T00:00:01.000000001Z'}))}}));expect(await run(['--undo','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep)).toMatchObject({writes:4});expect(h.data.has(paths.undoReceipt)).toBe(true);await expect(run(['--apply','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep)).rejects.toThrow('복원');h.read.mockResolvedValueOnce(before);expect(await run(['--inspect','--auth=firebase-cli'],h.dep)).toMatchObject({state:'undone',writes:0});});
 it('적용receipt의요청연결이손상됐으면인증전거절한다',async()=>{const h=harness();await run(['--prepare'],h.dep);h.data.set(paths.applyReceipt,JSON.stringify({version:1,operationId:'wrong',receipt:{}}));h.data.set(paths.applyIntent,JSON.stringify({version:1,mode:'apply',planHash:hash(h.plan),operationId:'actual'}));await expect(run(['--undo','--auth=firebase-cli','--approved-hash='+hash(h.plan)],h.dep)).rejects.toThrow();expect(h.token).not.toHaveBeenCalled();});
-it('fixed batchGet은전체4목록과나노초를검증하며중복·누락은거절한다',async()=>{const {readCurrent}=await import('./execute-account-noncash-removal-20261015.mts');const h=harness();const rows=h.plan.documents.map(r=>({found:{name:'projects/taebaek-3abe4/databases/(default)/documents/'+r.path,updateTime:'2026-10-15T00:00:00.123456789Z',fields:{companyId:{stringValue:'taebaek'}}}}));const request=vi.fn(async(_url:string,_options:RequestInit)=>({status:200,json:async()=>rows}));expect((await readCurrent(h.plan,'synthetic',request as any))[0].version.nanoseconds).toBe(123456789);expect(JSON.parse(request.mock.calls[0][1].body as string).documents).toHaveLength(4);rows[1]=rows[0];await expect(readCurrent(h.plan,'synthetic',request as any)).rejects.toThrow();});
+it('fixed batchGet은전체4목록과나노초를검증하며중복·누락은거절한다',async()=>{const h=harness();const rows=h.plan.documents.map(r=>({found:{name:'projects/taebaek-3abe4/databases/(default)/documents/'+r.path,updateTime:'2026-10-15T00:00:00.123456789Z',fields:{companyId:{stringValue:'taebaek'}}}}));const request=vi.fn(async(_url:string,_options:RequestInit)=>({status:200,json:async()=>rows}));expect((await readCurrent(h.plan,'synthetic',request as any))[0].version.nanoseconds).toBe(123456789);expect(JSON.parse(request.mock.calls[0][1].body as string).documents).toHaveLength(4);rows[1]=rows[0];await expect(readCurrent(h.plan,'synthetic',request as any)).rejects.toThrow();});

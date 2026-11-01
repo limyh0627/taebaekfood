@@ -2,25 +2,26 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
+import {appendFileSync,writeFileSync} from 'node:fs';
 import { cashOriginalHash, mutateCashEntry } from './cashMutationCommand';
 import { issueVoucher, voucherSequenceKey } from './voucherIssue';
 import { issuePayrollVoucher } from './payrollVoucher';
 import { recordLoanMovement } from './loanMovementCommand';
 import { recordInterCompanyTransfer } from './interCompanyTransferCommand';
 import { replaceManualSettlementBatch } from './manualSettlementBatchCommand';
-const projectId = 'demo-taebaekfood-local';
+
+describe.skipIf(process.env.FAILURE_REPAIR_SDK !== 'true')('격리 로컬 SDK', () => {
+const projectId = 'demo-failure-repair-20261101';
 const run = `cashmut-${randomUUID()}`;
 let app: App, db: Firestore;
-const owned = new Set<string>();
-async function seed(path: string, row: Record<string, unknown>) { owned.add(path); await db.doc(path).set(row); }
-beforeAll(() => {
-  if (!/^(localhost|127\.0\.0\.1):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '')) throw new Error('Local demo Firestore emulator required');
-  app = initializeApp({ projectId }, run); db = getFirestore(app);
-});
-afterAll(async () => {
-  if (db) for (const path of owned) await db.doc(path).delete();
-  if (app) await deleteApp(app);
-});
+const owned=new Set<string>(),planned=new Set<string>(),stem='work/failure-sdk-'+run,sentinelPath='items/'+run+'-sentinel';let sentinel:any;
+function markIntent(path:string){appendFileSync(stem+'-paths.jsonl',JSON.stringify({intent:path})+'\n');}
+function track(db0:Firestore):Firestore{return new Proxy(db0,{get(target,key){if(key==='runTransaction')return async(fn:any,...options:any[])=>{let writes:string[]=[];const result=await (target.runTransaction as any)(async(tx:any)=>{writes=[];const reads=new Map<string,any>();const wrapped=new Proxy(tx,{get(inner,k){if(k==='get')return async(ref:any)=>{const snap=await inner.get(ref);if(ref.path)reads.set(ref.path,snap);return snap;};if(['create','set','update','delete'].includes(String(k)))return(ref:any,...args:any[])=>{const path=ref.path,snap=reads.get(path);if(!owned.has(path)&&!planned.has(path)&&!path.includes(run))throw Error('unexpected write '+path);if(!owned.has(path)&&k!=='create'&&(!snap||snap.exists))throw Error('write path not proven absent '+path);markIntent(path);writes.push(path);return inner[k](ref,...args);};const v=inner[k];return typeof v==='function'?v.bind(inner):v;}});return fn(wrapped);},...options);for(const path of writes)owned.add(path);return result;};const v=(target as any)[key];return typeof v==='function'?v.bind(target):v;}}) as Firestore;}
+async function seed(path:string,row:Record<string,unknown>){markIntent(path);const ref=db.doc(path);if(owned.has(path))await ref.set(row);else{if((await ref.get()).exists)throw Error('seed preexisting '+path);await ref.create(row);owned.add(path);}}
+async function start(){if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8082'||process.env.GCLOUD_PROJECT!=='demo-failure-repair-20261101'||process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.FIREBASE_CONFIG)throw Error('isolated emulator required');writeFileSync(stem+'-paths.jsonl','',{flag:'wx'});app=initializeApp({projectId:'demo-failure-repair-20261101'},run);db=track(getFirestore(app));const ref=db.doc(sentinelPath);if((await ref.get()).exists)throw Error('sentinel exists');await ref.create({marker:run});sentinel=await ref.get();}
+async function finish(){if(!db)return;for(const path of owned){await db.doc(path).delete();expect((await db.doc(path).get()).exists,path).toBe(false);}if(sentinel){const snap=await db.doc(sentinelPath).get();expect(snap.data()).toEqual(sentinel.data());expect(snap.updateTime).toEqual(sentinel.updateTime);await db.doc(sentinelPath).delete();expect((await db.doc(sentinelPath).get()).exists).toBe(false);}writeFileSync(stem+'-cleanup.json',JSON.stringify({run,projectId:'demo-failure-repair-20261101',owned:[...owned],planned:[...planned],sentinelPreserved:!!sentinel,allAbsent:true},null,2),{flag:'wx'});await deleteApp(app);}
+beforeAll(start);
+afterAll(finish);
 async function setup(suffix: string) {
   const cashId = `${run}-${suffix}`, partnerId = `${cashId}-partner`, statementId = `${cashId}-statement`, settlementId = `${cashId}-settlement`;
   const original = { companyId: 'taebaek', date: '2026-10-03', dir: '출금', amount: 100, accountCode: '253', partnerId, docNo: '261003-001' };
@@ -31,7 +32,7 @@ async function setup(suffix: string) {
   await seed(`partners/${partnerId}`, { companyId: 'taebaek', name: '합성 거래처' });
   await seed(`issuedStatements/${statementId}`, { companyId: 'taebaek', partnerId, type: '매입', tradeDate: '2026-10-03', totalSupply: 200, totalTax: 0, totalAmount: 200, items: [{ accountCode: '802', supply: 200, tax: 0, total: 200 }] });
   await seed(`settlements/${settlementId}`, { companyId: 'taebaek', statementId, cashEntryId: cashId, amount: 100, manual: true });
-  owned.add(`appMeta/partnerPaymentState_taebaek_${partnerId}`);
+  planned.add(`appMeta/partnerPaymentState_taebaek_${partnerId}`);
   return { cashId, partnerId, statementId, settlementId, original };
 }
 describe('cash full mutation actual SDK', () => {
@@ -46,8 +47,8 @@ describe('cash full mutation actual SDK', () => {
     const ownedRow = { companyId: 'taebaek', cashEntryId: x.cashId, statementId: tradeId, amount: 60, serverOwned: true };
     await seed(`settlements/${ownedId}`, ownedRow);
     await seed('appMeta/partnerPaymentCutover_taebaek', { companyId: 'taebaek', enabled: true, legacyWritersBlocked: true, auditPassed: true });
-    const operationId = `${x.cashId}-batch`; owned.add(`manualSettlementBatchOperations/${operationId}`);
-    owned.add(`settlements/manual-${operationId}-${x.statementId}`);
+    const operationId = `${x.cashId}-batch`; planned.add(`manualSettlementBatchOperations/${operationId}`);
+    planned.add(`settlements/manual-${operationId}-${x.statementId}`);
     const input = { operationId, releaseId: run, cashEntryId: x.cashId, partnerId: x.partnerId,
       expectedPartnerRevision: 0, allocations: [{ statementId: x.statementId, amount: 60 }] };
     await expect(replaceManualSettlementBatch(db, 'taebaek', 'uid', input)).rejects.toThrow();
@@ -68,8 +69,8 @@ describe('cash full mutation actual SDK', () => {
     await seed(`settlements/${ownedId}`, ownedRow);
     const counterId = voucherSequenceKey('taebaek', cash.date, ''); await seed(`appMeta/${counterId}`, { companyId: 'taebaek', tradeDate: cash.date, prefix: '', last: 7 });
     const operationId = `${x.cashId}-batch`;
-    owned.add(`manualSettlementBatchOperations/${operationId}`);
-    owned.add(`settlements/manual-${operationId}-${x.statementId}`);
+    planned.add(`manualSettlementBatchOperations/${operationId}`);
+    planned.add(`settlements/manual-${operationId}-${x.statementId}`);
     const input = { operationId, releaseId: run, cashEntryId: x.cashId, partnerId: x.partnerId,
       expectedPartnerRevision: 0, allocations: [{ statementId: x.statementId, amount: 61 }] };
     await expect(replaceManualSettlementBatch(db, 'taebaek', 'uid', input)).rejects.toThrow();
@@ -92,15 +93,15 @@ describe('cash full mutation actual SDK', () => {
     await seed(`issuedStatements/${statementId}`, source);
     const cash = { companyId: 'taebaek', date: '2026-10-03', dir: '출금', amount: 100, accountCode: '275', linkedAccrualStatementId: statementId, docNo: '261003-001' };
     await seed(`cashEntries/${id}`, cash); await seed(`cashEntries/${otherId}`, { ...cash, amount: 50 });
-    const bad = `${id}-bad`; owned.add(`voucherMutationOperations/${bad}`);
+    const bad = `${id}-bad`; planned.add(`voucherMutationOperations/${bad}`);
     await expect(mutateCashEntry(db, 'taebaek', 'uid', { operationId: bad, cashEntryId: id, action: 'edit', expectedRevision: 0,
       expectedCashHash: cashOriginalHash(cash), releaseId: run, patch: { amount: 151 } })).rejects.toThrow('잔액');
     expect((await db.doc(`cashEntries/${id}`).get()).data()).toEqual(cash);
-    const edit = `${id}-edit`; owned.add(`voucherMutationOperations/${edit}`);
+    const edit = `${id}-edit`; planned.add(`voucherMutationOperations/${edit}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { operationId: edit, cashEntryId: id, action: 'edit', expectedRevision: 0,
       expectedCashHash: cashOriginalHash(cash), releaseId: run, patch: { amount: 150 } });
     const revised = (await db.doc(`cashEntries/${id}`).get()).data()!;
-    const deletion = `${id}-delete`; owned.add(`voucherMutationOperations/${deletion}`);
+    const deletion = `${id}-delete`; planned.add(`voucherMutationOperations/${deletion}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { operationId: deletion, cashEntryId: id, action: 'delete', expectedRevision: 1,
       expectedCashHash: cashOriginalHash(revised), releaseId: run });
     expect((await db.doc(`issuedStatements/${statementId}`).get()).data()).toEqual(source);
@@ -116,7 +117,7 @@ describe('cash full mutation actual SDK', () => {
     const cash = { companyId: 'taebaek', cashAccountId: accountId, date: '2026-10-03', dir: '입금', amount: 20, docNo: '261003-002',
       balanceAdjustment: { before: 150, target: 170, delta: 20, reason: '미분류' } };
     await seed(`cashEntries/${id}`, cash);
-    const edit = `${id}-edit`; owned.add(`voucherMutationOperations/${edit}`);
+    const edit = `${id}-edit`; planned.add(`voucherMutationOperations/${edit}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { operationId: edit, cashEntryId: id, action: 'edit', expectedRevision: 0,
       expectedCashHash: cashOriginalHash(cash), releaseId: run, patch: { date: '2026-10-04', amount: 30 } });
     expect((await db.doc(`cashEntries/${id}`).get()).data()).toMatchObject({ amount: 30, date: '2026-10-04',
@@ -132,17 +133,17 @@ describe('cash full mutation actual SDK', () => {
     await seed(`cashAccounts/${bankId}`, { companyId: 'taebaek', active: true, type: '통장' });
     await seed(`accountCodes/${run}-loan-code`, { companyId: 'taebaek', code: '260' });
     await seed(`accountCodes/${run}-interest-code`, { companyId: 'taebaek', code: '931' });
-    owned.add(`cashEntries/${cashId}`); owned.add(`loanMovementOperations/${cashId}`);
+    planned.add(`cashEntries/${cashId}`); planned.add(`loanMovementOperations/${cashId}`);
     const creation = { operationId: cashId, loanId, tradeDate: date, cashAccountId: bankId, action: '상환' as const, principal: 100, interest: 20, expectedRevision: 0, releaseId: run };
     await recordLoanMovement(db, 'taebaek', 'uid', creation);
     const current = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const editId = `${cashId}-edit`; owned.add(`voucherMutationOperations/${editId}`);
+    const editId = `${cashId}-edit`; planned.add(`voucherMutationOperations/${editId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { operationId: editId, action: 'edit', cashEntryId: cashId, expectedRevision: 0,
       expectedCashHash: cashOriginalHash(current), releaseId: run, patch: { amount: 220, lines: [{ accountCode: '260', amount: 200 }, { accountCode: '931', amount: 20 }] } });
     expect((await db.doc(`loanContracts/${loanId}`).get()).data()?.principalBalance).toBe(800);
     expect(await recordLoanMovement(db, 'taebaek', 'uid', creation)).toMatchObject({ status: 'duplicate', balanceAfter: 900 });
     const revised = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const deleteId = `${cashId}-delete`; owned.add(`voucherMutationOperations/${deleteId}`);
+    const deleteId = `${cashId}-delete`; planned.add(`voucherMutationOperations/${deleteId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { operationId: deleteId, action: 'delete', cashEntryId: cashId, expectedRevision: 1, expectedCashHash: cashOriginalHash(revised), releaseId: run });
     expect((await db.doc(`loanContracts/${loanId}`).get()).data()?.principalBalance).toBe(1000);
     expect(await recordLoanMovement(db, 'taebaek', 'uid', creation)).toMatchObject({ status: 'duplicate' });
@@ -164,14 +165,14 @@ describe('cash full mutation actual SDK', () => {
     await seed(`partners/${toPartnerId}`, { companyId: 'punghoe', name: '태백푸드' });
     await seed(`accountCodes/${run}-from-advance`, { companyId: 'taebaek', code: '133' });
     await seed(`accountCodes/${run}-to-advance`, { companyId: 'punghoe', code: '254' });
-    owned.add(`appMeta/partnerPaymentState_taebaek_${fromPartnerId}`); owned.add(`appMeta/partnerPaymentState_punghoe_${toPartnerId}`);
-    owned.add(`companyTransferOperations/${id}`); owned.add(`cashEntries/${id}-out`); owned.add(`cashEntries/${id}-in`);
+    planned.add(`appMeta/partnerPaymentState_taebaek_${fromPartnerId}`); planned.add(`appMeta/partnerPaymentState_punghoe_${toPartnerId}`);
+    planned.add(`companyTransferOperations/${id}`); planned.add(`cashEntries/${id}-out`); planned.add(`cashEntries/${id}-in`);
     const claims = { employeeId, companyId: 'taebaek', isAdmin: true };
     const creation = { operationId: id, from: 'taebaek' as const, to: 'punghoe' as const, tradeDate: date, amount: 120, overKind: '선급금' as const,
       fromAccountId, toAccountId, fromPartnerId, toPartnerId, expectedFromRevision: 0, expectedToRevision: 0, releaseId: run };
     const issued = await recordInterCompanyTransfer(db, uid, claims, creation);
     const outgoing = (await db.doc(`cashEntries/${id}-out`).get()).data()!, incoming = (await db.doc(`cashEntries/${id}-in`).get()).data()!;
-    const editId = `${id}-edit`; owned.add(`voucherMutationOperations/${editId}`);
+    const editId = `${id}-edit`; planned.add(`voucherMutationOperations/${editId}`);
     const edit = { operationId: editId, action: 'edit' as const, cashEntryId: `${id}-out`, expectedRevision: 0, expectedCashHash: cashOriginalHash(outgoing), releaseId: run,
       patch: { amount: 150, lines: [{ accountCode: '133', amount: 150 }] }, transferEdit: { counterpartId: `${id}-in`, expectedRevision: 0,
         expectedCashHash: cashOriginalHash(incoming), patch: { amount: 150, lines: [{ accountCode: '254', amount: 150 }] } } };
@@ -181,7 +182,7 @@ describe('cash full mutation actual SDK', () => {
     expect((await db.doc(`cashEntries/${id}-in`).get()).data()?.amount).toBe(150);
     expect(await recordInterCompanyTransfer(db, uid, claims, creation)).toMatchObject({ status: 'duplicate', outDocNo: issued.outDocNo, inDocNo: issued.inDocNo });
     const latestOut = (await db.doc(`cashEntries/${id}-out`).get()).data()!, latestIn = (await db.doc(`cashEntries/${id}-in`).get()).data()!;
-    const deleteId = `${id}-delete`; owned.add(`voucherMutationOperations/${deleteId}`);
+    const deleteId = `${id}-delete`; planned.add(`voucherMutationOperations/${deleteId}`);
     await mutateCashEntry(db, 'taebaek', uid, { operationId: deleteId, action: 'delete', cashEntryId: `${id}-out`, expectedRevision: 1,
       expectedCashHash: cashOriginalHash(latestOut), releaseId: run, transferEdit: { counterpartId: `${id}-in`, expectedRevision: 1, expectedCashHash: cashOriginalHash(latestIn) } }, claims);
     expect(await recordInterCompanyTransfer(db, uid, claims, creation)).toMatchObject({ status: 'duplicate' });
@@ -197,12 +198,12 @@ describe('cash full mutation actual SDK', () => {
     await seed(`accountCodes/${run}-withhold`, { companyId: 'taebaek', code: '257', name: '예수금' });
     await seed(`cashAccounts/${run}-bank`, { companyId: 'taebaek', type: '통장', active: true });
     await seed(`employees/${employeeId}`, { companyId: 'taebaek', name: '합성 사원', status: 'working' });
-    owned.add(`payrolls/pay-${yearMonth}`); owned.add(`cashEntries/${cashId}`);
+    planned.add(`payrolls/pay-${yearMonth}`); planned.add(`cashEntries/${cashId}`);
     const lines = [{ employeeId, employeeName: '합성 사원', base: 100, incomeTax: 10 }];
     const creation = { yearMonth, payDate: date, expectedRevision: 0, lines, mode: 'cash' as const, releaseId: run, cashAccountId: `${run}-bank` };
     const issued = await issuePayrollVoucher(db, 'taebaek', creation);
     const cash = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const editId = `${run}-payroll-edit`; owned.add(`voucherMutationOperations/${editId}`);
+    const editId = `${run}-payroll-edit`; planned.add(`voucherMutationOperations/${editId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { action: 'edit', operationId: editId, cashEntryId: cashId, expectedRevision: 0,
       expectedCashHash: cashOriginalHash(cash), releaseId: run,
       patch: { amount: 100, lines: [{ accountCode: '802', amount: 120 }, { accountCode: '257', amount: -20 }], note: '사원별 수정' },
@@ -210,7 +211,7 @@ describe('cash full mutation actual SDK', () => {
     expect((await db.doc(`payrolls/pay-${yearMonth}`).get()).data()?.lines[0].base).toBe(120);
     expect(await issuePayrollVoucher(db, 'taebaek', creation)).toEqual(issued);
     const revised = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const deleteId = `${run}-payroll-delete`; owned.add(`voucherMutationOperations/${deleteId}`);
+    const deleteId = `${run}-payroll-delete`; planned.add(`voucherMutationOperations/${deleteId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { action: 'delete', operationId: deleteId, cashEntryId: cashId,
       expectedRevision: 1, expectedCashHash: cashOriginalHash(revised), releaseId: run });
     expect((await db.doc(`payrolls/pay-${yearMonth}`).get()).data()?.issueCancelled).toBe(true);
@@ -223,17 +224,17 @@ describe('cash full mutation actual SDK', () => {
     await seed('appMeta/releaseCutover', { status: 'active', releaseId: run, voucherNotBefore: { taebaek: '2026-10-03', punghoe: '2026-10-03' } });
     await seed(`appMeta/${voucherSequenceKey('taebaek', date)}`, { companyId: 'taebaek', tradeDate: date, prefix: '', last: 0 });
     await seed(`accountCodes/${run}-ordinary`, { companyId: 'taebaek', code: '802', name: '급여' });
-    owned.add(`cashEntries/${cashId}`);
+    planned.add(`cashEntries/${cashId}`);
     const creation = { kind: 'cashEntries' as const, operationId: cashId, tradeDate: date, releaseId: run,
       document: { companyId: 'taebaek', date, dir: '출금', amount: 100, accountCode: '802', note: '원 발행' } };
     const issued = await issueVoucher(db, 'taebaek', creation);
     const source = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const editId = `${cashId}-edit`; owned.add(`voucherMutationOperations/${editId}`);
+    const editId = `${cashId}-edit`; planned.add(`voucherMutationOperations/${editId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { action: 'edit', operationId: editId, cashEntryId: cashId,
       expectedRevision: 0, expectedCashHash: cashOriginalHash(source), releaseId: run, patch: { amount: 150 } });
     expect(await issueVoucher(db, 'taebaek', creation)).toEqual(issued);
     const revised = (await db.doc(`cashEntries/${cashId}`).get()).data()!;
-    const deleteId = `${cashId}-delete`; owned.add(`voucherMutationOperations/${deleteId}`);
+    const deleteId = `${cashId}-delete`; planned.add(`voucherMutationOperations/${deleteId}`);
     await mutateCashEntry(db, 'taebaek', 'uid', { action: 'delete', operationId: deleteId, cashEntryId: cashId,
       expectedRevision: 1, expectedCashHash: cashOriginalHash(revised), releaseId: run });
     expect(await issueVoucher(db, 'taebaek', creation)).toEqual(issued);
@@ -252,13 +253,13 @@ describe('cash full mutation actual SDK', () => {
   });
   it('commits cash plus settlement together, retries once, then deletes fresh allocations', async () => {
     const setupData = await setup('edit-delete');
-    const operationId = `${setupData.cashId}-edit`; owned.add(`voucherMutationOperations/${operationId}`);
+    const operationId = `${setupData.cashId}-edit`; planned.add(`voucherMutationOperations/${operationId}`);
     const input = { operationId, cashEntryId: setupData.cashId, action: 'edit' as const, expectedRevision: 0, expectedCashHash: cashOriginalHash(setupData.original), releaseId: run, patch: { amount: 150 } };
     expect(await mutateCashEntry(db, 'taebaek', 'uid', input)).toMatchObject({ status: 'applied' });
     expect((await db.doc(`settlements/${setupData.settlementId}`).get()).data()?.amount).toBe(150);
     expect(await mutateCashEntry(db, 'taebaek', 'uid', input)).toMatchObject({ status: 'duplicate' });
     const latest = (await db.doc(`cashEntries/${setupData.cashId}`).get()).data()!;
-    const deleteId = `${setupData.cashId}-delete`; owned.add(`voucherMutationOperations/${deleteId}`);
+    const deleteId = `${setupData.cashId}-delete`; planned.add(`voucherMutationOperations/${deleteId}`);
     const deletion = { operationId: deleteId, cashEntryId: setupData.cashId, action: 'delete' as const, expectedRevision: 1, expectedCashHash: cashOriginalHash(latest), releaseId: run };
     await mutateCashEntry(db, 'taebaek', 'uid', deletion);
     expect((await db.doc(`cashEntries/${setupData.cashId}`).get()).exists).toBe(false);
@@ -267,7 +268,7 @@ describe('cash full mutation actual SDK', () => {
   });
   it('rolls back every financial write when fresh claim capacity is exceeded', async () => {
     const setupData = await setup('rollback');
-    const operationId = `${setupData.cashId}-bad`; owned.add(`voucherMutationOperations/${operationId}`);
+    const operationId = `${setupData.cashId}-bad`; planned.add(`voucherMutationOperations/${operationId}`);
     await expect(mutateCashEntry(db, 'taebaek', 'uid', { operationId, cashEntryId: setupData.cashId, action: 'edit', expectedRevision: 0, expectedCashHash: cashOriginalHash(setupData.original), releaseId: run, patch: { amount: 201 } })).rejects.toThrow();
     expect((await db.doc(`cashEntries/${setupData.cashId}`).get()).data()).toEqual(setupData.original);
     expect((await db.doc(`settlements/${setupData.settlementId}`).get()).data()?.amount).toBe(100);
@@ -284,11 +285,11 @@ describe('cash full mutation actual SDK', () => {
       if (key === 'runTransaction') return (fn: any) => target.runTransaction(async tx => { const result = await fn(tx); if (first) { first = false; signal(); await wait; } return result; });
       const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
     } });
-    const operationId = `${setupData.cashId}-delete`; owned.add(`voucherMutationOperations/${operationId}`);
+    const operationId = `${setupData.cashId}-delete`; planned.add(`voucherMutationOperations/${operationId}`);
     const deletion = mutateCashEntry(store, 'taebaek', 'uid', { operationId, cashEntryId: setupData.cashId, action: 'delete', expectedRevision: 0, expectedCashHash: cashOriginalHash(setupData.original), releaseId: run });
     await ready;
-    const allocationId = `${setupData.cashId}-match`; owned.add(`manualSettlementBatchOperations/${allocationId}`);
-    owned.add(`settlements/manual-${allocationId}-${setupData.statementId}`);
+    const allocationId = `${setupData.cashId}-match`; planned.add(`manualSettlementBatchOperations/${allocationId}`);
+    planned.add(`settlements/manual-${allocationId}-${setupData.statementId}`);
     const allocation = replaceManualSettlementBatch(db, 'taebaek', 'uid', { operationId: allocationId, cashEntryId: setupData.cashId,
       partnerId: setupData.partnerId, allocations: [{ statementId: setupData.statementId, amount: 100 }], expectedPartnerRevision: 0, releaseId: run });
     const outcome = allocation.then(() => 'applied', () => 'rejected');
@@ -296,4 +297,6 @@ describe('cash full mutation actual SDK', () => {
     expect(await outcome).toBe('rejected');
     expect((await db.collection('settlements').where('cashEntryId', '==', setupData.cashId).get()).empty).toBe(true);
   });
+});
+
 });

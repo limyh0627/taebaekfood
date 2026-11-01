@@ -22,19 +22,22 @@ const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
  * 재고는 **DB에서 읽어 더한다**(트랜잭션) — 화면 상태에 더해 덮어쓰면 앞선 쓰기가 날아간다.
  * 그래서 여기 가짜 DB도 진짜처럼 자기가 들고 있는 값을 읽어 준다.
  */
-const store = vi.hoisted(() => ({ rawStates: new Map<string, any>(), stock: new Map<string, number>(), orders: new Map<string, any>(), lots: new Map<string, any[]>() }));
+const store = vi.hoisted(() => ({ rawStates: new Map<string, any>(), stock: new Map<string, number>(), orders: new Map<string, any>(), lots: new Map<string, any[]>(), ledgerDocs:new Map<string,any>(),guards:new Map<string,any>(),jobs:new Map<string,any>(),ledger:null as Map<string,Record<string,any>>|null }));
+const itemMetadata=vi.hoisted(()=>new Map<string,Record<string,any>>());
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
   getDoc: async (ref: any) => ref.col === 'items'
-    ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
+    ? { exists: () => store.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
     : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>store.rawStates.has(ref.id),data:()=>store.rawStates.get(ref.id)}) : ref.col === 'items' ? ({
-      exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }),
+    get: async (ref: any) => ref.col === 'rawMaterialLedger' ? ({exists:()=>store.ledgerDocs.has(ref.id),data:()=>store.ledgerDocs.get(ref.id)}) : ref.col === 'rawInventoryReversalGuards' ? ({exists:()=>store.guards.has(ref.id),data:()=>store.guards.get(ref.id)}) : ref.col === 'rawInventoryJobs' ? ({exists:()=>store.jobs.has(ref.id),data:()=>store.jobs.get(ref.id)}) : ref.col === 'rawInventories' ? ({exists:()=>store.rawStates.has(ref.id),data:()=>store.rawStates.get(ref.id)}) : ref.col === 'items' ? ({
+      exists: () => store.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }),
     }) : ({ exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) }),
+    set: (ref:any,data:any)=>{if(ref.col==='rawMaterialLedger'){store.ledgerDocs.set(ref.id,data);store.ledger?.set(data.operationId,data);}else if(ref.col==='rawInventories')store.rawStates.set(ref.id,data);else if(ref.col==='rawInventoryReversalGuards')store.guards.set(ref.id,data);else if(ref.col==='rawInventoryJobs')store.jobs.set(ref.id,data);},
     update: (ref: any, data: any) => {
+      if(ref.col==='items')itemMetadata.set(ref.id,{...itemMetadata.get(ref.id),...data});
       if (ref.col === 'items' && data.stock !== undefined) store.stock.set(ref.id, data.stock);
       if (ref.col === 'items' && data.lots !== undefined) store.lots.set(ref.id, data.lots);
       if (ref.col === 'orders') Object.assign(store.orders.get(ref.id) ?? {}, data);
@@ -78,6 +81,7 @@ function harness(
   claimOrderOperation?: () => Promise<Order>,
   orderUnitInputs?: OrderUnitInputs,
 ) {
+  itemMetadata.clear();for(const item of items)itemMetadata.set(item.id,{...item,companyId:item.companyId??'taebaek'});
   const rawUsed: Record<string, number> = {};
   const productionLines: Array<{ itemId?: string; qty: number }> = [];
   const 주문쓰기: Array<{ id: string; data: unknown }> = [];
@@ -97,7 +101,7 @@ function harness(
   for (const i of items) store.lots.set(i.id, [...(i.lots ?? [])]);
   for (const i of items) store.stock.set(i.id, i.stock ?? 0);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
-  const rawLedger = new Map<string, Record<string, any>>();
+  const rawLedger = new Map<string, Record<string, any>>();store.ledger=rawLedger;store.ledgerDocs.clear();store.guards.clear();store.jobs.clear();
   const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: store.stock, ledger: rawLedger });
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
@@ -114,6 +118,7 @@ function harness(
     runRawInventoryJob: async input => {
       const result = await runRawJob(input);
       for (const r of result.results) {
+        if(r.result.status==='applied'){store.rawStates.set(inventoryDocId(r.input.command.companyId,r.input.command.rawItemId),r.result.state);store.ledgerDocs.set(r.result.movement.id,r.result.movement);}
         if (r.result.status === 'applied' && r.input.command.kind === 'consume') {
           const id = r.input.command.rawItemId;
           rawUsed[id] = (rawUsed[id] ?? 0) + 1;

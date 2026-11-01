@@ -27,6 +27,7 @@ vi.mock('firebase/firestore', () => {
         memory.updatePaths.push(ref.path);
         return pending.push({path: ref.path,data: { ...(memory.docs.get(ref.path) ?? {}), ...patch }});
       },
+      set: (ref: Ref, data: Record<string, unknown>) => pending.push({path:ref.path,data}),
     });
     for (const write of pending) memory.docs.set(write.path, write.data);
     return result;
@@ -54,6 +55,44 @@ beforeEach(() => {
 });
 
 describe('주문 품목 재고 DB 경계', () => {
+  it.each(['gen0','gen1-reversal'] as const)('재고 만들기 체크 해제 %s는 정상 생성된 다른 주문 예약을 보존해야 한다', async mode => {
+    const { buildBomIndex } = await import('../../shared/bomIndex');
+    const { buildPackIndex } = await import('../../shared/packIndex');
+    const { emptyRawInventory, inventoryDocId } = await import('../../shared/rawInventoryCore');
+    const { executeRawInventoryCommand } = await import('../../shared/services/rawInventoryService');
+    const items = [{id:'product',companyId:'taebaek',name:'기름',type:'product',unit:'개',stock:0,spec:'1L'}, {id:'raw',companyId:'taebaek',name:'참깨',rawMaterialName:'참깨',type:'raw',subtype:'벌크',unit:'kg',stock:10}] as Item[];
+    const current = {id:'production',companyId:'taebaek',partnerName:'합성',purpose:'stock-production',status:OrderStatus.PENDING,items:[{itemId:'product',lineId:'line-1',name:'기름',quantity:3,checked:false}]} as Order;
+    const raw=emptyRawInventory('taebaek','raw','참깨','2026-10-01T00:00:00Z');raw.stockKg=10;raw.activeLots=[{id:'raw-lot',material:'참깨',supplierName:'합성',receivedDate:'2026-10-01',qtyIn:0,kgIn:10,kgRemaining:10,status:'active',createdAt:'2026-10-01T00:00:00Z'}];
+    items[1].lots=raw.activeLots;
+    for(const value of items)memory.docs.set('items/'+value.id,value as unknown as Record<string,unknown>);
+    memory.docs.set('orders/production',current as unknown as Record<string,unknown>);
+    memory.docs.set('rawInventories/'+inventoryDocId('taebaek','raw'),raw as unknown as Record<string,unknown>);
+    const inputs={bom:buildBomIndex(items,[{parent_id:'product',child_id:'raw',quantity:1}]),pack:buildPackIndex()};
+    let reverseClaim=false;
+    const engine=createOrderStockEngine({db:{} as never,allItems:items,submaterials:[],partners:[],allOrders:[current],orders:[current],orderUnitInputs:inputs,buildFormula:()=>[],getActorUid:()=> 'actor',retireRetainedRequestBeforeClaim:async()=>undefined,createProductionRecordsForOrder:async()=>{},claimOrderOperation:async(_id,_status,operation)=>{const inventoryOperation=reverseClaim&&mode==='gen1-reversal'?{...operation,contractVersion:1 as const,productionRecordContractVersion:1 as const,actorUid:'actor'}:operation;const live={...memory.docs.get('orders/production'),inventoryOperation};memory.docs.set('orders/production',live);return live as unknown as Order;},runRawInventoryJob:async input=>({job:{status:'complete'} as never,results:await Promise.all(input.commands.map(async row=>({input:row,result:await executeRawInventoryCommand(row.command,{...row.options,db:{} as never})})))}),updateItem:async(collection,id,data)=>{memory.docs.set(collection+'/'+id,{...memory.docs.get(collection+'/'+id),...data});},addItem:async()=>undefined});
+    expect(memory.docs.get('items/product')?.stock).toBe(0);
+    await engine.changeOrderItemCompletion('production',0,[{...current.items[0],checked:true}],OrderStatus.DISPATCHED);
+    const completed=structuredClone(memory.docs.get('items/product')!);
+    expect(completed.stock).toBe(3);expect(completed.inventoryReservations??[]).toEqual([]);
+    const stock=createOrderItemStockOperations({db:{} as never,allItems:items,bomIndex:inputs.bom});
+    await stock.reserveOrderStock(reservableOrder('other',['product']),'other-op',()=>new Map([['product',-1]]));
+    const before=structuredClone(memory.docs.get('items/product')!);
+    expect(before).toMatchObject({stock:3,inventoryReservations:[expect.objectContaining({orderId:'other',qty:1})]});
+    const beforeAll=structuredClone([...memory.docs]);
+    const saved=memory.docs.get('orders/production') as unknown as Order;
+    reverseClaim=true;
+    if(mode==='gen1-reversal'){vi.stubGlobal('localStorage',{getItem:()=>null,setItem:()=>{},removeItem:()=>{}});vi.doMock('../../shared/services/firebaseService',()=>({markOrderInventoryGenerationFailed:vi.fn(async()=>undefined)}));}
+    try{await expect(engine.changeOrderItemCompletion('production',0,[{...saved.items[0],checked:false}],OrderStatus.PENDING)).rejects.toThrow('다른 주문 예약');}finally{if(mode==='gen1-reversal'){vi.unstubAllGlobals();vi.doUnmock('../../shared/services/firebaseService');}}
+    const after=memory.docs.get('items/product')!,live=after.inventoryReservations as {qty:number}[];
+    expect(after).toEqual(before);
+    const oldRaw=beforeAll.find(([path])=>path==='rawInventories/'+inventoryDocId('taebaek','raw'))?.[1];expect(memory.docs.get('rawInventories/'+inventoryDocId('taebaek','raw'))).toEqual(oldRaw);
+    expect(memory.docs.get('items/raw')).toEqual(beforeAll.find(([path])=>path==='items/raw')?.[1]);
+    expect([...memory.docs].filter(([path])=>path.startsWith('rawMaterialLedger/')||path.startsWith('rawInventoryJobs/'))).toEqual(beforeAll.filter(([path])=>path.startsWith('rawMaterialLedger/')||path.startsWith('rawInventoryJobs/')));
+    expect(memory.docs.get('orders/production')).toMatchObject({status:saved.status,items:saved.items});
+    console.log('재고만들기 정상 경로 관측',JSON.stringify({initial:{stock:0,live:0},completed:{stock:completed.stock,live:0},before:{stock:before.stock,live:1},after:{stock:after.stock,live:live.reduce((sum,row)=>sum+row.qty,0)}}));
+    console.log('재고만들기 합성 원문',JSON.stringify({before:beforeAll,after:[...memory.docs]}));
+    expect(Number(after.stock)).toBeGreaterThanOrEqual(live.reduce((sum,row)=>sum+row.qty,0));
+  });
   it('실제 상태 엔진은 다른 주문이 예약한 몫을 포함하면 부족한 출고를 차단한다', async () => {
     const goods = { id: 'a', name: '상품', type: '상품', stock: 10, unit: '개' } as Item;
     const current = { id: 'own', status: OrderStatus.DISPATCHED, producedAt: '2026-10-01', items: [{ itemId: 'a', quantity: 7 }] } as Order;

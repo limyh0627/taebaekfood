@@ -40,14 +40,14 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
     [busyId, setBusyId] = useState<string | null>(null),
     [message, setMessage] = useState(''),
     [messageTargetId, setMessageTargetId] = useState<string | null>(null);
-  const [pendingEdits, setPending] = useState<PendingOrderEdit[]>([]),
+  const [pendingEdits, setPendingEdits] = useState<PendingOrderEdit[]>([]),
     [damagedReferences, setDamaged] = useState<{
       id: string;
       planId: string;
       observedLocalText?: string | null;
     }[]>([]);
   const refresh = () => {
-    setPending(latest.current.onReadPendingOrderEdits?.() ?? []);
+    setPendingEdits(latest.current.onReadPendingOrderEdits?.() ?? []);
     setDamaged((latest.current.onReadOrderEditReferences?.() ?? []).filter(p => !p.readable).map(p => ({
       id: p.id,
       planId: p.planId,
@@ -61,7 +61,7 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
     setBusyId(null);
     setMessage('');
     setMessageTargetId(null);
-    setPending([]);
+    setPendingEdits([]);
     setDamaged([]);
     try {
       refresh();
@@ -131,7 +131,7 @@ export function useOrderEditApplication(options: OrderEditApplicationOptions) {
       };
     }
     if (pending.some(p => p.id === opening.id)) {
-      setPending(pending);
+      setPendingEdits(pending);
       setMessage('이 주문의 보관 요청이 있습니다. 결과 확인 또는 요청 중단을 먼저 선택해 주세요.');
       return {
         committed: false,

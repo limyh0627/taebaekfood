@@ -27,6 +27,7 @@ const dbx = vi.hoisted(() => ({
   audits: new Map<string, any>(),
   lots: new Map<string, any[]>(),
 }));
+const itemMetadata=vi.hoisted(()=>new Map<string,Record<string,any>>());
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id, path: `${col}/${id}` }),
   setDoc: async () => {},
@@ -34,16 +35,17 @@ vi.mock('firebase/firestore', () => ({
   getDoc: async (ref: any) => {
     if (dbx.느린읽기) await new Promise(r => setTimeout(r, 10));
     if (ref.col === 'items') {
-      return { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) };
+      return { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) };
     }
     return { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) };
   },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => (dbx.조정++, fn)({
-    get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>dbx.rawStates.has(ref.id),data:()=>dbx.rawStates.get(ref.id)}) : ref.col === 'items' ? ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) })
+    get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>dbx.rawStates.has(ref.id),data:()=>dbx.rawStates.get(ref.id)}) : ref.col === 'items' ? ({ exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) })
       : ref.col === 'orders' ? ({ exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) })
         : ({ exists: () => dbx.audits.has(ref.id), data: () => dbx.audits.get(ref.id) }),
     set: (ref: any, data: any) => dbx.audits.set(ref.id, data),
     update: (ref: any, data: any) => {
+      if(ref.col==='items')itemMetadata.set(ref.id,{...itemMetadata.get(ref.id),...data});
       if (ref.col === 'orders') { Object.assign(dbx.orders.get(ref.id) ?? {}, data); dbx.txWrites.push(data); }
       else if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock);
       if (ref.col === 'items' && data.lots !== undefined) dbx.lots.set(ref.id, data.lots);
@@ -66,6 +68,7 @@ const 주문 = (over: Partial<Order> = {}): Order =>
 
 /** 엔진 한 벌 — 재고 조정은 부르는지만 세고, 실제 셈은 다른 테스트가 본다 */
 function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => [], bomRows: Parameters<typeof buildBomIndex>[1] = []) {
+  itemMetadata.clear();for(const item of items)itemMetadata.set(item.id,{...item,companyId:item.companyId??'taebaek'});
   setBomIndex(buildBomIndex(items, bomRows));
   dbx.rawStates.clear();
   for(const raw of items.filter(item=>item.subtype==='벌크'&&!item.phantom)){

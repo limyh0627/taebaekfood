@@ -1,4 +1,5 @@
 import { defaultShipMethod } from './channelStyle';
+import { sellsTo } from './partnerRole';
 import type { OrderSource, Partner, PartnerType, ShipMethod } from './types';
 
 export function isShipMethod(value: unknown): value is ShipMethod {
@@ -19,5 +20,5 @@ export function resolveDefaultShipMethod(
 
 /** 분류가 없던 옛 거래처는 기존 매출처 호환을 유지한다. */
 export function isShippingPartner(partnerType: PartnerType | undefined): boolean {
-  return partnerType === undefined || partnerType === '매출처' || partnerType === '매출+매입처';
+  return partnerType === undefined || (!!partnerType && sellsTo({partnerType}));
 }

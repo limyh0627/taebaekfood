@@ -139,7 +139,7 @@ const matchGrade = (p: Item, g: string): boolean => {
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
 const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, requestScopeKey,onSavePartnerItemTerms,onReadPendingPartnerItemTerms,onReadPartnerItemTermsReferences,onInspectPartnerItemTerms,onCancelPartnerItemTerms,onDiscardPartnerItemTermsCopy, onCreateBoxItem, onCalcCost, costOf, onPartnerItemCleanupChanged, isAdmin = true }) => {
-  const termsEditor=usePartnerItemTermsEditor({scopeKey:(companyId??'taebaek')+':'+(requestScopeKey??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms,discard:onDiscardPartnerItemTermsCopy});
+  const termsEditor=usePartnerItemTermsEditor({scopeKey:companyOf({companyId})+':'+(requestScopeKey??''),onSave:onSavePartnerItemTerms,readPending:onReadPendingPartnerItemTerms,readReferences:onReadPartnerItemTermsReferences,inspect:onInspectPartnerItemTerms,cancel:onCancelPartnerItemTerms,discard:onDiscardPartnerItemTermsCopy});
 
   const readBom = (id: string) => orderUnitInputs ? orderUnitInputs.bom.of(id) : bomOf(id);
   const shownCostOf = (item: Item): number | undefined => {

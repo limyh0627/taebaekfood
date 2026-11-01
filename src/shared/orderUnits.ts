@@ -76,13 +76,13 @@ export function isBoxStockItem(product: BoxLike | undefined, inputs?: OrderUnitI
  */
 export function boxDerivedUnitPrice(
   product: BoxLike | undefined,
-  clientId: string,
+  partnerId: string,
   partnerItems: { itemId?: string; partnerId?: string; price?: number }[],
   inputs?: OrderUnitInputs,
 ): number | undefined {
   const uc = unpackComponent(product, inputs);
   if (!uc) return undefined;
-  const loose = partnerItems.find(pc => pc.itemId === uc.itemId && pc.partnerId === clientId);
+  const loose = partnerItems.find(pc => pc.itemId === uc.itemId && pc.partnerId === partnerId);
   return typeof loose?.price === 'number' ? loose.price * uc.count : undefined;
 }
 

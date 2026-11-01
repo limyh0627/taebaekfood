@@ -34,7 +34,7 @@ it('candidate는 projection 형태를 검증하고 상한 없이 미래와 senti
 });
 const compile=(source:string)=>ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
 function actualCode(){
- const day=ts.createSourceFile('day.ts',readFileSync('src/shared/day.ts','utf8'),ts.ScriptTarget.Latest,true);const fn=day.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='dateOfLocal');if(!fn)throw Error('실 dateOfLocal 없음');
+ const daySource=readFileSync('src/shared/day.ts','utf8');if(!/export\s*\{[^}]*dateOfLocal[^}]*\}\s*from\s*['"]\.\.\/\.\.\/functions\/src\/shared\/orderPlanPrimitives['"]/.test(daySource))throw Error('실 날짜 원본 연결 없음');const day=ts.createSourceFile('orderPlanPrimitives.ts',readFileSync('functions/src/shared/orderPlanPrimitives.ts','utf8'),ts.ScriptTarget.Latest,true);const fn=day.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='dateOfLocal');if(!fn)throw Error('실 dateOfLocal 없음');
  const hook=ts.createSourceFile('hook.ts',readFileSync('src/shared/hooks/useOrderListRead.ts','utf8'),ts.ScriptTarget.Latest,true);const matches:ts.ArrowFunction[]=[];
  function visit(node:ts.Node){
   if(ts.isArrowFunction(node)&&node.parameters.length===1&&ts.isIdentifier(node.parameters[0].name)&&ts.isBinaryExpression(node.body)&&node.body.operatorToken.kind===ts.SyntaxKind.BarBarToken){

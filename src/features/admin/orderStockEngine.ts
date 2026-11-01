@@ -16,7 +16,7 @@ import {dateOfLocal} from '../../shared/day';
 import type { CollectionName } from '../../shared/collections';
 import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
 import { canResumeFailedInventoryOperation, hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
-import { applyOrderAtomicRawPlan,buildOrderRawCommands, createOrderRawInventoryOperations, rawLedgerDocIds } from './orderRawInventory';
+import { applyOrderAtomicRawPlan,buildOrderRawCommands,buildOrderRawReversalPlan, createOrderRawInventoryOperations, rawLedgerDocIds } from './orderRawInventory';
 import {generationFromOrder,hasOrderInventoryGenerationCompletion,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import {clearOrderRawBatchAttempt,orderRawBatchOrderEvidence,readOrderRawBatchAttempt} from '../../shared/orderRawBatchAttempt';
 import {rawPressText} from '../../shared/rawPressAttempt';
@@ -321,7 +321,6 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       addDelta(deltas, comp.id, -b.qty);
       accrueBom(order, comp, b.qty, deltas, drop, +1, [], 1);
     }
-    await reverseOrderRawUsage(order);
   };
 
   // ── 완제품 로트 ─────────────────────────────────────────────────────────
@@ -362,6 +361,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = !isStockProduction(order) && STATUS_WANT_SHIPPED.has(target);
+    const isReversing=(!wantProduced&&!!order.producedAt)||(!wantShipped&&!!order.shippedOut);
     const deltas = new Map<string, number>();
     const patch: Partial<Order> = {};
     let productLotMutations: OrderProductLotMutation[] = [];
@@ -415,6 +415,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     const reservationContext = reservation ?? orderStockReservationCleanup(order, reservationExtraItemIds);
     let stockCommitted = false;
     let inventoryMayHaveChanged = false;
+    let rawReversal:ReturnType<typeof buildOrderRawReversalPlan>;
 
     try {
       // 역방향(되돌리기): 출고취소 → 생산취소
@@ -426,14 +427,14 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         productLotMutations = restoreProductLotsForOrder(order); patch.productConsumedLots = [];
       }
       if (!wantProduced && order.producedAt) {
-        inventoryMayHaveChanged = true;
         const snapshot = order.inventorySnapshots?.production;
         if (snapshot) {
+          if(snapshot.rawLedgerIds?.length&&!(snapshot.rawConsumedLots??order.rawConsumedLots)?.length)throw Error('원료 원장과 소비 근거가 달라 자동 역처리하지 않습니다.');
           productLotMutations.push(...reverseProductionProductLots(snapshot.productProducedLots));
           productLotMutations.push(...restoreProductLotsForOrder({ ...order, productConsumedLots: snapshot.productConsumedLots ?? [] }));
           snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
-          await reverseOrderRawUsage({ ...order, rawConsumedLots: snapshot.rawConsumedLots ?? order.rawConsumedLots });
-        } else await unProduceOrder(order, deltas);
+          rawReversal=buildOrderRawReversalPlan({order:{...order,rawConsumedLots:snapshot.rawConsumedLots??order.rawConsumedLots},allItems,actorName,effectiveAt:capturedAt});
+        } else {await unProduceOrder(order,deltas);rawReversal=buildOrderRawReversalPlan({order,allItems,actorName,effectiveAt:capturedAt});}
         patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
         if (order.itemInventory) {
           const reversedAt = new Date().toISOString();
@@ -506,9 +507,10 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       return { ...patch, ...firstCompletionPatch };
       };
       const orderCommitted = !deferOrderPatch || !!completionPatch;
+      if(rawReversal&&!orderCommitted)throw Error('원료 역처리는 주문 저장과 함께 확정해야 합니다.');
       onStage?.('final-stock');
       const productConsumedLots = await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservationContext,
-        orderCommitted ? { orderId: order.id, patch: finalizePatch,...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(order),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:{}) } : undefined);
+        orderCommitted ? { orderId: order.id, patch: finalizePatch,...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(order),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:isReversing?{expectedOrderText:orderRawBatchOrderEvidence(order)}:{}) } : undefined,rawReversal);
       stockCommitted = true;
       if (!orderCommitted) finalizePatch(productConsumedLots);
       return { patch, stockAdjustments: deltaRows(deltas), orderCommitted };
@@ -707,6 +709,11 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         stockSnapshot => {
           if(retainedRaw){firstReservationDeltas=retainedRaw.request.plan.reservationDeltas as typeof firstReservationDeltas;return new Map(firstReservationDeltas.map(row=>[row.itemId,row.delta]));}
           const preview = new Map<string, number>();
+          if(!applying&&previousState?.applied){
+            previousState.production.stockDeltas.forEach(row=>addDelta(preview,row.itemId,-row.delta));
+            const remainingStates={...currentStates,[lineId]:{...previousState,applied:false}};
+            if(!isStockProduction(operationOrder))for(const [itemId,qty] of completedLineAllocation(operationOrder,nextItems,remainingStates))addDelta(preview,itemId,-qty);
+          }
           if (applying) {
             const allocated=new Map<string,number>();
             for (const row of pendingApplyRows) {
@@ -720,13 +727,14 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           return preview;
         },
         extraItemIds,
-        { preserveOwnAllocation: true,...(generation?{generation}:{}) },
+        { preserveOwnAllocation: applying,...(generation?{generation}:{}) },
       );
 
       const deltas = new Map<string, number>();
       const productLotMutations: OrderProductLotMutation[] = [];
       const states = { ...currentStates };
       const allocatedOutput=new Map<string,number>();
+      let rawReversal:ReturnType<typeof buildOrderRawReversalPlan>;
       if (applying) {
         type SavedLinePlan={lineId:string;production:ReturnType<typeof planOrderProduction>;rowDeltas:{itemId:string;delta:number}[];attempt:number;commandIndices:number[];productLots:FrozenProductLots;bomLines:OrderInventorySnapshot['bomLines']};
         let atomicPlans:SavedLinePlan[]|undefined,atomicTraces:NonNullable<Order['rawConsumedLots']>[]=[];
@@ -800,15 +808,11 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           reservation = undefined;
           return;
         }
+        if(previousState.production.rawLedgerIds?.length&&!previousState.rawConsumedLots?.length)throw Error('원료 원장과 소비 근거가 달라 자동 역처리하지 않습니다.');
         previousState.production.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
         productLotMutations.push(...reverseProductionProductLots(previousState.production.productProducedLots));
         productLotMutations.push(...restoreProductLotsForOrder({ ...operationOrder, productConsumedLots: previousState.production.productConsumedLots ?? [] }));
-        await reverseOrderRawUsage({
-          ...operationOrder,
-          items: [after],
-          rawConsumedLots: previousState.rawConsumedLots,
-          rawInventoryAttempt: previousState.attempt,
-        }, lineId);
+        rawReversal=buildOrderRawReversalPlan({order:{...operationOrder,items:[after],rawConsumedLots:previousState.rawConsumedLots,rawInventoryAttempt:previousState.attempt},lineId,allItems,actorName,effectiveAt:now});
         states[lineId] = { ...previousState, applied: false, reversedAt: now };
       }
 
@@ -823,7 +827,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         inventoryOperation: null,
       };
       failureStage = 'final-stock';
-      await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservation, { orderId: id, patch: () => ({ ...orderPatch, ...aggregateOrderLineInventory(operationOrder, states) }),...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:{}) });
+      await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservation, { orderId: id, patch: () => ({ ...orderPatch, ...aggregateOrderLineInventory(operationOrder, states) }),...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:!applying?{expectedOrderText:orderRawBatchOrderEvidence(operationOrder)}:{}) },rawReversal);
       stockCommitted = true;
       if(generation&&readOrderRawBatchAttempt(generation.companyId,generation.actorUid,id)){const completed=await getFreshOrder(id,true);if(!completed||!await confirmCompletedAtomicRaw(completed,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))throw Error('최종 완료 근거를 확인하지 못해 최초 원문을 보존했습니다.');}
 

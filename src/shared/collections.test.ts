@@ -3,6 +3,7 @@ import { readFileSync, globSync } from 'node:fs';
 import { COL, isKnownCollection } from './collections';
 import { planTaxIssue } from '../../functions/src/shared/taxIssue';
 import { companyOf } from './types';
+import ts from 'typescript';
 
 /**
  * **적어 둔 컬렉션 목록이 실제로 쓰는 것과 같은지 확인한다.**
@@ -25,7 +26,7 @@ const 파일들 = globSync('{components,src,scripts,functions/src}/**/*.{ts,tsx,
  * 놓쳤다(2026-09-06). 타입을 좁히고 나서야 컴파일러가 잡아 줬다.
  */
 const 부르는곳 =
-  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|fetchWhereIn|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|\.collection\s*\(\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
+  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|fetchWhereIn|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|(?:collection|doc)\(\s*(?:db|store)\s*,\s*'([a-zA-Z_]\w*)'|\.collection\s*\(\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
 
 /**
  * **`COL.무엇` 으로 쓴 것도 쓴 것이다.**
@@ -64,12 +65,32 @@ const 쓰는이름 = (): Map<string, string[]> => {
   }
   for (const collection of 세금쓰기컬렉션(readFileSync('functions/src/taxIssueCommand.ts', 'utf8')))
     담기(collection, 'functions/src/taxIssueCommand.ts → shared/taxIssue.planTaxIssue');
+  const copy=readFileSync('functions/src/orderCopyCommands.ts','utf8');
+  for(const symbol of ['ORDER_COPY_OPERATIONS','ORDER_INTERPRETATION_RULES']){
+    const declaration=new RegExp(`export const ${symbol}='([^']+)'`).exec(copy);
+    expect(declaration).not.toBeNull();expect(copy).toContain(`db.collection(${symbol})`);담기(declaration![1],`functions/src/orderCopyCommands.ts:${symbol}`);
+  }
+  const cleanup=readFileSync('functions/src/shared/partnerItemCleanup.ts','utf8'),consumer=readFileSync('functions/src/partnerItemCleanupCommand.ts','utf8');
+  const cleanupName=/export const PARTNER_ITEM_CLEANUP_RECEIPTS='([^']+)'/.exec(cleanup);expect(cleanupName).not.toBeNull();
+  expect(consumer).toContain('PARTNER_ITEM_CLEANUP_RECEIPTS as COLLECTION');expect(consumer).toContain('db.collection(COLLECTION)');담기(cleanupName![1],'functions/src/partnerItemCleanupCommand.ts:COLLECTION');
+  const retirement=readFileSync('functions/src/shared/retirementBenefit.ts','utf8'),writer=readFileSync('functions/src/retirementBenefitCommand.ts','utf8');
+  expect(writer).toContain('RETIREMENT_COLLECTIONS as COL');
+  for(const key of ['profiles','events','receipts']){const value=new RegExp(`${key}:'([^']+)'`).exec(retirement);expect(value).not.toBeNull();expect(writer).toContain(`db.collection(COL.${key})`);담기(value![1],`functions/src/retirementBenefitCommand.ts:COL.${key}`);}
   return m;
+};
+
+const historicalCompatibilityCollections=()=>{
+  const source=readFileSync('scripts/fix-company-backfill.mts','utf8'),file=ts.createSourceFile('fix-company-backfill.mts',source,ts.ScriptTarget.Latest,true);
+  let rule=false;const visit=(node:ts.Node)=>{if(ts.isPropertyAssignment(node)&&node.name.getText(file)==='stockClosings'&&ts.isArrowFunction(node.initializer))rule=true;ts.forEachChild(node,visit);};visit(file);
+  expect(rule).toBe(true);expect(source).toContain('await db.listCollections()');expect(source).toContain('실마리[col]?.(x.d, x.id)');expect(source).toContain('컬렉션들.filter(');
+  return new Set(['stockClosings']);
 };
 
 describe('컬렉션 이름', () => {
   it('코드에 쓰인 이름이 모두 collections.ts 에 있다', () => {
-    const 모름 = [...쓰는이름().entries()].filter(([n]) => !isKnownCollection(n));
+    const privateServer:Record<string,string>={helpChatUsage:'functions/src/helpChat.ts',rawManualCorrectionReceipts:'functions/src/rawManualCorrectionCommand.ts'};
+    const 모름 = [...쓰는이름().entries()].filter(([n,files]) => !isKnownCollection(n)&&!(n in privateServer&&files.every(f=>f.replace(/\\/g,'/')===privateServer[n])));
+    for(const [name,path] of Object.entries(privateServer)){expect(isKnownCollection(name)).toBe(false);expect(쓰는이름().get(name)?.map(f=>f.replace(/\\/g,'/'))).toContain(path);}
     const 글 = 모름.map(([n, fs]) => `  '${n}'  ←  ${[...new Set(fs)].join(', ')}`).join('\n');
     expect(모름, `collections.ts 에 없는 컬렉션 이름:\n${글}\n\n` +
       `오타면 고치고, 새 컬렉션이면 collections.ts 에 적어라.`).toEqual([]);
@@ -77,7 +98,8 @@ describe('컬렉션 이름', () => {
 
   it('적어 두고 안 쓰는 이름이 없다 — 목록이 실제와 어긋나면 그물이 헐거워진다', () => {
     const 쓰임 = 쓰는이름();
-    const 안쓰는것 = Object.entries(COL).filter(([, v]) => !쓰임.has(v)).map(([k, v]) => `  ${k}: '${v}'`);
+    const historical=historicalCompatibilityCollections();expect(쓰임.has('stockClosings')).toBe(false);
+    const 안쓰는것 = Object.entries(COL).filter(([, v]) => !쓰임.has(v)&&!historical.has(v)).map(([k, v]) => `  ${k}: '${v}'`);
     expect(안쓰는것, `collections.ts 에 있는데 코드에 안 쓰는 이름:\n${안쓰는것.join('\n')}\n\n` +
       `안 쓰면 지워라.`).toEqual([]);
   });
@@ -122,6 +144,16 @@ describe('회사 가르기', () => {
 
 
 describe('컬렉션·회사 공용 경계 회귀', () => {
+  it('박스 개봉과 발주 묶음의 등록 이름은 실제 영수증 읽기·쓰기에 연결된다',()=>{
+    const box=readFileSync('src/shared/services/boxUnpackService.ts','utf8');
+    expect(box).toContain("doc(db, 'itemUnpackMovements', operationId)");expect(box).toContain('tx.get(moveRef)');expect(box).toContain('tx.set(moveRef');
+    const po=readFileSync('src/shared/services/purchaseOrderBatchService.ts','utf8');
+    expect(po).toContain("doc(store, 'purchaseOrderBatchAudits', ref.operationId)");expect(po).toContain('tx.get(receipt)');expect(po).toContain('tx.set(receipt');
+    expect(COL.itemUnpackMovements).toBe('itemUnpackMovements');expect(COL.purchaseOrderBatchAudits).toBe('purchaseOrderBatchAudits');
+    const whole=globSync('{components,src}/**/*.{ts,tsx}').filter(f=>!f.includes('.test.'));
+    const uses=whole.flatMap(f=>{const code=readFileSync(f,'utf8'),file=ts.createSourceFile(f,code,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),found:string[]=[];const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&/^(?:Object\.(?:values|entries|keys))$/.test(node.expression.getText(file))&&node.arguments[0]?.getText(file)==='COL')found.push(f.replace(/\\/g,'/'));ts.forEachChild(node,visit);};visit(file);return found;});
+    expect(uses).toEqual(['src/shared/collections.ts']);
+  });
   it('실제 Admin 리터럴은 쓰임이며 동적식은 추정하지 않는다', () => {
     const matches = (source: string) => [...source.matchAll(부르는곳)].map(hit => hit[1] ?? hit[2] ?? hit[3] ?? hit[4]);
     expect(matches("db.collection('financialOpeningOperations')")).toEqual(['financialOpeningOperations']);

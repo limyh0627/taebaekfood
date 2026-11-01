@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
+import ts from 'typescript';
 
 /**
  * **같은 것을 두 이름으로 부르지 않는다.**
@@ -38,7 +39,18 @@ describe('거래처는 partner 다', () => {
   const 지금 = (() => {
     let n = 0;
     for (const file of 파일들) {
-      n += (readFileSync(file, 'utf8').match(/\b[a-z]+Client[A-Za-z]*\b|\bclient[A-Z][A-Za-z]*\b/g) ?? []).length;
+      const source=readFileSync(file,'utf8'),ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),dom=new Set<number>();
+      const rel=file.replace(/\\/g,'/');
+      const known:Record<string,readonly string[]>={
+        'src/shared/components/useDialogFocus.ts':['node.getClientRects'],
+        'src/features/admin/AdminApp.tsx':['node.getClientRects'],
+        'components/ItemList.tsx':['captured.node.getClientRects'],
+        'components/OfficeTalk.tsx':['el.clientHeight'],
+        'src/features/statements/infrastructure/statementPrintPagination.ts':['element.clientWidth'],
+        'components/OrdersList.tsx':['event.clientX','moveEvent.clientX'],
+      };
+      const walk=(node:ts.Node)=>{if(ts.isPropertyAccessExpression(node)&&known[rel]?.includes(node.getText(ast)))dom.add(node.name.getStart(ast));ts.forEachChild(node,walk);};walk(ast);
+      n += [...source.matchAll(/\b[a-z]+Client[A-Za-z]*\b|\bclient[A-Z][A-Za-z]*\b/g)].filter(m=>!dom.has(m.index!)).length;
     }
     return n;
   })();

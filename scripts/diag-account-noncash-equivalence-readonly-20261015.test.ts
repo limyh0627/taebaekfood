@@ -1,7 +1,27 @@
-import {describe,it,expect,vi} from 'vitest';
-import {readFileSync} from 'node:fs';
-import {resolve} from 'node:path';
-import {classify,parse,readCurrent,run,paths,selfCheck,verifySources,SOURCE_MANIFEST,failureCode,selectionIndices,type Document} from './diag-account-noncash-equivalence-readonly-20261015.mts';
+import {describe,it,expect,vi,afterAll} from 'vitest';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {require as loadTs} from 'tsx/cjs/api';
+import {resolve,dirname} from 'node:path';
+import type {Document} from './diag-account-noncash-equivalence-readonly-20261015.mts';
+// 이 진단은 당시 SHA에 묶여 있다. 실제 당시 모듈과 의존 파일을 같은 스냅샷에서 실행한다.
+const currentRoot=resolve('.'), snapshot=mkdtempSync(resolve('work/account-noncash-history-'));
+const commit='3d4991bc81a2cef6bf63e89533262ede580dd02d';
+const scriptFiles=['scripts/diag-account-noncash-equivalence-readonly-20261015.mts','scripts/diag-zero-item-price-20261015.mts','scripts/prepare-zero-item-price-dry-20261015.mts','scripts/shared/zeroItemPriceMigration.ts','scripts/shared/zeroItemPriceBackup.ts'];
+let cleaned=false;
+function cleanup(){if(cleaned)return;process.chdir(currentRoot);if(!snapshot.startsWith(resolve(currentRoot,'work')+'\\'))throw Error('snapshot path outside work');rmSync(snapshot,{recursive:true});cleaned=true;}
+afterAll(cleanup);
+let api:typeof import('./diag-account-noncash-equivalence-readonly-20261015.mts');
+try {
+ for(const file of [...scriptFiles,'src/features/admin/financials.ts','src/shared/autoJournal.ts','src/shared/accountChart.ts','src/shared/types.ts','src/shared/services/firebaseService.ts','functions/src/shared/cashLineProjection.ts']){const target=resolve(snapshot,file);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,execFileSync('git',['show',commit+':'+file]));}
+ for(const file of scriptFiles){const normalize=(path:string)=>readFileSync(path,'utf8').replace(/\r\n/g,'\n');if(normalize(resolve(snapshot,file))!==normalize(resolve(currentRoot,file)))throw Error('현재 진단 스크립트 변경: '+file);}
+ for(const path of ['src/features/admin/financials.ts','src/shared/autoJournal.ts','src/shared/accountChart.ts']){const target=resolve(snapshot,path),bytes=readFileSync(target,'utf8');writeFileSync(target,bytes.replace(/\r?\n/g,'\r\n'));}
+ loadTs(resolve(currentRoot,'src/shared/accountChart.ts'),import.meta.url);
+ process.chdir(snapshot);
+ api=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scriptFiles[0])).href);
+} catch(error) { cleanup();throw error; }
+const {classify,parse,readCurrent,run,paths,selfCheck,verifySources,SOURCE_MANIFEST,failureCode,selectionIndices}=api;
 const root='projects/taebaek-3abe4/databases/(default)/documents',at='2026-10-15T00:00:00.123456789Z';
 const doc=(id:string,data:Record<string,any>):Document=>({id,data,original:{name:root+'/accountCodes/'+id,updateTime:at}});
 const accounts=[doc('income',{code:'400',name:'합성수익',groupId:'income',noncash:true}),doc('cost',{code:'500',name:'합성비용',groupId:'cost',noncash:false}),doc('cash',{code:'102',name:'합성현금'}),doc('legacy',{code:'900',name:'합성기타',groupId:'missing'})];
@@ -9,6 +29,8 @@ const groups=[doc('income',{type:'수익'}),doc('cost',{type:'비용'})];
 const raw=(id:string,fields:any,collection='accountCodes')=>({name:root+'/'+collection+'/'+id,fields,updateTime:at});
 const response=(documents:any[]=[])=>[...documents.map(document=>({document,readTime:at})),{readTime:at,done:true}];
 describe('계정 noncash 읽기 동치',()=>{
+ it('실제 쓰기 호출을 주입한 원본은 인증과 조회 전에 거절한다',async()=>{const token=vi.fn(),read=vi.fn();const source=()=>{verifySources((path:string)=>{const bytes=readFileSync(path);return path===resolve('src/shared/services/firebaseService.ts')?Buffer.concat([bytes,Buffer.from('\nupdateDoc(docRef, {stock: 1});\n')]):bytes;});return selfCheck();};await expect(run(['--auth=firebase-cli'],{source,token,read,paths:()=>({output:'unused',originals:'unused'})})).rejects.toThrow();expect(token).not.toHaveBeenCalled();expect(read).not.toHaveBeenCalled();});
+ it('현재 원본이 역사 SHA와 다르면 조회 전에 거절한다',()=>{expect(()=>verifySources((path:string)=>readFileSync(resolve(currentRoot,path.slice(snapshot.length+1))))).toThrow();});
  it('저장 ID 불일치는 별도 품질 집계로 남기면서 실제 reader 입력의 선택을 비교한다',()=>{const original=[doc('path-a',{id:'same-id',code:'900',name:'합성A',noncash:true}),doc('path-b',{id:'same-id',code:'500',name:'합성B',noncash:false})],bytes=JSON.stringify(original);expect(classify(original,[]).companies.taebaek).toMatchObject({accountStoredIdMismatch:2,invalidAccountShape:0,notEvaluated:false,equivalentContexts:4});expect(JSON.stringify(original)).toBe(bytes);});
  it('동일한 저장 ID라도 원본 행의 정체성과 순서를 구분하고 복제 객체는 허용하지 않는다',()=>{const first={id:'duplicate'},second={id:'duplicate'},input=[first,second];expect(selectionIndices(input,[second,first])).toEqual([1,0]);expect(selectionIndices(input,[first,second])).toEqual([0,1]);expect(()=>selectionIndices(input,[{id:'duplicate'}])).toThrow();});
  it('저장 ID 타입 오류는 불일치 집계와 달리 미평가로 유지한다',()=>{expect(classify([doc('path',{id:9,code:'500',name:'합성',noncash:true})],[]).companies.taebaek).toMatchObject({accountStoredIdMismatch:1,invalidAccountShape:1,notEvaluated:true});});

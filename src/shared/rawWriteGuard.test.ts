@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
+import ts from 'typescript';
 
 /**
  * **원료 원장·상태·로트 쓰기 배선 시험** — 설계 §15 8단계.
@@ -25,10 +26,13 @@ const strip = (src: string) =>
 describe('원료 원장·상태·로트 쓰기는 공용 명령만 한다', () => {
   it('생산관리 사용기록은 선택 로트 없이 예전 FIFO 차감으로 우회하지 않는다', () => {
     const admin = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
-    const start = admin.indexOf('onAddRawMaterialEntry={async (entry) =>');
-    const end = admin.indexOf('rawMaterialEntry', start);
-    const wiring = admin.slice(start, end > start ? end : start + 12000);
+    const file=ts.createSourceFile('AdminApp.tsx',admin,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+    const matches:ts.JsxAttribute[]=[];const walk=(node:ts.Node)=>{if(ts.isJsxAttribute(node)&&node.name.getText(file)==='onAddRawMaterialEntry')matches.push(node);ts.forEachChild(node,walk);};walk(file);
+    expect(matches).toHaveLength(1);
+    const wiring=matches[0].getText(file);
     expect(wiring).toContain("kind: 'consume-lot' as const");
+    expect(wiring).toContain('lotId: entry.targetLotId');
+    expect(wiring).toContain('executeRawInventoryCommand(명령');
     expect(wiring).toContain('사용할 로트를 선택해야 한다');
     expect(wiring).not.toContain("kind: 'consume' as const");
   });

@@ -1,4 +1,5 @@
 import {withOrderListProjection} from '../orderListProjection';
+import {companyOf} from '../types';
 import { doc, FieldValue, deleteField, Timestamp, DocumentReference, GeoPoint, Bytes, type Firestore, type Transaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, functions } from '../firebase';
@@ -18,7 +19,7 @@ export async function prepareCatalogOrderCommit(database: Firestore, tx: Transac
   const projectedPatch = collection === 'orders' ? withOrderListProjection(before,patch,replace?'replace':before?'patch':'create',{isDeleteValue:value=>value instanceof FieldValue&&value.isEqual(deleteField()),isTransform:value=>value instanceof FieldValue}) : patch;
   const next = replace ? { ...patch } : { ...before, ...patch };
   if (!(collection === 'purchaseOrders' ? needsCatalogPurchaseOrderReferenceProof(before, next, adapter) : needsCatalogOrderReferenceProof(before, next, adapter))) return projectedPatch;
-  const companyId = next.companyId ?? before?.companyId ?? 'taebaek';
+  const companyId = companyOf({companyId: next.companyId ?? before?.companyId});
   const epoch = await tx.get(doc(database, CATALOG_ORDER_EPOCH, companyId));
   if (!epoch.exists()) return projectedPatch;
   await authReady;

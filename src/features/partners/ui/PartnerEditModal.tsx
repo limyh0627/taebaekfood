@@ -2,6 +2,7 @@ import React from 'react';
 import { Mail, MapPin, Trash2, Check } from 'lucide-react';
 import type { Partner, PartnerChannel, PartnerType, ShipMethod } from '../../../shared/types';
 import { isShipMethod, isShippingPartner } from '../../../shared/partnerShipping';
+import { sellsTo } from '../../../shared/partnerRole';
 import ShipToEditor from '../../../shared/components/ShipToEditor';
 import ModalShell from '../../../shared/components/ModalShell';
 interface PartnerEditModalProps {
@@ -120,7 +121,7 @@ export function PartnerEditModal({ editForm, setEditForm, isSaving, locked=false
                     </p>
                   )}
                 </div>
-                {(editForm.partnerType === '매출처' || editForm.partnerType === '매출+매입처' || !editForm.partnerType) && (
+                {sellsTo(editForm) && (
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">유형</label>
                     <select

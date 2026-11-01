@@ -7,7 +7,7 @@ import { templateStatementType, templateStatementConflict, canAutoStatement, typ
 import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
 import React, { useMemo, useState, useRef } from 'react';
 import { X, Check, BarChart2, FolderPlus, Pencil, Copy, Eye, EyeOff, Star } from 'lucide-react';
-import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
+import { FixedCostTemplate, AccountCode, Partner, companyOf } from '../src/shared/types';
 import { isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
 import { useLoanContracts } from '../src/shared/useLoanContracts';
 import { matchingLoan } from '../src/shared/loanLedger';
@@ -646,6 +646,6 @@ function VoucherTemplateManagerForScope({
 }
 
 export default function VoucherTemplateManager(props:VoucherTemplateManagerProps) {
-  const actions = useVoucherTemplateActions(props.companyId ?? 'taebaek');
+  const actions = useVoucherTemplateActions(companyOf({companyId:props.companyId}));
   return <VoucherTemplateManagerForScope key={actions.scopeKey} {...props} actions={actions}/>;
 }

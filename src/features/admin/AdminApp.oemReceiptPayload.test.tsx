@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
+import { companyOf } from '../../shared/types';
 
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
 const ast = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -45,7 +46,7 @@ it('빈 벌크 목록은 기존 완제품 요청에 필드를 추가하지 않�
 function actualReceive(context:unknown,send:unknown,engine:unknown,refresh:unknown,marker:unknown){
  let expression='';const visit=(node:ts.Node)=>{if(ts.isJsxAttribute(node)&&node.name.getText(ast)==='onOemReceive'&&node.initializer&&ts.isJsxExpression(node.initializer)&&node.initializer.expression)expression=node.initializer.expression.getText(ast);ts.forEachChild(node,visit);};visit(ast);expect(expression).not.toBe('');
  const js=ts.transpileModule(`const callback=${expression};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- return new Function('getOemReceiptRecoveryContext','receiveOemFinishedGoodsCommand','receiveOemBatch','companyId','currentUser','setLedgerReloadKey','oemReceiptSendTracker','readOemReceiptEntry','markOemReceiptPreCallFailure',`${js};return callback;`)(vi.fn().mockResolvedValue(context),send,engine,'taebaek',{name:'직원'},refresh,{current:new Map()},()=>({packet:null}),marker);
+ return new Function('getOemReceiptRecoveryContext','receiveOemFinishedGoodsCommand','receiveOemBatch','companyId','currentUser','setLedgerReloadKey','oemReceiptSendTracker','readOemReceiptEntry','markOemReceiptPreCallFailure','companyOf',`${js};return callback;`)(vi.fn().mockResolvedValue(context),send,engine,'taebaek',{name:'직원'},refresh,{current:new Map()},()=>({packet:null}),marker,companyOf);
 }
 it('관리자 실제 재시도 callback은 고정 packet을 보내고 엔진을 다시 계산하지 않는다',async()=>{
  const packet={request:{...expected,releaseId:'old-release'}},send=vi.fn(),engine=vi.fn(),refresh=vi.fn(),marker=vi.fn();const context={scope:{actorUid:'uid'},entry:{packet},isCurrent:()=>true};
@@ -54,3 +55,4 @@ it('관리자 실제 재시도 callback은 고정 packet을 보내고 엔진을 
 it.each([{legacy:true},{deleted:true}])('과거 또는 삭제된 미확인 요청은 신규 엔진 호출로 우회하지 않는다',async entry=>{const send=vi.fn(),engine=vi.fn();await expect(actualReceive({scope:{actorUid:'uid'},entry,isCurrent:()=>true},send,engine,vi.fn(),vi.fn())({po:{id:'po',companyId:'taebaek'}},'new','uid')).rejects.toThrow();expect(engine).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled();});
 it('재시도 응답 뒤 UID가 바뀌면 화면 완료 갱신을 하지 않는다',async()=>{const refresh=vi.fn();await expect(actualReceive({scope:{actorUid:'uid'},entry:{packet:{request:expected}},isCurrent:()=>false},vi.fn(),vi.fn(),refresh,vi.fn())({po:{id:'po',companyId:'taebaek'}},'resume','uid')).rejects.toThrow('계정');expect(refresh).not.toHaveBeenCalled();});
 it('삭제된 요청도 선택한 고정 packet resume은 엔진 없이 결과를 확인한다',async()=>{const send=vi.fn(),engine=vi.fn(),packet={request:{...expected,releaseId:'old'}};await actualReceive({scope:{actorUid:'uid'},entry:{deleted:true,packet},isCurrent:()=>true},send,engine,vi.fn(),vi.fn())({po:{id:'po',companyId:'taebaek'}},'resume','uid');expect(send).toHaveBeenCalledExactlyOnceWith(packet.request,'taebaek','uid');expect(engine).not.toHaveBeenCalled();});
+it('다른 회사의 원문은 복구 호출 전에 거절하고 회사 없는 옛 원문은 태백으로 본다',async()=>{const send=vi.fn(),engine=vi.fn(),packet={request:{...expected,releaseId:'old'}},context={scope:{actorUid:'uid'},entry:{packet},isCurrent:()=>true};await expect(actualReceive(context,send,engine,vi.fn(),vi.fn())({po:{id:'po',companyId:'punghoe'}},'resume','uid')).rejects.toThrow('다른 회사');expect(send).not.toHaveBeenCalled();await actualReceive(context,send,engine,vi.fn(),vi.fn())({po:{id:'po'}},'resume','uid');expect(send).toHaveBeenCalledExactlyOnceWith(packet.request,'taebaek','uid');expect(engine).not.toHaveBeenCalled();});

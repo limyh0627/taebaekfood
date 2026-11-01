@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, functions } from '../firebase';
 import type { CompanyId, IssuedStatement, PartnerItem } from '../types';
+import { companyOf } from '../types';
 import { statementEditPatch } from '../statementEdit';
 import { activeReleaseId, stripUndefined } from './firebaseService';
 import { PARTNER_ITEM_TERMS_FIELDS, partnerItemTermsOpening } from '../partnerItemTermsCommand';
@@ -146,7 +147,7 @@ export function createStatementEditWrites(port: StatementEditPort) {
         return entries;
     }
     async function prepare(scope: StatementEditScope, original: IssuedStatement, patch: Partial<IssuedStatement>, followupPlan: StatementEditFollowupPlan | null = null, current: Current = () => true): Promise<StatementEditEntry> {
-        if (!original?.id || (original.companyId ?? 'taebaek') !== scope.companyId || !Number.isSafeInteger(original.mutationRevision ?? 0) || (original.mutationRevision ?? 0) < 0)
+        if (!original?.id || companyOf(original) !== scope.companyId || !Number.isSafeInteger(original.mutationRevision ?? 0) || (original.mutationRevision ?? 0) < 0)
             throw Error('처음 선택한 전표 원문을 확인해 주세요.');
         original = { ...original };
         const inputPatch = stripUndefined(patch) as Partial<IssuedStatement>;

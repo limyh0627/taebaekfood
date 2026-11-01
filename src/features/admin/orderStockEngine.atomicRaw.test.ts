@@ -109,3 +109,34 @@ it.each(['status','line'] as const)('실제 %s 소비자는 record 저장 뒤 in
 
 it.each(['status','line'] as const)('실제 %s final CAS충돌은 새B order를failed/감사로덮지 않는다',async mode=>{const f=fixture([2],10,false,true);f.items[0].stock=1;mem.swapReservationBeforeFinal=true;await expect(mode==='status'?f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED):f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED)).rejects.toMatchObject({code:'order-reservation-execution-conflict'});expect(mem.docs.get('orders/order')).toEqual(mem.casOrder);expect(mem.docs.get('orders/order').inventoryOperation.state).toBe('processing');expect(mem.writes.mock.calls.length).toBe(mem.casWrites);expect(mem.docs.get('items/product').inventoryReservations[0].reservationAttemptId).toBe('new-B');});
 it.each(['status','line'] as const)('실제 %s 일반실패의cleanup CAS충돌도 새B order/감사를보존한다',async mode=>{const f=fixture([2],10,false,true);f.items[0].stock=1;mem.failFinalOnce=true;mem.swapReservationOnFinalFailure=true;await expect(mode==='status'?f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED):f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED)).rejects.toMatchObject({code:'order-reservation-execution-conflict'});expect(mem.docs.get('orders/order')).toEqual(mem.casOrder);expect(mem.writes.mock.calls.length).toBe(mem.casWrites);expect(mem.docs.get('items/product').inventoryReservations[0].reservationAttemptId).toBe('new-B');});
+
+it('실제 생산3 뒤 다른 주문의 정상 예약1이 있으면 체크 해제는 원료와 제품을 보존하며 거절한다',async()=>{
+ const f=fixture([3],10,false,true);f.order.purpose='stock-production';mem.docs.get('orders/order').purpose='stock-production';
+ await f.engine.changeOrderItemCompletion('order',0,[{...f.order.items[0],checked:true}],OrderStatus.DISPATCHED);
+ expect(mem.docs.get('items/product').stock).toBe(3);
+ const {createOrderItemStockOperations}=await import('./orderItemStock');const other=createOrderItemStockOperations({db:{} as any,allItems:f.items,bomIndex:f.inputs.bom});
+ await other.reserveOrderStock({id:'other',items:[{itemId:'product',quantity:1}]} as any,'other-op',()=>new Map([['product',-1]]));
+ const product=structuredClone(mem.docs.get('items/product')),raw=structuredClone(mem.docs.get('rawInventories/'+inventoryDocId('taebaek','raw'))),ledger=[...mem.docs].filter(([path])=>path.startsWith('rawMaterialLedger/')).map(([path,value])=>[path,structuredClone(value)]);const current=mem.docs.get('orders/order');
+ await expect(f.engine.changeOrderItemCompletion('order',0,[{...current.items[0],checked:false}],OrderStatus.PENDING)).rejects.toThrow('다른 주문 예약');
+ expect(mem.docs.get('items/product')).toEqual(product);expect(mem.docs.get('rawInventories/'+inventoryDocId('taebaek','raw'))).toEqual(raw);expect([...mem.docs].filter(([path])=>path.startsWith('rawMaterialLedger/'))).toEqual(ledger);
+});
+
+it('실제 생성 완료 줄의 원료와 제품은 체크 해제 시 같은 최종 거래로 되돌린다',async()=>{
+ const f=fixture([3],10,false,true);f.order.purpose='stock-production';mem.docs.get('orders/order').purpose='stock-production';
+ await f.engine.changeOrderItemCompletion('order',0,[{...f.order.items[0],checked:true}],OrderStatus.DISPATCHED);
+ expect(mem.docs.get('items/product').stock).toBe(3);expect(mem.docs.get('items/raw').stock).toBe(7);
+ const order=mem.docs.get('orders/order');await f.engine.changeOrderItemCompletion('order',0,[{...order.items[0],checked:false}],OrderStatus.PENDING);
+ expect(mem.docs.get('items/product').stock).toBe(0);expect(mem.docs.get('items/raw').stock).toBe(10);expect(mem.docs.get('orders/order').items[0].checked).toBe(false);
+ expect([...mem.docs].some(([path,value])=>path.startsWith('rawInventoryJobs/production-reversal:')&&value.status==='complete')).toBe(true);
+});
+
+it('같은 품목 두 줄 중 하나만 취소하면 남은 줄의 자기 배정을 보존한다',async()=>{
+ const f=fixture([2,1],10,false,true),first=f.order.items.map((row,i)=>({...row,checked:i===0}));
+ await f.engine.changeOrderItemCompletion('order',0,first,OrderStatus.PROCESSING);
+ const current=mem.docs.get('orders/order'),second=current.items.map((row:any,i:number)=>({...row,checked:i===1?true:row.checked}));
+ await f.engine.changeOrderItemCompletion('order',1,second,OrderStatus.DISPATCHED);
+ expect(mem.docs.get('items/product').stock).toBe(3);
+ const saved=mem.docs.get('orders/order'),next=saved.items.map((row:any,i:number)=>({...row,checked:i===0?false:row.checked}));
+ await f.engine.changeOrderItemCompletion('order',0,next,OrderStatus.PROCESSING);
+ const product=mem.docs.get('items/product');expect(product.stock).toBe(1);expect(product.inventoryReservations).toEqual([expect.objectContaining({orderId:'order',qty:1,state:'allocated'})]);expect(mem.docs.get('orders/order').itemInventory['line-1'].applied).toBe(true);
+});

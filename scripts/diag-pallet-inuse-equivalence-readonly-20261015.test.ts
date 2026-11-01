@@ -1,11 +1,32 @@
-import {describe,it,expect,vi} from 'vitest';
-import {readFileSync,existsSync} from 'node:fs';
+import {describe,it,expect,vi,afterAll} from 'vitest';
+import {readFileSync,existsSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {require as loadTs} from 'tsx/cjs/api';
+import {resolve,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
-import {extractCalculation,classify,safeData,parseResponse,readAll,selfCheck,paths,localDay,run,diagnosticFailure,orderConsumption} from './diag-pallet-inuse-equivalence-readonly-20261015.mts';
+// 고정 SHA에 해당하는 실제 당시 소스만 격리 복원한다.
+const currentRoot=resolve('.'), snapshot=mkdtempSync(resolve('work/pallet-history-'));
+const commit='893e744f08d2858097c20c1f7e1277c53f53be2b';
+const scriptFiles=['scripts/diag-pallet-inuse-equivalence-readonly-20261015.mts','scripts/diag-zero-item-price-20261015.mts','scripts/prepare-zero-item-price-dry-20261015.mts','scripts/shared/zeroItemPriceMigration.ts','scripts/shared/zeroItemPriceBackup.ts'];
+let cleaned=false;
+function cleanup(){if(cleaned)return;process.chdir(currentRoot);if(!snapshot.startsWith(resolve(currentRoot,'work')+'\\'))throw Error('snapshot path outside work');rmSync(snapshot,{recursive:true});cleaned=true;}
+afterAll(cleanup);
+let api:typeof import('./diag-pallet-inuse-equivalence-readonly-20261015.mts');
+try {
+ for(const file of [...scriptFiles,'components/PalletManager.tsx','src/shared/day.ts','src/shared/types.ts']){const target=resolve(snapshot,file);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,execFileSync('git',['show',commit+':'+file]));}
+ for(const file of scriptFiles){const normalize=(path:string)=>readFileSync(path,'utf8').replace(/\r\n/g,'\n');if(normalize(resolve(snapshot,file))!==normalize(resolve(currentRoot,file)))throw Error('현재 진단 스크립트 변경: '+file);}
+ for(const path of ['components/PalletManager.tsx','src/shared/day.ts']){const target=resolve(snapshot,path),bytes=readFileSync(target,'utf8');writeFileSync(target,bytes.replace(/\r?\n/g,'\r\n'));}
+ loadTs(resolve(currentRoot,'src/shared/accountChart.ts'),import.meta.url);
+ process.chdir(snapshot);
+ api=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scriptFiles[0])).href);
+} catch(error) { cleanup();throw error; }
+const {extractCalculation,classify,safeData,parseResponse,readAll,selfCheck,paths,localDay,run,diagnosticFailure,orderConsumption}=api;
 const source=readFileSync('components/PalletManager.tsx','utf8');
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex').toUpperCase();
 const input={pallets:[{id:'p',name:'KPP',companyId:'taebaek',inUse:9}],partners:[{id:'c',name:'합성',companyId:'taebaek'}],orders:[{id:'o',companyId:'taebaek',status:'SHIPPED',partnerId:'c',pallets:[{type:'p',quantity:3}]}],palletTransactions:[{id:'t',companyId:'taebaek',partnerId:'c',palletId:'p',date:'2026-10-15',type:'in',quantity:1}]};
 describe('팔레트 원문 계산 읽기 진단',()=>{
+ it('현재 원문이 고정 SHA와 다르면 인증과 조회 전에 중단한다',async()=>{const token=vi.fn(),read=vi.fn();const current=readFileSync(resolve(currentRoot,'components/PalletManager.tsx'),'utf8');await expect(run(['--auth=firebase-cli'],{calculate:()=>extractCalculation(current),paths,token,read})).rejects.toThrow();expect(token).not.toHaveBeenCalled();expect(read).not.toHaveBeenCalled();});
  it('실제 주문 조건의 단락 순서를 따르고 미사용 필드 오류를 보정하지 않고 제외 집계한다',()=>{
   const orders=[{id:'a'},{id:'b',pallets:null},{id:'c',pallets:[]},{id:'d',pallets:[null]},{id:'e',pallets:[null],status:9},{id:'f',pallets:[null],status:'PENDING'},{id:'g',pallets:{},status:'SHIPPED'},...input.orders];
   const calculate=extractCalculation(),data={...input,orders};expect(orderConsumption(orders,calculate.includesOrder)).toEqual({noPallets:3,missingStatus:1,wrongTypeStatus:1,otherStatus:1,malformedPalletContainer:1,consumed:1});expect(calculate(data)).toEqual(calculate(input));expect(()=>classify(data,calculate)).not.toThrow();expect(orders[3].pallets).toEqual([null]);

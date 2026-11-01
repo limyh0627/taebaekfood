@@ -11,11 +11,11 @@ describe('재고 목록 표시 규칙', () => {
   });
 
   it('카테고리와 서브타입은 열 대신 상단 필터에서 고른다', () => {
-    const inventoryFilters = src.slice(src.indexOf('/* ── 서브타입'), src.indexOf('/* 입고처리 오버레이 */'));
+    const inventoryFilters = src.slice(src.indexOf('{subtypeTabs.length > 0 && ('), src.indexOf('/* 입고처리 오버레이 */'));
     expect(src).not.toContain('>카테고리</th>');
     expect(src).not.toContain('>서브타입</th>');
-    expect(inventoryFilters).toContain('<FilterDrop label="서브타입"');
-    expect(inventoryFilters).toContain('<FilterDrop label="카테고리"');
+    expect(inventoryFilters).toContain('<FilterDrop queryStyle label="서브타입"');
+    expect(inventoryFilters).toContain('<FilterDrop queryStyle label="카테고리"');
   });
 
   it('입고와 반품은 한 목록에서 유형·상태로 걸러 보고 상태 버튼은 확인창을 거친다', () => {
@@ -32,7 +32,8 @@ describe('재고 목록 표시 규칙', () => {
     expect(src).toContain('{inventoryNameSpec(product).name}');
     expect(src).toContain('{inventoryNameSpec(product).spec}');
     expect(src).not.toContain('>라벨</th>');
-    expect(src).toContain("p.subtype === '선물세트'");
+    expect(src).toMatch(/import\s*\{[^}]*\binventoryNameSpec\b[^}]*\}\s*from\s*['"].*itemListDisplay['"]/);
+    expect(readFileSync('src/features/items/ui/itemListDisplay.ts','utf8')).toContain("p.subtype === '선물세트'");
   });
 
   it('거래처는 규격 뒤에 오고 행을 누르면 상세카드에서 동작한다', () => {

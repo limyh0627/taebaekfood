@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
 import { sellsTo, buysFrom, isFinancial } from './partnerRole';
+import { isShippingPartner } from './partnerShipping';
 
 const c = (t?: string) => ({ partnerType: t } as any);
 
 describe('sellsTo — 파는 상대인가', () => {
+  it('배송 거래처 판정은 누락과 유효한 네 갈래 및 잘못된 빈 값을 기존대로 구분한다',()=>{
+    expect([undefined,'매출처','매출+매입처','매입처','금융기관'].map(value=>isShippingPartner(value as any))).toEqual([true,true,true,false,false]);
+    expect(isShippingPartner(null as any)).toBe(false);expect(isShippingPartner('' as any)).toBe(false);
+  });
   it('매출처와 매출+매입처', () => {
     expect(sellsTo(c('매출처'))).toBe(true);
     expect(sellsTo(c('매출+매입처'))).toBe(true);

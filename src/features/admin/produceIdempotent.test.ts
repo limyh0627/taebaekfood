@@ -22,18 +22,20 @@ const dbx = vi.hoisted(() => ({
   orders: new Map<string, any>(),     // orders — getDoc이 읽는다(화면 상태가 아니라 DB)
   ledger: new Map<string, any>(),     // rawMaterialLedger — id가 같으면 덮어써진다(진짜와 같게)
 }));
+const itemMetadata=vi.hoisted(()=>new Map<string,Record<string,any>>());
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (ref: any, data: any) => { dbx.ledger.set(ref.id, data); },
   deleteDoc: async (ref: any) => { dbx.ledger.delete(ref.id); },
   getDoc: async (ref: any) => ref.col === 'items'
-    ? { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }
+    ? { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id) }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>dbx.rawStates.has(ref.id),data:()=>dbx.rawStates.get(ref.id)}) : ref.col === 'orders'
       ? { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }
-      : { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) ?? [] }) },
+      : { exists: () => dbx.stock.has(ref.id), data: () => ({ ...itemMetadata.get(ref.id), stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) ?? [] }) },
     update: (ref: any, data: any) => {
+      if(ref.col==='items')itemMetadata.set(ref.id,{...itemMetadata.get(ref.id),...data});
       if (ref.col === 'orders') Object.assign(dbx.orders.get(ref.id), data);
       else { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); if (data.lots !== undefined) dbx.lots.set(ref.id, data.lots); }
     },
@@ -60,6 +62,7 @@ const 주문 = (qty: number): Order => ({
 
 /** 엔진 한 벌. items·order는 앱의 리렌더를 흉내내 그 자리에서 고쳐진다. */
 function harness(items: Item[], order: Order, runnerOverride?: any) {
+  itemMetadata.clear();for(const item of items)itemMetadata.set(item.id,{...item,companyId:item.companyId??'taebaek'});
   for (const i of items) { dbx.stock.set(i.id, i.stock ?? 0); dbx.lots.set(i.id, [...(i.lots ?? [])]); }
   dbx.orders.set(order.id, order);
   dbx.rawStates.clear();

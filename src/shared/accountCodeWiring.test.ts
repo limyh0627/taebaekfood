@@ -12,7 +12,7 @@ import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK, INVENTORY } f
  * ProfitAnalysis·financials 는 숫자를 그대로 견주고 있었다.
  */
 const 파일들 = globSync('{components,src}/**/*.{ts,tsx}')
-  .filter(f => !f.includes('.test.') && !f.endsWith('autoJournal.ts'));
+  .filter(f => !f.includes('.test.'));
 
 /** 이 번호들은 이름이 있다 — 숫자로 쓰면 안 된다 */
 const 이름있는코드: Record<string, string> = {
@@ -22,6 +22,10 @@ const 이름있는코드: Record<string, string> = {
 };
 
 describe('계정코드를 화면에 박지 않는다', () => {
+  it('공용 재수출은 실제 계정 상수를 보유한 모듈에 연결된다', () => {
+    expect(readFileSync('src/shared/autoJournal.ts','utf8')).toMatch(/export\s*\{[^}]*\bAR\b[^}]*\}\s*from\s*['"].*journalSupport['"]/s);
+    expect(readFileSync('src/features/financials/domain/journalSupport.ts','utf8')).toContain("export const AR = '108'");
+  });
   it('이름 있는 계정번호를 글자로 쓴 곳이 없다', () => {
     const 걸림: string[] = [];
     for (const file of 파일들) {
@@ -35,6 +39,8 @@ describe('계정코드를 화면에 박지 않는다', () => {
         if (건너뜀) return;
 
         for (const [code, name] of Object.entries(이름있는코드)) {
+          if(file.replace(/\\/g,'/')==='src/features/financials/domain/journalSupport.ts'
+            && new RegExp(`^export const ${name} = '${code}';(?:\\s*//.*)?$`).test(t)) continue;
           //  `'108'` 처럼 따옴표에 싸인 것만 — 계정표에서 읽은 값(`?? '255'`)은 받침이라 봐준다
           if (!new RegExp(`(?<!\\?\\?\\s)'${code}'`).test(l)) continue;
           걸림.push(`  ${file}:${i + 1}  '${code}' → ${name}   ${t.slice(0, 70)}`);

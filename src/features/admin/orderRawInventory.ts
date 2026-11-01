@@ -59,6 +59,50 @@ export function buildOrderRawCommands(input:{order:Order;physicalUsage:RawUsageK
 
 }
 
+/** 최초 역처리 원문과 작업 번호는 트랜잭션 재시도 전에 한 번 고정한다. */
+export function buildOrderRawReversalPlan(input:{order:Order;lineId?:string;allItems:Item[];actorName?:string;effectiveAt:string}) {
+ const {order,lineId,allItems,actorName,effectiveAt}=input;
+    const traces = order.rawConsumedLots ?? [];
+    if (traces.length === 0) return undefined;
+    const companyId = companyOf(order);
+    const originals = new Map<string, string>();
+    for (const trace of traces) {
+      if (!trace.operationId || !trace.rawItemId) {
+        throw new Error(`옛 생산 기록은 원자 명령 번호가 없어 자동 취소할 수 없다: 주문 ${order.id}`);
+      }
+      if(originals.has(trace.operationId)&&originals.get(trace.operationId)!==trace.rawItemId)throw Error('원료 원본 명령의 품목이 충돌합니다.');
+      originals.set(trace.operationId, trace.rawItemId);
+    }
+
+    const commands: JobCommandInput[] = [];
+    for (const [originalOperationId, rawItemId] of originals) {
+      const rawItem = allItems.find(item => item.id === rawItemId);
+      if (!rawItem || companyOf(rawItem) !== companyId) {
+        throw new Error(`원료 복원 중단: 주문 회사의 원료 품목을 찾을 수 없다 (${rawItemId})`);
+      }
+      commands.push({
+        command: {
+          operationId: `reverse:${originalOperationId}`,
+          ...rawLedgerKeys(rawItem),
+          materialSnapshot: baseRawName(rawItem.name),
+          effectiveAt,
+          ...(actorName ? { actorName } : {}),
+          source: { type: 'reversal', id: order.id },
+          kind: 'reverse', originalOperationId,
+        },
+        options: {
+          legacy: {
+            type: 'auto', orderId: order.id,
+            ...(actorName ? { addedBy: actorName } : {}),
+          },
+        },
+      });
+    }
+
+
+ return {jobId:`production-reversal:${order.id}${lineId ? `:${lineId}` : ''}:a${order.rawInventoryAttempt ?? 0}`,companyId,source:{type:'production-reversal' as const,id:order.id},commands,now:effectiveAt};
+}
+
 export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
   const {
     actorName, allItems, partners, db, addNotification,
@@ -113,55 +157,12 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
   };
 
   const reverseOrderRawUsage = async (order: Order, lineId?: string): Promise<void> => {
-    const traces = order.rawConsumedLots ?? [];
-    if (traces.length === 0) return;
-    const companyId = companyOf(order);
-    const originals = new Map<string, string>();
-    for (const trace of traces) {
-      if (!trace.operationId || !trace.rawItemId) {
-        throw new Error(`옛 생산 기록은 원자 명령 번호가 없어 자동 취소할 수 없다: 주문 ${order.id}`);
-      }
-      originals.set(trace.operationId, trace.rawItemId);
-    }
-
-    const effectiveAt = new Date().toISOString();
-    const commands: JobCommandInput[] = [];
-    for (const [originalOperationId, rawItemId] of originals) {
-      const rawItem = allItems.find(item => item.id === rawItemId);
-      if (!rawItem || companyOf(rawItem) !== companyId) {
-        throw new Error(`원료 복원 중단: 주문 회사의 원료 품목을 찾을 수 없다 (${rawItemId})`);
-      }
-      commands.push({
-        command: {
-          operationId: `reverse:${originalOperationId}`,
-          ...rawLedgerKeys(rawItem),
-          materialSnapshot: baseRawName(rawItem.name),
-          effectiveAt,
-          ...(actorName ? { actorName } : {}),
-          source: { type: 'reversal', id: order.id },
-          kind: 'reverse', originalOperationId,
-        },
-        options: {
-          legacy: {
-            type: 'auto', orderId: order.id,
-            ...(actorName ? { addedBy: actorName } : {}),
-          },
-        },
-      });
-    }
-
-    const { job, results } = await runRawJob({
-      jobId: `production-reversal:${order.id}${lineId ? `:${lineId}` : ''}:a${order.rawInventoryAttempt ?? 0}`,
-      companyId,
-      source: { type: 'production-reversal', id: order.id },
-      commands,
-      options: { db },
-    });
+    const plan=buildOrderRawReversalPlan({order,lineId,allItems,actorName,effectiveAt:new Date().toISOString()});
+    if(!plan)return;
+    const { job, results } = await runRawJob({jobId:plan.jobId,companyId:plan.companyId,source:plan.source,commands:plan.commands,options:{db}});
     const failed = results.find(row => row.result.status === 'conflict' || row.result.status === 'rejected');
     if (job.status !== 'complete' || failed) {
-      const detail = failed?.result.status === 'rejected'
-        ? `${failed.result.code} ${failed.result.message}`
-        : failed?.result.status === 'conflict' ? '작업 번호 충돌' : job.lastError ?? '';
+      const detail = failed?.result.status === 'rejected' ? `${failed.result.code} ${failed.result.message}` : failed?.result.status === 'conflict' ? '작업 번호 충돌' : job.lastError ?? '';
       throw new Error(`원료 복원 실패: 주문 ${order.id} ${detail}`);
     }
   };
@@ -176,3 +177,4 @@ export function cancellationRawCommands(
 ): import('../../shared/rawInventoryCore').RawInventoryCommand[] {
   return cancellationRawCommandsPure(order,originals,effectiveAt,actorName);
 }
+

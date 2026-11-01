@@ -1,5 +1,15 @@
-import {describe,it,expect,vi} from 'vitest';
-import {classify,itemCategory,compareCandidate,parse,readCurrent,verifySources,SOURCE_MANIFEST,selfCheck,run,paths,failureCode,safe} from './diag-smartstore-marker-equivalence-readonly-20261015.mts';
+import {describe,it,expect,vi,afterAll} from 'vitest';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {require as loadTs} from 'tsx/cjs/api';
+const currentRoot=resolve('.'),snapshot=mkdtempSync(resolve('work/smartstore-history-')),commit='2da05838af3e5211f411cea71a12b884eb61bbb4';
+const scriptFiles=['scripts/diag-smartstore-marker-equivalence-readonly-20261015.mts','scripts/diag-zero-item-price-20261015.mts','scripts/prepare-zero-item-price-dry-20261015.mts','scripts/shared/zeroItemPriceMigration.ts','scripts/shared/zeroItemPriceBackup.ts'];
+let cleaned=false;function cleanup(){if(cleaned)return;process.chdir(currentRoot);if(!snapshot.startsWith(resolve(currentRoot,'work')+'\\'))throw Error('snapshot path outside work');rmSync(snapshot,{recursive:true});cleaned=true;}afterAll(cleanup);
+let api:typeof import('./diag-smartstore-marker-equivalence-readonly-20261015.mts');
+try{for(const file of [...scriptFiles,'src/shared/partnerPrice.ts','src/shared/types.ts']){const target=resolve(snapshot,file);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,execFileSync('git',['show',commit+':'+file]));}for(const file of scriptFiles){const normalized=(p:string)=>readFileSync(p,'utf8').replace(/\r\n/g,'\n');if(normalized(resolve(snapshot,file))!==normalized(resolve(currentRoot,file)))throw Error('현재 진단 script 변경: '+file);}const price=resolve(snapshot,'src/shared/partnerPrice.ts');writeFileSync(price,readFileSync(price,'utf8').replace(/\r?\n/g,'\r\n'));loadTs(resolve(currentRoot,'src/shared/accountChart.ts'),import.meta.url);process.chdir(snapshot);api=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scriptFiles[0])).href);}catch(error){cleanup();throw error;}
+const {classify,itemCategory,compareCandidate,parse,readCurrent,verifySources,SOURCE_MANIFEST,selfCheck,run,paths,failureCode,safe}=api;
 const base={companyId:'taebaek',type:'product',partnerIds:['relation-secret','SMARTSTORE']};
 const time='2026-10-15T00:00:00.123456789Z';
 const root='projects/taebaek-3abe4/databases/(default)/documents/items/';
@@ -7,6 +17,7 @@ function doc(data:any,id='private-id'){return {id,data,original:{name:root+id,up
 function wire(data:any,id='private-id',version=time):any{const encode=(v:any):any=>v===null?{nullValue:null}:Array.isArray(v)?{arrayValue:{values:v.map(encode)}}:typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integerValue:String(v)}:{stringValue:v};return {document:{name:root+id,fields:Object.fromEntries(Object.entries(data).map(([k,v])=>[k,encode(v)])),updateTime:version},readTime:time};}
 const response=(body:any)=>({ok:true,json:async()=>body}) as Response;
 describe('스마트스토어 표식 읽기 진단',()=>{
+ it('현재 원본과 쓰기 주입 변이를 안전하게 거절한다',async()=>{expect(()=>verifySources((path:string)=>readFileSync(resolve(currentRoot,path.slice(snapshot.length+1))))).toThrow();const token=vi.fn(),read=vi.fn(),p=vi.fn();await expect(run([],{source:()=>{verifySources((path:string)=>path===resolve('src/shared/partnerPrice.ts')?Buffer.concat([readFileSync(path),Buffer.from('\nupdateDoc(ref, {stock: 1});\n')]):readFileSync(path));return selfCheck();},token,read,paths:p})).rejects.toMatchObject({stage:'source'});expect(token).not.toHaveBeenCalled();expect(read).not.toHaveBeenCalled();});
  it('누락만 후보이며 명시 값은 보류한다',()=>{expect(itemCategory(base).candidate).toBe(true);for(const value of [false,true,null,undefined,0,'true'])expect(itemCategory({...base,isSmartStore:value}).candidate).toBe(false);expect(classify([doc(base),doc({...base,isSmartStore:false}),doc({...base,isSmartStore:true}),doc({...base,isSmartStore:null}),doc({...base,isSmartStore:0})]).companies.taebaek).toMatchObject({candidates:1,flagFalseConflict:1,flagTrue:1,flagNull:1,flagOther:1});});
  it('정확한 문자열 배열만 표식으로 판정한다',()=>{for(const partnerIds of ['SMARTSTORE',['XSMARTSTORE'],['SMARTSTORE',1],null])expect(itemCategory({...base,partnerIds}).marker).toBe(false);expect(itemCategory({type:'product'}).arrayAbsent).toBe(true);});
  it('회사와 보관 및 제품 조건을 분리한다',()=>{expect(itemCategory({...base,companyId:undefined}).candidate).toBe(true);for(const change of [{companyId:'other'},{type:'raw'},{archived:true},{archived:null},{archived:undefined}])expect(itemCategory({...base,...change}).candidate).toBe(false);expect(itemCategory({...base,archived:false}).candidate).toBe(true);expect(itemCategory({...base,companyId:'punghoe'}).company).toBe('punghoe');});

@@ -4,6 +4,7 @@ import ts from 'typescript';
 
 const src = readFileSync('src/shared/services/unpackService.ts', 'utf8');
 const timeline = readFileSync('components/LotTimeline.tsx', 'utf8');
+const timelineRows = readFileSync('src/features/items/domain/lotTimelineRows.ts', 'utf8');
 function descendants(node:ts.Node):ts.Node[]{const nodes:ts.Node[]=[];const visit=(child:ts.Node)=>{nodes.push(child);ts.forEachChild(child,visit);};visit(node);return nodes;}
 
 describe('캔 개봉 원자화 연결', () => {
@@ -44,13 +45,15 @@ describe('캔 개봉 원자화 연결', () => {
   });
 
   it('벌크 로트 상세 타임라인에서 개봉 이력을 캔 개봉으로 표시한다', () => {
-    expect(timeline).toContain("unpack ? '캔 개봉'");
-    expect(timeline).toContain("source?.type === 'unpack'");
+    expect(timeline).toContain('buildLotTimelineRows(item, lotId, rawEntries, shipmentRows, fmt)');
+    expect(timeline).toMatch(/import\s*\{[^}]*\bbuildLotTimelineRows\b[^}]*\}\s*from\s*['"].*lotTimelineRows['"]/);
+    expect(timelineRows).toContain("unpack ? '캔 개봉'");
+    expect(timelineRows).toContain("source?.type === 'unpack'");
   });
 
   it('같은 날짜 출고는 타임라인에서 한 행으로 묶고 중복 출고처 영역은 두지 않는다', () => {
-    expect(timeline).toContain('const byDate = new Map');
-    expect(timeline).toContain("id: `ship-${lotId}-${date}`");
+    expect(timelineRows).toContain('const byDate = new Map');
+    expect(timelineRows).toContain("id: `ship-${lotId}-${date}`");
     expect(timeline).toContain('거래처별 상세보기');
     const productPanel = readFileSync('components/ProductLotPanel.tsx', 'utf8');
     expect(productPanel).not.toContain('출고처</div>');

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
 import { partnersOfItem, isLinkedToPartner, isSmartStoreItem } from './partnerPrice';
+import ts from 'typescript';
 
 /**
  * **거래처–품목 연결은 `partner_item` 한 군데가 정한다.**
@@ -40,7 +41,17 @@ describe('옛 배열을 다시 읽지 않는다', () => {
   it('저장된 items.partnerIds 를 연결 확인에 쓰는 곳이 없다', () => {
     const 걸림: string[] = [];
     for (const file of 볼파일) {
-      readFileSync(file, 'utf8').split('\n').forEach((l, i) => {
+      let source=readFileSync(file,'utf8');
+      if(file.replace(/\\/g,'/')==='src/shared/services/firebaseService.ts'){
+        const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true);
+        const fn=ast.statements.find((node):node is ts.FunctionDeclaration=>ts.isFunctionDeclaration(node)&&node.name?.text==='applyItemSaveOptions');
+        expect(fn?.body).toBeDefined();const body=fn!.body!.getText(ast);
+        expect(body).toContain("options?.reconcileSmartStoreMarker===true");expect(body).toContain("scoped.partnerIds=arrayRemove('SMARTSTORE')");
+        expect(body.match(/before\.partnerIds\.includes\('SMARTSTORE'\)/g)).toHaveLength(1);
+        const start=fn!.body!.getStart(ast),end=fn!.body!.end;
+        source=source.slice(0,start)+body.replace("before.partnerIds.includes('SMARTSTORE')",'false')+source.slice(end);
+      }
+      source.split('\n').forEach((l, i) => {
         const t = l.trim();
         if (t.startsWith('//') || t.startsWith('*')) return;
         //  `x.partnerIds` 를 **뒤져서 연결을 판단하는** 모양만 잡는다.

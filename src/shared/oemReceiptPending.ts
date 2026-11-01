@@ -1,4 +1,5 @@
 import type {CompanyId,PurchaseOrder} from './types';
+import {companyOf} from './types';
 import type {OemCostEvidence} from './oemBatchCost';
 export type OemReceiptScope={companyId:CompanyId;actorUid:string;poId:string};
 export type OemReceiptRequest={poId:string;operationId:string;date:string;returns:{itemId:string;qty:number}[];
@@ -23,7 +24,7 @@ function readRecord<T>(key:string,scope:OemReceiptScope,accept:(row:any)=>boolea
  try{const row=JSON.parse(text);if(!ownersMatch(row,scope)||!accept(row))throw Error();return {value:row,text};}
  catch{fail('저장된 OEM 입고 원문이 손상되었거나 계정·회사·배치가 다릅니다. 원문을 보존했습니다.');}
 }
-const draftValid=(row:any)=>row?.input?.po?.id===row.poId&&(row.input.po.companyId??'taebaek')===row.companyId
+const draftValid=(row:any)=>row?.input?.po?.id===row.poId&&companyOf(row.input.po)===row.companyId
  &&Array.isArray(row.input.returns)&&Array.isArray(row.input.bulk)&&typeof row.input.date==='string'&&Number.isFinite(row.input.unitPricePerKg);
 const packetValid=(row:any)=>row?.request?.poId===row.poId&&row.request.operationId==='oem-receive:'+row.poId
  &&id(row.request.releaseId)&&typeof row.request.date==='string'&&Array.isArray(row.request.returns)

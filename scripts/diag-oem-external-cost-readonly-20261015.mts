@@ -8,6 +8,7 @@ import {require as loadTs} from 'tsx/cjs/api';
 import {cliToken} from './diag-zero-item-price-20261015.mts';
 import {decodeRestValue,timestamp} from './prepare-zero-item-price-dry-20261015.mts';
 import {hash} from './shared/zeroItemPriceBackup.ts';
+import {verifyPinnedSourceManifest} from './shared/pinnedSourceManifest.ts';
 import type {PurchaseOrder,CompanyId} from '../src/shared/types';
 import type {OemExternalEvidence} from '../src/features/admin/oemExternalStock';
 import type {OemExternalCostDiagnostic} from '../src/features/admin/oemExternalCostDiagnostic';
@@ -37,7 +38,7 @@ function check(value:unknown):asserts value{if(!value)throw Error('OEM 읽기 �
 function guard<T>(stage:typeof stages[number],fn:()=>T):T{try{return fn();}catch(error){if(error instanceof Failure)throw error;throw new Failure(stage);}}
 async function guarded<T>(stage:typeof stages[number],fn:()=>Promise<T>):Promise<T>{try{return await fn();}catch(error){if(error instanceof Failure)throw error;throw new Failure(stage);}}
 export function failureCode(error:unknown){return {failed:true,stage:error instanceof Failure?error.stage:'source',code:'validation-failed'};}
-export function verifySources(reader:(path:string)=>Buffer=readFileSync){for(const [path,sha]of Object.entries(SOURCE_MANIFEST))check(createHash('sha256').update(reader(resolve(workspace,path))).digest('hex').toUpperCase()===sha);return SOURCE_MANIFEST;}
+export function verifySources(reader:(path:string)=>Buffer=readFileSync){verifyPinnedSourceManifest(SOURCE_MANIFEST,path=>reader(resolve(workspace,path)));return SOURCE_MANIFEST;}
 function helpers(){return {...loadTs('../src/features/admin/oemExternalCostDiagnostic.ts',import.meta.url) as typeof import('../src/features/admin/oemExternalCostDiagnostic'),...loadTs('../src/shared/rawInventoryCore.ts',import.meta.url) as typeof import('../src/shared/rawInventoryCore'),companyOf:(loadTs('../src/shared/types.ts',import.meta.url) as typeof import('../src/shared/types')).companyOf};}
 function object(v:unknown):asserts v is Record<string,any>{check(v!==null&&typeof v==='object'&&!Array.isArray(v));}
 function safe(v:unknown):void{if(v&&typeof v==='object')for(const [key,child]of Object.entries(v)){check(!['__proto__','constructor','prototype'].includes(key));safe(child);}}

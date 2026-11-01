@@ -1,3 +1,6 @@
+import {assertFinalPlain} from '../../../functions/src/shared/orderInventoryCompletionEvidence';
+import {prepareOrderRawReversal} from '../../shared/services/orderRawReversalTransaction';
+import type {buildOrderRawReversalPlan} from './orderRawInventory';
 import {orderStockTouchedIds as sharedOrderStockTouchedIds} from '../../../functions/src/shared/orderStockReservationPlan';
 import {stock3,liveItemInventoryReservations,planOrderStockReservation} from '../../shared/orderStockReservationPlan';
 export {liveItemInventoryReservations,planOrderStockReservation} from '../../shared/orderStockReservationPlan';
@@ -223,8 +226,12 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     lotMutations: readonly OrderProductLotMutation[] = [],
     reservation?: OrderStockReservation,
     orderMutation?: { orderId: string; generation?:OrderInventoryGeneration; expectedOrderText?:string; expectedProductionRecordIndex?:NonNullable<Order['productionRecordIndex']>; patch: Record<string, unknown> | ((consumedLots: NonNullable<Order['productConsumedLots']>) => Record<string, unknown>) },
+    rawReversal?:NonNullable<ReturnType<typeof buildOrderRawReversalPlan>>,
   ): Promise<NonNullable<Order['productConsumedLots']>> => {
+    if(rawReversal)assertFinalPlain(rawReversal);
+    const fixedRawReversal=rawReversal?JSON.parse(rawPressText(rawReversal)) as typeof rawReversal:undefined;
     const generation=orderMutation?.generation??reservation?.generation;
+    if(fixedRawReversal&&(!orderMutation||!orderMutation.expectedOrderText||orderMutation.orderId!==fixedRawReversal.source.id))throw Error('원료 역처리는 최초 주문 원문과 함께 확정해야 합니다.');
     const validateFinalPatch=(patch:Record<string,unknown>)=>{
       if(generation&&Object.keys(patch).some(key=>key==='productionRecordIndex'||key.startsWith('productionRecordIndex.')))throw Error('생산기록 연결은 최종 재고 패치로 변경할 수 없습니다.');
     };
@@ -232,7 +239,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     if(generation&&(!orderMutation||orderMutation.orderId!==generation.orderId||typeof orderMutation.expectedOrderText!=='string'||!orderMutation.expectedOrderText))throw Error('재고 확정 주문과 최초 세대가 다릅니다.');
     assertActor(generation);
     const reservationData=reservation?{operationId:reservation.operationId,orderId:reservation.orderId,generation:reservation.generation,itemIds:[...reservation.itemIds].sort(),quantities:[...reservation.quantities].sort(([a],[b])=>a.localeCompare(b)),allocationQuantities:reservation.allocationQuantities?[...reservation.allocationQuantities].sort(([a],[b])=>a.localeCompare(b)):null}:undefined;
-    const reservationEvidence={reservation:reservationData,expectedOrderText:orderMutation?.expectedOrderText,...(orderMutation?.expectedProductionRecordIndex!==undefined?{expectedProductionRecordIndex:orderMutation.expectedProductionRecordIndex}:{})};
+    const reservationEvidence={reservation:reservationData,expectedOrderText:orderMutation?.expectedOrderText,...(orderMutation?.expectedProductionRecordIndex!==undefined?{expectedProductionRecordIndex:orderMutation.expectedProductionRecordIndex}:{}),...(fixedRawReversal?{rawReversalIdentity:fixedRawReversal}:{})};
     const lotMutationByItem = new Map<string, OrderProductLotMutation>();
     for (const mutation of lotMutations) {
       if (lotMutationByItem.has(mutation.itemId)) {
@@ -252,9 +259,10 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         lotMutation: lotMutationByItem.get(itemId),
         item: allItems.find(item => item.id === itemId),
       }));
-    if (rows.length === 0&&!generation) {
+    if (rows.length === 0&&!generation&&!fixedRawReversal) {
       if (orderMutation) await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({orderId:orderMutation.orderId,patch:orderMutation.patch})}), async tx => {
         const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
+        if(orderMutation.expectedOrderText&&orderRawBatchOrderEvidence({...snap.data(),id:orderMutation.orderId} as Order)!==orderMutation.expectedOrderText)throw Error('역처리 전 주문 원문이 변경되었습니다.');
         const patch=stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch);
         const commitPatch=await prepareCatalogOrderCommit(db,tx,orderMutation.orderId,snap.data(),patch);
         tx.update(ref,protectInventoryWriterPatch(snap.data(),commitPatch));
@@ -288,7 +296,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         if(order.inventoryOperation?.productionRecordContractVersion===1&&['production-record','final-stock'].includes(order.inventoryOperation.stage!)&&orderMutation!.expectedProductionRecordIndex===undefined)throw Error('최초 생산기록 연결의 최종 확정 근거가 없습니다.');
         current={ref,order};
       }
-      else if(orderMutation){const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');current={ref,order:{...snap.data(),id:orderMutation.orderId} as Order};}
+      else if(orderMutation){const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');const order={...snap.data(),id:orderMutation.orderId} as Order;if(orderMutation.expectedOrderText&&orderRawBatchOrderEvidence(order)!==orderMutation.expectedOrderText)throw Error('역처리 전 주문 원문이 변경되었습니다.');current={ref,order};}
       const refs = rows.map(row => doc(db, 'items', row.itemId));
       // Firestore transaction은 첫 write 전에 모든 read가 끝나야 한다.
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
@@ -307,7 +315,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         const patch: { stock?: number; lots?: unknown[]; inventoryReservations?: ItemInventoryReservation[] } = {};
         if (row.delta !== 0) {
           patch.stock = stock3(before + row.delta);
-          if (row.delta < 0 && patch.stock < 0) {
+          const otherReserved=liveItemInventoryReservations(data.inventoryReservations,Date.now()).filter(entry=>entry.orderId!==(reservation?.orderId??current?.order.id)).reduce((sum,entry)=>sum+Number(entry.qty),0);
+          if (row.delta < 0 && patch.stock < otherReserved) {
             throw new OrderInventoryPreconditionError(`${row.item!.name} 재고가 부족합니다. 현재 ${before}, 차감 ${stock3(-row.delta)}`);
           }
         }
@@ -350,6 +359,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
           ref: refs[index]!,
         };
       });
+      const rawPrepared=fixedRawReversal?await prepareOrderRawReversal(tx,db,fixedRawReversal,new Set(updates.filter(row=>Object.keys(row.patch).length>0).map(row=>row.itemId))):undefined;
       const consumed=updates.flatMap(row=>row.consumedLots),patch=orderMutation?(typeof orderMutation.patch==='function'?orderMutation.patch(consumed):orderMutation.patch):null;
       if(patch)validateFinalPatch(patch);
       if(generation)validateOrderInventoryConsumedLots(consumed);
@@ -357,6 +367,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       if(generation&&patch?.inventoryOperation!=null)throw Error('최종 확정에서 다른 작업 표식을 만들 수 없습니다.');
       const commitPatch=current&&patch?await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch):patch;
       assertActor(generation);
+      rawPrepared?.write();
       for(const [index,update] of updates.entries())if(Object.keys(update.patch).length>0)tx.update(update.ref,protectItemInventoryPatch(snapshots[index].data(),update.patch));
       if(current&&generation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined({...commitPatch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}})));
       else if(current&&orderMutation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined(commitPatch!)));

@@ -55,13 +55,14 @@ describe('원선언에 연결된 정적 사용처',()=>{
     expect(read('Joined').fields[0].declarations).toHaveLength(2);expect(read('Joined').fields[0].references).toHaveLength(3);expect(read('A').fields[0].references).toEqual(read('Joined').fields[0].references);expect(read('Union').fields).toEqual([]);
   });
   it('실제 PackRow와 RawInventoryState 원선언에 운영 소스의 참조를 연결한다',()=>{
-    const files=['src/shared/packIndex.ts','src/shared/services/rawInventoryService.ts','functions/src/shared/rawInventoryCore.ts'].map(name=>resolve(name));
+    const files=['src/shared/packIndex.ts','functions/src/shared/orderPackIndex.ts','functions/src/shared/rawInventoryPrepare.ts','functions/src/shared/rawInventoryCore.ts'].map(name=>resolve(name));
     const program=ts.createProgram(files,{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,skipLibCheck:true}), checker=program.getTypeChecker(),refs=new Map();
     const location=node=>`${node.getSourceFile().fileName.replaceAll('\\','/')}:${node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line+1}`;
     for(const file of program.getSourceFiles()){if(file.fileName.includes('node_modules'))continue;const visit=node=>{collectFieldReferences(checker,node,location,refs);ts.forEachChild(node,visit);};visit(file);}
-    for(const [path,model,field,consumer] of [['src/shared/packIndex.ts','PackRow','units_per_box','packIndex.ts:43'],['functions/src/shared/rawInventoryCore.ts','RawInventoryState','stockKg','rawInventoryService.ts:109']]){
+    for(const [path,model,field,consumer] of [['functions/src/shared/orderPackIndex.ts','PackRow','units_per_box','functions/src/shared/orderPackIndex.ts'],['functions/src/shared/rawInventoryCore.ts','RawInventoryState','stockKg','functions/src/shared/rawInventoryPrepare.ts']]){
       const declaration=program.getSourceFile(resolve(path)).statements.find(node=>node.name?.text===model), result=resolvedModelFields(checker,declaration,location,refs).fields.find(row=>row.field===field);
-      expect(result.references.some(value=>value.endsWith(consumer))).toBe(true);const original=declaration.members.find(node=>node.name?.getText()===field);expect(referencesOfDeclarations([original],refs)).toEqual(result.references);
+      const consumerFile=program.getSourceFile(resolve(consumer)),uses=[];const visit=node=>{if(ts.isPropertyAccessExpression(node)&&node.name.text===field)uses.push(location(node));ts.forEachChild(node,visit);};visit(consumerFile);
+      expect(uses.length).toBeGreaterThan(0);expect(result.references.some(value=>uses.includes(value))).toBe(true);const original=declaration.members.find(node=>node.name?.getText()===field);expect(referencesOfDeclarations([original],refs)).toEqual(result.references);
     }
   });
 });

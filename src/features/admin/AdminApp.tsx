@@ -3050,7 +3050,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onOemReceive={async (v,intent?:'new'|'resume',expectedActorUid?:string) => {
                 const context=await getOemReceiptRecoveryContext(companyId,v.po.id,expectedActorUid);
                 const tracker={entered:false,uid:context.scope.actorUid};
-                if((v.po.companyId??'taebaek')!==companyId)throw Error('다른 회사의 OEM 입고 요청은 처리하지 않습니다.');
+                if(companyOf(v.po)!==companyId)throw Error('다른 회사의 OEM 입고 요청은 처리하지 않습니다.');
                 if(context.entry.legacy)throw Error('과거 입고 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 배치 입고 이력과 재고를 확인해 주세요.');
                 if(context.entry.deleted&&(intent!=='resume'||!context.entry.packet))throw Error('이 배치의 이전 입고 결과가 아직 미확인입니다. 최초 송신 요청으로 배치 입고 결과를 확인해 주세요.');
                 oemReceiptSendTracker.current.set(v.po.id,tracker);

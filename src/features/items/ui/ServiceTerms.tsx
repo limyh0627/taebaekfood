@@ -1,5 +1,6 @@
 import React,{useEffect,useRef} from 'react';
 import type {Item,PartnerItem,AccountCode,AccountGroup} from '../../../shared/types';
+import {companyOf} from '../../../shared/types';
 import {filterCodesForContext} from '../../admin/financials';
 import {usePartnerItemTermsEditor,type PartnerItemTermsEditor} from '../hooks/usePartnerItemTermsEditor';
 import type {PartnerItemTermsBindings,PartnerItemTermsInput,PartnerItemTermsOutcome,PartnerItemTermsTarget} from '../infrastructure/partnerItemTermsWrites';
@@ -49,7 +50,7 @@ function Fields({editor,item,partnerId,direction,value,accountCodes,accountGroup
  </div>;
 }
 function Standalone(props:ServiceTermsProps){
- const editor=usePartnerItemTermsEditor({scopeKey:(props.item.companyId??'taebaek')+':'+(props.requestScopeKey??''),onSave:props.onSave??props.onSavePartnerItemTerms,readPending:props.onReadPendingPartnerItemTerms,readReferences:props.onReadPartnerItemTermsReferences,inspect:props.onInspectPartnerItemTerms,cancel:props.onCancelPartnerItemTerms,discard:props.onDiscardPartnerItemTermsCopy});
+ const editor=usePartnerItemTermsEditor({scopeKey:companyOf(props.item)+':'+(props.requestScopeKey??''),onSave:props.onSave??props.onSavePartnerItemTerms,readPending:props.onReadPendingPartnerItemTerms,readReferences:props.onReadPartnerItemTermsReferences,inspect:props.onInspectPartnerItemTerms,cancel:props.onCancelPartnerItemTerms,discard:props.onDiscardPartnerItemTermsCopy});
  return <><Fields {...props} editor={editor}/><PartnerItemTermsRecovery editor={editor}/></>;
 }
-export const ServiceTerms:React.FC<ServiceTermsProps>=props=>props.editor?<Fields {...props} editor={props.editor}/>:<Standalone key={(props.item.companyId??'taebaek')+':'+(props.requestScopeKey??'')} {...props}/>;
+export const ServiceTerms:React.FC<ServiceTermsProps>=props=>props.editor?<Fields {...props} editor={props.editor}/>:<Standalone key={companyOf(props.item)+':'+(props.requestScopeKey??'')} {...props}/>;

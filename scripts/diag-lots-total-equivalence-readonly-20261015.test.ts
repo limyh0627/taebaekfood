@@ -1,13 +1,28 @@
-import {describe,it,expect,vi} from 'vitest';
-import {readFileSync} from 'node:fs';
-import {resolve} from 'node:path';
-import {selfCheck,parse,readTargets,safe,failureCode,classify,paths,run,verifySources,SOURCE_MANIFEST,type Target} from './diag-lots-total-equivalence-readonly-20261015.mts';
+import {describe,it,expect,vi,afterAll} from 'vitest';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,globSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {require as loadTs} from 'tsx/cjs/api';
+import {resolve,dirname} from 'node:path';
+import type {Target} from './diag-lots-total-equivalence-readonly-20261015.mts';
+const currentRoot=resolve('.'),snapshot=mkdtempSync(resolve('work/lots-history-')),commit='c39ab8585d96b175a563c81d711dc9db9c148921';
+const scriptFiles=['scripts/diag-lots-total-equivalence-readonly-20261015.mts','scripts/diag-zero-item-price-20261015.mts','scripts/prepare-zero-item-price-dry-20261015.mts','scripts/shared/zeroItemPriceMigration.ts','scripts/shared/zeroItemPriceBackup.ts'];
+const crlfFiles=['functions/src/shared/rawInventoryCore.ts','functions/src/shared/rawInventoryDocument.ts','src/shared/unpackLots.ts','src/shared/lotUtils.ts','functions/src/shared/productLot.ts','functions/src/shared/rawLot.ts','src/shared/day.ts','functions/src/shared/stockUnitMeasure.ts','functions/src/shared/calculation.ts','functions/src/shared/formula.ts'];
+let cleaned=false;function cleanup(){if(cleaned)return;process.chdir(currentRoot);if(!snapshot.startsWith(resolve(currentRoot,'work')+'\\'))throw Error('snapshot path outside work');rmSync(snapshot,{recursive:true});cleaned=true;}afterAll(cleanup);
+let api:typeof import('./diag-lots-total-equivalence-readonly-20261015.mts');try{
+ const archive=execFileSync('git',['archive',commit,'src/shared','functions/src/shared'],{maxBuffer:100*1024*1024});execFileSync('tar',['--exclude','*.test.*','--exclude','*.spec.*','-xf','-','-C',snapshot],{input:archive});if(globSync('**/*.{test,spec}.*',{cwd:snapshot}).length)throw Error('snapshot에 시험 파일이 포함됨');
+ for(const file of scriptFiles){const target=resolve(snapshot,file);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,execFileSync('git',['show',commit+':'+file]));const normalize=(p:string)=>readFileSync(p,'utf8').replace(/\r\n/g,'\n');if(normalize(target)!==normalize(resolve(currentRoot,file)))throw Error('현재 진단 script 변경: '+file);}
+ for(const path of crlfFiles){const target=resolve(snapshot,path);writeFileSync(target,readFileSync(target,'utf8').replace(/\r?\n/g,'\r\n'));}
+ loadTs(resolve(currentRoot,'src/shared/accountChart.ts'),import.meta.url);process.chdir(snapshot);api=await import(/* @vite-ignore */ pathToFileURL(resolve(snapshot,scriptFiles[0])).href);
+}catch(error){cleanup();throw error;}
+const {selfCheck,parse,readTargets,safe,failureCode,classify,paths,run,verifySources,SOURCE_MANIFEST}=api;
 const base='projects/taebaek-3abe4/databases/(default)/documents';
 const at='2026-10-15T00:00:00.123456789Z';
 const item=(id='synthetic',fields:any={companyId:{stringValue:'taebaek'},lotsAreTotal:{booleanValue:true}})=>({name:base+'/items/'+id,fields,updateTime:at});
 const response=(documents:any[]=[])=>[...documents.map(document=>({document,readTime:at})),{readTime:at,done:true}];
 const target=():Target=>({item:{id:'synthetic',data:{companyId:'taebaek',stock:2,lotsAreTotal:true,lots:[{status:'active',qtyRemaining:2,kgRemaining:10,unitKg:5}]},original:item()},state:{id:'taebaek__synthetic',data:{companyId:'taebaek',rawItemId:'synthetic',stockKg:2,activeLots:[],recentDepletedLots:[],revision:1},original:{name:base+'/rawInventories/taebaek__synthetic',updateTime:at}},itemReadTimes:[at],stateReadTimes:[at]});
 describe('lotsAreTotal 읽기 진단',()=>{
+ it('현재 원본과 쓰기 주입 변이는 인증 전 차단한다',async()=>{expect(()=>verifySources((path:string)=>readFileSync(resolve(currentRoot,path.slice(snapshot.length+1))))).toThrow();const token=vi.fn(),read=vi.fn();const source=()=>{verifySources((path:string)=>path===resolve('src/shared/lotUtils.ts')?Buffer.concat([readFileSync(path),Buffer.from('\nupdateDoc(ref, {stock: 1});\n')]):readFileSync(path));return selfCheck();};await expect(run([],{source,token,read,paths:()=>({output:'unused',originals:'unused'})})).rejects.toMatchObject({stage:'source'});expect(token).not.toHaveBeenCalled();expect(read).not.toHaveBeenCalled();});
  it('포장수량과 kg를 섞지 않고 단위 미확정이면 수치 비교도 하지 않는다',()=>{const row=target(),result=classify([row]);expect(result.deletionReady).toBe(false);expect(result.companies.taebaek).toMatchObject({targets:1,helperInputEquivalent:1,helperResultEquivalent:1,unitAmbiguous:1,notEvaluated:1});expect(row.item.data.lotsAreTotal).toBe(true);expect(JSON.stringify(result)).not.toContain('synthetic');});
  it.each(['missingState','invalidItem','invalidState','companyMismatch','itemLinkMismatch'])('원문 문제 %s는 자동 보정하지 않고 별도 집계한다',category=>{const row=target();if(category==='missingState')row.state=null;if(category==='invalidItem')row.item.data.lots=null;if(category==='invalidState')row.state!.data.stockKg='2';if(category==='companyMismatch')row.state!.data.companyId='punghoe';if(category==='itemLinkMismatch')row.state!.data.rawItemId='different';expect(classify([row]).companies.taebaek[category]).toBe(1);expect(classify([row]).deletionReady).toBe(false);});
  it('빈 대상·다수 대상·false 표식도 과거 1건에 고정하지 않는다',()=>{expect(classify([]).companies.taebaek.targets).toBe(0);const first=target(),second=target();second.item.data.lotsAreTotal=false;expect(classify([first,second]).companies.taebaek).toMatchObject({targets:2,flagTrue:1,flagFalse:1});});

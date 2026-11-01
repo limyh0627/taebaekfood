@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe('발행 전표 서버 수정', () => {
   it('주문·수금이 연결된 전표도 같은 거래처의 비고 수정은 저장한다', async () => {
-    expect(await run(request())).toEqual({ status: 'applied', revision: 1 });
+    expect(await run(request())).toEqual({ version:1,reference:{companyId:'taebaek',operationId:'operation-1',statementId:'stmt-1'},actorUid:'user',status:'applied',requestHash:expect.stringMatching(/^[a-f0-9]{64}$/),revision:1,message:'이 전표 수정 요청을 적용했습니다.' });
     expect(state.update).toHaveBeenCalledWith('issuedStatements/stmt-1', expect.objectContaining({ memo: '수정', mutationRevision: 1 }));
   });
   it('수금 이상인 금액 수정은 저장한다', async () => {

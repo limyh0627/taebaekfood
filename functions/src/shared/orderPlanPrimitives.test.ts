@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { assertPlainOrderRawBatch, rawPressText, validateOrderInventoryGeneration, isCalendarDay, dateOfLocal } from './orderPlanPrimitives';
 
 function original(file: string, start: string, end: string, prefix = ''): any {
- const source = execFileSync('git', ['show', `HEAD:src/shared/${file}`], { encoding: 'utf8' });
+ const source = execFileSync('git', ['show', `818edf1387bc0675e8b535ca79582b0c59c576fe:src/shared/${file}`], { encoding: 'utf8' });
  const body = source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
  const js = ts.transpileModule(prefix + body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2017 } }).outputText;
  const exports: Record<string, unknown> = {};
@@ -21,7 +21,7 @@ const oldDate = original('day.ts','export function dateOfLocal','export function
 function outcome(fn: (x: any) => any, x: any) { try { return ['ok', fn(x)]; } catch (e) { return ['error', (e as Error).message]; } }
 
 describe('단일 원본 원문 동치', () => {
- it('plain JSON과 크기 및 오류를 HEAD와 비교한다', () => {
+ it('plain JSON과 크기 및 오류를 분리 전 원본과 비교한다', () => {
   for (const x of [null, true, 1, NaN, Infinity, undefined, {x: undefined}, [1, null], new Date(), '가'.repeat(233333), '가'.repeat(233334)]) expect(outcome(assertPlainOrderRawBatch,x)).toEqual(outcome(oldBatch,x));
  });
  it('정규 문자열의 키, undefined, 배열 순서와 원문을 보존한다', () => {
