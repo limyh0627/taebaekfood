@@ -38,8 +38,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
 
   const allLots: RawMaterialLot[] = product.lots ?? [];
   const active = allLots.filter(l => l.status === 'active');
-  const depleted = allLots.filter(l => l.status !== 'active');
-  const [showDepleted, setShowDepleted] = useState(() => !!focusLotId && depleted.some(lot => lot.id === focusLotId));
+  const focusedDepleted = focusLotId ? allLots.find(lot => lot.id === focusLotId && lot.status !== 'active') : undefined;
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
@@ -256,7 +255,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">혼합 {mixDraft[lot.id]}%</span>
             )}
             {/* 로트번호 — 클릭(관리자)하면 인라인 편집 */}
-            {editingId === lot.id ? (
+            {!dim && editingId === lot.id ? (
               <span className="inline-flex items-center gap-1">
                 <input
                   autoFocus
@@ -270,6 +269,8 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
                 <button disabled={busy} onClick={(e) => { e.stopPropagation(); saveLotNo(lot); }} className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={12} /></button>
                 <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-0.5 text-slate-400 hover:bg-slate-100 rounded"><X size={12} /></button>
               </span>
+            ) : lot.lotNo && dim ? (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 inline-flex items-center gap-0.5"><Tag size={9} /> {lot.lotNo}</span>
             ) : lot.lotNo ? (
               <button
                 onClick={(e) => { e.stopPropagation(); if (isAdmin && !dim) { setEditingId(lot.id); setEditVal(lot.lotNo ?? ''); } }}
@@ -390,7 +391,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
 
       {active.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-xs font-bold text-slate-300">
-          등록된 로트가 없습니다. 거래처 입고 시 자동 생성됩니다.
+          활성 로트가 없습니다. 거래처 입고 시 자동 생성됩니다.
         </div>
       ) : (
         <>
@@ -403,19 +404,12 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         </>
       )}
 
-      {depleted.length > 0 && (
+      {focusedDepleted && (
         <div>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowDepleted(v => !v); }}
-            className="text-[10px] font-black text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            {showDepleted ? '▼' : '▶'} 소진된 로트 {depleted.length}건
-          </button>
-          {showDepleted && (
-            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden mt-1.5">
-              {depleted.map((lot, i) => lotRow(lot, i, depleted.length, true))}
-            </div>
-          )}
+          <div className="text-[10px] font-black text-slate-400">선택한 종료 로트</div>
+          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden mt-1.5">
+            {lotRow(focusedDepleted, 0, 1, true)}
+          </div>
         </div>
       )}
 
