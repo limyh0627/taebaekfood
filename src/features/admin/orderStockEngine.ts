@@ -4,7 +4,7 @@ export {perUnitOilKg} from '../../shared/orderProductionPlanner';
 export type {StockUseChoice,StockUsePlan} from '../../shared/orderProductionPlanner';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { prepareOrderInventoryCancellation, executeOrderInventoryCancellation, readOrderCancellationReceipt, type CancellationTicket, type CancellationAction } from './orderInventoryCancellation';
-import { doc, getDoc, Firestore } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, Firestore } from 'firebase/firestore';
 import { isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { goodsShipQty } from '../../shared/shipDeduction';
 import { bomOf, getBomIndex } from '../../shared/bomIndex';
@@ -109,7 +109,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   const clearOrderInventoryGeneration:typeof import('../../shared/services/firebaseService').clearOrderInventoryGeneration=async(...args)=>(await import('../../shared/services/firebaseService')).clearOrderInventoryGeneration(...args);
   const guardedUpdateOrderInventoryGeneration:typeof import('../../shared/services/firebaseService').guardedUpdateOrderInventoryGeneration=async(...args)=>(await import('../../shared/services/firebaseService')).guardedUpdateOrderInventoryGeneration(...args);
   const markOrderInventoryGenerationFailed:typeof import('../../shared/services/firebaseService').markOrderInventoryGenerationFailed=async(...args)=>(await import('../../shared/services/firebaseService')).markOrderInventoryGenerationFailed(...args);
-  const { applyOrderRawUsage, reverseOrderRawUsage } = createOrderRawInventoryOperations({
+  const { applyOrderRawUsage } = createOrderRawInventoryOperations({
     actorName, allItems, partners, db,
     addNotification: notification => addItem('notifications', notification),
     runRawInventoryJob: runRawJob,
@@ -121,6 +121,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     applyItemStockDeltas,
   } = createOrderItemStockOperations({ db, allItems, bomIndex: inputs.bom,getActorUid:deps.getActorUid??(()=>actorAuth?.currentUser?.uid) });
   const generationOf=(order:Order)=>generationFromOrder(order);
+  const readConfirmedGen0Order=async(orderId:string)=>{const snap=await getDocFromServer(doc(db,'orders',orderId));if(snap.metadata?.fromCache!==false||snap.metadata?.hasPendingWrites!==false)throw Error('서버에서 확정된 원주문을 확인할 수 없어 자동 재생산하지 않았습니다.');return snap;};
   const retireRetainedRequestBeforeClaim=deps.retireRetainedRequestBeforeClaim??(async(order:Order)=>(await import('../../shared/services/orderRequestRetirementService')).retireRetainedOrderRequestBeforeClaim(order));
   const expectedRecordIndex=async(generation:OrderInventoryGeneration,fallback:Order['productionRecordIndex'])=>{
     const first=readOrderRawBatchAttempt(generation.companyId,generation.actorUid,generation.orderId);
@@ -172,18 +173,6 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     bomOf(parentItemId).map(line => ({ parentItemId, childItemId: line.childId, quantity: line.qty }))
   );
 
-  /** 실패한 재처리를 다시 시도할 때 DB에 남은 앞선 생산분을 계산판에서 먼저 제거한다. */
-  const addPreviousProductionRollback = (order: Order, deltas: Map<string, number>) => {
-    const already = order.rawConsumedLots ?? [];
-    if (already.length === 0) return false;
-    const previousProduction = order.inventorySnapshots?.production;
-    if (!previousProduction) {
-      throw new Error(`생산 재처리 중단: 이전 품목 재고 스냅샷이 없습니다 (주문 ${order.id})`);
-    }
-    previousProduction.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
-    return true;
-  };
-
   /** claim 앞에서도 예약과 실제 생산의 공용 셈을 쓴다. 역변경은 기존 저장 스냅샷 경로다. */
   const preflightProduction = async (order:Order, rows:readonly {item:OrderItem;index:number}[], plan?:StockUsePlan, selectedIndex?:number) => {
     const targets={...order,items:rows.map(row=>row.item)};
@@ -229,9 +218,10 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     //   (생들기름 775.98kg = 8/04 277.2 + 8/05 249.48 + 8/14 249.3 세 건이 각각 두 번씩 빠졌다)
     //   바깥 가드(`wantProduced && !order.producedAt`)는 **화면 상태**를 보므로 다른 탭·중복 클릭으로
     //   낡으면 그냥 통과한다 — 재고 음수를 만들던 것과 같은 낡은-상태 문제다.
-    //   → DB의 지금 값을 직접 보고, 이미 빼둔 몫이 있으면 되돌린 뒤 새로 뺀다.
-    //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
-    const fresh = await getDoc(doc(db, 'orders', order.id));
+    //   → DB의 지금 값을 직접 보고 이미 완료했으면 중복을 막는다.
+    //     구형 부분 생산은 분리 거래로 되돌리지 않고 원문 확인을 요청한다.
+    const fresh = generationOf(order)?await getDoc(doc(db, 'orders', order.id)):await readConfirmedGen0Order(order.id);
+    if(!fresh.exists()&&!generationOf(order))throw Error('원주문을 확인할 수 없어 자동 재생산하지 않았습니다.');
     const freshOrder = fresh.exists() ? ({ ...order, ...(fresh.data() as Partial<Order>) } as Order) : order;
     if (freshOrder.producedAt) {
       return {
@@ -243,23 +233,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         rawCalculationEvidence: freshOrder.inventorySnapshots?.production?.rawCalculationEvidence,
         productionDeltas: undefined,
         frozenProductLots:undefined,firstBomLines:undefined,frozenShipment:undefined,
-        previousProducedLots: undefined,
-        previousConsumedLots: undefined,
       };
     }
     const already = freshOrder.rawConsumedLots ?? [];
     const generation=generationOf(freshOrder);
     requireRecordContract(freshOrder,generation);
     if(generation&&already.length)throw Error('기존 부분 생산의 원료 근거를 새 일괄 작업으로 자동 보완하지 않습니다.');
-    if (addPreviousProductionRollback(freshOrder, deltas)) {
-      /*
-       * 원료 작업만 되돌리고 새 수량을 계산하면, DB에 남아 있는 이전 완제품이 가용 재고로 잡혀
-       * 새 생산량이 0이 된다. 이전 생산의 품목 델타도 같은 계산판에서 먼저 뒤집어야
-       * `+1000 생산 → 수량 900으로 정정`이 `-1000 +900`으로 끝난다.
-       */
-      console.warn(`[생산 재처리] ${order.id} — 이미 기록된 원료 작업 ${already.length}건을 되돌리고 다시 처리한다`);
-      await reverseOrderRawUsage(freshOrder);
-    }
+    if(!generation&&already.length)throw Error('기존 생산 근거가 남아 자동 재생산하지 않았습니다. 원주문과 원료 처리 결과를 확인해 주세요.');
     const retained=generation?readOrderRawBatchAttempt(generation.companyId,generation.actorUid,generation.orderId):null;
     if(generation&&retained)recordPlan(freshOrder,generation,retained.request.plan.productionRecords);
     const attempt = retained?Number(retained.request.plan.attempt):(freshOrder.rawInventoryAttempt ?? 0) + 1;
@@ -290,7 +270,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       onStage?.('production-record');await writeProductionRecords(applied.request);
     }else consumedLots=await applyOrderRawUsage(freshOrder,production.rawUsage,attempt,production.rawUsageLedgerOnly);
     if(!generation){onStage?.('production-record');await createProductionRecordsForOrder!(freshOrder, inputs);}
-    return { consumedLots, ...production, attempt, alreadyProduced: false, productionDeltas,frozenProductLots,firstBomLines,frozenShipment, previousProducedLots: already.length ? freshOrder.inventorySnapshots?.production?.productProducedLots : undefined, previousConsumedLots: already.length ? freshOrder.inventorySnapshots?.production?.productConsumedLots : undefined };
+    return { consumedLots, ...production, attempt, alreadyProduced: false, productionDeltas,frozenProductLots,firstBomLines,frozenShipment };
   };
 
   // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −(생산분). 먼저 만든 것도 되돌린다.
@@ -369,6 +349,12 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     let firstShipmentDeltas:typeof shipmentStockDeltas;
     const needsForwardProduction = wantProduced && !order.producedAt;
     if(needsForwardProduction)requireRecordContract(order,generation);
+    if(needsForwardProduction&&!generation){
+      const fresh=await readConfirmedGen0Order(order.id);
+      if(!fresh.exists())throw Error('원주문을 확인할 수 없어 자동 재생산하지 않았습니다.');
+      const current=fresh.data() as Partial<Order>;
+      if(!current.producedAt&&(current.rawConsumedLots??[]).length)throw Error('기존 생산 근거가 남아 자동 재생산하지 않았습니다. 원주문과 원료 처리 결과를 확인해 주세요.');
+    }
     const needsForwardShipment = wantShipped && !order.shippedOut;
     const wantsAllocationUntilShipment = !isStockProduction(order) && wantProduced && !wantShipped;
     const reservationExtraItemIds = [
@@ -389,7 +375,6 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
             if(retained){firstReservationDeltas=retained.request.plan.reservationDeltas as typeof firstReservationDeltas;return new Map(firstReservationDeltas.map(row=>[row.itemId,row.delta]));}
             const preview = new Map<string, number>();
             if (needsForwardProduction) {
-              addPreviousProductionRollback(order, preview);
               planOrderProduction(order, preview, stockSnapshot, plan);
             }
             // 작업완료 상태에서도 실제 출고 전까지 이 주문 전체 물량을 잡아 둔다.
@@ -447,7 +432,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (needsForwardProduction) {
         inventoryMayHaveChanged = true;
         if (!reservation) throw new Error(`주문 재고 예약이 없습니다: ${order.id}`);
-        const { consumedLots, autoBuilt, producedUnits, rawCalculationEvidence, attempt, alreadyProduced, productionDeltas,frozenProductLots,firstBomLines,frozenShipment, previousProducedLots, previousConsumedLots } = await produceOrder(
+        const { consumedLots, autoBuilt, producedUnits, rawCalculationEvidence, attempt, alreadyProduced, productionDeltas,frozenProductLots,firstBomLines,frozenShipment } = await produceOrder(
           order, deltas, reservation.stockSnapshot, plan,firstReservationDeltas,plain({kind:'status',order,target,completionPatch:firstCompletionPatch??{},reservation:saveReservation(reservation)}),onStage,
         );
         if (!alreadyProduced) {
@@ -460,8 +445,6 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
           patch.producedUnits = producedUnits;
           if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
-          productLotMutations.push(...reverseProductionProductLots(previousProducedLots));
-          productLotMutations.push(...restoreProductLotsForOrder({ ...order, productConsumedLots: previousConsumedLots ?? [] }));
           const productLots = frozenProductLots?replayProductLots(frozenProductLots):productionProductLots(allItems, productionDeltas!, `${order.id}-${attempt}`, inputs);
           firstShipmentDeltas=frozenShipment;
           productLotMutations.push(...productLots.mutations);

@@ -6,7 +6,7 @@ import { companyOf, type CompanyId, type Item, type IssuedStatement, type Partne
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { parsePackageKg, parseSpecCount } from '../../constants/formula';
 import { itemKg, type OrderUnitInputs } from '../../shared/orderUnits';
-import { buildOemFeePlan } from '../../shared/oemFeePlan';
+import { buildOemFeePlan, buildOemFeePlanV2, type OemFeeTermsV2 } from '../../shared/oemFeePlan';
 export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
 import { buildProductLot } from '../../shared/lotUtils';
@@ -122,6 +122,7 @@ export function createOemEngine(deps: OemEngineDeps) {
      *  우리가 소분·포장하는 몫이라 재고가 우리 로트에 있어야 한다. */
     bulk?: { material: string; kg: number }[];
     oemCostEvidence?: OemCostEvidence;
+    feeTermsV2?: OemFeeTermsV2;
     unitPricePerKg?: number;                       // 가공단가(원/kg) — 전표 발행 때 쓰려고 배치에 저장
     date: string;
     addedBy?: string;
@@ -229,6 +230,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       items: receiptItems,
       ...(bulkLines.length ? { bulk: bulkLines } : {}),
       feeRequest,
+      ...(input.feeTermsV2 !== undefined ? {feeTermsV2: input.feeTermsV2} : {}),
       ...(receiptEvidence ? {oemCostEvidence: receiptEvidence} : {}),
       poPatch: {
         status: 'received', receivedAt: new Date().toISOString(),
@@ -264,13 +266,16 @@ export function createOemEngine(deps: OemEngineDeps) {
     const taxable = input.taxable ?? true;
     // 회사·현재 단위중량은 기존 앱 경로에서 해석하고 전표 줄 계산은 서버와 공유한다.
     const savedUnitKg = oemFeeUnitKgFromSavedReceipt(po);
-    const products = (po.items ?? []).map(pi => {
+    const products = po.oemFeeSnapshotV2 ? [] : (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
       if (!it || companyOf(it) !== companyId) throw new Error(`현재 회사의 OEM 전표 품목을 찾을 수 없습니다: ${pi.itemId}`);
       return {name:pi.name,spec:it.spec ?? pi.unit ?? '',qty:pi.quantity ?? 0,unitKg:savedUnitKg?.get(pi.itemId) ?? itemKg(it,deps.orderUnitInputs)};
     });
-    const {lines,totalSupply,totalTax} = buildOemFeePlan({receivedKg,sentKg:sentKg(po.oemSent),perKg,
-      exempt:!taxable,accountCode:feeCode,products,bulk:po.oemReceivedBulk ?? []});
+    const snapshot = po.oemFeeSnapshotV2;
+    const {lines,totalSupply,totalTax} = snapshot
+      ? buildOemFeePlanV2({rows:snapshot.rows,bulk:snapshot.bulk,accountCode:feeCode})
+      : buildOemFeePlan({receivedKg,sentKg:sentKg(po.oemSent),perKg, exempt:!taxable,accountCode:feeCode,products,bulk:po.oemReceivedBulk ?? []});
+    if (snapshot && totalSupply + totalTax === 0) throw new Error('전표 발행 불필요 (총액 0원)');
     const statement: IssuedStatement = {
       id: statementId,
       companyId,
@@ -282,7 +287,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       items: lines,
     };
 
-    await applyOemFeeStatement({ companyId, poId: po.id, perKg, statement });
+    await applyOemFeeStatement({ companyId, poId: po.id, ...(snapshot ? {} : {perKg}), statement });
     return { statementId, supply: totalSupply, tax: totalTax, total: totalSupply + totalTax };
   }
 

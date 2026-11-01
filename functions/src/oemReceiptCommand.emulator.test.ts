@@ -6,7 +6,7 @@ import * as admin from 'firebase-admin';
 import { receiveOemFinishedGoods } from './oemReceiptCommand';
 
 const prefix = `oem-receipt-${randomUUID()}`;
-const projectId = 'demo-failure-repair-20261101';
+const projectId = 'demo-oem-terms-20261101';
 const poId = `${prefix}-po`;
 const itemId = `${prefix}-item`;
 const partnerId = `${prefix}-partner`;
@@ -54,6 +54,36 @@ describe.skipIf(process.env.FAILURE_REPAIR_SDK !== 'true')('OEM finished-goods s
     ]);
   }, 30000);
   afterAll(async()=>{if(db){for(const path of owned){await rawDb.doc(path).delete();expect((await rawDb.doc(path).get()).exists,path).toBe(false);}if(sentinel){const snap=await rawDb.doc(sentinelPath).get();expect(snap.data()).toEqual(sentinel.data());expect(snap.updateTime).toEqual(sentinel.updateTime);await rawDb.doc(sentinelPath).delete();expect((await rawDb.doc(sentinelPath).get()).exists).toBe(false);}writeFileSync(stem+'-cleanup.json',JSON.stringify({projectId,owned:[...owned],planned:[...planned],sentinelPreserved:!!sentinel,allAbsent:true},null,2),{flag:'wx'});}if(app)await app.delete();},30000);
+
+  it('품목별 10kg·20kg 입고 조건을 원문으로 고정하고 같은 요청만 중복 처리한다',async()=>{
+    const batch=prefix+'-v2',a=prefix+'-v2a',b=prefix+'-v2b',raw=prefix+'-raw',operation='oem-receive:'+batch,materialV2=prefix+'-v2-material';
+    const sent=[{rawItemId:raw,material:materialV2,kg:600}],evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:raw,kg:600,supplyAmount:200000}],packaging:{confirmed:true,supplyAmount:100},capturedAt:'2026-10-03T00:00:00Z'};
+    const issue={companyId:'taebaek',partnerId,sent,date,oemCostEvidence:evidence};
+    await db.doc('appMeta/'+`oemLotSequence_taebaek_20261003_${encodeURIComponent(materialV2)}`).create({companyId:'taebaek',material:materialV2,date,lastSequence:0});
+    for(const [id,kg] of [[a,10],[b,20]] as const){await db.doc('items/'+id).create({id,companyId:'taebaek',name:id,품목:id,procureType:'임가공',type:'product',unit:'박스',packageKg:kg,stock:0,lots:[]});await db.doc('item_formula/'+id).create({parent_key:id,child_name:materialV2,ratio:1,yield_rate:1});}
+    await db.doc('purchaseOrders/'+batch).create({id:batch,companyId:'taebaek',poType:'oem',status:'invoiced',partnerId,oemPartnerId:partnerId,partnerName:'합성 외주',oemSent:sent,oemIssueDate:date,oemCostEvidence:evidence,oemIssueFingerprint:JSON.stringify(issue)});
+    const terms={version:2 as const,companyId:'taebaek',partnerId,rows:[{itemId:a,processing:{unit:'kg' as const,grossUnitPrice:10,taxExempt:false},vendorPackaging:{unit:'box' as const,grossUnitPrice:100,taxExempt:true}},{itemId:b,processing:{unit:'kg' as const,grossUnitPrice:20,taxExempt:true},vendorPackaging:{unit:'box' as const,grossUnitPrice:50,taxExempt:false}}]};
+    const request={poId:batch,operationId:operation,date,releaseId:prefix,returns:[{itemId:a,qty:10},{itemId:b,qty:20}],feeTermsV2:terms};
+    const invalidTerms=[{...terms,companyId:'punghoe'},{...terms,partnerId:'other'},{...terms,rows:terms.rows.slice(1)},{...terms,rows:[terms.rows[0],terms.rows[0]]},{...terms,rows:terms.rows.map((row,i)=>i?row:{...row,processing:{...row.processing,unit:'piece' as const}})}];
+    for(const invalid of invalidTerms)await expect(receiveOemFinishedGoods(db,'taebaek',{...request,feeTermsV2:invalid})).rejects.toThrow();
+    await expect(receiveOemFinishedGoods(db,'taebaek',{...request,unitPricePerKg:500})).rejects.toThrow('단일 kg 단가');
+    await expect(receiveOemFinishedGoods(db,'taebaek',request)).rejects.toThrow('별도 비용');expect((await db.doc('oemReceiptOperations/'+operation).get()).exists).toBe(false);expect((await saved('items/'+a))?.stock).toBe(0);expect((await saved('items/'+b))?.stock).toBe(0);
+    const confirmed={...request,feeTermsV2:{...terms,nonDuplicatePackagingConfirmed:true}};
+    const lost=new Proxy(db,{get(target,key,receiver){if(key==='runTransaction')return async(fn:any)=>{await target.runTransaction(fn);throw Error('synthetic ACK loss');};return Reflect.get(target,key,receiver);}});
+    await expect(receiveOemFinishedGoods(lost,'taebaek',confirmed)).rejects.toThrow('synthetic ACK loss');
+    expect((await db.doc('oemReceiptOperations/'+operation).get()).exists).toBe(true);
+    expect(await receiveOemFinishedGoods(db,'taebaek',confirmed)).toMatchObject({status:'duplicate',receivedKg:500});
+    const po=await saved('purchaseOrders/'+batch),op=await saved('oemReceiptOperations/'+operation),fee=await saved('adjustmentRequests/OEMFEE-'+batch);
+    expect(po?.oemFeeSnapshotV2.rows).toMatchObject([{itemId:a,receivedQty:10,unitKg:10,receivedKg:100},{itemId:b,receivedQty:20,unitKg:20,receivedKg:400}]);expect(fee?.oemTotal).toBe(11000);expect(op?.oemFeeTermsV2).toEqual(confirmed.feeTermsV2);expect(op?.oemFeeSnapshotV2).toEqual(po?.oemFeeSnapshotV2);expect(fee?.oemFeeSnapshotV2).toEqual(po?.oemFeeSnapshotV2);
+    expect((await saved('items/'+a))?.stock).toBe(10);expect((await saved('items/'+b))?.stock).toBe(20);
+    await db.doc('items/'+a).update({packageKg:999});await db.doc('partners/'+partnerId).update({testChangedTerms:'변경'});
+    expect(await receiveOemFinishedGoods(db,'taebaek',confirmed)).toMatchObject({status:'duplicate',receivedKg:500});
+    const pathsBefore=['purchaseOrders/'+batch,'adjustmentRequests/OEMFEE-'+batch,'oemReceiptOperations/'+operation,'items/'+a,'items/'+b],versions=await Promise.all(pathsBefore.map(path=>db.doc(path).get()));
+    const {feeTermsV2:_omitted,...legacyAttempt}=confirmed;await expect(receiveOemFinishedGoods(db,'taebaek',legacyAttempt)).rejects.toThrow('기존 OEM 입고와 재시도');
+    for(const snap of versions)expect((await db.doc(snap.ref.path).get()).updateTime).toEqual(snap.updateTime);
+    const changed={...confirmed,feeTermsV2:{...confirmed.feeTermsV2,rows:confirmed.feeTermsV2.rows.map((row,i)=>i?row:{...row,processing:{...row.processing,grossUnitPrice:11}})}};
+    await expect(receiveOemFinishedGoods(db,'taebaek',changed)).rejects.toThrow('재시도');expect((await saved('items/'+a))?.stock).toBe(10);
+  },30000);
 
   it('rejects bulk and release mismatch without a write', async () => {
     await expect(receiveOemFinishedGoods(db, 'taebaek', { ...input(), bulk: [{ material, kg: 1 }] }))

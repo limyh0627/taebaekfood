@@ -32,7 +32,7 @@ vi.mock('firebase/firestore', () => {
     for (const write of pending) memory.docs.set(write.path, write.data);
     return result;
   };
-  return { doc, getDoc, runTransaction };
+  return { doc, getDoc, getDocFromServer:async(ref:Ref)=>({...await getDoc(ref),metadata:{fromCache:false,hasPendingWrites:false}}), runTransaction };
 });
 
 const { createOrderItemStockOperations } = await import('./orderItemStock');

@@ -3,6 +3,7 @@ import type {OrderUnitInputs} from '../../../shared/orderUnits';
 import type {CompanyId,Item,Partner,PurchaseOrder} from '../../../shared/types';
 import type {OemIssueRetained} from '../../../shared/oemIssuePending';
 import type {OemIssueInspection} from '../../admin/oemIssueJob';
+import type {OemFeeTermsV2} from '../../../../functions/src/shared/oemFeePlan';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
@@ -24,8 +25,8 @@ export interface Props {
   onClose: () => void;
   onInspectIssue?: (retained: OemIssueRetained, expectedActorUid: string) => Promise<OemIssueInspection>;
   onIssue: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string; oemCostEvidence?: OemCostEvidence },intent?:'new'|'resume',expectedActorUid?:string,retained?:OemIssueRetained) => Promise<void>;
-  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }, intent?: 'new' | 'resume',expectedActorUid?:string) => Promise<void>;
-  onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
+  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence; feeTermsV2?: OemFeeTermsV2 }, intent?: 'new' | 'resume',expectedActorUid?:string) => Promise<void>;
+  onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string; feeTermsV2?: OemFeeTermsV2 }) => Promise<void>;
 }
 
 export type IssueInput = Parameters<Props['onIssue']>[0];

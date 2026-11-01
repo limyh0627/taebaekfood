@@ -7,17 +7,19 @@ import { baseRawName } from '../../../constants/formula';
 import { itemKg } from '../../admin/oemEngine';
 import { isBoxStockItem, type OrderUnitInputs } from '../../../shared/orderUnits';
 import { formatNumberKo as fmt } from '../../../shared/numberDisplay';
+import type { OemReceiptTermsV2 } from '../../../shared/partnerEditCommand';
+import type { OemFeeTermsV2, OemFeeRateV2 } from '../../../shared/oemFeePlan';
 import type { ReceiveInput } from '../domain/oemManager';
 
-export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, companyId, po, oemItems, bulkItems, busy, onClose, onSubmit, orderUnitInputs }: {
-  pendingError?: string; storageNotice?: string;
+export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, companyId, actorUid, preset, po, oemItems, bulkItems, busy, onClose, onSubmit, orderUnitInputs }: {
+  pendingError?: string; storageNotice?: string; actorUid?: string; preset?: OemReceiptTermsV2;
   orderUnitInputs?: OrderUnitInputs;
   pendingReceipt: ReceiveInput|null; companyId: CompanyId; po: PurchaseOrder; oemItems: Item[]; bulkItems: Item[]; busy: boolean;
   onClose: () => void;
-  onSubmit: (v: { returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }) => void;
+  onSubmit: (v: { returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; feeTermsV2?: OemFeeTermsV2; oemCostEvidence?: OemCostEvidence }) => void;
 }) {
-  const draft=useOemReceiptDraft({companyId,po,oemItems,busy,pendingReceipt,pendingError,orderUnitInputs});
-  const {date,setDate,rawAmounts,setRawAmounts,packagingSupply,setPackagingSupply,packagingConfirmed,setPackagingConfirmed,receiptCost,canCaptureEvidence,sentRows,fee,setFee,rows,setRows,bulkRows,setBulkRows,bulkKg,receivedKg,s,loss,money,canSave}=draft;
+  const draft=useOemReceiptDraft({companyId,actorUid,preset,po,oemItems,busy,pendingReceipt,pendingError,orderUnitInputs});
+  const {date,setDate,rawAmounts,setRawAmounts,packagingSupply,setPackagingSupply,packagingConfirmed,setPackagingConfirmed,receiptCost,canCaptureEvidence,sentRows,fee,setFee,rows,setRows,bulkRows,setBulkRows,bulkKg,receivedKg,s,loss,money,terms,setRate,termsConfirmed,setTermsConfirmed,nonDuplicatePackagingConfirmed,setNonDuplicatePackagingConfirmed,needsPackagingConfirmation,bulkTaxExempt,setBulkTaxExempt,previewPlan,termsError,canSave}=draft;
   const close=()=>{if(!busy&&draft.isCurrent())onClose();};
   return (
     <ModalShell title="가공입고" onClose={close} bodyClassName="space-y-4">
@@ -50,7 +52,7 @@ export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, comp
             const it = oemItems.find(x => x.id === r.itemId);
             const kg = it ? itemKg(it, orderUnitInputs) * (Number(r.qty) || 0) : 0;
             return (
-              <div key={i} className="flex items-center gap-1.5">
+              <div key={i} className="space-y-2"><div className="flex items-center gap-1.5">
                 <select value={r.itemId} onChange={e => setRows(p => p.map((x, j) => j === i ? { ...x, itemId: e.target.value } : x))}
                   className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300">
                   <option value="">— 품목 —</option>
@@ -61,6 +63,8 @@ export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, comp
                   className="w-20 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-violet-300" />
                 <span className="text-[10px] font-bold text-slate-400 shrink-0 w-16 text-right">{kg ? `${fmt(kg)}kg` : ''}</span>
                 {rows.length > 1 && <button onClick={() => setRows(p => p.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={14} /></button>}
+              </div>
+              {r.itemId && Number(r.qty)>0 && (terms[r.itemId] ? <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">{(['processing','vendorPackaging'] as const).map(key => {const rate=terms[r.itemId]![key]; return <div key={key} className="space-y-1 text-xs"><strong>{key==='processing'?'가공비':'업체부자재비'}</strong><div className="grid grid-cols-3 gap-2"><label className="min-w-0">기준<select aria-label={r.itemId+' '+key+' 단위'} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2" value={rate.unit} onChange={e=>setRate(r.itemId,key,{...rate,unit:e.target.value as OemFeeRateV2['unit']})}><option value="kg">kg</option><option value="piece">개</option><option value="box">박스</option></select></label><label className="min-w-0">단가 (원)<input aria-label={r.itemId+' '+key+' 단가'} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-right" inputMode="decimal" value={Number.isFinite(rate.grossUnitPrice)?rate.grossUnitPrice:''} onChange={e=>setRate(r.itemId,key,{...rate,grossUnitPrice:e.target.value.trim()?Number(e.target.value):NaN})} /></label><label className="min-w-0">과세<select aria-label={r.itemId+' '+key+' 과세'} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2" value={rate.taxExempt?'exempt':'taxable'} onChange={e=>setRate(r.itemId,key,{...rate,taxExempt:e.target.value==='exempt'})}><option value="taxable">과세</option><option value="exempt">면세</option></select></label></div></div>})}</div> : <div className="text-xs text-amber-700"><p>생산 관리 → 외주 발주 → OEM 조건 관리에서 외주공장과 입고 품목의 가공비·업체부자재비를 설정한 뒤 가공입고를 다시 열어 주세요. 닫으면 이 화면의 미송신 입력은 사라집니다.</p><button type="button" className="underline font-bold" onClick={close}>닫기</button></div>)} 
               </div>
             );
           })}
@@ -101,23 +105,23 @@ export function ReceiveModal({ pendingReceipt, pendingError, storageNotice, comp
           <label className="mt-2 flex items-center gap-2 text-xs"><input aria-label="입고 부자재 공급가액 확인" type="checkbox" checked={packagingConfirmed} onChange={e=>setPackagingConfirmed(e.target.checked)} />부자재 공급가액을 확인했습니다 (0원 포함)</label>
           {receiptCost.status==='incomplete' && <p className="mt-2 text-xs text-amber-700">입력한 원가 근거가 미완성입니다. 입고는 진행되지만 이번 원가 근거는 저장하지 않습니다.</p>}
         </details> : <p className="text-xs text-amber-700">원료 품목 ID가 없는 과거 발주는 원가 근거 미확인으로 입고합니다. 품목명으로 원료를 추정하지 않습니다.</p>}
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">가공단가 (원/kg)</label>
+        {bulkKg > 0 && <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">벌크 가공단가 (원/kg)</label>
           <input inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
             className="w-32 border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-violet-300" />
-        </div>
+        </div>}
 
-        <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-1 text-xs">
+        {bulkKg > 0 && <label className="text-xs"><input type="checkbox" checked={bulkTaxExempt} onChange={e=>setBulkTaxExempt(e.target.checked)} /> 벌크 가공비 면세</label>}
+        <label className="flex gap-2 text-xs"><input type="checkbox" checked={termsConfirmed} onChange={e=>setTermsConfirmed(e.target.checked)} /> 선택 품목의 단위·단가·과세 조건을 확인했습니다.</label>
+        {needsPackagingConfirmation && <label className="flex gap-2 text-xs"><input type="checkbox" checked={nonDuplicatePackagingConfirmed} onChange={e=>setNonDuplicatePackagingConfirmed(e.target.checked)} /> 기존 부자재는 업체청구와 별도 비용입니다.</label>}
+        {!pendingReceipt && !pendingError && (rows.some(r=>r.itemId && Number(r.qty)>0) || bulkKg>0) && termsError && <p role="alert" className="text-xs text-amber-700">{termsError}</p>}
+        <div className="border border-slate-200 bg-white rounded-2xl px-4 py-3 space-y-1 text-xs">
           <div className="flex justify-between"><span className="text-slate-400 font-bold">받은 완제품</span><span className="font-black tabular-nums">{fmt(receivedKg)} kg</span></div>
           <div className="flex justify-between"><span className="text-slate-400 font-bold">송출·입고 차이 (추정, 손실 미확정)</span><span className="font-black tabular-nums text-rose-600">{fmt(loss)} kg</span></div>
-          <div className="flex justify-between border-t border-slate-200 pt-1 mt-1">
-            <span className="text-slate-400 font-bold">가공비 (예상)</span>
-            <span className="font-black tabular-nums">{fmt(money.total)}원</span>
-          </div>
+          {previewPlan && <div className="border-t border-slate-200 pt-1 mt-1 space-y-1"><strong>입고 조건 예상 금액</strong>{previewPlan.lines.map((line,i)=><div key={i} className="flex justify-between gap-2"><span>{line.name} ({line.isTaxExempt?'면세':'과세'})</span><span>{fmt(line.total)}원</span></div>)}<div>공급가 {fmt(previewPlan.totalSupply)}원 + 세액 {fmt(previewPlan.totalTax)}원</div><div className="font-black">합계 {fmt(previewPlan.totalAmount)}원</div></div>}
         </div>
         <p className="text-[10px] text-slate-400 leading-snug">
-          입고하면 완제품 재고가 늘고 외주재고가 정리됩니다. <b>가공비 전표는 확인사항으로 넘어갑니다</b> —
-          확인사항에서 발행하세요.
+          입고하면 완제품 재고가 늘고 외주재고가 정리됩니다. {previewPlan?.totalAmount===0 ? <b>총액이 0원이므로 전표 발행은 불필요합니다.</b> : <><b>가공비 전표는 확인사항으로 넘어갑니다</b> — 확인사항에서 발행하세요.</>}
         </p>
 
         </fieldset><div className="flex gap-2">

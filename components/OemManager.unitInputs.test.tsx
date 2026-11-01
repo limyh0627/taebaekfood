@@ -15,6 +15,7 @@ const props={companyId:'taebaek' as const,items,partners:[],rawStockKg:()=>0,iss
 it('다른 전역 BOM에서도 회사 입력으로 회수 미리보기 1박스20kg를 표시한다',()=>{
  setBomIndex(other);
  render(<OemManager {...props} receiveTarget={{...order,status:'invoiced'}} feeTarget={null}/>);
+ fireEvent.change(screen.getAllByRole('combobox')[0],{target:{value:'box'}});
  fireEvent.change(screen.getByPlaceholderText('수량'),{target:{value:'1'}});
  expect(screen.getByText('받은 완제품').parentElement?.textContent).toContain('20 kg');
  expect(getBomIndex()).toBe(other);
@@ -29,9 +30,11 @@ it('같은 입력으로 조회 대조20kg를 표시하고 정상 저장 중량�
 it('두 회사 화면이 동시에 각 입력으로 회수 미리보기를 계산한다',()=>{
  setBomIndex(other);
  const view=render(<OemManager {...props} receiveTarget={{...order,status:'invoiced'}} feeTarget={null}/>);
+ fireEvent.change(screen.getAllByRole('combobox')[0],{target:{value:'box'}});
  fireEvent.change(screen.getByPlaceholderText('수량'),{target:{value:'1'}});
  render(<OemManager {...props} companyId="punghoe" items={items.map(item=>({...item,companyId:'punghoe'}))}
   orderUnitInputs={{bom:other,pack:inputs.pack}} receiveTarget={{...order,companyId:'punghoe',status:'invoiced'}} feeTarget={null}/>);
+ fireEvent.change(screen.getAllByRole('combobox')[2],{target:{value:'box'}});
  fireEvent.change(screen.getAllByPlaceholderText('수량')[1],{target:{value:'1'}});
  const totals=screen.getAllByText('받은 완제품').map(label=>label.parentElement?.textContent);
  expect(totals).toEqual(['받은 완제품20 kg','받은 완제품1 kg']);

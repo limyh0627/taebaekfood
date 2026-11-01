@@ -77,10 +77,10 @@ it('업무 ACK 후 사본 정리가 미확정인 partial은 창과 원문을 유
 it('본문없는 참조 사본도 화면에서 관측한 A를 넘겨 클릭 전 바뀐 B를 정리하지 않는다',async()=>{
  const ref={companyId:'taebaek' as const,planId:'only-reference'};
  let rows:CompanyInfoOperationEntry[]=[{key:'sidecar',reference:ref,status:'missing',description:'참조 사본 A',observedLocalText:null,observedReferenceText:'참조 A'}];
- const discard=vi.fn().mockResolvedValue({status:'rejected',message:'관측한 참조 사본이 바뀌어 정리하지 않았습니다.'}),close=vi.fn();
+ const gate=deferred<CompanyInfoOutcome>(),discard=vi.fn(()=>gate.promise),close=vi.fn();
  render(<StatementCompanyDialog {...scope} {...ports} onReadCompanyInfoOperations={async()=>rows} onDiscardCompanyInfoCopy={discard} initial={initial} onSave={vi.fn().mockResolvedValue(saved)} onClose={close}/>);await ready();
  const button=screen.getByRole('button',{name:'이 기기 사본 정리'});rows=[{...rows[0],description:'참조 사본 B',observedReferenceText:'참조 B'}];fireEvent.click(button);
- await waitFor(()=>expect(discard).toHaveBeenCalledWith(ref,null,'참조 A',expect.any(Object)));expect(close).not.toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent('정리하지 않았습니다');
+ await waitFor(()=>expect(discard).toHaveBeenCalledWith(ref,null,'참조 A',expect.any(Object)));expect(close).not.toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent('처리 중');await act(async()=>gate.resolve({status:'rejected',message:'관측한 참조 사본이 바뀌어 정리하지 않았습니다.'}));await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('정리하지 않았습니다'));
 });
 it('미확인 저장 뒤 서버 이력 0건을 조회하면 원인과 조회 완료·미처리 확정 아님을 함께 표시한다',async()=>{
  let rows:CompanyInfoOperationEntry[]=[];const save=vi.fn<NonNullable<StatementCompanyDialogProps['onSave']>>(async(_patch,context)=>{rows=[entry({companyId:context.companyId,planId:context.planId})];return {status:'unknown',message:'저장 응답을 확인하지 못했습니다.',nextAction:'같은 요청 결과를 확인해 주세요.'};});

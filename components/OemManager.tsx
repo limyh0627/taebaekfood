@@ -87,7 +87,7 @@ function OemSession({
   const resumeReceipt=(entry:OemReceiptEntry)=>{
     if(entry.legacy||!entry.draft&&!entry.packet)return;
     const r=entry.packet?.request;
-    const input=entry.draft?.input??{po:purchaseOrders?.find(po=>po.id===entry.scope.poId)??{id:entry.scope.poId,companyId:entry.scope.companyId} as PurchaseOrder,returns:r!.returns,bulk:r!.bulk??[],date:r!.date,unitPricePerKg:r!.unitPricePerKg??OEM_DEFAULT_FEE_PER_KG,...(r!.oemCostEvidence?{oemCostEvidence:r!.oemCostEvidence}:{})};
+    const input=entry.draft?.input??{po:purchaseOrders?.find(po=>po.id===entry.scope.poId)??{id:entry.scope.poId,companyId:entry.scope.companyId} as PurchaseOrder,returns:r!.returns,bulk:r!.bulk??[],date:r!.date,unitPricePerKg:r!.unitPricePerKg??OEM_DEFAULT_FEE_PER_KG,...(r!.oemCostEvidence?{oemCostEvidence:r!.oemCostEvidence}:{}),...(r!.feeTermsV2?{feeTermsV2:r!.feeTermsV2}:{})};
     void submitReceipt(input,'resume',entry);
   };
   const removeReceipt=async(entry:OemReceiptEntry)=>{
@@ -167,9 +167,9 @@ function OemSession({
           </div>;
         })()}
       </ModalShell>}
-      {issueOpen&&<div hidden={recoveryOpen}><IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={[]} purchaseOrders={purchaseOrders} busy={busy}
+      {issueOpen&&<div hidden={recoveryOpen}><IssueModal companyId={companyId} actorUid={actorUid} partners={partners} oemItems={oemItems} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={[]} purchaseOrders={purchaseOrders} busy={busy}
         onClose={close} onSubmit={v=>void submitIssue(v,'new')} /></div>}
-      {receiveTarget && <div hidden={recoveryOpen}><ReceiveModal companyId={companyId} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs} pendingReceipt={null} onClose={close} onSubmit={v=>void submitReceipt({po:receiveTarget,...v},'new')} /></div>}      {feeTarget && (
+      {receiveTarget && <div hidden={recoveryOpen}><ReceiveModal companyId={companyId} actorUid={actorUid} preset={partners.find(p=>p.id===(receiveTarget.oemPartnerId??receiveTarget.partnerId))?.oemReceiptTermsV2} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs} pendingReceipt={null} onClose={close} onSubmit={v=>void submitReceipt({po:receiveTarget,...v},'new')} /></div>}      {feeTarget && (
         <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy} orderUnitInputs={orderUnitInputs}
           onClose={close} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
       )}

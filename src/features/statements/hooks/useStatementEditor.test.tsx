@@ -237,11 +237,11 @@ it('회사설정 lease가 확인 대기 중 바뀌면 송신0·입력보존과 �
  expect(view.save).not.toHaveBeenCalled();expect(view.onCommitted).not.toHaveBeenCalled();expect(view.result.current.busy).toBe(false);
 });
 it('영속 prepare 대기 뒤 회사설정 lease가 바뀌면 apply하지 않고 보관원문은 남긴다',async()=>{
- const setup=recoverySetup();const wait=deferred<Awaited<ReturnType<StatementEditBindings['prepare']>>>();let current=true;
- const prepare=vi.fn(async(...args:Parameters<StatementEditBindings['prepare']>)=>{const entry=await setup.bindings.prepare(...args);await wait.promise;return entry;});
+ const setup=recoverySetup();const wait=deferred<Awaited<ReturnType<StatementEditBindings['prepare']>>>(),prepared=deferred<Awaited<ReturnType<StatementEditBindings['prepare']>>>();let current=true;
+ const prepare=vi.fn(async(...args:Parameters<StatementEditBindings['prepare']>)=>{const entry=await setup.bindings.prepare(...args);prepared.resolve(entry);await wait.promise;return entry;});
  const apply=vi.fn(setup.bindings.apply);const view=setup.mount({...setup.bindings,prepare,apply});await waitFor(()=>expect(view.result.current.readLoading).toBe(false));let task!:Promise<unknown>;
- act(()=>{task=view.result.current.saveEdit({patch:{memo:'A'},isCurrent:()=>current});});await waitFor(()=>expect(prepare).toHaveBeenCalledOnce());
- const entries=await setup.bindings.readPending(setup.scope);await waitFor(()=>expect(entries).toHaveLength(1));current=false;
+ act(()=>{task=view.result.current.saveEdit({patch:{memo:'A'},isCurrent:()=>current});});const preparedEntry=await prepared.promise;expect(prepare).toHaveBeenCalledOnce();
+ const entries=await setup.bindings.readPending(setup.scope);expect(entries).toHaveLength(1);expect(entries[0].reference).toEqual(preparedEntry.reference);current=false;
  await act(async()=>{wait.resolve(entries[0]);await task;});expect(apply).not.toHaveBeenCalled();expect(view.result.current.busy).toBe(false);expect(setup.onCommitted).not.toHaveBeenCalled();expect(await setup.bindings.readPending(setup.scope)).toHaveLength(1);
 });
 

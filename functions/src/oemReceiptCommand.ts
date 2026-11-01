@@ -1,5 +1,6 @@
 import { advanceInventoryWriterProtocol, preserveInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
 import { buildOemBatchCostPreview, finalizeOemBatchCost, sumOemReceivedKg, validateOemCostIssueFingerprint } from './shared/oemBatchCost';
+import {buildOemFeePlanV2,buildOemFeeSnapshotV2,normalizeOemFeeTermsV2,type OemFeeTermsV2} from './shared/oemFeePlan';
 import * as admin from 'firebase-admin';
 import { readOemCounter } from './newScopeCounter';
 import { createHash } from 'crypto';
@@ -19,6 +20,7 @@ type Input = {
   returns: { itemId: string; qty: number }[];
   bulk?: { material: string; kg: number; rawItemId?: string }[];
   unitPricePerKg?: number;
+  feeTermsV2?: OemFeeTermsV2;
   oemCostEvidence?: unknown;
   releaseId: string;
 };
@@ -72,8 +74,12 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
   const quantityByItem = new Map<string, number>();
   for (const row of input.returns) quantityByItem.set(row.itemId, round3((quantityByItem.get(row.itemId) ?? 0) + row.qty));
   const lines = [...quantityByItem].sort(([a], [b]) => a.localeCompare(b));
+  let termsV2:OemFeeTermsV2|undefined;
+  if(input.feeTermsV2!==undefined){try{termsV2=normalizeOemFeeTermsV2(input.feeTermsV2);}catch{return invalid('OEM 품목별 조건을 확인해 주세요.');}}
+  if(termsV2&&input.unitPricePerKg!==undefined)invalid('품목별 조건에는 이전 단일 kg 단가를 함께 보낼 수 없습니다.');
   const perKg = input.unitPricePerKg ?? 500;
   const fingerprintBase = [companyId, input.poId, input.operationId, input.date, lines, perKg, ...(input.oemCostEvidence === undefined ? [] : [canonical(input.oemCostEvidence)])];
+  const v2Fingerprint=termsV2?hash([...fingerprintBase,canonical(termsV2),{bulkInput:canonical(input.bulk??[])}]):undefined;
   const poRef = db.collection('purchaseOrders').doc(input.poId);
   const feeRef = db.collection('adjustmentRequests').doc(`OEMFEE-${input.poId}`);
   const operationRef = db.collection('oemReceiptOperations').doc(input.operationId);
@@ -106,6 +112,28 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
     if (!idOk(partnerId)) fail('OEM 거래처가 없습니다.');
     const partner = await tx.get(db.collection('partners').doc(partnerId));
     if (!partner.exists || ownCompany(partner.data()!) !== companyId) fail('OEM 거래처의 회사가 다릅니다.');
+    if(termsV2&&(termsV2.companyId!==companyId||termsV2.partnerId!==partnerId))fail('OEM 품목 조건의 회사·거래처가 다릅니다.');
+    if(termsV2&&operationSnap.exists){
+      const saved=operationSnap.data()!,fee=feeSnap.data();
+      if(saved.companyId!==companyId||saved.poId!==input.poId||saved.fingerprint!==v2Fingerprint||po.status!=='received'||po.oemReceiptOperationId!==input.operationId||!feeSnap.exists||fee?.oemPoId!==input.poId||ownCompany(fee!)!==companyId||!saved.oemFeeTermsV2||!po.oemFeeTermsV2||!fee?.oemFeeTermsV2||!po.oemFeeSnapshotV2||!fee?.oemFeeSnapshotV2
+        ||costHash(saved.oemFeeTermsV2)!==costHash(termsV2)||costHash(po.oemFeeTermsV2)!==costHash(termsV2)||costHash(fee?.oemFeeTermsV2)!==costHash(termsV2)
+        ||!saved.oemFeeSnapshotV2||costHash(saved.oemFeeSnapshotV2)!==costHash(po.oemFeeSnapshotV2)||costHash(saved.oemFeeSnapshotV2)!==costHash(fee?.oemFeeSnapshotV2)
+        ||po.oemReceivedKg!==saved.receivedKg||fee?.oemTotal!==saved.oemFeeTotalV2)fail('기존 OEM 입고 조건과 재시도 원문이 다릅니다.');
+      const storedSnapshot=saved.oemFeeSnapshotV2;
+      if(!Array.isArray(po.items)||po.items.length!==storedSnapshot.rows.length||storedSnapshot.rows.some((row:Row)=>!po.items.some((item:Row)=>item.itemId===row.itemId&&item.quantity===row.receivedQty))
+        ||!Array.isArray(storedSnapshot.bulk)||storedSnapshot.bulk.length!==(po.oemReceivedBulk??[]).length||storedSnapshot.bulk.some((row:Row)=>!(po.oemReceivedBulk??[]).some((item:Row)=>item.rawItemId===row.rawItemId&&item.lotId===row.lotId&&item.kg===row.kg))
+        ||!['pending','processed'].includes(fee!.status))fail('기존 OEM 입고 품목·확인 근거가 다릅니다.');
+      if(saved.oemBatchCost!==undefined){
+        if(po.oemBatchCost?.status==='confirmed'&&saved.oemBatchCost.status==='pending-fee'){
+          const statement=await tx.get(db.collection('issuedStatements').doc(po.oemBatchCost.feeStatementId));
+          if(!statement.exists||ownCompany(statement.data()!)!==companyId||statement.data()!.orderId!==input.poId||costHash(po.oemBatchCost)!==costHash(finalizeOemBatchCost(saved.oemBatchCost,{statementId:statement.id,feeSupplyAmount:statement.data()!.totalSupply})))fail('확정 OEM 원가·가공비 원문이 변경되었습니다.');
+        }else if(po.oemBatchCost?.status==='blocked'&&['fee-changed','fee-deleted'].includes(po.oemBatchCost.reason)&&saved.oemBatchCost.status==='pending-fee'){
+          const previous=po.oemBatchCost.previousConfirmed;
+          if(!previous||costHash(previous)!==costHash(finalizeOemBatchCost(saved.oemBatchCost,{statementId:previous.feeStatementId,feeSupplyAmount:previous.feeSupplyAmount})))fail('무효화 전 OEM 원가 근거가 변경되었습니다.');
+        }else if(costHash(po.oemBatchCost)!==costHash(saved.oemBatchCost))fail('기존 OEM 원가 미리보기가 변경되었습니다.');
+      }else if(po.oemCostEvidence!==undefined)fail('과거 OEM 입고에는 원가 근거를 나중에 주입할 수 없습니다.');
+      return {status:'duplicate',receivedKg:saved.receivedKg,loss:saved.loss,lotNos:saved.lotNos};
+    }
     if (items.some((snap, index) => !snap.exists || ownCompany(snap.data()!) !== companyId
       || snap.id !== lines[index]![0] || snap.data()!.procureType !== '임가공'
       || isRawHolder(snap.data()!))) fail('현재 회사의 OEM 완제품이 아닙니다.');
@@ -137,7 +165,7 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
     }
     const bulkRows = [...bulkById].sort(([a],[b])=>a.localeCompare(b)).map(([rawId,row])=>({
       ...row,rawId,lotId:`lot-oem-${input.poId}-${rawId}`,operationId:`oem-receive-raw:${input.poId}:${rawId}`}));
-    const fingerprint = bulkRows.length ? hash([...fingerprintBase,{bulk:bulkRows.map(row=>({rawItemId:row.rawId,kg:row.kg}))}]) : hash(fingerprintBase);
+    const fingerprint = v2Fingerprint ?? (bulkRows.length ? hash([...fingerprintBase,{bulk:bulkRows.map(row=>({rawItemId:row.rawId,kg:row.kg}))}]) : hash(fingerprintBase));
     const snapshot = (snap:admin.firestore.DocumentSnapshot) => ({exists:()=>snap.exists,data:()=>snap.data()});
     const bulkPrepared = await Promise.all(bulkRows.map(async row => {
       const stateRef=db.collection('rawInventories').doc(inventoryDocId(companyId as 'taebaek'|'punghoe',row.rawId));
@@ -187,12 +215,21 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
       const material = [...formulas].sort((a, b) => (b.ratio * (b.yield_rate || 1)) - (a.ratio * (a.yield_rate || 1)))[0].child_name as string;
       const stock = Number(item.stock ?? 0);
       if (!Number.isFinite(stock) || stock < 0 || round3(stock) !== stock || !Array.isArray(item.lots ?? [])) fail('OEM 품목의 현재 재고·로트가 잘못되었습니다.');
-      return { item, qty, unitKg, material, stock, itemRef: itemRefs[index]! };
+      const components=bomSnaps[index]!.docs.map(snap=>snap.data()).map(bom=>({childId:String(bom.child_id??''),qty:bom.quantity,child:children.get(bom.child_id)}));
+      if(termsV2&&components.some(component=>component.child&&['product','완제품'].includes(component.child.type)&&ownCompany(component.child)!==companyId))fail('OEM 박스 구성 품목의 회사가 다릅니다.');
+      return { item, qty, unitKg, material, stock, itemRef: itemRefs[index]!,components }; 
     });
-    const receivedKg = evidence === undefined && !bulkRows.length ? round3(rows.reduce((sum, row) => sum + row.qty * row.unitKg, 0)) : sumOemReceivedKg([...rows.map(row => row.qty * row.unitKg),...bulkRows.map(row=>row.kg)]);
+    const receivedKg = !termsV2 && evidence === undefined && !bulkRows.length ? round3(rows.reduce((sum, row) => sum + row.qty * row.unitKg, 0)) : sumOemReceivedKg([...rows.map(row => row.qty * row.unitKg),...bulkRows.map(row=>row.kg)]);
     if (!(receivedKg > 0)) fail('OEM 입고 중량이 없습니다.');
-    const total = Math.round(receivedKg * perKg);
-    if (!Number.isSafeInteger(total) || total <= 0) fail('OEM 가공비 금액이 잘못되었습니다.');
+    let snapshotV2:ReturnType<typeof buildOemFeeSnapshotV2>|undefined;
+    if(termsV2){
+      if(rows.some(row=>typeof row.item.name!=='string'||!row.item.name.trim()||(row.item.spec!==undefined&&typeof row.item.spec!=='string')))fail('OEM 입고 품목의 이름·규격을 확인해 주세요.');
+      try{snapshotV2=buildOemFeeSnapshotV2(termsV2,rows.map(row=>({itemId:row.itemRef.id,name:String(row.item.name??''),spec:String(row.item.spec??''),itemUnit:typeof row.item.unit==='string'?row.item.unit:'',receivedQty:row.qty,unitKg:row.unitKg,components:row.components})),bulkRows.map(row=>({rawItemId:row.rawId,lotId:row.lotId,material:String(row.item.rawMaterialName||baseRawName(row.item.name)),kg:row.kg})));}
+      catch(error){return fail(error instanceof Error?error.message:'OEM 품목별 조건을 확인해 주세요.');}
+      if(evidence&&typeof evidence==='object'&&(evidence as Row).packaging?.supplyAmount>0&&snapshotV2.rows.some(row=>row.vendorPackaging.grossUnitPrice>0)&&snapshotV2.nonDuplicatePackagingConfirmed!==true)fail('기존 포장 원가와 업체부자재 청구가 별도 비용인지 확인해 주세요.');
+    }
+    const total = snapshotV2 ? buildOemFeePlanV2({...snapshotV2,accountCode:'540'}).totalAmount : Math.round(receivedKg * perKg);
+    if (!Number.isSafeInteger(total) || (snapshotV2?total<0:total<=0)) fail('OEM 가공비 금액이 잘못되었습니다.');
     const sent = Array.isArray(po.oemSent) ? po.oemSent.reduce((sum: number, row: Row) => sum + Number(row.kg || 0), 0) : 0;
     if (!Number.isFinite(sent) || sent < 0) fail('OEM 출고 중량이 잘못되었습니다.');
     const loss = Math.max(0, round3(sent - receivedKg));
@@ -283,17 +320,18 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
     }
     tx.update(poRef, { companyId, status: 'received', receivedAt: new Date().toISOString(),
       ...(bulkRows.length?{oemReceivedBulk:bulkPrepared.map(row=>row.receipt)}:{}),
-      oemReceivedKg: receivedKg, oemFeePerKg: perKg, oemReceiptOperationId: input.operationId, oemBatchCost: batchCost,
+      oemReceivedKg: receivedKg, ...(termsV2?{oemFeeTermsV2:termsV2,oemFeeSnapshotV2:snapshotV2}:{oemFeePerKg:perKg}), oemReceiptOperationId: input.operationId, oemBatchCost: batchCost,
       ...(po.oemCostEvidence===undefined && input.oemCostEvidence!==undefined ? {oemCostEvidence:batchCost.evidenceSnapshot,oemCostEvidenceSource:'receipt'}:{}),
       items: rows.map(row => ({ itemId: row.itemRef.id, name: row.item.name, quantity: row.qty, unit: row.item.unit ?? '개' })) });
     tx.create(feeRef, { id: feeRef.id, companyId, itemId: input.poId,
       itemName: `외주가공비 — ${po.partnerName ?? ''}`, originalQuantity: receivedKg,
       requestedQuantity: receivedKg, type: 'oem_fee', unit: 'kg', oemPoId: input.poId,
-      oemFeePerKg: perKg, oemTotal: total,
-      reason: `${po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
+      ...(termsV2?{oemFeeTermsV2:termsV2,oemFeeSnapshotV2:snapshotV2}:{oemFeePerKg:perKg}), oemTotal: total,
+      reason: termsV2?`${po.partnerName ?? ''} 품목별 가공·부자재 비용 ${total.toLocaleString()}원 — 전표 확인 필요`:`${po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
       status: 'pending', requestedAt: new Date().toISOString() });
     tx.create(operationRef, { companyId, poId: input.poId, date: input.date, materials, fingerprint, receivedKg, loss, lotNos, oemBatchCost: batchCost, ...(evidence!==undefined ? {oemCostEvidence:batchCost.evidenceSnapshot}:{}),
       ...(bulkRows.length?{bulkReceipts:JSON.parse(JSON.stringify(bulkReceipts)),bulkEvidenceHash}:{}),
+      ...(termsV2?{oemFeeTermsV2:termsV2,oemFeeSnapshotV2:snapshotV2,oemFeeTotalV2:total}:{}),
       releaseId: input.releaseId, createdAt: new Date().toISOString() });
     return { status: 'applied', receivedKg, loss, lotNos };
   });

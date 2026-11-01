@@ -387,9 +387,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                           <span className="text-xs font-bold text-slate-400">-</span>
                         ) : req.type === 'oem_fee' ? (
                           <div className="flex items-center space-x-1 whitespace-nowrap">
-                            <span className="text-[10px] font-bold text-slate-400">{req.originalQuantity}kg × {(req.oemFeePerKg ?? 0).toLocaleString()}</span>
+                            <span className="text-[10px] font-bold text-slate-400">{req.oemFeeSnapshotV2 ? `품목별 조건 · ${req.oemFeeSnapshotV2.rows.length}개 품목` : `${req.originalQuantity}kg × ${(req.oemFeePerKg ?? 0).toLocaleString()}`}</span>
                             <ArrowRight size={10} className="text-slate-300" />
-                            <span className="text-[11px] font-black text-violet-600">{(req.oemTotal ?? 0).toLocaleString()}원</span>
+                            <span className="text-[11px] font-black text-violet-600">{req.oemFeeSnapshotV2 && !Number.isFinite(req.oemTotal) ? '저장 총액 미확인' : req.oemFeeSnapshotV2 && req.oemTotal === 0 ? '전표 발행 불필요 (총액 0원)' : `${(req.oemTotal ?? 0).toLocaleString()}원`}</span>
                           </div>
                         ) : req.type === 'reorder_alert' ? (
                           <div className="flex items-center space-x-1 whitespace-nowrap">
@@ -409,6 +409,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
+                            disabled={req.type === 'oem_fee' && !!req.oemFeeSnapshotV2 && (!Number.isFinite(req.oemTotal) || req.oemTotal === 0)}
                             onClick={() => { if (req.type === 'chat_mention' || req.type === 'reorder_alert') { onUpdateAdjustmentStatus(req.id, 'processed'); } else { onProcessAdjustment(req); } }}
                             className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : req.type === 'oem_fee' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                           >

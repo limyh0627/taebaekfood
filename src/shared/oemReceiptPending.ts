@@ -1,10 +1,11 @@
+import {normalizeOemFeeTermsV2, type OemFeeTermsV2} from './oemFeePlan';
 import type {CompanyId,PurchaseOrder} from './types';
 import {companyOf} from './types';
 import type {OemCostEvidence} from './oemBatchCost';
 export type OemReceiptScope={companyId:CompanyId;actorUid:string;poId:string};
 export type OemReceiptRequest={poId:string;operationId:string;date:string;returns:{itemId:string;qty:number}[];
- unitPricePerKg?:number;oemCostEvidence?:OemCostEvidence;bulk?:{material:string;kg:number;rawItemId?:string}[];releaseId:string};
-export type OemReceiptDraft={po:PurchaseOrder;returns:{itemId:string;qty:number}[];bulk:{material:string;kg:number}[];unitPricePerKg:number;date:string;oemCostEvidence?:OemCostEvidence};
+ unitPricePerKg?:number;feeTermsV2?:OemFeeTermsV2;oemCostEvidence?:OemCostEvidence;bulk?:{material:string;kg:number;rawItemId?:string}[];releaseId:string};
+export type OemReceiptDraft={po:PurchaseOrder;returns:{itemId:string;qty:number}[];bulk:{material:string;kg:number}[];unitPricePerKg:number;date:string;feeTermsV2?:OemFeeTermsV2;oemCostEvidence?:OemCostEvidence};
 type DraftRecord=OemReceiptScope&{version:1;input:OemReceiptDraft};
 type PacketRecord=OemReceiptScope&{version:1;request:OemReceiptRequest};
 export type OemReceiptEntry={scope:OemReceiptScope;draft:DraftRecord|null;packet:PacketRecord|null;draftText:string|null;packetText:string|null;legacyText:string|null;deleted:boolean;legacy:boolean;error:string};
@@ -24,9 +25,13 @@ function readRecord<T>(key:string,scope:OemReceiptScope,accept:(row:any)=>boolea
  try{const row=JSON.parse(text);if(!ownersMatch(row,scope)||!accept(row))throw Error();return {value:row,text};}
  catch{fail('저장된 OEM 입고 원문이 손상되었거나 계정·회사·배치가 다릅니다. 원문을 보존했습니다.');}
 }
+const termsValid=(terms:unknown,companyId:string,partnerId?:string)=>{if(terms===undefined)return true;try{const v=normalizeOemFeeTermsV2(terms);return v.companyId===companyId&&(!partnerId||v.partnerId===partnerId);}catch{return false;}};
+const termsMatchLines=(terms:unknown,returns:unknown,bulk:unknown)=>{if(terms===undefined)return true;try{const v=normalizeOemFeeTermsV2(terms);if(!Array.isArray(returns)||!Array.isArray(bulk??[]))return false;const ids=returns.map((line:any)=>line?.itemId);return ids.length===v.rows.length&&new Set(ids).size===ids.length&&v.rows.every(line=>ids.includes(line.itemId))&&(!(bulk as unknown[]|undefined)?.length||!!v.bulk);}catch{return false;}};
 const draftValid=(row:any)=>row?.input?.po?.id===row.poId&&companyOf(row.input.po)===row.companyId
- &&Array.isArray(row.input.returns)&&Array.isArray(row.input.bulk)&&typeof row.input.date==='string'&&Number.isFinite(row.input.unitPricePerKg);
+ &&Array.isArray(row.input.returns)&&Array.isArray(row.input.bulk)&&typeof row.input.date==='string'&&Number.isFinite(row.input.unitPricePerKg)&&termsValid(row.input.feeTermsV2,row.companyId,row.input.po.oemPartnerId??row.input.po.partnerId)&&termsMatchLines(row.input.feeTermsV2,row.input.returns,row.input.bulk);
 const packetValid=(row:any)=>row?.request?.poId===row.poId&&row.request.operationId==='oem-receive:'+row.poId
+ &&(row.request.feeTermsV2===undefined||row.request.unitPricePerKg===undefined)
+ &&termsValid(row.request.feeTermsV2,row.companyId)&&termsMatchLines(row.request.feeTermsV2,row.request.returns,row.request.bulk)
  &&id(row.request.releaseId)&&typeof row.request.date==='string'&&Array.isArray(row.request.returns)
  &&row.request.returns.every((line:any)=>id(line?.itemId)&&Number.isFinite(line.qty)&&line.qty>0)
  &&(row.request.bulk===undefined||Array.isArray(row.request.bulk)&&row.request.bulk.every((line:any)=>typeof line?.material==='string'&&!!line.material.trim()&&id(line.rawItemId)&&Number.isFinite(line.kg)&&line.kg>0));
