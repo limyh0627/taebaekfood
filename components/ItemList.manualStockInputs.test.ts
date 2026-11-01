@@ -14,13 +14,13 @@ const start=source.indexOf('        const commit = async',source.indexOf('const 
 const end=source.indexOf('\n        return (',start);
 if(start<0||end<start)throw new Error('수동 재고 추가 함수 경계를 찾지 못했습니다.');
 const compiled=ts.transpileModule(`${source.slice(start,end)} return commit;`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-const create=new Function('picked','makeBusy','setMakeBusy','items','isRawHolder','runInventoryAttempt','stockKg','setIsAddModalOpen','orderUnitInputs','getBomIndex','getPackIndex','unpackMounted','inventoryScope','companyId','auth',compiled);
+const create=new Function('picked','makeBusy','setMakeBusy','items','isRawHolder','runInventoryAttempt','stockKg','setIsAddModalOpen','orderUnitInputs','getBomIndex','getPackIndex','unpackMounted','inventoryRecovery','companyId','auth',compiled);
 function make(picked:string[][],busy:boolean,setBusy:(v:boolean)=>void,items:Item[],raw:(p:Item)=>boolean,write:(...args:any[])=>any,weight:typeof stockKg,toast:(...args:any[])=>any,close:(v:boolean)=>void,inputs?:Parameters<typeof stockKg>[3],getBom=getBomIndex,getPack=getPackIndex,mounted={current:true}){
- const scope={current:{}};
+ const recovery={captureContextCurrent:()=>()=>mounted.current};
  return create(picked,busy,setBusy,items,raw,async(_kind:string,build:()=>any)=>{
   const request=build();const result=await write(request);
   if(!mounted.current)return false;toast({message:result.message});return result.ok;
- },weight,close,inputs,getBom,getPack,mounted,scope,'taebaek',{currentUser:{uid:'employee'}});
+ },weight,close,inputs,getBom,getPack,mounted,recovery,'taebaek',{currentUser:{uid:'employee'}});
 }
 
 const items=['box1','box2','loose'].map(id=>({id,name:id,type:'product',unit:'개',spec:id==='loose'?'1kg':'1kg * 20',companyId:'taebaek',stock:0,minStock:0,image:''} as Item));

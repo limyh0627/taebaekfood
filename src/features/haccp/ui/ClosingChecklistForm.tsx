@@ -45,7 +45,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
   const control = useChecklistDraftControl();
   const [recordsReady, setRecordsReady] = useState(false), [recordsError, setRecordsError] = useState('');
   const [readAttempt, setReadAttempt] = useState(0);
-  const readRef = useRef({ ready: false, blocked: false, rows: [] as ClosingRecord[] });
+  const readRef = useRef({ ready: false, serverFresh: false, blocked: false, rows: [] as ClosingRecord[] });
 
   const [acknowledgements] = useState(() => createHaccpRecordAcknowledgements<ClosingRecord>({getKey: closingKey, strategy: {kind: 'echo', sameSavedBody: (server, ack) => savedBody(server) === savedBody(ack)}, mergeConfirmed: (base, result) => ({...base, confirmedBy: result.confirmedBy, confirmedAt: result.confirmedAt})}));
   const templateRead = useRef({"closing":false});
@@ -56,7 +56,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
     // 계정이 교체되면 이전 finally와 조회가 새 초안의 잠금을 건드릴 수 없다.
     control.generation.current++; control.busy.current = false; control.dirty.current = false;
     acknowledgements.resetOwner();
-    readRef.current = { ready: false, blocked: false, rows: [] }; setRecords([]); setRecordsReady(false); setRecordsError('');
+    readRef.current = { ready: false, serverFresh: false, blocked: false, rows: [] }; setRecords([]); setRecordsReady(false); setRecordsError('');
     templateRead.current = {"closing":false}; setTemplateReady({"closing":false}); setTemplateErrors({"closing":""});
     setTemplateItems(CLOSING_ITEMS_DEFAULT);
     setSaving(false); setConfirming(false); setDeleting(false); setShowHistory(false); setSaveError('');
@@ -65,7 +65,7 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
     if (actor.isCurrent(ownerToken)) { action(); }
   });
   const canSend = (kind: 'save' | 'confirm' | 'delete', id?: string) => {
-    if (!actor.canAct(kind, ownerToken) || !readRef.current.ready || (kind !== 'delete' && !templateRead.current['closing'])) return false;
+    if (!actor.canAct(kind, ownerToken) || !readRef.current.ready || (kind !== 'save' && !readRef.current.serverFresh) || (kind !== 'delete' && !templateRead.current['closing'])) return false;
     const issue = acknowledgements.targetIssue(kind, id, selected ? closingKey(selected) : '');
     if (issue) {
       const messages = {'body-mismatch': '마지막 저장 내용과 조회된 내용이 다릅니다. 입력은 보존했습니다. 다시 조회하거나 저장된 기록을 열어 확인해 주세요.', 'duplicate-key': '같은 점검 기록이 여러 개입니다. 입력은 보존했습니다. 관리자 확인 후 기존 이력에서 중복 기록을 정리하고 다시 조회해 주세요.', 'existing-key': '같은 날짜에 저장된 기록이 있습니다. 입력은 보존했습니다. 저장된 기록을 열어 확인해 주세요.', 'missing-record': '현재 목록에서 선택 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다른 기간이나 기록을 선택하거나 다시 조회해 주세요.'};
@@ -78,21 +78,29 @@ export const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: 
 
   useEffect(() => {
     let active = true;
-    readRef.current.ready = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
+    let proofGeneration: number | null = null;
+    readRef.current.ready = false; readRef.current.serverFresh = false; readRef.current.blocked = false; setRecordsReady(false); setRecordsError('');
     const q = query(collection(db, 'haccp_closing_checklist'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, snap => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
       const rows = snap.docs.map(d => ({ ...d.data(), id: d.id } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate));
       const serverConfirmed = snap.metadata?.fromCache === false;
-      const ready = serverConfirmed && !readRef.current.blocked;
+      let unchangedCache = false;
+      if (serverConfirmed) proofGeneration = snap.metadata?.hasPendingWrites === false ? control.generation.current : null;
+      else if (snap.metadata?.fromCache === true && snap.metadata.hasPendingWrites === false && proofGeneration === control.generation.current && !readRef.current.blocked) {
+        try { unchangedCache = snap.docChanges({ includeMetadataChanges: false }).length === 0; } catch { unchangedCache = false; }
+        if (!unchangedCache) proofGeneration = null;
+      } else proofGeneration = null;
+      const serverFresh = serverConfirmed && !readRef.current.blocked;
+      const ready = (serverConfirmed || unchangedCache) && !readRef.current.blocked;
       acknowledgements.observe(rows, ready);
-      readRef.current = { ready, blocked: readRef.current.blocked, rows: acknowledgements.visibleRecords() }; setRecords(acknowledgements.visibleRecords()); setRecordsReady(ready); if (ready) setRecordsError('');
+      readRef.current = { ready, serverFresh, blocked: readRef.current.blocked, rows: acknowledgements.visibleRecords() }; setRecords(acknowledgements.visibleRecords()); setRecordsReady(ready); if (ready) setRecordsError('');
     }, () => {
       if (!active || !control.active.current || !actor.isCurrent(ownerToken)) return;
-      active = false; readRef.current.ready = false; readRef.current.blocked = true; setRecordsReady(false);
+      active = false; proofGeneration = null; readRef.current.ready = false; readRef.current.serverFresh = false; readRef.current.blocked = true; setRecordsReady(false);
       setRecordsError('기존 기록을 확인하지 못했습니다. 입력은 보존했습니다. 다시 조회한 뒤 저장해 주세요.');
     });
-    return () => { active = false; unsubscribe(); };
+    return () => { active = false; proofGeneration = null; unsubscribe(); };
   }, [companyId, ownerToken, readAttempt]);
 
   useEffect(() => {

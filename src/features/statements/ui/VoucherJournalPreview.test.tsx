@@ -7,7 +7,8 @@ import {AccrualJournalPreview,CashJournalPreview} from './VoucherJournalPreview'
 import VoucherComposer from '../../../../components/voucher/VoucherComposer';
 import {journalizeCashEntry} from '../../../shared/autoJournal';
 import type {JournalEntry,FixedCostTemplate,AccountCode,CashAccount} from '../../../shared/types';
-vi.mock('../../../shared/firebase',()=>({auth:{currentUser:{uid:'test-auth'}}}));
+vi.mock('../../../shared/firebase',()=>({auth:{currentUser:{uid:'test-auth'}},authReady:Promise.resolve()}));
+vi.mock('firebase/auth',()=>({onAuthStateChanged:(_auth:unknown,callback:(user:{uid:string})=>void)=>{callback({uid:'test-auth'});return()=>{};}}));
 vi.mock('../../../shared/useLoanContracts',()=>({useLoanContracts:()=>[]}));
 vi.mock('../../../shared/autoJournal',async original=>{const module=await original<typeof import('../../../shared/autoJournal')>();return {...module,journalizeCashEntry:vi.fn(module.journalizeCashEntry)};});
 const journal:JournalEntry={id:'journal',date:'2026-10-17',sourceType:'자금',createdAt:'',lines:[{accountCode:'818',debit:1.25,credit:0},{accountCode:'103',debit:0,credit:1.25}]};

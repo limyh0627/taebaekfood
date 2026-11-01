@@ -8,7 +8,7 @@ import type { CompanyId, IssuedStatement } from '../../shared/types';
 import { openingDocId } from '../../shared/types';
 import type { PartnerAnchor } from './partnerAnchor';
 import {planAdvanceApplication} from '../../shared/partnerAdvance';
-const service = vi.hoisted(() => ({ fetchDateRange: vi.fn(), fetchByIds: vi.fn(), fetchWhere: vi.fn(), fetchCollection: vi.fn() }));
+const service = vi.hoisted(() => ({ fetchDateRange: vi.fn(), fetchByIds: vi.fn(), fetchWhere: vi.fn(), fetchCollection: vi.fn(), activeReleaseId: vi.fn().mockResolvedValue('test-release') }));
 vi.mock('../../shared/services/firebaseService', () => service);
 vi.mock('../../../components/CashLedger', () => ({ AccountModal: () => null }));
 vi.mock('../../../components/voucher/VoucherComposer', () => ({ default: () => null }));

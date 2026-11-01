@@ -20,7 +20,7 @@ vi.mock('firebase/firestore', () => ({
     if (ref.constraints) {
       const rows = ref.collection === 'haccp_temp' && ref.constraints[0].value === 'taebaek' ? state.tempRows : [];
       callback({ docs: rows.map(row => ({ id: row.id, data: () => row })), metadata: { fromCache: false } });
-    } else callback({ exists: () => false });
+    } else callback({ exists: () => false, metadata: { fromCache: false } });
     return unsubscribe;
   },
 }));

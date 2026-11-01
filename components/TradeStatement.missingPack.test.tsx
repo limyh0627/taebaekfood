@@ -7,6 +7,7 @@ import {buildBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex} from '../src/shared/packIndex';
 import {OrderStatus} from '../src/shared/types';
 import {buildNewOrderDraft} from '../src/shared/newOrderDraft';
+import {today} from '../src/shared/day';
 const m=vi.hoisted(()=>({prompt:vi.fn(),confirm:vi.fn(),auth:{currentUser:{uid:'actor'},onAuthStateChanged:()=>()=>{}}}));
 vi.mock('../src/shared/firebase',()=>({auth:m.auth,db:{}}));
 vi.mock('../src/shared/components/appDialog',()=>({appConfirm:m.confirm,appPrompt:m.prompt,appNotice:vi.fn()}));
@@ -32,7 +33,7 @@ it.each(['same-sku','zero','bom'] as const)('신규 주문 %s는 실제 전표 �
  const box:any={id:'box',companyId:'taebaek',name:'합성박스',type:'product',unit:'박스'},allItems=[product,box];
  const units={bom:buildBomIndex(allItems,kind==='bom'?[{parent_id:'box',child_id:'oil',quantity:5}]:[]),pack:buildPackIndex(kind==='bom'?[]:[{item_id:'oil',units_per_box:5}])};
  const link:any={id:'link',companyId:'taebaek',itemId:'oil',partnerId:'p',Direction:'out',price:1000,taxType:'면세',Account_Code:'800'};
- const draft=buildNewOrderDraft({partner,items:allItems,partnerItems:[link],lines:[{itemId:kind==='bom'?'box':'oil',quantity:5,isBoxUnit:true}],orderDate:'2026-10-28',deliveryDate:'2026-10-29',pallets:[],orderUnitInputs:units});
+ const draft=buildNewOrderDraft({partner,items:allItems,partnerItems:[link],lines:[{itemId:kind==='bom'?'box':'oil',quantity:5,isBoxUnit:true}],orderDate:today(),deliveryDate:today(),pallets:[],orderUnitInputs:units});
  const order={...draft,id:'new-order',companyId:'taebaek',status:OrderStatus.PENDING};
  const apply=vi.fn<(input:Parameters<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>[0])=>Promise<'applied'>>(async()=> 'applied');
  render(<TradeStatement {...props} orders={[order]} allItems={allItems} partnerItems={kind==='zero'?[{...link,price:0}]:[]} orderUnitInputs={units} onApplyStatement={apply}/>);

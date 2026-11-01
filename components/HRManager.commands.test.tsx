@@ -4,7 +4,7 @@ import type {LeaveRequest} from '../src/shared/types';
 import React from 'react';
 import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import HRManager from './HRManager';
 import { savePayrollDraft, issuePayrollVoucher } from '../src/shared/services/payrollCommands';
 import { setDocument } from '../src/shared/services/firebaseService';
@@ -16,7 +16,8 @@ vi.mock('../src/shared/services/firebaseService',()=>({setDocument:vi.fn(),subsc
 const employee={id:'e1',companyId:'taebaek' as const,name:'사원',position:'사원',department:'생산',joinDate:'2026-01-01',status:'working' as const,phone:''};
 const accounts=[{id:'other-bank',companyId:'taebaek' as const,type:'통장' as const,name:'기타',active:true,openingBalance:0,openingDate:'2026-07-31',createdAt:'2026-07-31'},{id:'cashacct-temp-main',companyId:'taebaek' as const,type:'통장' as const,name:'농협',active:true,openingBalance:0,openingDate:'2026-07-31',createdAt:'2026-07-31'}];
 const props={requestScopeKey:'qa',employees:[employee],leaveRequests:[],cashAccounts:accounts,onSaveEmployeeEdit:vi.fn().mockResolvedValue({status:'saved'}),onLeaveAction:vi.fn().mockResolvedValue({status:"saved"})};
-beforeEach(()=>{vi.clearAllMocks();setup.row={id:'pay-2026-10',companyId:'taebaek',yearMonth:'2026-10',payDate:'2026-10-25',revision:3,lines:[{employeeId:'e1',employeeName:'사원',base:100}]};vi.mocked(savePayrollDraft).mockResolvedValue({revision:4});vi.mocked(issuePayrollVoucher).mockResolvedValue({id:'payroll-taebaek-2026-10-base',docNo:'급여261025-001',kind:'cashEntries'});});
+beforeEach(()=>{vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-15T03:00:00Z'));vi.clearAllMocks();setup.row={id:'pay-2026-10',companyId:'taebaek',yearMonth:'2026-10',payDate:'2026-10-25',revision:3,lines:[{employeeId:'e1',employeeName:'사원',base:100}]};vi.mocked(savePayrollDraft).mockResolvedValue({revision:4});vi.mocked(issuePayrollVoucher).mockResolvedValue({id:'payroll-taebaek-2026-10-base',docNo:'급여261025-001',kind:'cashEntries'});});
+afterEach(()=>vi.useRealTimers());
 describe('격리 급여 명령 화면 후보',()=>{
  it('지급은 원본 버전과 메인 계좌로 단일 원자 명령을 실행한다',async()=>{const u=userEvent.setup();render(<HRManager {...props} companyId="taebaek"/>);await u.click(screen.getByRole('button',{name:'급여대장'}));expect(screen.getByLabelText('급여 지급 계좌')).toHaveValue('cashacct-temp-main');await u.click(screen.getByRole('button',{name:'지급 전표'}));expect(issuePayrollVoucher).toHaveBeenCalledWith('taebaek',expect.objectContaining({yearMonth:'2026-10',expectedRevision:3,lines:[expect.objectContaining({base:100})]}),'cash','cashacct-temp-main','qa');expect(savePayrollDraft).not.toHaveBeenCalled();expect(setDocument).not.toHaveBeenCalled();});
  it('서버 버전 충돌 실패는 입력을 보존하고 성공 메시지를 표시하지 않는다',async()=>{vi.mocked(savePayrollDraft).mockRejectedValue(new Error('급여대장이 다른 화면에서 변경되었습니다.'));const u=userEvent.setup();render(<HRManager {...props} companyId="taebaek"/>);await u.click(screen.getByRole('button',{name:'급여대장'}));await u.click(screen.getByRole('button',{name:'저장'}));expect(savePayrollDraft).toHaveBeenCalledWith('taebaek',expect.objectContaining({expectedRevision:3}),'qa');expect(screen.getByText(/급여대장이 다른 화면에서 변경되었습니다/)).toBeInTheDocument();expect(screen.getByDisplayValue('100')).toBeInTheDocument();expect(setDocument).not.toHaveBeenCalled();});

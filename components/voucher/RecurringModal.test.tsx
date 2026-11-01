@@ -1,11 +1,19 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RecurringModal from './RecurringModal';
 import type { FixedCostTemplate, AccountCode, Partner } from '../../src/shared/types';
+
+const authFixture = vi.hoisted(() => ({ currentUser: { uid: 'synthetic-user' } }));
+vi.mock('../../src/shared/firebase', async importOriginal => ({ ...await importOriginal<object>(), auth: authFixture }));
+vi.mock('firebase/auth', async importOriginal => ({ ...await importOriginal<object>(), onAuthStateChanged: (_auth: unknown, callback: (user: typeof authFixture.currentUser) => void) => { callback(authFixture.currentUser); return () => {}; } }));
+vi.mock('../../src/shared/useLoanContracts', () => ({ useLoanContracts: () => [] }));
+const scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+beforeEach(() => Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() }));
+afterEach(() => { if (scrollDescriptor) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', scrollDescriptor); else delete (HTMLElement.prototype as any).scrollIntoView; });
 
 /**
  * **매달 저절로 서는 전표를 손으로 내는 창.**
@@ -26,6 +34,11 @@ const 계정: AccountCode[] = [
 ] as AccountCode[];
 const 거래처: Partner[] = [{ id: 'p1', name: '수협은행' }] as Partner[];
 
+function 선택(label: string, option: string) {
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name: option }));
+}
+
 function 띄우기(over: Partial<Parameters<typeof RecurringModal>[0]> = {}, automatic = true) {
   const onGenerate = vi.fn().mockResolvedValue(1);
   const onClose = vi.fn();
@@ -38,7 +51,7 @@ function 띄우기(over: Partial<Parameters<typeof RecurringModal>[0]> = {}, aut
     onGenerate={onGenerate}
     {...over}
   />);
-  if (automatic) fireEvent.click(screen.getByRole('button', { name: '자동' }));
+  if (automatic) 선택('템플릿 표시', '자동');
   return { onGenerate, onClose };
 }
 
@@ -57,18 +70,17 @@ describe('템플릿 창 — 자동 발행 대상', () => {
     expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
   });
   it('그룹 선택이 템플릿과 자동 발행 목록을 함께 거르고 창 최대 높이를 제한한다', async () => {
-    const user = userEvent.setup();
     띄우기({ templates: [템플릿({ group: '차량' }), 템플릿({ id: 't2', name: '보험료', group: '보험', accountCode: '821' }), 템플릿({ id: 't3', name: '수동 차량', group: '차량', autoIssue: false })] }, false);
     const dialog = screen.getByRole('dialog', { name: '템플릿' });
     expect(dialog).toHaveClass('max-h-[88dvh]');
-    await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '차량');
+    선택('템플릿 그룹', '차량');
     expect(screen.getByText('수동 차량')).toBeVisible();
     expect(screen.queryByText('보험료')).toBeNull();
-    await user.click(screen.getByRole('button', { name: '자동' }));
+    선택('템플릿 표시', '자동');
     expect(목록().getByRole('listitem', { name: '차량 할부금' })).toBeVisible();
     expect(screen.queryByText('수동 차량')).toBeNull();
     expect(목록().queryByRole('listitem', { name: '보험료' })).toBeNull();
-    await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '보험');
+    선택('템플릿 그룹', '보험');
     expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
     expect(목록().queryByRole('listitem', { name: '차량 할부금' })).toBeNull();
     expect(dialog).toHaveClass('max-h-[88dvh]');
@@ -78,10 +90,10 @@ describe('템플릿 창 — 자동 발행 대상', () => {
     expect(screen.getByText('차량 할부금')).toBeVisible();
     expect(screen.queryByLabelText('대상 월')).toBeNull();
     expect(screen.queryByRole('list', { name: '자동 발행 대상' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '자동' }));
+    선택('템플릿 표시', '자동');
     expect(screen.getByLabelText('대상 월')).toBeVisible();
     expect(screen.getByRole('list', { name: '자동 발행 대상' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    선택('템플릿 표시', '전체');
     expect(screen.queryByLabelText('대상 월')).toBeNull();
     expect(screen.queryByRole('list', { name: '자동 발행 대상' })).toBeNull();
     expect(screen.getByText('차량 할부금')).toBeVisible();

@@ -14,6 +14,39 @@ beforeEach(()=>{vi.spyOn(window,'alert').mockImplementation(()=>{});m.subs=[];m.
 const sub=()=>m.subs.filter(s=>s.ref.name==='haccp_periodic_sanitation').at(-1);
 const deliver=(rows:any[],cache=false)=>act(()=>sub().next({docs:rows.map(row=>({id:row.id,data:()=>row})),metadata:{fromCache:cache}}));
 const notes=()=>screen.getByPlaceholderText('특이사항을 입력하세요');
+it('회사 ABA 뒤 예전 서버와 새 캐시는 저장 권위를 주지 않는다',()=>{
+ const form=(company:'taebaek'|'punghoe')=><HaccpCompanyContext.Provider value={company}><PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin/></HaccpCompanyContext.Provider>;
+ const view=render(form('taebaek')),old=sub();const emit=(s:any,cache:boolean)=>act(()=>s.next({docs:[],metadata:{fromCache:cache,hasPendingWrites:false},docChanges:()=>[]}));
+ emit(old,false);view.rerender(form('punghoe'));view.rerender(form('taebaek'));const fresh=sub();emit(old,false);emit(fresh,true);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();emit(fresh,false);expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+});
+it('선택 변경과 UID 왕복·재조회는 이전 조회의 캐시 권위를 이어받지 않는다',async()=>{
+ const view=render(<PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin/>);const old=sub();
+ const emit=(s:any,cache:boolean)=>act(()=>s.next({docs:[],metadata:{fromCache:cache,hasPendingWrites:false},docChanges:()=>[]}));
+ const date=view.container.querySelector('input[type=week]') as HTMLInputElement,initial=date.value;
+ emit(old,false);fireEvent.change(date,{target:{value:'2099-W01'}});await act(async()=>{});fireEvent.change(date,{target:{value:initial}});await act(async()=>{});emit(old,true);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit(old,false);m.auth.currentUser={uid:'other'};view.rerender(<PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin/>);m.auth.currentUser={uid:'output-test'};view.rerender(<PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin/>);const fresh=sub();emit(old,false);emit(fresh,true);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit(fresh,false);act(()=>fresh.error(Error('조회 실패')));fireEvent.click(screen.getByRole('button',{name:'다시 조회'}));const retry=sub();emit(fresh,false);emit(retry,true);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();emit(retry,false);expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+});
+it('기록 metadata만 바뀐 캐시는 같은 조회의 저장만 허용하고 변경·미확인 캐시는 권위를 잃는다',()=>{
+ render(<PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin canConfirm/>);
+ const emit=(metadata:any,changes:any[]=[])=>act(()=>sub().next({docs:[],metadata,docChanges:(options:any)=>{expect(options).toEqual({includeMetadataChanges:false});return changes;}}));
+ emit({fromCache:true,hasPendingWrites:false});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:false,hasPendingWrites:false});emit({fromCache:true,hasPendingWrites:false});expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+ emit({fromCache:true,hasPendingWrites:false},[{type:'modified'}]);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:true,hasPendingWrites:false});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:false,hasPendingWrites:false});expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+ emit({fromCache:true,hasPendingWrites:true});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:false,hasPendingWrites:true});expect(screen.getByRole('button',{name:'저장'})).toBeEnabled();
+ emit({fromCache:true,hasPendingWrites:false});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:false,hasPendingWrites:false});emit({fromCache:true});expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+ emit({fromCache:false,hasPendingWrites:false});act(()=>sub().next({docs:[],metadata:{fromCache:true,hasPendingWrites:false}}));expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();
+});
+it('metadata 전용 캐시에서는 확인과 삭제를 송신하지 않는다',async()=>{
+ const view=render(<PeriodicSanitationForm currentUser={{id:'u',name:'담당'}} isAdmin canConfirm/>);const value=(view.container.querySelector('input[type=week]') as HTMLInputElement).value;
+ const rows=[{id:'current',cycle:'weekly',period:value,rows:[],specialNotes:''},{id:'past',cycle:'weekly',period:'2020-W01',rows:[],specialNotes:''}];
+ const emit=(cache:boolean)=>act(()=>sub().next({docs:rows.map(row=>({id:row.id,data:()=>row})),metadata:{fromCache:cache,hasPendingWrites:false},docChanges:()=>[]}));
+ emit(false);emit(true);fireEvent.click(screen.getByRole('button',{name:'관리자 확인'}));fireEvent.click(screen.getByText(/이전 .*기록/));fireEvent.click(screen.getByText('삭제'));await act(async()=>{});expect(m.update).not.toHaveBeenCalled();expect(m.del).not.toHaveBeenCalled();expect(m.confirm).not.toHaveBeenCalled();
+});
 it('서버 조회 전 쓰기를 막고 조회 후 원문 초안·선택기간을 신규 저장한다',async()=>{
  const view=render(<HaccpCompanyContext.Provider value="taebaek"><PeriodicSanitationForm currentUser={{id:'u',name:'합성담당'}} isAdmin/></HaccpCompanyContext.Provider>);const value=(view.container.querySelector('input[type=week]') as HTMLInputElement).value;
  expect(sub().options).toEqual({includeMetadataChanges:true});fireEvent.change(notes(),{target:{value:'보존할 원문'}});deliver([],true);expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();deliver([]);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(m.add).toHaveBeenCalledOnce());expect(m.add.mock.calls[0][0]).toBe('haccp_periodic_sanitation');expect(m.add.mock.calls[0][1]).toMatchObject({cycle:'weekly',period:value,specialNotes:'보존할 원문',createdBy:'합성담당',updatedBy:'합성담당'});

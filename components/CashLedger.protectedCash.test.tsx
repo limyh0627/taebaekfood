@@ -111,7 +111,7 @@ describe('선택 계정 신규 자금전표', () => {
     render(<CashLedger {...props(onAdd)} />);
     fireEvent.click(screen.getByRole('button', { name: '일반전표' }));
     fireEvent.click(screen.getByRole('button', { name: /템플릿 ▾/ }));
-    fireEvent.click(screen.getByRole('button', { name: /대출상환.*원금/ }));
+    fireEvent.click(screen.getByRole('button', { name: /대출상환/ }));
     fireEvent.change(screen.getByRole('option', { name: '운영 대출 · 은행' }).parentElement!, { target: { value: 'loan-original' } });
     fireEvent.change(screen.getAllByPlaceholderText('0')[1], { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -160,7 +160,7 @@ describe('선택 계정 신규 자금전표', () => {
     render(<CashLedger {...props(onAdd)} />);
     fireEvent.click(screen.getByRole('button', { name: '일반전표' }));
     fireEvent.click(screen.getByRole('button', { name: /템플릿 ▾/ }));
-    fireEvent.click(screen.getByRole('button', { name: /급여.*총급여/ }));
+    fireEvent.click(screen.getByRole('button', { name: /출금급여급여/ }));
     const amounts = screen.getAllByPlaceholderText('0');
     fireEvent.change(amounts[0], { target: { value: '120' } });
     fireEvent.change(amounts[1], { target: { value: '20' } });

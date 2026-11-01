@@ -12,9 +12,10 @@ vi.mock('../src/shared/firebase', () => ({
 vi.mock('firebase/firestore', () => ({
   doc: (_db: any, collection: string, id: string) => ({ collection, id }),
   collection: (_db: any, collection: string) => ({ collection }), query: (ref: any) => ref, orderBy: vi.fn(),
-  onSnapshot: (ref: any, callback: any) => {
-    if (ref.collection === 'haccp_incoming') callback({ docs: boundary.rows.map(row => ({ id: row.id, data: () => row })) });
-    else callback({ exists: () => false });
+  onSnapshot: (ref: any, ...args: any[]) => {
+    const callback = typeof args[0] === 'function' ? args[0] : args[1];
+    if (ref.collection === 'haccp_incoming') callback({ docs: boundary.rows.map(row => ({ id: row.id, data: () => row })), metadata: { fromCache: false } });
+    else callback({ exists: () => false, metadata: { fromCache: false } });
     return () => {};
   },
   updateDoc: boundary.update, addDoc: boundary.add, deleteDoc: vi.fn(), setDoc: vi.fn(),

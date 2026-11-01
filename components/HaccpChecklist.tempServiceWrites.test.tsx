@@ -14,9 +14,10 @@ vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockR
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
   collection: (_db: unknown, collection: string) => ({ collection }), query: (ref: unknown) => ref, orderBy: vi.fn(),
-  onSnapshot: (ref: any, callback: any) => {
-    if (ref.collection === 'haccp_temp') callback({ docs: boundary.rows.map(row => ({ id: row.id, data: () => row })) });
-    else callback({ exists: () => false });
+  onSnapshot: (ref: any, ...args: any[]) => {
+    const callback = typeof args[0] === 'function' ? args[0] : args[1];
+    if (ref.collection === 'haccp_temp') callback({ docs: boundary.rows.map(row => ({ id: row.id, data: () => row })), metadata: { fromCache: false } });
+    else callback({ exists: () => false, metadata: { fromCache: false } });
     return () => {};
   },
   updateDoc: boundary.update, deleteDoc: boundary.remove, addDoc: vi.fn(), setDoc: vi.fn(),

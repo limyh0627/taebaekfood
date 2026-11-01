@@ -46,6 +46,7 @@ it('개인 변경은 ACK까지 초안을 유지하고 미확정 뒤 정확한 �
  const action=vi.fn((actual:LeaveRequest,change:LeaveMutationAction)=>{pending=[{id:actual.id,planId:'modify-plan',row:actual,action:change,description:'변경 신청'}];return new Promise<SaveOutcome>(resolve=>{finish=resolve;});});
  const inspect=vi.fn(async()=>{pending=[];return {status:'saved' as const};});
  render(<LeaveManager companyId="taebaek" currentUser={employee} employees={[employee]} leaveRequests={[row]} onAddLeaveRequest={vi.fn()} onLeaveAction={action} onReadPendingLeaveActions={()=>pending} onInspectLeaveAction={inspect}/>);
+ fireEvent.change(screen.getByLabelText('내 휴가 조회월'),{target:{value:'2026-10'}});
  fireEvent.click(screen.getByRole('button',{name:'변경'}));let dialog=screen.getByRole('dialog',{name:/변경 신청/});const reason=within(dialog).getByPlaceholderText('변경 사유를 입력하세요.');fireEvent.change(reason,{target:{value:'보존할 변경 사유'}});
  fireEvent.click(within(dialog).getByRole('button',{name:'변경 신청'}));expect(dialog).toBeInTheDocument();expect(action).toHaveBeenCalledWith(row,{action:'request-modify',modifyRequest:expect.objectContaining({reason:'보존할 변경 사유'})});expect(within(dialog).getByRole('button',{name:'변경 신청'})).toBeDisabled();
  await act(async()=>finish({status:'unknown',message:'변경 응답 미확인',nextAction:'결과 확인 또는 중단'}));expect(screen.getByRole('dialog',{name:/변경 신청/})).toBe(dialog);expect(dialog).toBeInTheDocument();expect(reason).toHaveValue('보존할 변경 사유');expect(reason).toBeDisabled();
@@ -58,6 +59,7 @@ it('다른 휴가의 보관 결과 확인은 현재 변경 초안을 닫지 않�
  const second={...base,id:'second',reason:'둘째 휴가'};let pending:PendingLeaveAction[]=[{id:base.id,planId:'first-plan',row:base,action:{action:'request-modify',modifyRequest:{startDate:base.startDate,endDate:base.endDate,reason:'보관 변경',daysUsed:1}},description:'첫 휴가 변경'}];
  const inspect=vi.fn(async()=>{pending=[];return {status:'saved' as const};});
  render(<LeaveManager companyId="taebaek" currentUser={employee} employees={[employee]} leaveRequests={[base,second]} onAddLeaveRequest={vi.fn()} onLeaveAction={vi.fn()} onReadPendingLeaveActions={()=>pending} onInspectLeaveAction={inspect}/>);
+ fireEvent.change(screen.getByLabelText('내 휴가 조회월'),{target:{value:'2026-10'}});
  fireEvent.click(screen.getByRole('button',{name:/보관된 휴가 작업 확인/}));fireEvent.click(screen.getAllByRole('button',{name:'변경'})[1]);
  const dialog=screen.getByRole('dialog',{name:/변경 신청/});fireEvent.change(within(dialog).getByPlaceholderText('변경 사유를 입력하세요.'),{target:{value:'둘째 휴가 미저장 초안'}});
  await act(async()=>fireEvent.click(within(dialog).getByRole('button',{name:'휴가 작업 결과 확인'})));
