@@ -24,14 +24,14 @@ it('두 회사 품목 표시와 중복 그룹은 명시 BOM을 쓰고 전역 교
  expect(within(first.container).getAllByText('태백 캡').length).toBeGreaterThan(0);
  expect(within(first.container).queryByText('풍회 캡')).toBeNull();
  fireEvent.click(within(first.container).getByRole('button',{name:/중복 품목/}));
- expect(within(first.container).getByText('이름+BOM 같은 것 1그룹')).toBeInTheDocument();
+ expect(within(first.container).getByText('이름·구성이 같은 품목 1묶음')).toBeInTheDocument();
  setBomIndex(ai.bom);
  const second=render(<ItemManager {...props(b,bi)}/>);
  expect(within(second.container).getAllByText('풍회 캡').length).toBeGreaterThan(0);
  fireEvent.click(within(second.container).getByRole('button',{name:/중복 품목/}));
- expect(within(second.container).getByText('이름+BOM 같은 것 0그룹')).toBeInTheDocument();
+ expect(within(second.container).getByText('이름·구성이 같은 품목 0묶음')).toBeInTheDocument();
  first.rerender(<ItemManager {...props(a,inputs(a,false))}/>);
- expect(within(first.container).getByText('이름+BOM 같은 것 0그룹')).toBeInTheDocument();
+ expect(within(first.container).getByText('이름·구성이 같은 품목 0묶음')).toBeInTheDocument();
  expect(getBomIndex()).toBe(ai.bom);
 });
 it('명시 입력 없는 기존 호출은 전역 BOM 표시를 유지한다',()=>{

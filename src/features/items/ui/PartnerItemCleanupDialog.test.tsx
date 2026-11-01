@@ -11,11 +11,11 @@ const props=()=>({companyId:'taebaek' as const,initialLinkId:'first',onClose:vi.
 const attempt=()=>({key:'saved-key',text:'{"exact":"first-original"}',reference:{linkId:'second',operationId:'old-operation'},request:{version:1},error:''});
 it('동적 서비스 준비와 회사/UID scope·auth 구독 해지를 보존한다',async()=>{
  const p=props(),view=render(<PartnerItemCleanupDialog {...p}/>);fireEvent.click(await screen.findByRole('button',{name:'연결 상태 확인'}));
- await screen.findByRole('status');expect(m.preview).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'uid-one'},'first',expect.any(Function));expect(screen.getByRole('button',{name:'확인한 연결 한 건 삭제'})).toBeDisabled();view.unmount();expect(m.stop).toHaveBeenCalledOnce();
+ await screen.findByText('이 품목은 등록되어 있습니다');expect(m.preview).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'uid-one'},'first',expect.any(Function));expect(screen.queryByRole('button',{name:'확인한 연결 한 건 삭제'})).toBeNull();expect(screen.queryByLabelText('연결 정리 사유')).toBeNull();expect(screen.queryByText('확인이 필요한 이전 작업')).toBeNull();view.unmount();expect(m.stop).toHaveBeenCalledOnce();
 });
 it('다른 연결 선택 뒤 늦은 미리보기는 새 선택을 덮지 않는다',async()=>{
  let finish!:(value:any)=>void;m.attempts=[attempt()];m.preview.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));render(<PartnerItemCleanupDialog {...props()}/>);
- fireEvent.click(await screen.findByRole('button',{name:'연결 상태 확인'}));fireEvent.click(screen.getByRole('button',{name:'이 연결 선택'}));await screen.findByText(/선택 연결 second/);
+ fireEvent.click(await screen.findByRole('button',{name:'연결 상태 확인'}));fireEvent.click(screen.getByRole('button',{name:'이 연결 선택'}));await screen.findByText('연결 ID second');
  await act(async()=>finish({state:'missing-item',message:'오래된 결과',expectedVersion:'v1',releaseId:'r1'}));expect(screen.queryByText('오래된 결과')).not.toBeInTheDocument();expect(screen.queryByLabelText('연결 정리 사유')).not.toBeInTheDocument();
 });
 it('계정 key가 바뀌면 이전 응답과 초안을 폐기하고 새 UID scope를 쓴다',async()=>{
@@ -35,7 +35,7 @@ it('사유를 작성한 뒤 닫기 취소는 입력과 원요청을 보존한다
 
 it.each([
  ['missing-item', '품목을 더 이상 쓰지 않는 연결이 맞으면'],
- ['active', '품목이 남아 있습니다.'],
+ ['active', '거래처 연결은 품목 정보에서 확인·수정하세요.'],
  ['archived', '보관된 품목의 연결입니다.'],
  ['missing-link', '연결이 이미 없습니다.'],
  ['unconfirmed', '확인되지 않아 삭제할 수 없습니다.'],
@@ -44,6 +44,8 @@ it.each([
  render(<PartnerItemCleanupDialog {...props()} />);
  fireEvent.click(await screen.findByRole('button', { name: '연결 상태 확인' }));
  expect(await screen.findByText(text => text.startsWith(advice))).toBeInTheDocument();
- expect(screen.getByRole('button', { name: '확인한 연결 한 건 삭제' }).hasAttribute('disabled')).toBe(state !== 'missing-item');
+ expect(!!screen.queryByRole('button', { name: '확인한 연결 한 건 삭제' })).toBe(state === 'missing-item'); expect(!!screen.queryByLabelText('연결 정리 사유')).toBe(state === 'missing-item'); expect(screen.getByText('확인 결과').closest('details')).toBeInTheDocument();
  expect(m.apply).not.toHaveBeenCalled();
 });
+
+it('품목 부재라도 버전 또는 릴리스 근거가 없으면 사유와 삭제를 숨긴다', async()=>{m.preview.mockResolvedValue({state:'missing-item',expectedVersion:null,releaseId:'r'});render(<PartnerItemCleanupDialog {...props()}/>);fireEvent.click(await screen.findByRole('button',{name:'연결 상태 확인'}));await screen.findByText('연결된 품목을 찾을 수 없습니다');expect(screen.queryByLabelText('연결 정리 사유')).toBeNull();expect(screen.queryByText('확인한 연결 한 건 삭제')).toBeNull();expect(m.apply).not.toHaveBeenCalled();});

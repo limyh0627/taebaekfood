@@ -679,7 +679,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
       !item ? '품목 현재 목록 미확인' : !ownItem ? '품목 회사 관계 불일치' : item.archived ? '보관된 품목' : '',
       !partner ? '거래처 현재 목록 미확인' : !ownPartner ? '거래처 회사 관계 불일치' : '',
     ].filter(Boolean);
-    return reasons.length ? [{ link, itemName: ownItem ? item.name : '', partnerName: ownPartner ? partner.name : '', reasons }] : [];
+    return reasons.length ? [{ link, itemName: ownItem ? item.name : '', partnerName: ownPartner ? partner.name : '', reasons, item: ownItem ? item : undefined, missingItem: !item }] : [];
   }), [companyId, partnerItems, items, partners]);
   const panelHeightClass = (mainView === 'by-partner' && selectedClientId)
     ? 'lg:h-[calc(100vh-330px)]'
@@ -687,20 +687,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   const productPanel = (
     <div className="flex flex-col gap-3 min-w-0">
       {isAdmin && referenceProblems.length > 0 && <details className="rounded-xl border border-gray-200 bg-white p-3" aria-label="확인 필요한 품목 연결">
-        <summary className="cursor-pointer text-sm font-bold">확인 필요한 품목 연결 {referenceProblems.length}건</summary>
-        <p className="mt-2 text-xs text-gray-600">현재 목록에서 확인하지 못한 연결입니다. 서버에서 삭제됐는지는 확정하지 않습니다. 연결 상태를 확인해 다음 할 일을 확인하세요.</p>
-        <p className="mt-1 text-xs text-gray-600">품목이나 거래처 자체를 삭제하는 기능은 아닙니다.</p>
+        <summary className="cursor-pointer text-sm font-bold">거래처 연결 확인 {referenceProblems.length}건</summary>
+        <p className="mt-2 text-xs text-gray-600">품목이나 거래처가 현재 목록에서 확인되지 않거나 관계를 확인해야 합니다. 각 항목의 안내를 확인하세요.</p>
+        <details className="mt-1 text-xs text-gray-600"><summary>확인 기준 자세히</summary><p>현재 목록의 정보이며 서버에서 삭제됐는지는 확정하지 않습니다. 품목이나 거래처 자체를 삭제하는 기능은 아닙니다.</p></details>
         <div className="mt-2 max-h-72 overflow-auto">
-          {referenceProblems.map(({ link, itemName, partnerName, reasons }, index) => <div key={`${link.id}:${index}`} className="space-y-1 border-t border-gray-200 py-3 text-xs break-all">
+          {referenceProblems.map(({ link, itemName, partnerName, reasons, item, missingItem }, index) => <div key={`${link.id}:${index}`} className="space-y-1 border-t border-gray-200 py-3 text-xs break-all">
             <p className="font-bold">{itemName || '품목 이름 미확인'} · {partnerName || '거래처 이름 미확인'}</p>
             <p>{reasons.join(' · ')}</p>
-            {onPartnerItemCleanupChanged && <button type="button" className="min-h-10 rounded border border-gray-300 px-3" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(link.id); setCleanupOpen(true); }}>연결 상태 확인</button>}
+            {item && <button type="button" className="min-h-10 rounded border border-gray-300 px-3" onClick={() => onEditProduct(item)}>품목 열기</button>}
+            {missingItem && onPartnerItemCleanupChanged && <button type="button" className="min-h-10 rounded border border-gray-300 px-3" onClick={() => { setCleanupCompany(companyId); setCleanupLinkId(link.id); setCleanupOpen(true); }}>서버에서 연결 확인</button>}
             <details><summary className="cursor-pointer">연결 번호 자세히</summary><p>연결 ID: {link.id || '현재 목록 미확인'} · 방향: {link.Direction === 'in' ? '매입' : link.Direction === 'out' ? '매출' : '현재 목록 미확인'}</p><p>품목 ID: {link.itemId || '현재 목록 미확인'}{itemName ? ` · 품목명: ${itemName}` : ''}</p><p>거래처 ID: {link.partnerId || '현재 목록 미확인'}{partnerName ? ` · 거래처명: ${partnerName}` : ''}</p></details>
           </div>)}
         </div>
       </details>}
 
-      {isAdmin && cleanupOpen && cleanupCompany === companyId && onPartnerItemCleanupChanged && <PartnerItemCleanupDialog key={companyId} companyId={companyId} initialLinkId={cleanupLinkId} onClose={() => setCleanupOpen(false)} onChanged={onPartnerItemCleanupChanged} />}
+      {isAdmin && cleanupOpen && cleanupCompany === companyId && onPartnerItemCleanupChanged && <PartnerItemCleanupDialog key={companyId} companyId={companyId} initialLinkId={cleanupLinkId} displayNames={referenceProblems.find(row => row.link.id === cleanupLinkId) ? { itemName: referenceProblems.find(row => row.link.id === cleanupLinkId)!.itemName, partnerName: referenceProblems.find(row => row.link.id === cleanupLinkId)!.partnerName } : undefined} onClose={() => setCleanupOpen(false)} onChanged={onPartnerItemCleanupChanged} />}
       {/* 모바일 — 신규 등록은 아래 탭 줄에 이미 있다(중복이라 뺐다).
           거래처를 고른 상태에서는 여기에 '품목 연결'을 둔다. */}
       {isAdmin && mainView === 'by-partner' && selectedClientId && (
@@ -1072,8 +1073,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                       </td>
                     </tr>
                   )}
-                  {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기와 바탕색으로 가른다 */}
-                  <tr className={`transition-colors group ${묶음끝 ? 'border-b-8 border-slate-50' : ''} ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
+                  {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기로 구분한다 */}
+                  <tr tabIndex={isAdmin ? 0 : undefined} aria-label={isAdmin ? `${item.name} 품목 수정` : undefined} onClick={isAdmin ? e => { if (!(e.target as HTMLElement).closest("button, input, select, textarea, a")) onEditProduct(item); } : undefined} onKeyDown={isAdmin ? e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onEditProduct(item); } } : undefined} className={`transition-colors group ${isAdmin ? "cursor-pointer" : ""} ${묶음끝 ? 'border-b-8 border-slate-50' : ''} ${'hover:bg-slate-50/50'}`}>
                     <td className={`px-2 py-3 ${isChild ? 'pl-6' : ''}`}>
                       <CategoryChip item={item} />
                     </td>
@@ -1081,9 +1082,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                       {/* 주문 생성 화면과 같은 표기 — 이름 토큰 색 + 규격칩 (src/shared/productChip) */}
                       <div className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {renderColoredName(splitNameVolume(item).base)}
-                        </p>
+                        {isAdmin ? <button type="button" onClick={() => onEditProduct(item)} className="text-left text-[11px] font-bold text-slate-600 whitespace-nowrap hover:text-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500" aria-label={`${item.name} 품목 수정`}>{renderColoredName(splitNameVolume(item).base)}</button> : <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{renderColoredName(splitNameVolume(item).base)}</p>}
                         {/* 규격 — 색 칩을 벗기고 품목명과 같은 크기로 옆에 (주문카드와 같은 규칙) */}
                         {(() => {
                           const sp = specText(item.spec) || splitNameVolume(item).vol;
@@ -1366,19 +1365,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
         setMergeSelection(null);
       }} />}
       {/* 중복 품목 패널 */}
-      {showDuplicates && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-amber-200 flex items-center justify-between">
+      {showDuplicates && !mergeSelection && (
+        <ModalShell title="중복 품목 목록" onClose={() => setShowDuplicates(false)} bodyClassName="!p-0">
+        <div className="bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Copy size={15} className="text-amber-600" />
-              <span className="text-sm font-black text-amber-800">중복 품목 목록</span>
-              <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">이름+BOM 같은 것 {duplicateGroups.length}그룹</span>
+              <Copy size={15} className="text-slate-500" />
+              <span className="text-sm font-black text-slate-800">중복 품목</span>
+              <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">이름·구성이 같은 품목 {duplicateGroups.length}묶음</span>
             </div>
-            <button onClick={() => setShowDuplicates(false)} className="p-1 hover:bg-amber-100 rounded-lg transition-colors">
-              <X size={14} className="text-amber-500" />
-            </button>
           </div>
-          <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto">
+          <div className="divide-y divide-slate-100">
             {duplicateGroups.map(group => {
               const isExpanded = dupExpandedKeys.has(group.key);
               return (
@@ -1507,6 +1504,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
             })}
           </div>
         </div>
+        </ModalShell>
       )}
 
       {/* 뷰 탭 — 관리자만 */}
