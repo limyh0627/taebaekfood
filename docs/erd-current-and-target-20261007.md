@@ -1,5 +1,22 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+## 2026-10-29 첨부 양식의 현재 로컬 코드 대조
+
+첨부 원본은 `태백푸드-ERD-원본-20261029.html`에 바이트 그대로 보관하고, `scripts/update-erd-html.mjs`가 `태백푸드-ERD-현재코드-20261029.html`을 재생성한다. 기존 85개 표의 문서 수는 2026-10-21 관측값이며, 추가 표는 실측하지 않아 미측정으로 표시한다. 스키마는 2026-10-29 로컬 코드 기준으로 미배포 변경을 포함한다. 선은 애플리케이션이 검증하는 논리 참조이며 Firestore의 강제 외래키가 아니다.
+
+| 구조 | 코드 근거와 구분 |
+| --- | --- |
+| 전체 재고 작업·예약 | `functions/src/shared/orderStockFullPlan.ts:30-31,85-100`과 `orderStockReservationCommand.ts:8,49-78`. 주문 참조와 최초 계획·영수증을 구분한다. 예약 전용 내부 경로의 공개 여부는 확인하지 않았다. |
+| 퇴역 승인·기록·잠금 복구 | `functions/src/orderRequestRetirement.ts:25,40-68,86-106`, `orderRetirementHandoff.ts:56,79`, `orderLockRecovery.ts:20-21,54-55`. 최초 소비는 조건부이고, 표시 이름을 직원 문서 ID로 추정하지 않는다. |
+| 원료·생산기록과 품목 삭제 계보 | `functions/src/rawManualCorrectionCommand.ts:34,67-85`, `productionRecordCommand.ts:83-95,115-116`, `orderProductionRecordPlan.ts:9-21,43-45,88`, `orderStockFullPlan.ts:151`. 기록 세대·현재 인덱스·원료 정정 영수증은 각각 다르다. |
+| 주문과 보호 예약 | `src/shared/types.ts:221-225,300-350`, `functions/src/shared/orderStockFullPlan.ts:233-246`, `firestore.rules:610-620,678-698`. 보호 예약은 예약 배열의 별도 정확한 부분집합으로, 두 번 합산하지 않는다. |
+| 수동 박스 정정 | `functions/src/shared/orderConfirmedBoxCorrectionCommand.ts:24-32`, `orderManualCorrectionEvidence.ts:22-37,95`, `firestore.rules:127,135,599-600,695-698`. 현재 로컬 구현은 미커밋·미배포이며 운영 적용과 정정 인식 소비자 연결은 별도 게이트다. 최초 효과와 현재 사용 가능성을 혼동하지 않는다. |
+| 작업지시 항목 | `functions/src/workOrderCommand.ts:89,114,127`의 `workOrderItems` 생성과 회사 범위만 표시한다. 추가 필드는 원문 근거 없이 추정하지 않았다. |
+| 반품·상계·세금·회사 간 이체 | `functions/src/submitReturnRequestCommand.ts:15,27-45`, `processReturnCommand.ts:53-56,316,358-366`, `manualSettlementCommand.ts:38,164`, `manualSettlementBatchCommand.ts:39,134`, `partnerAdvanceCommand.ts:44,92`, `taxIssueCommand.ts:18,34,59`, `interCompanyTransferCommand.ts:46,51,229`. 반품 요청·적용·처리 영수증과 전표를 구분한다. |
+| 매입단위·기초재무 | `src/shared/services/itemPurchaseUnitService.ts:8-20`, `functions/src/financialOpeningCommand.ts:252-259,267-283`, `functions/src/shared/taxIssue.ts:3,35`. 매입단위는 품목과 회사의 실제 참조만 표시한다. |
+
+대조 시 주요 SHA-256: 원본 HTML `904cb483f9d339da1acdc301ae1ebe5236b4cb5ddb995bd127919e5a262577d1`; `orderStockFullPlan.ts` `de64e223bcdd490a10d3460160da1daa900c876448f149450c6d7595c747a57d`; 로컬 미커밋 `orderConfirmedBoxCorrectionCommand.ts` `a3122c7ab3d11ad58da6e4d66527da0e1a06b72b51297f2d4fe84db4945a1712`; `orderManualCorrectionEvidence.ts` `e11d6c7b63494bc9e505fe188b7eb9401289107356a6b619ae6df83743522b11`; 로컬 Rules `22857abc5a71701951c56ade3f8002c8a1d32fbd55baa1d5f50425cf23803ba3`. 이 해시는 코드 대조 기준이며 배포 여부나 운영 자료 전수 확인을 뜻하지 않는다.
+
 ## 2026-10-27 13:58 — 주문 조회 계약 보존 규칙 반영
 
 기존 orders 구조·ERD 양식과 관계를 유지한 채 strict Rules를 배포했다. 클라이언트 생성·상태/날짜 변경 시 기존 orderListProjection을 원문에 맞춰 함께 보존하도록 제한한다. AdminSDK에는 Rules가 적용되지 않으므로 식별된8개 RPC와 기존 복사/수정 writer의 실제 쓰기 경로를 별도로 대조했다. 외부 수동 Admin 쓰기 전체의 보증은 아니다.
@@ -522,3 +539,33 @@ source830e948bfa35142f78b11d2b4d5307cd7c257384의 GitHub main 푸시·양Hosting
 `a05cbb7`까지의 외주 원가 진단은 운영자료를 수정하지 않는 순수 분류기와 읽기 CLI다. 새 운영 TypeScript 소스 `oemExternalCostDiagnostic.ts` 한 개를 추가했으므로 기존 491소스 사전을 현재 입력 492소스로 갱신했다. Node22 생성기 `--self-check` 한 번이 종료 0으로 완료됐고 결과는 91컬렉션·739필드·492소스·참조가 있는 필드637·기존 미해석 접근3411·알려진 wrapper 컬렉션714다. 생성기와 참조 해석 규칙은 바꾸지 않았다. 이 수치는 동적 접근까지 모두 해석했다는 뜻이 아니다.
 
 상수키 접근의 별도 읽기 조사에서 실제 명시 모델 필드 참조 누락을 찾지 못했다. 확인한 `INVENTORY` 접근의 수신 타입은 `any` 또는 `Record<string, number>`라 연결할 명시 property 원선언이 없었다. 합성 사례만으로 단일 상수키 지원을 추가하지 않았다. Figma 보류, 의미가 같은 항목의 전체 정리 및 동적 접근 확인은 이 갱신으로 완료 처리하지 않는다. 전체 원본 집계는 26개 완료·17개 잔여를 유지한다.
+
+### 추가 컬렉션의 코드 근거와 대조 해시
+
+표시한 경로와 행은 실제 선언 또는 읽기·쓰기 위치다. 해시는 이 문서를 만든 로컬 파일 기준이며 운영 배포를 뜻하지 않는다.
+
+| 컬렉션 | 코드 경로:행 | SHA-256 |
+| --- | --- | --- |
+| `orderStockFullAttemptsV1` | `functions/src/shared/orderStockFullPlan.ts:31` | `de64e223bcdd490a10d3460160da1daa900c876448f149450c6d7595c747a57d` |
+| `orderStockReservationAttemptsV1` | `functions/src/shared/orderStockReservationCommand.ts:8` | `0644213ba792aee3098af36a58ecf4793c0d306488f8650550fb6ed094fb9c97` |
+| `orderRequestRetirementAuthorizations` | `functions/src/orderRequestRetirement.ts:25` | `b59b1a5048d2eb0442eab772654cff2d863a27f742071cbb25cb051a32f0d351` |
+| `orderRequestRetirements` | `functions/src/orderRequestRetirement.ts:25` | `b59b1a5048d2eb0442eab772654cff2d863a27f742071cbb25cb051a32f0d351` |
+| `orderLockRecoveryOperations` | `functions/src/orderLockRecovery.ts:21` | `672995007ac78def4cdf3d0fe2e2eb354c4d2fb5b10719349dc72870490e8782` |
+| `rawManualCorrectionReceipts` | `functions/src/rawManualCorrectionCommand.ts:72` | `0093f66b7ea0979b572720a43cba10a2177621661b3c84982b3326df791c2996` |
+| `productionRecordOperations` | `functions/src/productionRecordCommand.ts:94` | `379a3efc7ee6962ea21e13adaab0b0428e71d2823ac9496224315384a8f9fc86` |
+| `inventoryWriterDeletions` | `functions/src/orderRequestRetirement.ts:59` | `b59b1a5048d2eb0442eab772654cff2d863a27f742071cbb25cb051a32f0d351` |
+| `workOrderItems` | `functions/src/workOrderCommand.ts:127` | `a37fff7a769878f4ba1b6694796b04612c8c714f17bd836c549a15f82bd675ed` |
+| `orderManualCorrectionsV1` | `functions/src/shared/orderConfirmedBoxCorrectionPlan.ts:17` | `5596eedc18e4c4b93a6ed0b00c550fffeb6285a207fd40e0c9dc7ee4c8e9d241` |
+| `companyTransferGrants` | `functions/src/interCompanyTransferCommand.ts:51` | `35c6e6c4c71b5d1fb2bf59e629ef6c6ba0e7cd7251bac0cd61708eff3ba13a5f` |
+| `companyTransferOperations` | `functions/src/interCompanyTransferCommand.ts:229` | `35c6e6c4c71b5d1fb2bf59e629ef6c6ba0e7cd7251bac0cd61708eff3ba13a5f` |
+| `financialOpeningOperations` | `functions/src/financialOpeningCommand.ts:283` | `92b5fb3e65222c897852a4583245b563a259b9a9f60d97d137ad49e6174d659e` |
+| `item_purchase_unit` | `src/shared/services/itemPurchaseUnitService.ts:8` | `2b93278655eab02b6dbd6dc55e2c1c310a855c61fdde399f5165e8aef3612b3b` |
+| `manualSettlementBatchOperations` | `functions/src/manualSettlementBatchCommand.ts:134` | `9f90186ca5becae96a8fb1c1e8103db30bde1a745049894c26745c1df560e900` |
+| `manualSettlementOperations` | `functions/src/manualSettlementCommand.ts:164` | `41df387ec0dfb09438f01a3afb295d04c9fa153d62ed5b42ecfb4912ff3ffad9` |
+| `partnerAdvanceOperations` | `functions/src/partnerAdvanceCommand.ts:218` | `8acf56f0fa71273bb44e5ae940c24869b50dd4dbe2e5cd52829032c0a014cc2b` |
+| `returnApplications` | `functions/src/processReturnCommand.ts:358` | `590f981cad039705003ffb9d34517c15b2252d483f305cf16b1bb92c86d03e9e` |
+| `returnOperations` | `functions/src/processReturnCommand.ts:316` | `590f981cad039705003ffb9d34517c15b2252d483f305cf16b1bb92c86d03e9e` |
+| `returnRequests` | `functions/src/submitReturnRequestCommand.ts:15` | `15bf03f16f6eda622742a44c63f1f10a4c7b29a5d43a1fe7bdf56152eb75ad36` |
+| `returnSubmissionOperations` | `functions/src/submitReturnRequestCommand.ts:15` | `15bf03f16f6eda622742a44c63f1f10a4c7b29a5d43a1fe7bdf56152eb75ad36` |
+| `taxIssueOperations` | `functions/src/taxIssueCommand.ts:18` | `4ece286c264d37789b3605a72a750056edae9d5290073bcdae6dda148efa145d` |
+| `taxIssueRecords` | `functions/src/shared/taxIssue.ts:35` (발행 전표 `statementIds[]` → `issuedStatements`, 종류·금액·발행시각·상태) | `581308970278020f00fbe79fe7bdbea8e9e1cb9371ee47c8bce014a94ca1e205` |
