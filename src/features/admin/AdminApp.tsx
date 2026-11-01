@@ -1898,7 +1898,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return receiveOemFinishedGoodsCommand({
       poId: input.poId, operationId: input.operationId, date: input.date,
       returns: input.items.map(row => ({ itemId: row.itemId, qty: row.qty })),
-      unitPricePerKg: input.feeRequest.oemFeePerKg,
+      ...(input.feeTermsV2 === undefined ? { unitPricePerKg: input.feeRequest.oemFeePerKg } : {}),
+      ...(input.feeTermsV2 !== undefined ? { feeTermsV2: input.feeTermsV2 } : {}),
       ...(input.oemCostEvidence !== undefined ? { oemCostEvidence: input.oemCostEvidence } : {}),
       ...(input.bulk?.length ? { bulk: input.bulk } : {}),
       },companyId,tracker?.uid);

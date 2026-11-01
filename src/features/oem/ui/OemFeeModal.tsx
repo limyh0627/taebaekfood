@@ -12,7 +12,7 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
   onClose: () => void;
   onSubmit: (v: { unitPricePerKg: number; date: string }) => void;
 }) {
-  const {date,fee,setDate,setFee,money,reconciliation,canSubmit,submit,close}=useOemFeeDraft({po,items,companyId,busy,onClose,onSubmit,orderUnitInputs});
+  const {date,fee,setDate,setFee,money,snapshotPlan,snapshotError,reconciliation,canSubmit,submit,close}=useOemFeeDraft({po,items,companyId,busy,onClose,onSubmit,orderUnitInputs});
 
   return (
     <ModalShell title="가공비 전표 발행" onClose={close} bodyClassName="space-y-4">
@@ -32,13 +32,13 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
 
         <OemCostSummary po={po} companyId={companyId}/>
         <div className="flex items-end gap-3">
-          <div>
+          {!po.oemFeeSnapshotV2 && <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">
               가공단가 (원/kg) <span className="text-slate-300 normal-case font-bold">· 부가세 포함</span>
             </label>
             <input disabled={busy} inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
               className="w-28 border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300" />
-          </div>
+          </div>}
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">전표일자</label>
             <input disabled={busy} type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -46,6 +46,7 @@ export function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderU
           </div>
         </div>
 
+        {po.oemFeeSnapshotV2 && <div className="space-y-1 text-xs"><strong>입고 시 확정한 조건</strong>{(Array.isArray(po.oemFeeSnapshotV2.rows)?po.oemFeeSnapshotV2.rows:[]).map(row=><p key={row.itemId}>{row.name} · 가공 {fmt(row.processing.quantity)}{row.processing.unit} × {fmt(row.processing.grossUnitPrice)}원 ({row.processing.taxExempt?'면세':'과세'}) · 업체부자재 {fmt(row.vendorPackaging.quantity)}{row.vendorPackaging.unit} × {fmt(row.vendorPackaging.grossUnitPrice)}원 ({row.vendorPackaging.taxExempt?'면세':'과세'})</p>)}{(Array.isArray(po.oemFeeSnapshotV2.bulk)?po.oemFeeSnapshotV2.bulk:[]).map((row,i)=><p key={i}>{row.material} 벌크 · {fmt(row.kg)}kg × {fmt(row.grossUnitPrice)}원 ({row.taxExempt?'면세':'과세'})</p>)}{snapshotError && <p role="alert">저장된 조건 확인 필요: {snapshotError}</p>}{snapshotPlan?.totalAmount===0 && <p role="status">전표 발행 불필요 (총액 0원)</p>}</div>}
         <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-400">공급가 {fmt(money.supply)} + 세액 {fmt(money.tax)}</span>
           <span className="text-base font-black text-slate-800">{fmt(money.total)}원</span>

@@ -14,7 +14,7 @@ function view(status: 'invoiced' | 'received', patch: Partial<PurchaseOrder> = {
  const item={id:'oem-product',companyId,name:'볶음참깨',type:'product',procureType:'임가공',unit:'개',spec:'1kg',stock:0,minStock:0} as Item;
  const po={id:'fumi-po',companyId,poType:'oem',partnerId:'fumi',partnerName:'푸미푸드',status,createdAt:'2026-10-01',invoicedAt:'2026-10-02',receivedAt:'2026-10-03',itemId:'',itemName:'',quantity:0,items:[],oemSent:[{material:'참깨',kg:1200}],...patch} as PurchaseOrder;
  const generic=vi.fn(),receive=vi.fn().mockResolvedValue(undefined),fee=vi.fn().mockResolvedValue(undefined);
-  const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [],
+  const props: React.ComponentProps<typeof ItemList> = { companyId, items: [item], partners: [{id:'fumi',name:'푸미푸드',companyId,isOemFactory:true,oemReceiptTermsV2:{version:2,rows:[{itemId:'oem-product',processing:{unit:'kg',grossUnitPrice:500,taxExempt:false},vendorPackaging:{unit:'kg',grossUnitPrice:0,taxExempt:false}}]}} as any],
     orderRequests: [], confirmedOrders: status === 'invoiced' ? [po] : [], inboundPartners: [], rawMaterialLedger: [],
     onUpdateItem: vi.fn(), onAddItem: vi.fn(), onUpdateOrderRequestQty: vi.fn(), onToggleConfirmRequestQty: vi.fn(), onConfirmRequest: vi.fn(),
     onConfirmRequests: vi.fn(), onBulkAddConfirmedOrders: vi.fn(), onConfirmAllRequests: vi.fn(),
@@ -36,10 +36,12 @@ it('OEM 가공입고 버튼은 기존 OEM 모달로 연결하며 일반 입고 c
  const {generic,receive}=view('invoiced');
  fireEvent.click(screen.getByRole('button',{name:'가공입고'}));
  expect(screen.getByRole('heading',{name:'가공입고'})).toBeInTheDocument();
+ fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[0],{target:{value:'oem-product'}});
  fireEvent.change(screen.getByPlaceholderText('수량'),{target:{value:'20'}});
+ fireEvent.click(screen.getByLabelText('선택 품목의 단위·단가·과세 조건을 확인했습니다.')); 
  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'가공입고'}));
  await waitFor(()=>expect(receive).toHaveBeenCalledOnce());
- expect(receive.mock.calls[0][0]).toMatchObject({po:{id:'fumi-po',companyId:'taebaek'},returns:[{itemId:'oem-product',qty:20}],bulk:[]});
+ expect(receive.mock.calls[0][0]).toMatchObject({po:{id:'fumi-po',companyId:'taebaek'},returns:[{itemId:'oem-product',qty:20}],bulk:[],feeTermsV2:{version:2,companyId:'taebaek',partnerId:'fumi',rows:[{itemId:'oem-product',processing:{unit:'kg',grossUnitPrice:500,taxExempt:false},vendorPackaging:{unit:'kg',grossUnitPrice:0,taxExempt:false}}]}});
  expect(generic).not.toHaveBeenCalled();
 });
 it('받은수량없는 완료문서는 미기록이며 가공비 창으로 연결한다',()=>{

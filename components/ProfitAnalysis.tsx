@@ -7,7 +7,7 @@ import type {SaveOutcome} from '../src/shared/saveOutcome';
 import QueryFilterPanel, {QUERY_FILTER_LABEL_CLASS,QUERY_FILTER_CONTROL_CLASS, QUERY_FILTER_FIELD_CLASS, QUERY_FILTER_SEARCH_CLASS, QUERY_FILTER_DATE_CLASS } from '../src/shared/components/QueryFilterPanel';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useOutputScope } from '../src/shared/hooks/useOutputScope';
 import { appNotice } from '../src/shared/components/appDialog';
 import { monthStart, today } from '../src/shared/day';
@@ -31,7 +31,6 @@ import { buildProfitPeriodProjection } from '../src/features/admin/profitPeriodP
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchWhere } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
-import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { isRawHolder } from '../src/shared/rawHolder';
@@ -97,7 +96,6 @@ const MONTHS = 12;
 const EMPTY_CASH_FLOW_MANUAL: CashFlowManual[] = [];
 /** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
 const INVENTORY_EXPENSE_CODE = '500';
-// (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, onOpenAccountEdit,onReadAccountOperations,onInspectAccountOperation,onRetryAccountOperation,onCancelAccountOperation,onDiscardAccountOperationCopy, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
@@ -422,15 +420,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
 
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
-  /**
-   * 그 달 전표 — **모으는 자리는 shared/vouchers 하나뿐이다.**
-   * 화면마다 두 컬렉션을 각자 모으면 언젠가 한쪽을 빠뜨린다(실제로 그래서 급여·이자가 0이었다).
-   */
-  const monthVouchers = useCallback(
-    (ym: string) => vouchersOfMonth(issuedStatements, cashEntries, ym, companyId),
-    [issuedStatements, cashEntries, companyId],
-  );
-
   // (cogsByCode 삭제: 전표만 보고 매출원가를 따로 세던 곁길. 화면에 안 그려졌고,
   //  자금전표가 빠져 손익과 어긋나는 값이었다. 집계는 분개 하나로만 한다.)
 
@@ -656,7 +645,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         <div className="px-5 py-3 border-b border-slate-100">
           <span className="text-xs font-black text-slate-600">월별 손익 상세</span>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" style={{containerType:'inline-size'}}>
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50">
               <tr>
@@ -668,24 +657,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <tbody className="divide-y divide-slate-50">
               {monthlyData.map(m => {
                 const margin = m.sales > 0 ? Math.round(m.operatingProfit / m.sales * 100) : 0;
-                const isEmpty = m.sales === 0 && m.cogs === 0 && m.sgna === 0;
                 const isExpanded = expandedMonth === m.ym;
-
-                /*
-                 * 그 달 **전표 전체** — 거래명세서와 자금전표를 한 줄기로 세운다.
-                 * 전에는 issuedStatements만 봐서 급여·이자·리스료처럼 자금원장에만 있는
-                 * 전표가 목록에서 통째로 빠졌다. 위 손익 숫자에는 들어 있는데 내역엔 없으니
-                 * 금액이 어디서 나왔는지 대조할 수가 없었다.
-                 */
-                const monthStmts = monthVouchers(m.ym);
+                const monthProjection = isExpanded ? buildProfitAccountProjection({journalEntries, accountCodes, codeToGroup, periodMonths:[m.ym]}) : null;
+                const lines = [
+                  {key:'revenue',label:'매출',amount:m.sales}, {key:'cogs',label:'매출원가',amount:m.cogs},
+                  {key:'sgna',label:'판관비',amount:m.sgna}, {key:'other-income',label:'영업외수익',amount:m.otherIncome},
+                  {key:'other-expense',label:'영업외비용',amount:m.otherExpense},
+                ] as const;
 
                 return (
                   <React.Fragment key={m.ym}>
-                    <tr
-                      className={`hover:bg-slate-50 transition-colors ${isEmpty ? 'opacity-40' : 'cursor-pointer'}`}
-                      onClick={() => !isEmpty && setExpandedMonth(isExpanded ? null : m.ym)}
-                    >
-                      <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap">{m.month}</td>
+                    <tr className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap"><button type="button" aria-expanded={isExpanded} aria-label={`${m.ym} 손익 상세 ${isExpanded ? '닫기' : '보기'}`} onClick={() => setExpandedMonth(isExpanded ? null : m.ym)} className="flex items-center gap-1">{m.month}{isExpanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}</button></td>
                       <td className="px-4 py-3 text-xs text-right text-blue-700 font-bold">{m.sales ? fmt(m.sales) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right text-amber-700 font-bold">{m.cogs ? fmt(m.cogs) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-slate-700">{m.grossProfit ? fmt(m.grossProfit) : '-'}</td>
@@ -701,26 +684,28 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         ) : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-slate-300 whitespace-nowrap">
-                        {!isEmpty && (isExpanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>)}
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr>
                         <td colSpan={8} className="px-5 py-3 bg-slate-50">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">전표 내역</div>
-                          <div className="space-y-1">
-                            {monthStmts.length === 0 ? (
-                              <div className="text-xs text-slate-300">전표 없음</div>
-                            ) : monthStmts.map(v => (
-                              <div key={v.id} className="flex items-center gap-3 text-[11px]">
-                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[10px] ${VOUCHER_KIND_CHIP[v.kind]}`}>{v.kind}</span>
-                                <span className="text-slate-600 shrink-0">{v.date}</span>
-                                <span className="font-bold text-slate-800 truncate">{v.partnerName ?? '(거래처 없음)'}</span>
-                                <span className="text-slate-400 truncate">{[v.docNo, v.memo].filter(Boolean).join(' · ')}</span>
-                                <span className="ml-auto font-black text-slate-700 shrink-0 tabular-nums">{fmt(v.amount)}원</span>
-                              </div>
-                            ))}
-                          </div>
+                          <section aria-label={`${m.ym} 손익 분석`} className="sticky left-0 max-w-full space-y-3 rounded-xl bg-white p-4 text-xs text-slate-700" style={{width:'calc(100cqw - 2.5rem)'}}>
+                            <div className="font-black text-slate-800">{m.month} 손익 분석</div>
+                            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-4">
+                              {[[ '매출',m.sales ],['매출원가',m.cogs],['매출총이익',m.grossProfit],['판관비',m.sgna],['영업이익',m.operatingProfit],['영업외손익',m.netIncome-m.operatingProfit],['순이익',m.netIncome]].map(([label,amount])=><div key={String(label)} className="flex justify-between gap-3 rounded bg-slate-50 px-3 py-2"><span>{label}</span><strong className="tabular-nums">{fmt(Number(amount))}원</strong></div>)}
+                            </div>
+                            <p className="text-slate-500">매출원가는 분개에 반영된 기초재고 + 매입 − 기말재고를 포함합니다.</p>
+                            {lines.map(line=>{
+                              const groups=new Map<string,{name:string;amount:number;rows:NonNullable<typeof monthProjection>['plByCode']}>();
+                              for(const row of monthProjection?.plByCode??[]){
+                                const type=accountCodes.find(a=>String(a.code)===row.code)?.type;
+                                const category=lines.some(candidate=>candidate.key===row.plLine)?row.plLine:(type==='수익'?'revenue':'cogs');
+                                if(category!==line.key)continue;
+                                const key=row.groupId??'(그룹없음)';const group=groups.get(key)??{name:row.groupName??'그룹 없음',amount:0,rows:[]};group.amount+=row.amount;group.rows.push(row);groups.set(key,group);
+                              }
+                              return <div key={line.key} className="rounded-lg border border-slate-200"><div className="flex justify-between gap-3 bg-slate-50 px-3 py-2 font-black"><span>{line.label}</span><span className="tabular-nums">{fmt(line.amount)}원</span></div>{[...groups.entries()].map(([id,group])=><div key={id} className="border-t border-slate-100 px-3 py-2"><div className="flex justify-between gap-3 font-bold"><span className="min-w-0 break-words">{group.name}{id==='(그룹없음)'||!lines.some(candidate=>candidate.key===group.rows[0]?.plLine)?' · 미분류':''}</span><span className="shrink-0 tabular-nums">{fmt(group.amount)}원</span></div>{group.rows.map(row=><div key={row.code} className="flex justify-between gap-3 pl-3 pt-1 text-slate-500"><span className="min-w-0 break-words">{row.code} {row.name}</span><span className="shrink-0 tabular-nums">{fmt(row.amount)}원</span></div>)}</div>)}</div>;
+                            })}
+                          </section>
                         </td>
                       </tr>
                     )}

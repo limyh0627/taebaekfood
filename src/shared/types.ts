@@ -182,6 +182,7 @@ export interface Partner {
    */
   companyId?: CompanyId;
   isOemFactory?: boolean;    // 임가공(OEM) 외주공장 — OEM 발주 대상. 켜진 거래처만 외주공장 목록에 뜬다.
+  oemReceiptTermsV2?: import('./partnerEditCommand').OemReceiptTermsV2;
   purchaseItems?: PurchaseItem[];
 }
 
@@ -1185,6 +1186,8 @@ export interface PurchaseOrder {
   oemReceivedKg?: number;                         // 받은 볶음참깨 총 kg (로스 = ΣoemSent.kg − 이 값)
   oemReceivedBulk?: { material: string; kg: number }[];
   oemFeePerKg?: number;                           // 가공단가(원/kg) — 입고 때 입력, 전표 발행에 사용
+  oemFeeTermsV2?: import('../../functions/src/shared/oemFeePlan').OemFeeTermsV2;
+  oemFeeSnapshotV2?: import('../../functions/src/shared/oemFeePlan').OemFeeSnapshotV2;
   /** 완제품 재고·로트와 배치 완료를 한 transaction으로 묶은 작업 번호(재시도 중복 방지). */
   oemReceiptOperationId?: string;
 }
@@ -1609,6 +1612,8 @@ export interface AdjustmentRequest {
   // oem_fee — 가공비 전표 발행 대기. 확인사항에서 발행한다.
   oemPoId?: string;      // 대상 OEM 배치
   oemFeePerKg?: number;  // 가공단가(원/kg)
+  oemFeeTermsV2?: import('../../functions/src/shared/oemFeePlan').OemFeeTermsV2;
+  oemFeeSnapshotV2?: import('../../functions/src/shared/oemFeePlan').OemFeeSnapshotV2;
   oemTotal?: number;     // 가공비 합계(참고 표시용)
 }
 

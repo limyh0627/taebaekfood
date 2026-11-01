@@ -13,10 +13,15 @@ describe('모바일 원장·로트의 문서 흐름', () => {
   });
   it('활성·완료 로트 모두 모바일에서 높이가 늘어나고 가로 표 스크롤을 보존한다', () => {
     const source = readFileSync('components/ItemList.tsx', 'utf8');
-    expect(source).toContain("mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'");
+    const app = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
+    expect(app).toContain('flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar');
+    expect(source).toContain("mode === 'lots' ? 'h-auto' : 'h-full'");
     const lots = source.slice(source.indexOf("{(activeTab === 'lots' || activeTab === 'lot-history') && ("),source.indexOf('{selectedLotItem && selectedLotData'));
-    expect(lots).toContain('gap-3 flex-none lg:flex-1 min-h-0');
-    expect(lots).toContain('flex-none lg:flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar');
+    expect(lots).toContain('gap-3 flex-none min-h-0');
+    expect(lots).toContain('flex-none min-h-0 custom-scrollbar');
+    expect(lots).not.toContain('lg:flex-1');
+    expect(lots).not.toContain('lg:overflow-y-auto');
     expect(lots).toContain('overflow-x-auto');
+    expect(lots).toContain('min-w-[800px]');
   });
 });

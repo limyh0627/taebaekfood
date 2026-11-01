@@ -1,3 +1,4 @@
+import {buildOemFeePlanV2, buildOemFeeSnapshotV2, normalizeOemFeeTermsV2} from '../../shared/oemFeePlan';
 import {
   buildOemBatchCostPreview, finalizeOemBatchCost, oemFeeUnitKgFromSavedReceipt, sumOemReceivedKg,
   validateOemCostEvidence, type OemBatchCost, type OemBatchCostPreview,
@@ -40,13 +41,29 @@ export function inspectStoredOemCostDisplay(po: PurchaseOrder, companyId: Compan
     const snapshot = validateOemCostEvidence(cost.evidenceSnapshot, scope);
     if (!evidence || !snapshot || cost.ownerCompanyId !== companyId || !sameStoredFields(evidence, snapshot)
       || !oemFeeUnitKgFromSavedReceipt(po)) return unknown();
+    let feeSupplyV2: number | undefined;
+    if (po.oemFeeTermsV2 || po.oemFeeSnapshotV2) {
+      const terms=normalizeOemFeeTermsV2(po.oemFeeTermsV2), snap=po.oemFeeSnapshotV2;
+      if (!snap || snap.version!==2 || snap.companyId!==companyId || terms.companyId!==companyId || snap.partnerId!==terms.partnerId || snap.partnerId!==(po.oemPartnerId??po.partnerId) || snap.rows.length!==terms.rows.length || snap.rows.length!==(po.items??[]).length) return unknown();
+      for (const row of snap.rows) {
+        const term=terms.rows.find(value=>value.itemId===row.itemId), product=po.items?.find(value=>value.itemId===row.itemId);
+        const rate=(v:typeof row.processing)=>({unit:v.unit,grossUnitPrice:v.grossUnitPrice,taxExempt:v.taxExempt});
+        if (!term || !product || product.quantity!==row.receivedQty || !sameStoredFields(term.processing,rate(row.processing)) || !sameStoredFields(term.vendorPackaging,rate(row.vendorPackaging))) return unknown();
+      }
+      if (snap.bulk.length !== (po.oemReceivedBulk??[]).length || snap.bulk.some(row=>!terms.bulk || row.grossUnitPrice!==terms.bulk.grossUnitPrice || row.taxExempt!==terms.bulk.taxExempt || !(po.oemReceivedBulk??[]).some(b=>b.material===row.material&&b.kg===row.kg))) return unknown();
+      const rebuilt=buildOemFeeSnapshotV2(terms,snap.rows.map(row=>({itemId:row.itemId,name:row.name,spec:row.spec,itemUnit:row.itemUnit,receivedQty:row.receivedQty,unitKg:row.unitKg,components:row.unitsPerBox ? [{childId:'stored',qty:row.unitsPerBox,child:{type:'product'}}] : []})),snap.bulk.map(row=>({rawItemId:row.rawItemId,lotId:row.lotId,material:row.material,kg:row.kg})));
+      if (!sameStoredFields(rebuilt,snap)) return unknown();
+      const plan=buildOemFeePlanV2({...snap,accountCode:'540'});
+      if (evidence.packaging.supplyAmount>0 && snap.rows.some(row=>row.vendorPackaging.grossUnitPrice>0 && row.vendorPackaging.quantity>0) && snap.nonDuplicatePackagingConfirmed!==true) return unknown();
+      feeSupplyV2=plan.totalSupply;
+    }
     const preview = buildOemBatchCostPreview(evidence, scope, cost.rows);
     if (preview.status !== 'pending-fee' || preview.receivedKg !== po.oemReceivedKg) return unknown();
     if (cost.status === 'pending-fee') {
       if (po.linkedStatementId || !sameStoredFields(cost, preview)) return unknown();
       return { status: 'pending-fee', cost };
     }
-    if (!cost.feeStatementId || cost.feeStatementId !== po.linkedStatementId) return unknown();
+    if (!cost.feeStatementId || cost.feeStatementId !== po.linkedStatementId || feeSupplyV2 !== undefined && feeSupplyV2 !== cost.feeSupplyAmount) return unknown();
     const confirmed = finalizeOemBatchCost(preview, { statementId: cost.feeStatementId, feeSupplyAmount: cost.feeSupplyAmount });
     if (!sameStoredFields(cost, confirmed)) return unknown();
     return { status: 'confirmed', cost };
