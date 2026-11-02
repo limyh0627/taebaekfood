@@ -38,6 +38,7 @@ function instantiate(source:string, names:string[], values:unknown[], exported:s
 const oldMix=instantiate(lotFn,[],[],'lotMixSettingOf');
 const oldBuild=instantiate(rawFn,['kg3','dateOfLocal','today','companyOf','rawHolderByName','rawLedgerKeys','lotMixSettingOf'],[stock3,dateOfLocal,today,companyOf,rawHolderByName,rawLedgerKeys,oldMix],'buildOrderRawCommands');
 
+function serverBuild(input:any){const {order,physicalUsage,attempt,lineId,allItems,partners,actorName}=input,ledgerOnlyUsage=input.ledgerOnlyUsage??{},names=selectOrderRawUsageNames(physicalUsage,ledgerOnlyUsage),businessDate=dateOfLocal(order.deliveredAt)||today(),customerName=partners.find((partner:any)=>partner.id===order.partnerId)?.name||order.partnerName||'',companyId=companyOf(order);return buildOrderRawCommands({get orderId(){return order.id;},physicalUsage,ledgerOnlyUsage,attempt,lineId,allItems,companyId,businessDate,customerName,actorName,names});}
 describe('HEAD 실제 본문 oracle',()=>{
  function fixture(events:string[], empty=false, missing=false) {
   const order={get id(){events.push('order.id');return 'order';},get deliveredAt(){events.push('date');return '2026-10-28';},get partnerId(){events.push('partnerId');return 'p';},get partnerName(){events.push('partnerName');return 'fallback';},get companyId(){events.push('company');return 'taebaek';}};
@@ -48,17 +49,17 @@ describe('HEAD 실제 본문 oracle',()=>{
   return {order,physicalUsage:usage,ledgerOnlyUsage:ledger,attempt:2,lineId:'line',allItems:missing?[]:[holder],partners,actorName:'담당'};
  }
  for(const [label,empty,missing] of [['명령과 혼합',false,false],['빈 명령',true,false],['홀더 없음',false,true]] as const) it(label,()=>{
-  const first:string[]=[],second:string[]=[];const a=fixture(first,empty,missing),b=fixture(second,empty,missing);
+  const first:string[]=[],second:string[]=[],serverEvents:string[]=[];const a=fixture(first,empty,missing),b=fixture(second,empty,missing),c=fixture(serverEvents,empty,missing);
   const capture=(fn:(v:any)=>any,arg:any)=>{try {const result=fn(arg);return {commands:result.commands,entries:[...result.holderByMaterial],companyId:result.companyId,customerName:result.customerName};} catch(e){return {error:(e as Error).message};}};
-  const actual=capture(appBuild as any,b), expected=capture(oldBuild,a); expect(second).toEqual(first); expect(actual).toEqual(expected);
+  const actual=capture(appBuild as any,b), expected=capture(oldBuild,a), server=capture(serverBuild,c);expect(serverEvents).toEqual(first);if('commands' in expected){expect(second).toEqual([...first,...expected.commands!.map(()=> 'order.id')]);}else expect(second).toEqual(first);expect(server).toEqual(expected);if('commands' in expected)expect(actual).toEqual({...expected,commands:newClientCommands(expected.commands!)});else expect(actual).toEqual(expected);
  });
  it('날짜 기본값과 거래처 fallback도 HEAD와 같다',()=>{
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-28T03:00:00Z'));
   try {
-   const a=fixture([]), b=fixture([]);
-   for(const row of [a,b]) {Object.defineProperty(row.order,'deliveredAt',{get:()=>''}); row.partners.length=0;}
-   const old=oldBuild(a), current=appBuild(b as never);
-   expect(current.commands).toEqual(old.commands); expect(current.commands[0].command.effectiveAt).toBe(today()+'T12:00:00+09:00');
+   const a=fixture([]), b=fixture([]), c=fixture([]);
+   for(const row of [a,b,c]) {Object.defineProperty(row.order,'deliveredAt',{get:()=>''}); row.partners.length=0;}
+   const old=oldBuild(a), current=appBuild(b as never), server=serverBuild(c);expect(server.commands).toEqual(old.commands);expect(server.customerName).toBe(old.customerName);
+   expect(current.commands).toEqual(newClientCommands(old.commands)); expect(current.commands[0].command.effectiveAt).toBe(today()+'T12:00:00+09:00');
    expect(current.customerName).toBe('fallback');
   } finally {vi.useRealTimers();}
  });
@@ -68,7 +69,11 @@ describe('HEAD 실제 본문 oracle',()=>{
 });
 
 import {rawLedgerDocIds,orderRawTracesFromMovement} from './orderRawCommandPlan';
-import {operationDocId} from './rawInventoryCore';
+import {operationDocId,legacyOperationDocId} from './rawInventoryCore';
+const frame=(s:string)=>String(s.length).padStart(6,'0')+':'+s;
+const newProductionId=(kind:string,orderId:string,lineId:string|null,attempt:number,rawItemId:string)=>`${kind==='ledger-consume'?'pl2':'pr2'}:${frame(orderId)}:${operationDocId(JSON.stringify([lineId,attempt,rawItemId]))}`;
+const newReverseId=(id:string)=>{const modern=operationDocId(id),legacy=legacyOperationDocId(id);return `rv2:${frame(modern)}:${frame(legacy)}:${modern}`;};
+function newClientCommands(old:any[]){return old.map(row=>{const operationId=newProductionId(row.command.kind,'order','line',2,row.command.rawItemId),id=operationDocId(operationId);return {...row,command:{...row.command,operationId},...(row.options?{options:{...row.options,...(row.options.newLotId!==undefined?{newLotId:'lot-'+id}:{}),...(row.options.carryOverLotId!==undefined?{carryOverLotId:'carry-'+id}:{})}}:{})};});}
 const oldLedger=instantiate(rawHead.slice(rawHead.indexOf('export function rawLedgerDocIds'),rawHead.indexOf('/** 순차·새 일괄')),['operationDocId'],[operationDocId],'rawLedgerDocIds');
 const oldTraces=instantiate(rawHead.slice(rawHead.indexOf('export function orderRawTracesFromMovement'),rawHead.indexOf('/** 여러 줄의 첫 계획')),['kg3'],[stock3],'orderRawTracesFromMovement');
 it('trace/ledger ID 단일이동은 HEAD 물리·원장전용·빈·falsy 순서와 입력을 보존한다',()=>{
@@ -83,6 +88,6 @@ const cancellationOld=instantiate(cancellationHead.slice(cancellationHead.indexO
 describe('REV14 cancellationRawCommands 원body 단일이동',()=>{
  for(const mode of ['normal','fallback','empty','falsy-actor','opaque','company-error','id-error']as const)it('RC14 '+mode,()=>{
   const make=()=>{const events:string[]=[];const order={get id(){events.push('id');if(mode==='id-error')throw Error('원ID오류');return 'order/😀';},get companyId(){events.push('company');if(mode==='company-error')throw Error('원회사오류');return mode==='fallback'?undefined:'punghoe';}};const originals=new Map(mode==='empty'?[]:[['production:😀:a1:raw','raw1'],['production-ledger:😀:a1:raw','raw1']]);if(mode==='opaque')originals.set('constructor','raw2');return {order,originals,events};};
-  const a=make(),b=make(),c=make(),actor=mode==='falsy-actor'?'':mode==='fallback'?undefined:'담당';const capture=(fn:any,v:any)=>{try{return {commands:fn(v.order,v.originals,'2026-10-29T01:02:03.004Z',actor)};}catch(e){return {error:(e as Error).message};}};const before=[...b.originals];const expected=capture(cancellationOld,a);expect(capture(cancellationRawCommands,b)).toEqual(expected);expect(capture(appCancellationRawCommands,c)).toEqual(expected);expect(b.events).toEqual(a.events);expect(c.events).toEqual(a.events);expect([...b.originals]).toEqual(before);
+  const a=make(),b=make(),c=make(),actor=mode==='falsy-actor'?'':mode==='fallback'?undefined:'담당';const capture=(fn:any,v:any)=>{try{return {commands:fn(v.order,v.originals,'2026-10-29T01:02:03.004Z',actor)};}catch(e){return {error:(e as Error).message};}};const before=[...b.originals];const expected=capture(cancellationOld,a);expect(capture(cancellationRawCommands,b)).toEqual(expected);const expectedClient='commands' in expected?{commands:expected.commands!.map((command:any)=>({...command,operationId:newReverseId(command.originalOperationId)}))}:expected;expect(capture(appCancellationRawCommands,c)).toEqual(expectedClient);expect(b.events).toEqual(a.events);expect(c.events).toEqual(a.events);expect([...b.originals]).toEqual(before);
  });
 });

@@ -31,7 +31,7 @@ describe('발행 기록과 최초 원문의 이력 대조', () => {
   const statements=[statement(),statement('s2','other')],data=await evidence('all',statements);
   const rows=await projectTaxIssueHistory('taebaek',statements,data.records,data.operations);
   expect(rows).toHaveLength(4);expect(new Set(rows.map(row=>row.key)).size).toBe(4);
-  expect(rows.reduce((sum,row)=>sum+row.totalAmount,0)).toBe(320);
+  expect(rows.every(row=>row.totalAmount!==null)).toBe(true);expect(rows.reduce((sum,row)=>sum+(row.totalAmount ?? 0),0)).toBe(320);
   rows.forEach(row=>expect(new Set(row.stmts.map(s=>s.partnerId)).size).toBe(1));
  });
  it.each(['hash','company','ids','amount','time','kind','missing'] as const)('%s 불일치는 이력을 숨기지 않고 재출력을 제한한다',async mode=>{
@@ -46,20 +46,20 @@ describe('발행 기록과 최초 원문의 이력 대조', () => {
   const rows=await projectTaxIssueHistory('taebaek',[statement()],data.records,data.operations);
   expect(rows).toHaveLength(1);expect(rows[0].originalVerified).toBe(false);expect(rows[0].notice).toContain('원본 확인 필요');
  });
- it('원문 없는 legacy 표시와 다른 회사·현재 조회 밖 전표를 구분한다',async()=>{
+ it('현재 조회 밖 원문 기록과 legacy 표시를 함께 보되 다른 회사를 제외한다',async()=>{
   const legacy={...statement(),taxIssuedAt:'2025-03-01T00:00:00Z'},data=await evidence('all',[statement('outside')]);
   const rows=await projectTaxIssueHistory('taebaek',[legacy,{...statement('foreign'),companyId:'punghoe'}],data.records,data.operations);
-  expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({kind:'legacy',originalVerified:false});
+  expect(rows).toHaveLength(3);expect(rows.filter(row=>row.kind==='legacy')).toHaveLength(1);expect(rows.filter(row=>row.originalVerified)).toHaveLength(2);expect(rows.flatMap(row=>row.stmts).some(row=>row.id==='foreign')).toBe(false);
  });
- it('연결된 operation만 고유 조회하고 일부 실패를 명시하며 정상 기록은 유지한다',async()=>{
+ it('현재 전표 밖 operation도 고유 조회하고 일부 실패를 명시하며 정상 기록은 유지한다',async()=>{
   const data=await evidence();
   const failed={...data.records[0],id:'tax-failed_taxable',operationId:'tax-failed'};
   reads.records.mockResolvedValue({docs:[...data.records,failed,{...data.records[0],id:'other',operationId:'outside',statementIds:['outside']}].map(row=>({id:row.id,data:()=>row}))});
   reads.operation.mockResolvedValueOnce({id:data.operation.id,exists:()=>true,data:()=>data.operation}).mockRejectedValueOnce(new Error('조회 실패'));
   const result=await readTaxIssueHistory('taebaek',[statement()]);
-  expect(reads.operation).toHaveBeenCalledTimes(2);expect(result.groups).toHaveLength(3);expect(result.error).toContain('1건');
+  expect(reads.operation).toHaveBeenCalledTimes(3);expect(result.groups).toHaveLength(4);expect(result.error).toContain('2건');
   expect(result.groups.filter(row=>row.originalVerified)).toHaveLength(2);
-  expect(result.groups.filter(row=>!row.originalVerified)).toHaveLength(1);
+  expect(result.groups.filter(row=>!row.originalVerified)).toHaveLength(2);expect(result.groups.find(row=>row.stmts.length===0)).toMatchObject({totalAmount:null,partnerId:'',originalVerified:false});
  });
  it('회사·인증 범위가 바뀌면 다음 원문 GET을 시작하지 않는다',async()=>{
   const data=await evidence();let current=true;
@@ -68,3 +68,18 @@ describe('발행 기록과 최초 원문의 이력 대조', () => {
   expect(reads.operation).not.toHaveBeenCalled();
  });
 });
+
+it('현재 전표가 없어도 서버 기록과 검증된 최초 원문을 표시한다',async()=>{
+ const data=await evidence('taxable',[statement('old')]);reads.records.mockResolvedValue({docs:data.records.map(row=>({id:row.id,data:()=>row}))});reads.operation.mockResolvedValue({id:data.operation.id,exists:()=>true,data:()=>data.operation});
+ const result=await readTaxIssueHistory('taebaek',[]);expect(reads.records).toHaveBeenCalledOnce();expect(result.groups).toHaveLength(1);expect(result.groups[0]).toMatchObject({originalVerified:true,totalAmount:110});expect(result.groups[0].stmts[0].id).toBe('old');
+});
+it('저장 발행일 범위를 회사 기록에 적용한 뒤 그 원문만 읽고 legacy도 같은 범위로 거른다',async()=>{
+ const data=await evidence('taxable');const outside={...data.records[0],id:'outside',operationId:'outside',issuedAt:'2023-01-01T00:00:00Z'};reads.records.mockResolvedValue({docs:[...data.records,outside].map(row=>({id:row.id,data:()=>row}))});reads.operation.mockResolvedValue({id:data.operation.id,exists:()=>true,data:()=>data.operation});const result=await readTaxIssueHistory('taebaek',[{...statement('legacy'),taxIssuedAt:'2023-01-01T00:00:00Z'}],()=>true,{from:'2025-03-01',to:'2025-03-01'});expect(reads.operation).toHaveBeenCalledTimes(1);expect(result.groups).toHaveLength(1);expect(result.groups[0].stmts[0].id).toBe('s');
+});
+it('원문과 현재 전표가 없고 조회가 실패한 기록은 금액 미확인과 재출력 금지로 남긴다',async()=>{const data=await evidence('taxable');reads.records.mockResolvedValue({docs:data.records.map(row=>({id:row.id,data:()=>row}))});reads.operation.mockRejectedValue(new Error('offline'));const result=await readTaxIssueHistory('taebaek',[]);expect(result.groups).toHaveLength(1);expect(result.groups[0]).toMatchObject({stmts:[],totalAmount:null,originalVerified:false,partnerId:''});expect(result.error).toContain('1건');});
+
+it('발행일을 확인할 수 없는 기록은 전체에서 남기고 선택기간에서 제외 수를 알린다',async()=>{const data=await evidence('taxable');const invalid={...data.records[0],issuedAt:''};reads.records.mockResolvedValue({docs:[invalid].map(row=>({id:row.id,data:()=>row}))});reads.operation.mockResolvedValue({id:data.operation.id,exists:()=>true,data:()=>data.operation});const all=await readTaxIssueHistory('taebaek',[]);expect(all.groups).toHaveLength(1);const dated=await readTaxIssueHistory('taebaek',[],()=>true,{from:'2025-01-01',to:'2025-12-31'});expect(dated.groups).toHaveLength(0);expect(dated.dateUnknownCount).toBe(1);});
+
+it('저장된 UTC 시각을 한국 날짜로 해석하여 발행일 경계에 포함한다',async()=>{const previous=process.env.TZ;process.env.TZ='Asia/Seoul';try{const data=await evidence('taxable');data.records[0].issuedAt='2025-02-28T15:30:00Z';reads.records.mockResolvedValue({docs:data.records.map(row=>({id:row.id,data:()=>row}))});reads.operation.mockResolvedValue({id:data.operation.id,exists:()=>true,data:()=>data.operation});const result=await readTaxIssueHistory('taebaek',[],()=>true,{from:'2025-03-01',to:'2025-03-01'});expect(reads.operation).toHaveBeenCalledOnce();expect(result.groups).toHaveLength(1);}finally{process.env.TZ=previous;}});
+
+it.each([{from:'2026-02-30',to:''},{from:'2026-12-01',to:'2026-01-01'},{from:'',to:'not-date'}])('잘못된 발행일 범위는 서버 조회 전에 안내한다 %#',async range=>{await expect(readTaxIssueHistory('taebaek',[],()=>true,range)).rejects.toThrow('발행일 시작일과 종료일을 올바르게 확인해 주세요.');expect(reads.records).not.toHaveBeenCalled();expect(reads.operation).not.toHaveBeenCalled();});

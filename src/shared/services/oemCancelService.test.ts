@@ -2,8 +2,10 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { applyRawCommand, operationDocId, inventoryDocId, type RawInventoryCommand } from '../rawInventoryCore';
 import { cancelOemIssue } from './oemCancelService';
 const mock = vi.hoisted(() => ({ rows: new Map<string, any>(), writes: 0 }));
+vi.mock('./rawReverseGroupPermit',()=>({captureRawReverseSession:async()=>({assertScope:async()=>{},assertCurrent:()=>{}})}));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => `${collection}/${id}`,
+  getDocFromServer: async (ref:string) => ({exists:()=>mock.rows.has(ref),data:()=>structuredClone(mock.rows.get(ref))}),
   runTransaction: async (_db: unknown, callback: any) => {
     const pending: [string, any][] = [];
     const result = await callback({ get: async (ref: string) => ({ exists: () => mock.rows.has(ref), data: () => structuredClone(mock.rows.get(ref)) }),

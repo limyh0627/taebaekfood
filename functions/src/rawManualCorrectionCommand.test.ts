@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 vi.mock('firebase-functions/v2/https',()=>({HttpsError:class extends Error{constructor(public code:string,message:string){super(message);}},onCall:(_options:unknown,handler:unknown)=>handler}));
-import {executeRawManualCorrectionCommand,normalizeRawManualCorrectionRequest,rawManualCorrectionReceiptId,rawManualCorrectionText,type RawManualCorrectionRequest} from './rawManualCorrectionCommand';
+import {executeRawManualCorrectionCommand,normalizeRawManualCorrectionRequest,normalizeRawReverseRequest,normalizeRawReverseGroupRequest,rawManualCorrectionReceiptId,rawManualCorrectionText,type RawManualCorrectionRequest} from './rawManualCorrectionCommand';
 import {applyRawCommand,inventoryDocId,operationDocId,legacyOperationDocId} from './shared/rawInventoryCore';
 const actor={uid:'uid',token:{companyId:'taebaek',employeeId:'employee',isAdmin:false}};
 const now='2026-10-26T00:00:00.000Z';
@@ -23,6 +23,22 @@ function runtime(){
  return {db:db as any,rows,writes,reads,control,stock:()=>rows.get('items/raw').stock};
 }
 beforeEach(()=>vi.clearAllMocks());
+it('긴 역처리 원문은 정확한 명령을 유지하고 추가 주소나 변조 필드를 거절한다',()=>{
+ const originalOperationId='원본'+'x'.repeat(1200),operationId='reverse:'+originalOperationId;
+ const value={version:2,kind:'raw-reverse',operationId,companyId:'taebaek',actorUid:'uid',employeeId:'employee',command:{kind:'reverse',operationId,originalOperationId,companyId:'taebaek',rawItemId:'raw',materialSnapshot:'참깨',effectiveAt:now,source:{type:'reversal',id:originalOperationId}},options:{now,newLotId:'lot',carryOverLotId:'carry'}};
+ expect(normalizeRawReverseRequest(value)).toEqual(value);
+ expect(()=>normalizeRawReverseRequest({...value,originalPath:'rawMaterialLedger/forged'})).toThrow();
+ expect(()=>normalizeRawReverseRequest({...value,command:{...value.command,operationId:'다른 번호'}})).toThrow();
+ expect(()=>normalizeRawReverseRequest({...value,options:{...value.options,legacy:{note:42}}})).toThrow();
+});
+it('묶음 취소는 명령 순서와 최초 업무 원문을 보존하며 중복 작업과 임의 주소를 거절한다',()=>{
+ const command={kind:'reverse',operationId:'reverse-1',originalOperationId:'원본',companyId:'taebaek',rawItemId:'raw',materialSnapshot:'참깨',effectiveAt:now,source:{type:'reversal',id:'원본'}};
+ const entry={command,options:{now,newLotId:'lot',carryOverLotId:'carry'}};
+ const value={version:3,kind:'raw-reverse-group',operationId:'raw-reverse-group-00000000-0000-4000-8000-000000000001',companyId:'taebaek',actorUid:'uid',employeeId:'employee',commands:[entry],business:{kind:'press-cancel',id:'press',beforeNativeText:'before',afterNativeText:'after'}};
+ expect(normalizeRawReverseGroupRequest(value)).toEqual(value);
+ expect(()=>normalizeRawReverseGroupRequest({...value,commands:[entry,entry]})).toThrow();
+ expect(()=>normalizeRawReverseGroupRequest({...value,business:{...value.business,path:'orders/forged'}})).toThrow();
+});
 it.each(['consume','receive','stocktake'] as const)('직원 %s는 실제 core로 상태·원장·mirror·receipt를 함께 반영한다',async kind=>{const f=runtime(),r=request(kind);const result=await executeRawManualCorrectionCommand(f.db,actor,{action:'apply',request:r});expect(result.status).toBe('applied');expect(f.stock()).toBe(kind==='consume'?90:kind==='receive'?110:10);expect(f.writes).toHaveLength(4);expect(f.rows.get('rawMaterialLedger/'+operationDocId(r.operationId))).toMatchObject({type:'correction',unit:'kg',originalAmount:10,originalUnit:'kg',inventoryWriteRevision:1});expect(f.rows.get('items/raw').inventoryWriteRevision).toBe(1);expect(f.rows.get('rawInventories/'+inventoryDocId('taebaek','raw')).stockKg).toBe(f.stock());});
 it('apply commit후 ACK유실은 inspect와 동일apply에서 효과를 한 번만 확인한다',async()=>{const f=runtime(),r=request();f.control.commitThenThrow=true;await expect(executeRawManualCorrectionCommand(f.db,actor,{action:'apply',request:r})).rejects.toThrow('ACK 유실');expect(f.stock()).toBe(90);const count=f.writes.length;expect((await executeRawManualCorrectionCommand(f.db,actor,{action:'inspect',request:r})).status).toBe('applied');expect((await executeRawManualCorrectionCommand(f.db,actor,{action:'apply',request:r})).status).toBe('applied');expect(f.stock()).toBe(90);expect(f.writes).toHaveLength(count);});
 it('inspect 부재는 unknown이며 DB 쓰기와 재고 읽기를 시작하지 않는다',async()=>{const f=runtime(),r=request();expect((await executeRawManualCorrectionCommand(f.db,actor,{action:'inspect',request:r})).status).toBe('unknown');expect(f.writes).toHaveLength(0);expect(f.reads).toEqual(['rawManualCorrectionReceipts/'+rawManualCorrectionReceiptId(r.companyId,r.operationId)]);});

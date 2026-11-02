@@ -265,6 +265,7 @@ export { partnerAdvanceRecoveryCommand } from './partnerAdvanceCommand';
 export { workOrderCommand } from './workOrderCommand';
 export { productionRecordCommand } from './productionRecordCommand';
 export { orderStockFullRecoveryCommand } from './orderStockFullCommand';
+export { orderProductionBatchCommand } from './orderProductionBatchCommand';
 
 export { partnerEditCommand } from './partnerEditCommand';
 export { palletTransactionCommand } from './palletTransactionCommand';

@@ -503,3 +503,18 @@ it('현재설정이 미확인이어도 완전한 과거 당사자 snapshot 출�
  render(<TaxStatement issuedStatements={[statement]} partners={[거래처A]} companyInfo={null} companyInfoRead={undefined}/>);
  fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/COMPANY-SNAPSHOT/}));fireEvent.click(screen.getByRole('button',{name:'인쇄'}));expect(outputMocks.html).toHaveBeenCalledOnce();expect(outputMocks.html.mock.calls[0][0].html).toContain('저장공급자');
 });
+
+it('저장 발행일 필터는 전체로 시작하고 범위 변경 시 새 조회하며 확인 불가 이력을 안전하게 보여준다',async()=>{
+ const unknown={key:'unknown',stmts:[],totalAmount:null,isBundle:false,issuedAt:'2025-03-01T00:00:00Z',partnerId:'',kind:'taxable' as const,originalVerified:false,notice:'원본 확인 필요: 다시 불러와 주세요.'};
+ vi.mocked(readTaxIssueHistory).mockResolvedValue({groups:[unknown],error:''});render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} companyInfoRead={taxReadyRead}/>);fireEvent.click(screen.getByRole('button',{name:'조회'}));
+ expect(await screen.findByText('전표 원문 미확인')).toBeVisible();expect(screen.getByText('거래처 미확인')).toBeVisible();expect(screen.getByRole('button',{name:'원본 확인 필요'})).toBeDisabled();expect(screen.getByText(/국세청·홈택스 외부 발행 내역은 조회하지 않습니다/)).toBeVisible();
+ expect(vi.mocked(readTaxIssueHistory).mock.calls.at(-1)?.[3]).toEqual({from:'',to:''});fireEvent.change(screen.getByLabelText('발행일 시작일'),{target:{value:'2025-03-01'}});await waitFor(()=>expect(vi.mocked(readTaxIssueHistory).mock.calls.at(-1)?.[3]).toEqual({from:'2025-03-01',to:''}));
+});
+it('현재 거래처 목록에 없어도 확인된 원문 거래처를 필터에서 고를 수 있다',async()=>{const row=전표('old','absent','OLD',이번달+'-09T10:00:00+09:00');row.partnerName='원문 거래처';vi.mocked(readTaxIssueHistory).mockResolvedValue({error:'',groups:[{key:'old',stmts:[row],totalAmount:row.totalAmount,isBundle:false,issuedAt:row.issuedAt,partnerId:'absent',partnerName:'원문 거래처',kind:'taxable',originalVerified:true,notice:''}]});render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} companyInfoRead={taxReadyRead}/>);fireEvent.click(screen.getByRole('button',{name:'조회'}));fireEvent.click(await screen.findByRole('button',{name:'원문 거래처'}));expect(screen.getByText('OLD', {exact:false})).toBeInTheDocument();});
+
+it('발행일 선택 변경 뒤 늦은 이전 조회는 새 목록을 덮지 않는다',async()=>{
+ let finish!:(value:any)=>void;vi.mocked(readTaxIssueHistory).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;})).mockResolvedValue({groups:[],error:''});render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} companyInfoRead={taxReadyRead}/>);fireEvent.click(screen.getByRole('button',{name:'조회'}));await waitFor(()=>expect(vi.mocked(readTaxIssueHistory)).toHaveBeenCalled());fireEvent.change(screen.getByLabelText('발행일 시작일'),{target:{value:'2025-03-01'}});await screen.findByText('선택 조건에 저장된 발행 기록이 없습니다');
+ await act(async()=>finish({groups:[{key:'late',stmts:[],totalAmount:null,isBundle:false,issuedAt:'2024-01-01T00:00:00Z',partnerId:'',kind:'legacy',originalVerified:false,notice:'늦은 이전 조회'}],error:''}));expect(screen.queryByText('늦은 이전 조회')).toBeNull();
+});
+
+it('잘못된 발행일 기간 오류를 기록 없음 대신 안내한다',async()=>{vi.mocked(readTaxIssueHistory).mockRejectedValue(new Error('발행일 시작일과 종료일을 올바르게 확인해 주세요.'));render(<TaxStatement issuedStatements={[]} partners={[]} companyInfo={회사} companyInfoRead={taxReadyRead}/>);fireEvent.click(screen.getByRole('button',{name:'조회'}));expect(await screen.findByText(/발행일 시작일과 종료일을 올바르게 확인해 주세요/)).toBeVisible();expect(screen.getByText('발행 기록 조회를 완료하지 못했습니다')).toBeVisible();});

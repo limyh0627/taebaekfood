@@ -42,7 +42,13 @@ const mypage = guide('마이페이지',
   feature('menu-preferences', '내 메뉴 숨김·순서·그룹 변경', ['이 브라우저의 내 메뉴에서 메뉴 설정 열기를 누릅니다.', '표시 체크로 숨김을 바꾸고 위로·아래로 또는 그룹 선택으로 위치를 바꿉니다.', '기본 상태로 돌아가려면 내 메뉴 초기화를 누릅니다.'], '회사·사용자·관리자/직원 화면별로 이 브라우저에만 저장됩니다. 메뉴 숨김은 권한 변경이 아닙니다.'),
   feature('notification-settings', '알림 설정과 로그아웃', ['알림 권한과 알림 방식을 확인합니다.', '필요한 설정을 직접 선택합니다.', '계정을 종료하려면 로그아웃을 누르고 확인합니다.'], '브라우저가 알림을 지원하지 않거나 권한을 차단했다면 안내를 확인합니다.'),
 );
-const shared: Record<string, HelpMenuGuide> = { orders, inventory, 'lot-management': lots, 'item-management': items, notice, officetalk: talk, mypage };
+// ProjectsPage와 업무 상세의 실제 조회·저장·복구 동선을 안내한다.
+const projects = guide('프로젝트',
+  feature('projects-find', '프로젝트와 업무 보기', ['프로젝트 목록에서 검색하거나 프로젝트를 선택합니다.', '보드·표·타임라인·내 작업에서 업무를 확인합니다.', '업무를 열어 담당자와 기간, 상태를 확인합니다.'], '회사가 구분되며 참여자는 해당 프로젝트를, 회사 관리자는 회사 프로젝트를 확인할 수 있습니다.'),
+  feature('projects-work', '업무와 체크리스트·댓글 관리', ['프로젝트 안에서 업무를 만들거나 기존 업무를 엽니다.', '내용과 담당자·기간을 확인하고 저장합니다.', '업무 상세에서 체크리스트와 댓글을 확인하고 필요한 내용을 저장합니다.'], '저장 결과를 확인하고, 다른 사람이 내용을 바꾸었다면 최신 내용을 확인한 뒤 다시 작성합니다.'),
+  feature('projects-recovery', '확인이 필요한 작업 처리', ['확인 필요한 작업 버튼이 표시되면 열어 처리 결과를 확인합니다.', '확인되지 않은 요청은 같은 내용으로 다시 시도하거나 중단을 선택합니다.'], '결과가 확인되기 전에 같은 업무를 새로 만들지 않습니다.'),
+);
+const shared: Record<string, HelpMenuGuide> = { orders, inventory, projects, 'lot-management': lots, 'item-management': items, notice, officetalk: talk, mypage };
 
 // 관리자 화면: AdminApp/각 컴포넌트의 실제 조회·작성 버튼을 근거로 삼는다.
 const admin: Record<string, HelpMenuGuide> = {

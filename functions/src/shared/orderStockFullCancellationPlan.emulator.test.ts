@@ -126,3 +126,35 @@ describe.skipIf(!enabled)('opaque own pointer 출처',()=>{
   observe('own-pointer-'+kind+'-'+lineId+'-'+mode,{kind,lineId,mode,hasOwnPointer:hasOwn,status:r.status,reason:r.reason??null});
  });
 });
+
+import {createRequire} from 'node:module';
+import {prepareBatchShipmentEffects,type BatchConsumerInput as SdkBatchInput} from './orderStockFullShipmentPlan';
+import {prepareBatchCancellationEffects} from './orderStockFullCancellationPlan';
+import {deriveOrderCompletionProjection} from './orderProductionBatchContract';
+import {assembleOrderProductionCatalogDomain} from './orderProductionCatalogInputs';
+const sdkCancellationFixture=(db:any)=>{
+ const ref={version:1 as const,companyId:'taebaek' as const,orderId:'child',requestId:'pb1-12345678-1234-4234-8234-123456789abc'},sourceRef={...ref,orderId:'root'},batchId=fullAttemptId(sourceRef,'owner'),h='a'.repeat(64);
+ const output={outputId:'out',role:'customer' as const,itemId:'i1',originOrderId:'root',originLineId:'line',quantityMilli:2000,unit:{version:1 as const,measureId:h,order:{kind:'item-quantity' as const,label:'개',orderedValue:2},sourceLine:{quantity:2},stock:{itemId:'i1',label:'개',quantityKind:'count' as const,orderedValue:2,unitsPerOrderUnit:1},basis:{kind:'item-unit' as const,orderUnitEvidenceHash:h,catalogEvidenceHash:h}},productionEvidence:{sourcePlanRowId:'out',rawOperationIds:[],productionRecordIds:[],producedLots:[]},claims:[{orderId:'child',lineId:'line',fromMilli:0,toMilli:2000,state:'allocated' as const,lastReference:ref}]};
+ const assignment={kind:'assignment' as const,version:1 as const,companyId:'taebaek' as const,batchId,source:{reference:sourceRef,ownerUid:'owner'},revision:2,createdAt:'2026-11-02T00:00:00.000Z',state:'active' as const,outputs:[output],lastTransfer:{reference:ref,ownerUid:'owner',at:'2026-11-02T00:00:00.000Z'}};
+ const original={...assignment,revision:1,lastTransfer:null,outputs:[{...output,claims:[{...output.claims[0],orderId:'root',lastReference:sourceRef}]}]};
+ const claims=[{lineId:'line',batchId,outputId:'out',fromMilli:0,toMilli:2000,state:'allocated' as const}];
+ const refs=deriveOrderCompletionProjection({rootOrderId:'root',revision:2,lineIds:['line'],claims});
+ const row={companyId:'taebaek',name:'상품',type:'product',unit:'개',stock:5,inventoryReservations:[{orderId:'child',operationId:'alloc',state:'allocated',qty:2,createdAt:'2026-11-02T00:00:00.000Z'},{orderId:'other',operationId:'other',state:'allocated',qty:1,createdAt:'2026-11-02T00:00:00.000Z'}]};
+ const catalog=assembleOrderProductionCatalogDomain('taebaek',[{name:'items',documents:[{id:'i1',data:row}]},{name:'item_bom',documents:[]},{name:'item_pack',documents:[]},{name:'item_formula',documents:[]}] as never);
+ if(catalog.status!=='assembled')throw Error('catalog fixture');
+ const plan={owner:{uid:'owner'},intent:{companyId:'taebaek',orderId:'root',requestId:'pb1-12345678-1234-4234-8234-123456789abc'},readSet:[],effectSet:[],batchExtension:{assignmentEffects:[{batchId,operation:'create',nativeText:fullCodec(db).text(original)}]}};
+ const input={db,reference:ref,owner:{uid:'owner',employeeId:'employee',companyId:'taebaek'},actorDisplay:'담당',clock:{now:'2026-11-02T00:00:00.000Z',nowMs:Date.parse('2026-11-02T00:00:00.000Z')},order:{companyId:'taebaek',status:'DISPATCHED',items:[{lineId:'line',itemId:'i1',quantity:2,checked:true}],orderProductionRefsV1:refs},orders:new Map(),assignments:[assignment],items:new Map([['i1',row]]),sourcePlans:[{reference:sourceRef,ownerUid:'owner',plan,receipt:{status:'applied'},before:new Map()}],currentDocuments:new Map([['items/i1',row]]),catalog,targetStatus:'SHIPPED'} as unknown as SdkBatchInput & {targetStatus:'SHIPPED'};
+ return input;
+};
+describe.skipIf(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8382')('부분 생산 출고 취소 초안 격리 SDK',()=>{
+ it('출고 효과만 되돌리고 자기 예약을 복원한다',async()=>{
+  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.FIREBASE_CONFIG)throw Error('외부 설정 금지');
+  const sdk:typeof import('firebase-admin')=createRequire(process.cwd()+'/functions/package.json')('firebase-admin'),uid=randomUUID(),project='demo-batch-cancel-'+uid,local=sdk.initializeApp({projectId:project},project),store=sdk.firestore(local),x=sdkCancellationFixture(store),sentinel=store.collection('sentinels').doc(uid),item=store.collection('items').doc('i1'),order=store.collection('orders').doc('child'),assignment=store.collection('assignments').doc(x.assignments[0].batchId),writes=[sentinel,item,order,assignment];
+  try{
+   expect((await Promise.all(writes.map(ref=>ref.get()))).every(s=>!s.exists)).toBe(true);await Promise.all([sentinel.set({uid,namespace:project}),item.set(x.items.get('i1')),order.set(x.order),assignment.set(x.assignments[0])]);const marker=await sentinel.get();let source:any;
+   await store.runTransaction(async tx=>{const [i,o,a]=await Promise.all([tx.get(item),tx.get(order),tx.get(assignment)]),row=i.data()!,ship=prepareBatchShipmentEffects({...x,order:o.data()!,assignments:[a.data() as any],items:new Map([['i1',row]]),currentDocuments:new Map([['items/i1',row]])});source={reference:x.reference,ownerUid:'owner',receipt:{status:'applied'},before:new Map(),plan:{intent:{...x.reference,action:'shipment-forward',targetStatus:'SHIPPED'},owner:{uid:'owner'},orderPatch:ship.orderPatch,effectSet:ship.effects,readSet:[]}};tx.update(item,{...fullCodec(store).decode(ship.effects[0].nativeText),inventoryReservations:row.inventoryReservations.filter((r:any)=>r.orderId!=='child')});tx.update(order,ship.orderPatch);tx.set(assignment,ship.assignmentsAfter[0]);});
+   await store.runTransaction(async tx=>{const [i,o,a]=await Promise.all([tx.get(item),tx.get(order),tx.get(assignment)]),row=i.data()!,cancel=prepareBatchCancellationEffects({...x,order:o.data()!,assignments:[a.data() as any],items:new Map([['i1',row]]),currentDocuments:new Map([['items/i1',row]]),action:'cancel-shipment',shipmentSource:source});tx.update(item,{...fullCodec(store).decode(cancel.effects[0].nativeText),inventoryReservations:[...row.inventoryReservations,{orderId:'child',operationId:'restored',qty:2,state:'allocated',createdAt:x.clock.now}]});tx.update(order,cancel.orderPatch);tx.set(assignment,cancel.assignmentsAfter[0]);});
+   expect((await item.get()).get('stock')).toBe(5);expect((await item.get()).get('inventoryReservations').map((r:any)=>r.orderId).sort()).toEqual(['child','other']);expect((await assignment.get()).get('outputs')[0].claims[0].state).toBe('allocated');const after=await sentinel.get();expect(after.data()).toEqual({uid,namespace:project});expect(after.updateTime!.isEqual(marker.updateTime!)).toBe(true);
+  }finally{await Promise.all(writes.map(ref=>ref.delete()));expect((await Promise.all(writes.map(ref=>ref.get()))).every(s=>!s.exists)).toBe(true);await local.delete();}
+ },30000);
+});

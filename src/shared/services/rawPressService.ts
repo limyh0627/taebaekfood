@@ -9,6 +9,7 @@ import { auth, authReady, db } from '../firebase';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { companyOf } from '../types';
 import { clearRawPressCancellationAttempt, makeRawPressCancellationRequest, readRawPressCancellationAttempt, saveRawPressCancellationAttempt, validateRawPressCancellationRequest, type RawPressCancellationRequest } from '../rawPressAttempt';
+import {captureRawReverseSession,withRawReverseBusinessLock} from './rawReverseGroupPermit';
 
 export type RawPressOutcome = { status: 'applied' | 'duplicate'; sourceAppliedKg: number; derivedAppliedKg: number }
   | { status:'cancelled';reason:string }
@@ -141,9 +142,22 @@ export type RawPressCancellationOutcome={status:'cancelled'|'duplicate';sourceAp
   |{status:'blocked';reason:string;retainPending:boolean}|{status:'legacy'};
 export async function executeRawPressCancellationWithDb(database:Firestore,request:RawPressCancellationRequest,assertScope?:()=>Promise<void>):Promise<RawPressCancellationOutcome>{
   request=JSON.parse(JSON.stringify(request));
+  const needsGroup=!!request?.sourceReverse&&!!request?.derivedReverse&&[request.sourceReverse,request.derivedReverse].some(c=>operationDocId(c.operationId).startsWith('op_long_')||operationDocId(c.originalOperationId).startsWith('op_long_'));
+  if(needsGroup){const session=await captureRawReverseSession(request.companyId,assertScope);return withRawReverseBusinessLock(request.companyId,'press-cancel',request.originalOperationId,()=>executeRawPressCancellationLocked(database,request,session.assertScope));}
+  return executeRawPressCancellationLocked(database,request,assertScope);
+}
+async function executeRawPressCancellationLocked(database:Firestore,request:RawPressCancellationRequest,assertScope?:()=>Promise<void>):Promise<RawPressCancellationOutcome>{
+  request=JSON.parse(JSON.stringify(request));
   validateRawPressCancellationRequest(request);
   const jobRef=doc(database,COL.rawInventoryJobs,`raw-press-${operationDocId(request.originalOperationId)}`);
-  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.companyId,isStillCurrent:async()=>{await assertScope?.();return true;}}),async tx=>{
+  const needsGroup=[request.sourceReverse,request.derivedReverse].some(c=>operationDocId(c.operationId).startsWith('op_long_')||operationDocId(c.originalOperationId).startsWith('op_long_'));
+  let handle:import('./rawReverseGroupPermit').RawGroupHandle|null=null;
+  if(needsGroup){const helper=await import('./rawReverseGroupPermit');handle=await helper.recoverRawReverseGroup(request.companyId,'press-cancel',request.originalOperationId,{assertScope});
+    if(!handle){const preview=await runTransaction(database,async tx=>{const snap=await tx.get(jobRef);if(!snap.exists())throw Error('압착 원작업을 찾을 수 없습니다.');const job=snap.data() as RawPressJob;if(job.cancellation!==undefined)return null;const [sr,dr]=await Promise.all([readRawCommandInTransaction(tx,database,request.sourceReverse),readRawCommandInTransaction(tx,database,request.derivedReverse)]);const problem=pairProblem(job,request.original,originalRead(sr),originalRead(dr));if(problem)throw Error(problem);const source=prepareRawCommand(request.sourceReverse,sr,{now:request.createdAt}),derived=job.derivedDisposition==='received'?prepareRawCommand(request.derivedReverse,dr,{now:request.createdAt}):null;if(source.status!=='applied'||derived&&derived.status!=='applied')throw Error('압착 원료 취소를 준비할 수 없습니다.');const sourceAppliedKg=source.movement.appliedDeltaKg,derivedAppliedKg=derived?.status==='applied'?derived.movement.appliedDeltaKg:0,cancellation=prune({request,companyId:request.companyId,actorUid:request.actorUid,completedAt:request.createdAt,sourceAppliedKg,derivedAppliedKg});return {before:snap.data(),after:{...snap.data(),...protectInventoryWriterPatch(snap.data(),{cancellation})},commands:[request.sourceReverse,...(derived?[request.derivedReverse]:[])]};});
+      if(preview){const codec=helper.rawGroupCodec(database),legacy={type:'correction' as const,note:`압착 취소 (${request.original.entry.note??''})`},commands=preview.commands.map(command=>({command,options:{now:request.createdAt,newLotId:`lot-${operationDocId(command.operationId)}`,carryOverLotId:`carry-${operationDocId(command.operationId)}`,legacy}}));handle=await helper.prepareRawReverseGroup(database,{companyId:request.companyId,commands,business:{kind:'press-cancel',id:request.originalOperationId,beforeNativeText:codec.text(preview.before),afterNativeText:codec.text(preview.after)}},{assertScope});}
+    }if(handle?.state==='cancelled')throw Error('압착 원료 묶음이 중단되었습니다. 최초 요청을 확인해 주세요.');
+  }
+  const outcome=await runInventoryWriterTransaction<RawPressCancellationOutcome>(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.companyId,isStillCurrent:async()=>{await assertScope?.();return true;}}),async tx=>{
     await assertScope?.();
     const jobSnap=await tx.get(jobRef);
     const blocked=(reason:string,retainPending=true):RawPressCancellationOutcome=>({status:'blocked',reason,retainPending});
@@ -171,17 +185,22 @@ export async function executeRawPressCancellationWithDb(database:Firestore,reque
     if(derived&&derived.status!=='applied')return blocked(derived.status==='rejected'?derived.message:'파생 입고 취소 요청을 확인해 주세요.',false);
     await assertScope?.();
     const legacy={type:'correction' as const,note:`압착 취소 (${request.original.entry.note??''})`};
-    writePreparedRawCommand(tx,request.sourceReverse,sourceRead,source,{legacy});
-    if(derived?.status==='applied')writePreparedRawCommand(tx,request.derivedReverse,derivedRead,derived,{legacy});
+    if(handle){if(handle.state!=='prepared')return blocked('압착 원료 묶음과 작업 상태가 다릅니다.');const group=await (await import('./rawReverseGroupPermit')).readRawReverseGroup(tx,database,handle);await assertScope?.();group.write();}
+    else {writePreparedRawCommand(tx,request.sourceReverse,sourceRead,source,{legacy});
+    if(derived?.status==='applied')writePreparedRawCommand(tx,request.derivedReverse,derivedRead,derived,{legacy});}
     const sourceAppliedKg=source.movement.appliedDeltaKg,derivedAppliedKg=derived?.status==='applied'?derived.movement.appliedDeltaKg:0;
-    tx.update(jobRef,protectInventoryWriterPatch(jobSnap.data(),{cancellation:prune({request,companyId:request.companyId,actorUid:request.actorUid,completedAt:request.createdAt,sourceAppliedKg,derivedAppliedKg})}));
+    tx.update(jobRef,{...protectInventoryWriterPatch(jobSnap.data(),{cancellation:prune({request,companyId:request.companyId,actorUid:request.actorUid,completedAt:request.createdAt,sourceAppliedKg,derivedAppliedKg})}),...(handle?{rawReversePermitRefV1:{permitId:handle.permitId,slot:0}}:{})});
     return {status:'cancelled',sourceAppliedKg,derivedAppliedKg};
   });
+  if(handle&&(outcome.status==='cancelled'||outcome.status==='duplicate')){try{const helper=await import('./rawReverseGroupPermit'),confirmed=await helper.recoverRawReverseGroup(request.companyId,'press-cancel',request.originalOperationId,{assertScope});if(confirmed?.state==='applied')helper.clearRawReverseGroup(confirmed);}catch{/* 거래 성공은 유지하고 확인이 필요한 최초 요청은 보관한다. */}}
+  return outcome;
 }
 export async function executeRawPressCancellation(input:{companyId:RawPressRequest['companyId'];actorUid:string;originalOperationId:string}):Promise<RawPressCancellationOutcome>{
+  input={...input};
+  const session=await captureRawReverseSession(input.companyId);
   await authReady;
   const uid=auth.currentUser?.uid;if(!uid||uid!==input.actorUid)throw Error('압착 취소 로그인 계정을 확인해 주세요.');
-  const assertScope=async()=>{if(auth.currentUser?.uid!==uid)throw Error('압착 취소 계정이 바뀌어 완료 여부를 확인해야 합니다.');const token=await auth.currentUser.getIdTokenResult();withClaimCompany(COL.rawInventoryJobs,{companyId:input.companyId},{companyId:token.claims.companyId});if(auth.currentUser?.uid!==uid)throw Error('압착 취소 계정이 바뀌었습니다.');};
+  const assertScope=session.assertScope;
   await assertScope();
   let pending=readRawPressCancellationAttempt(input.companyId,uid,input.originalOperationId);
   if(!pending){
@@ -193,7 +212,6 @@ export async function executeRawPressCancellation(input:{companyId:RawPressReque
     const request=makeRawPressCancellationRequest(job.rawPressEvidence,uid,`press-cancel:${crypto.randomUUID()}`,new Date().toISOString());
     pending=saveRawPressCancellationAttempt(request);
   }
-  const outcome=await executeRawPressCancellationWithDb(db,pending.request,assertScope);await assertScope();
-  if(outcome.status!=='blocked'||!outcome.retainPending)clearRawPressCancellationAttempt(pending.request,pending.encoded);
+  const outcome=await executeRawPressCancellationWithDb(db,pending.request,assertScope);try{await assertScope();if(outcome.status!=='blocked'||!outcome.retainPending)clearRawPressCancellationAttempt(pending.request,pending.encoded);}catch{/* 확정 결과는 유지하고 이전 화면의 원문 정리는 보류한다. */}
   return outcome;
 }

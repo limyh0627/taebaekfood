@@ -9,6 +9,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 import {statementIssueIdentity,prepareStatementIssue,statementIssueRef,assertStatementIssueReceipt,assertStatementIssueNotCancelled,rejectStatementIssue,type StatementIssueIdentity} from './statementIssueReceipt';
+import { buildOrderSourceProofV1, normalizeOrderSourceProofV1 } from './shared/orderProductionBatchContract';
 
 type Row = Record<string, any>;
 type Cost = { itemId: string; price: number; beforeCost: number; sourceLineIndex: number; sourceLineIndices?: number[] };
@@ -249,6 +250,23 @@ async function applyTradeStatement(db: admin.firestore.Firestore, companyId: str
       }
       // 사용자가 수정·삭제할 수 있는 원가 이력은 발행 완료의 권위 있는 증명이 아니다.
       markApplied(saved.docNo);return { status: 'duplicate' as const, id: raw.id, docNo: saved.docNo };
+    }
+    // 발행과 분할은 같은 주문 스냅샷을 읽어야 이전 수량의 전표가 뒤늦게 생기지 않는다.
+    const hasProof = Object.prototype.hasOwnProperty.call(raw, 'orderSourceProofV1');
+    const marked = orders.some(snap => snap.exists && Object.prototype.hasOwnProperty.call(snap.data()!, 'orderProductionRefsV1'));
+    if (marked || hasProof) {
+      try {
+        if (!hasProof || orders.some(snap => !snap.exists)) throw new Error();
+        const source = orders.map(snap => {
+          const row = snap.data()!;
+          if (Object.prototype.hasOwnProperty.call(row, 'orderProductionRefsV1') && (row.orderProductionRefsV1 === null || row.orderProductionRefsV1 === undefined)) throw new Error();
+          return { id: snap.id, companyId: oldCompany(row), partnerId: row.partnerId, items: row.items, ...(Object.prototype.hasOwnProperty.call(row, 'orderProductionRefsV1') ? { orderProductionRefsV1: row.orderProductionRefsV1 } : {}) };
+        });
+        const actual = buildOrderSourceProofV1(source);
+        const suppliedProof = normalizeOrderSourceProofV1(raw.orderSourceProofV1);
+        const sorted = (rows: typeof actual.orders) => [...rows].sort((a, b) => a.orderId < b.orderId ? -1 : a.orderId > b.orderId ? 1 : 0);
+        if (hash(sorted(actual.orders)) !== hash(sorted(suppliedProof.orders))) throw new Error();
+      } catch { conflict('주문 원문이 변경되었거나 발행 근거가 잘못되었습니다.'); }
     }
     assertReleaseActive(releaseSnap, input.releaseId);
     const mode = assertVoucherDateAllowed(releaseSnap, companyId, date, true);

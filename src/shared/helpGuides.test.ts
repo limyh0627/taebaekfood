@@ -28,8 +28,9 @@ describe('현재 메뉴별 실제 기능 안내',()=>{
    }
    expect(getHelpMenuGuide('orders','staff').features.find(f=>f.id==='order-paste')?.steps.join(' ')).toContain('주문 생성 (N건)');
  });
- it('실제 관리자29/직원12 메뉴의 view 경로를 빠짐없이 안내하고 action은 별도다',()=>{
-   const menus=actualMenuIds();expect(menus.admin).toHaveLength(29);expect(menus.staff).toHaveLength(12);
+ it('실제 관리자30/직원13 메뉴의 view 경로를 빠짐없이 안내하고 action은 별도다',()=>{
+   const menus=actualMenuIds();expect(menus.admin).toHaveLength(30);expect(menus.staff).toHaveLength(13);
+   for(const mode of ['admin','staff'] as const){expect(menus[mode]).toContain('projects');expect(getHelpMenuGuide('projects',mode).features.map(f=>f.id)).toEqual(['projects-find','projects-work','projects-recovery']);expect(JSON.stringify(getHelpMenuGuide('projects',mode))).toContain('참여자');}
    for(const mode of ['admin','staff'] as const)for(const id of [...menus[mode],'mypage']){
      const view=id==='ledger-partner'?'ledger-cash':id;
      const result=getHelpMenuGuide(view,mode);

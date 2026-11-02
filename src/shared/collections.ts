@@ -53,6 +53,7 @@ export const COL = {
 
   // ── 주문·발주 ──
   orders: 'orders',
+  orderProductionAssignmentsV1: 'orderProductionAssignmentsV1',
   purchaseOrders: 'purchaseOrders',
   purchaseOrderBatchAudits: 'purchaseOrderBatchAudits',
   returnRequests: 'returnRequests',
@@ -89,6 +90,7 @@ export const COL = {
   productionRecords: 'productionRecords',
   productionSalesLogs: 'productionSalesLogs',
   rawMaterialLedger: 'rawMaterialLedger',
+  rawManualCorrectionReceipts: 'rawManualCorrectionReceipts',
   //  원료 재고 코어(원자화) — 상태와 이력을 한 트랜잭션에 같이 쓴다.
   //  로컬전용/docs/원료실제원장-로트-원자화-설계.md · src/shared/rawInventoryCore.ts
   rawInventories: 'rawInventories',
@@ -103,6 +105,7 @@ export const COL = {
 
   // ── 사람 ──
   employees: 'employees',
+  workProjectsV1: 'workProjectsV1',
   users: 'users',
   settings: 'settings',
   leaveRequests: 'leaveRequests',

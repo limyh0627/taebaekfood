@@ -26,11 +26,12 @@ export function createSessionIdentityLifetime(){
  const reject=(observation:SessionIdentityObservation)=>finish(observation,null,false);
  const dispose=()=>{epoch++;sequence++;latest=sequence;observations.clear();uid=null;actor=null;ready=false;latestSucceeded=false;wake();};
  const capture=(expectedActorKey:string):SessionIdentityTicket|null=>{if(!ready||actor!==expectedActorKey)return null;const ticket={} as SessionIdentityTicket;tickets.set(ticket,{epoch,actor});return ticket;};
+ const captureCurrent=():SessionIdentityTicket|null=>{if(!ready||actor===null)return null;const ticket={} as SessionIdentityTicket;tickets.set(ticket,{epoch,actor});return ticket;};
  const isCurrent=(ticket:SessionIdentityTicket)=>{const saved=tickets.get(ticket);return !!saved&&ready&&saved.epoch===epoch&&saved.actor===actor;};
  const waitUntilReady=(ticket:SessionIdentityTicket):Promise<boolean>=>new Promise(done=>{
   const check=()=>{const saved=tickets.get(ticket);if(!saved||saved.epoch!==epoch||saved.actor!==actor){waiters.delete(check);done(false);}else if(ready){waiters.delete(check);done(true);}};
   waiters.add(check);check();
  });
- return {begin,resolve,reject,dispose,capture,waitUntilReady,isCurrent};
+ return {begin,resolve,reject,dispose,capture,captureCurrent,waitUntilReady,isCurrent};
 }
 export const sessionIdentityLifetime=createSessionIdentityLifetime();

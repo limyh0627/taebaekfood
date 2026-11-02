@@ -29,6 +29,9 @@ import {isStockProduction,stock3,type ProductionOrder} from './orderProductionDo
 import {hasCompleteOrderItems} from './orderCompletion';
 import {kstDateOf} from './calculation';
 import {withOrderListProjection} from './orderListProjectionWrite';
+import {assertTransferAssignment} from './orderProductionBatchTransferPlan';
+import {operationDocId} from './rawInventoryCore';
+import {deriveOrderCompletionProjection,toQuantityMilli,type BatchAssignment} from './orderProductionBatchContract';
 
 /** 같은 거래의 읽기 초안이며 현재 terminal을 실행할 권한은 없다. */
 export async function prepareOrderStockFullShipmentDraft(tx:Pick<Transaction,'get'>,db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,clock:ReservationPreviewClock):Promise<{status:'draft';executionAllowed:false;terminalValidated:false;plan:OrderStockFullPlan}|{status:'blocked';reason:string}>{
@@ -104,4 +107,123 @@ export async function prepareOrderStockFullShipmentDraft(tx:Pick<Transaction,'ge
   const plan:OrderStockFullPlan={version:1,protocol:FULL_PROTOCOL,intent,owner,clock,preview,actorDisplay:employee!.name,partnerDisplay,readSet:history.readSet,readEvidenceVersion:2,historyQueries:history.historyQueries,...(history.aggregateSourceQueries.length?{aggregateSourceQueries:history.aggregateSourceQueries}:{}),effectSet,orderPatch:withOrderListProjection(order,orderPatch,'patch'),audit,itemIds:[...itemIds],productionDeltas:[],shipmentDeltas:[...shipmentDeltas],originalAllocationRows};
   return {status:'draft',executionAllowed:false,terminalValidated:false,plan};
  } catch(error) {return {status:'blocked',reason:history?.retirementFailure?.reason??history?.nativeFailure??(error instanceof FullRejected?error.reason:'read-or-shipment-plan-failed')};}
+}
+
+/** 호출자가 같은 거래에서 검증한 원문만 넘기는 계산 초안이다. 이 자료형은 실행 권위가 아니다. */
+export interface BatchConsumerSource {
+ reference: import('./orderProductionBatchContract').BatchReference;
+ ownerUid:string;
+ plan:OrderStockFullPlan;
+ receipt:FullRow;
+ before:ReadonlyMap<string,FullRow|undefined>;
+}
+export interface BatchConsumerInput {
+ db:Firestore;
+ reference:import('./orderProductionBatchContract').BatchReference;
+ owner:{uid:string;employeeId:string;companyId:'taebaek'|'punghoe'};
+ actorDisplay:string;
+ clock:ReservationPreviewClock;
+ order:FullRow;
+ orders:ReadonlyMap<string,FullRow|undefined>;
+ assignments:readonly import('./orderProductionBatchContract').BatchAssignment[];
+ items:ReadonlyMap<string,FullRow>;
+ sourcePlans:readonly BatchConsumerSource[];
+ currentDocuments:ReadonlyMap<string,FullRow|undefined>;
+ catalog:Extract<import('./orderProductionCatalogInputs').CatalogDomainResult,{status:'assembled'}>;
+}
+export interface BatchOwnerTransition {orderId:string;itemId:string;removedRows:FullRow[];allocation:{qty:number;state:'allocated'}|null}
+export interface BatchConsumerDraft {effects:FullEffect[];orderPatch:FullRow;assignmentsAfter:BatchAssignment[];ownerTransitions:BatchOwnerTransition[];requiredReads:string[];requiredQueries:string[];orderEffect?:{orderId:string;operation:'update'|'delete';nativeText:string|null};orderEffects?:{orderId:string;operation:'update'|'delete'|'create';nativeText:string|null}[]}
+
+/** 변경 가능한 귀속 지분과 달리 생산 원출력과 원효과의 연결은 불변이다. */
+export function assertBatchConsumerSources(input:Pick<BatchConsumerInput,'db'|'reference'|'assignments'|'sourcePlans'>):void {
+ const {text,decode}=fullCodec(input.db),seen=new Set<string>();
+ if(!input.sourcePlans?.length||!input.assignments?.length)throw Error('source-unproven');
+ for(const assignment of input.assignments){
+  assertTransferAssignment(assignment,input.reference);
+  if(seen.has(assignment.batchId))throw Error('source-unproven');seen.add(assignment.batchId);
+  const matches=input.sourcePlans.filter(source=>text(source.reference)===text(assignment.source.reference)&&source.ownerUid===assignment.source.ownerUid);
+  if(matches.length!==1)throw Error('source-unproven');
+  const source=matches[0],ext=source.plan.batchExtension;
+  if(!source.receipt||!ext||source.plan.owner.uid!==source.ownerUid||source.plan.intent.companyId!==source.reference.companyId||source.plan.intent.orderId!==source.reference.orderId||source.plan.intent.requestId!==source.reference.requestId||fullAttemptId(source.reference,source.ownerUid)!==assignment.batchId)throw Error('source-unproven');
+  const effects=ext.assignmentEffects.filter(effect=>effect.batchId===assignment.batchId&&effect.operation==='create');
+  if(effects.length!==1)throw Error('source-unproven');
+  const original=decode(effects[0].nativeText) as import('./orderProductionBatchContract').BatchAssignment;
+  assertTransferAssignment(original,input.reference);
+  const immutable=(output:import('./orderProductionBatchContract').BatchOutput)=>{const {claims:_claims,...rest}=output;return rest;};
+  if(original.batchId!==assignment.batchId||original.companyId!==assignment.companyId||original.outputs.length!==assignment.outputs.length||text(original.source)!==text(assignment.source)||original.outputs.some(row=>{const current=assignment.outputs.find(value=>value.outputId===row.outputId);return !current||text(immutable(row))!==text(immutable(current));}))throw Error('source-unproven');
+  const paths=new Set(source.plan.effectSet.map(effect=>effect.path));
+  if(paths.size!==source.plan.effectSet.length)throw Error('source-unproven');
+  for(const output of assignment.outputs){
+   for(const id of output.productionEvidence.rawOperationIds)if(!paths.has('rawMaterialLedger/'+operationDocId(id)))throw Error('source-unproven');
+   for(const id of output.productionEvidence.productionRecordIds)if(!paths.has('productionRecords/'+id))throw Error('source-unproven');
+   for(const lot of output.productionEvidence.producedLots)if(!paths.has('items/'+lot.itemId))throw Error('source-unproven');
+  }
+ }
+}
+
+export function batchConsumerMissingSourceReads(input:Pick<BatchConsumerInput,'db'|'sourcePlans'>):string[] {
+ const {text}=fullCodec(input.db);
+ if(!input.sourcePlans?.length)throw Error('source-unproven');
+ const missing=[...new Set(input.sourcePlans.flatMap(source=>source.plan.readSet.filter(row=>row.kind!=='digest'&&!source.before.has(row.path)).map(row=>row.path)))].sort();
+ if(missing.length)return missing;
+ for(const source of input.sourcePlans)for(const row of source.plan.readSet){if(row.kind==='digest')continue;const before=source.before.get(row.path);if(row.exists!==!!before||row.exists&&text(before)!==row.nativeText)throw Error('source-unproven');}
+ return [];
+}
+
+export function batchConsumerProjection(input:BatchConsumerInput,assignments:readonly BatchAssignment[],revision:number,lastTransition?:import('./orderProductionBatchContract').OrderProductionRefsV1['lastTransition']) {
+ const refs=input.order.orderProductionRefsV1;
+ if(!refs||!Array.isArray(input.order.items)||!Array.isArray(refs.lines)||!Array.isArray(refs.activeAssignmentIds))throw Error('source-unproven');
+ const claims=assignments.flatMap(batch=>batch.outputs.flatMap(output=>output.claims.filter(claim=>claim.orderId===input.reference.orderId).map(claim=>({lineId:claim.lineId,batchId:batch.batchId,outputId:output.outputId,fromMilli:claim.fromMilli,toMilli:claim.toMilli,state:claim.state}))));
+ return deriveOrderCompletionProjection({rootOrderId:refs.rootOrderId,revision,lineIds:input.order.items.map((row:FullRow)=>row.lineId),claims,...(refs.splitFrom===undefined?{}:{splitFrom:refs.splitFrom}),...(lastTransition===undefined?{}:{lastTransition})});
+}
+
+/** 출고 효과 초안. 원천 및 바닥재고의 최종 권위는 호출 거래가 다시 확인한다. */
+export function prepareBatchShipmentEffects(input:BatchConsumerInput & {targetStatus:'SHIPPED'|'DELIVERED';shipmentSource?:BatchConsumerSource;deliveredAt?:string}):BatchConsumerDraft {
+ const {text}=fullCodec(input.db),order=input.order,reference=input.reference;
+ if(input.owner.companyId!==reference.companyId||!input.owner.uid||typeof input.actorDisplay!=='string'||!input.actorDisplay.trim()||!Number.isFinite(input.clock.nowMs)||Date.parse(input.clock.now)!==input.clock.nowMs)throw Error('invalid-input');
+ const missingSource=batchConsumerMissingSourceReads(input);
+ if(missingSource.length)return {effects:[],orderPatch:{},assignmentsAfter:[],ownerTransitions:[],requiredReads:missingSource,requiredQueries:[]};
+ assertBatchConsumerSources(input);
+ if(text(batchConsumerProjection(input,input.assignments,order.orderProductionRefsV1.revision,order.orderProductionRefsV1.lastTransition))!==text(order.orderProductionRefsV1))throw Error('source-unproven');
+ if(input.targetStatus==='DELIVERED'){
+  const source=input.shipmentSource,shipment=order.inventorySnapshots?.shipment;
+  if(!source||!source.receipt||source.reference.companyId!==reference.companyId||source.reference.orderId!==reference.orderId||source.plan.intent.companyId!==source.reference.companyId||source.plan.intent.orderId!==source.reference.orderId||source.plan.intent.requestId!==source.reference.requestId||source.plan.intent.action!=='shipment-forward'||source.plan.intent.targetStatus!=='SHIPPED'||source.plan.owner.uid!==source.ownerUid||order.status!=='SHIPPED'||order.shippedOut!==true||!shipment||text(source.plan.orderPatch.inventorySnapshots?.shipment)!==text(shipment)||text(source.plan.orderPatch.productConsumedLots)!==text(order.productConsumedLots))throw Error('shipment-source-required');
+  if(input.deliveredAt!==undefined&&(!/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/.test(input.deliveredAt)||!isCalendarDay(input.deliveredAt.slice(0,10))))throw Error('invalid-input');
+  const required=source.plan.readSet.filter(row=>row.kind!=='digest'&&!source.before.has(row.path)).map(row=>row.path).sort();
+  if(required.length)return {effects:[],orderPatch:{},assignmentsAfter:[],ownerTransitions:[],requiredReads:required,requiredQueries:[]};
+  for(const row of source.plan.readSet){if(row.kind==='digest')continue;const before=source.before.get(row.path);if(row.exists!==!!before||row.exists&&text(before)!==row.nativeText)throw Error('source-unproven');}
+  const patch=withOrderListProjection(order,{status:'DELIVERED',approvedBy:input.actorDisplay,orderProductionRefsV1:batchConsumerProjection(input,input.assignments,order.orderProductionRefsV1.revision+1,{reference:input.reference,ownerUid:input.owner.uid}),...(input.deliveredAt===undefined?{}:{deliveredAt:input.deliveredAt})},'patch');
+  return {effects:[],orderPatch:patch,assignmentsAfter:[...input.assignments],ownerTransitions:[],requiredReads:[],requiredQueries:[],orderEffects:[{orderId:reference.orderId,operation:'update',nativeText:text(patch)}]};
+ }
+ if(input.targetStatus!=='SHIPPED'||order.status!=='DISPATCHED'||order.shippedOut||!Array.isArray(order.items)||!hasCompleteOrderItems(order.items))throw Error('incomplete-order-items');
+ const changes=new Map<string,number>(),lineTotals=new Map<string,number>();
+ for(const assignment of input.assignments)for(const output of assignment.outputs)for(const claim of output.claims){
+  if(claim.orderId!==reference.orderId||claim.state!=='allocated')continue;
+  if(output.role!=='customer'||!('order' in output.unit))throw Error('source-unproven');
+  const amount=(claim.toMilli-claim.fromMilli)/1000,qty=stock3(amount*output.unit.stock.unitsPerOrderUnit);
+  toQuantityMilli(qty);lineTotals.set(claim.lineId,(lineTotals.get(claim.lineId)??0)+(claim.toMilli-claim.fromMilli));
+  changes.set(output.itemId,stock3((changes.get(output.itemId)??0)-qty));
+ }
+ if(!changes.size||order.items.some((row:FullRow)=>{const projected=order.orderProductionRefsV1.lines.find((value:FullRow)=>value.lineId===row.lineId),ordered=row.isBoxUnit===true?row.boxQuantity:row.boxQuantity==null?row.quantity:undefined;return !projected||ordered===undefined||toQuantityMilli(projected.completedQty)!==toQuantityMilli(ordered)||toQuantityMilli(projected.completedQty)!==lineTotals.get(row.lineId);} ))throw Error('incomplete-order-items');
+ const expected=new Map<string,number>();createOrderProductionPlanner(input.catalog).shipOrder(order as ProductionOrder,expected);
+ if(text([...changes].sort())!==text([...expected].filter(([,n])=>n!==0).sort()))throw Error('shipment-quantity-mismatch');
+ const missing=[...changes.keys()].filter(id=>!input.items.has(id)||!input.currentDocuments.has('items/'+id)).map(id=>'items/'+id);
+ if(missing.length)return {effects:[],orderPatch:{},assignmentsAfter:[],ownerTransitions:[],requiredReads:missing.sort(),requiredQueries:[]};
+ const rows=new Map<string,FullRow>(),transitions:BatchOwnerTransition[]=[];
+ for(const [id,delta] of changes){
+  const row=input.items.get(id),current=input.currentDocuments.get('items/'+id);
+  if(!row||!current||text(row)!==text(current)||(row.companyId??'taebaek')!==reference.companyId||typeof row.stock!=='number'||!Number.isFinite(row.stock)||!Array.isArray(row.inventoryReservations))throw Error('source-unproven');
+  const own=row.inventoryReservations.filter((value:FullRow)=>value?.orderId===reference.orderId);
+  if(own.length!==1||own[0].state!=='allocated'||own[0].qty!==-delta)throw Error('invalid-previous-allocation');
+  rows.set(id,row);transitions.push({orderId:reference.orderId,itemId:id,removedRows:own,allocation:null});
+ }
+ if(planOrderStockReservation(reference.orderId,rows,()=>changes,{nowMs:input.clock.nowMs}).shortages.length)throw Error('stock-shortage');
+ const lotClock={now:input.clock.now,date:kstDateOf(new Date(input.clock.nowMs)),id:'batch-shipment'};
+ const lotPlanner=createOrderProductLotPlanner({allItems:input.catalog.allItems,unitInputs:input.catalog.inputs,shipQtyOf:(line,product)=>shipQtyOfLine(line,product,input.catalog.inputs),lotPolicy:{buildProductLot:p=>buildProductLot(p,lotClock),withCarryOverProductLot:(lots,stock,material,kg,carry)=>withCarryOverProductLot(lots,stock,material,kg,carry,lotClock)}});
+ const patches=new Map<string,FullRow>(),consumed:FullRow[]=[];
+ for(const mutation of lotPlanner.deductProductLotsForOrder(order as ProductionOrder)){const row=rows.get(mutation.itemId);if(!row)throw Error('source-unproven');const result=mutation.apply(row.lots??[],row.stock);consumed.push(...result.consumedLots);patches.set(mutation.itemId,{lots:pruneDepletedLotsAtCutoff(result.lots,productLotKstCutoff(input.clock.now))});}
+ for(const [id,delta] of changes){const row=rows.get(id)!;patches.set(id,{...patches.get(id),stock:stock3(row.stock+delta)});}
+ const assignmentsAfter=input.assignments.map(batch=>{let changed=false;const outputs=batch.outputs.map(output=>{const claims=output.claims.map(claim=>{if(claim.orderId!==reference.orderId||claim.state!=='allocated')return claim;changed=true;return {...claim,state:'shipped' as const,lastReference:reference};});return {...output,claims};});return changed?{...batch,revision:batch.revision+1,outputs,lastTransfer:{reference,ownerUid:input.owner.uid,at:input.clock.now}}:batch;});
+ const orderPatch=withOrderListProjection(order,{status:'SHIPPED',shippedOut:true,shipmentConfirmedBy:input.actorDisplay,shipmentConfirmedAt:input.clock.now,productConsumedLots:consumed,inventorySnapshots:{...order.inventorySnapshots,shipment:{capturedAt:input.clock.now,stockDeltas:[...changes].map(([itemId,delta])=>({itemId,delta})),bomLines:[],productConsumedLots:consumed}},orderProductionRefsV1:batchConsumerProjection(input,assignmentsAfter,order.orderProductionRefsV1.revision+1,{reference:input.reference,ownerUid:input.owner.uid})},'patch');
+ return {effects:[...patches].map(([id,patch])=>({path:'items/'+id,operation:'update' as const,nativeText:text(patch)})),orderPatch,assignmentsAfter,ownerTransitions:transitions,requiredReads:[],requiredQueries:[],orderEffects:[{orderId:reference.orderId,operation:'update',nativeText:text(orderPatch)}]};
 }

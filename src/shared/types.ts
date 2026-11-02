@@ -220,6 +220,10 @@ import type {OrderRawInventoryTrace} from '../../functions/src/shared/orderRawCo
 
 
 export interface Order {
+  /** 서버에서 구형 미반영 작업을 중단한 세대와 영수증 참조. */
+  legacyRecoveryRetirementV1?: { receiptPath: string; receiptHash: string; generation: import('./orderInventoryGeneration').OrderInventoryGeneration };
+  /** 서버가 확인한 주문 단위의 완료 누계와 배정 참조. */
+  orderProductionRefsV1?: import('../../functions/src/shared/orderProductionBatchContract').OrderProductionRefsV1;
   productionRecordIndex?:Record<string,OrderProductionRecordIndexEntry>;
   id: string;
   /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
@@ -874,7 +878,7 @@ export interface RoomNotice {
 }
 
 
-export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'lot-management' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'loan-management' | 'quotation' | 'mypage';
+export type ViewType = 'projects' | 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'lot-management' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'loan-management' | 'quotation' | 'mypage';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 
@@ -1052,6 +1056,7 @@ export interface StatementPartySnapshot {
 }
 
 export interface IssuedStatement {
+  orderSourceProofV1?: import('../../functions/src/shared/orderProductionBatchContract').OrderSourceProofV1;
   noncashApplication?: import('../../functions/src/shared/partnerAdvance').ApplicationMetadata | import('../../functions/src/shared/partnerAdvance').CancellationMetadata;
   id: string;
   /** 서버의 전표 변경 감사와 같은 버전. 없는 옛 전표는 0으로 본다. */

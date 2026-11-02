@@ -37,10 +37,11 @@ export async function prepareOrderRawReversal(tx:Transaction,db:Firestore,plan:P
   virtual.set(c.rawItemId,{state:result.state,itemData:{...previous,...itemPatch}});
   prepared.push({read,plan:write,state,movement,guard,itemPatch});
  }
- return {write(){
+ const writeJob=()=>tx.set(jobRef,protectInventoryWriterPatch(undefined,{id:plan.jobId,companyId:plan.companyId,source:plan.source,expectedOperationIds:plan.commands.map(row=>row.command.operationId),status:'complete',createdAt:plan.now,completedAt:plan.now}));
+ return {writeJob,write(){
   const last=new Map<string,typeof prepared[number]>();
   for(let i=0;i<prepared.length;i++){const p=prepared[i];last.set(plan.commands[i].command.rawItemId,p);tx.set(p.read.movementRef,protectInventoryWriterPatch(p.read.movementSnap.exists()?p.read.movementSnap.data():undefined,p.movement));if(p.guard)tx.set(p.read.guardRef,protectInventoryWriterPatch(p.read.guardSnap?.exists()?p.read.guardSnap.data():undefined,p.guard));}
   for(const [id,p] of last){const first=reads.find((_,i)=>plan.commands[i].command.rawItemId===id)!;tx.set(p.read.stateRef,protectInventoryWriterPatch(first.stateSnap.exists()?first.stateSnap.data():undefined,{...first.stateSnap.data(),...p.state}));const final=virtual.get(id)!;if(prepared.some((entry,i)=>plan.commands[i].command.rawItemId===id&&entry.itemPatch))tx.update(p.read.itemRef,protectItemInventoryPatch(first.itemSnap.data(),{stock:final.itemData.stock,lots:final.itemData.lots}));}
-  tx.set(jobRef,protectInventoryWriterPatch(undefined,{id:plan.jobId,companyId:plan.companyId,source:plan.source,expectedOperationIds:plan.commands.map(row=>row.command.operationId),status:'complete',createdAt:plan.now,completedAt:plan.now}));
+  writeJob();
  }};
 }

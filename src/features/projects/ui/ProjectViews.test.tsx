@@ -1,0 +1,7 @@
+/** @vitest-environment jsdom */
+import React from 'react';import {render,screen,fireEvent} from '@testing-library/react';import {expect,it,vi} from 'vitest';import ProjectViews from './ProjectViews';
+const row={id:'t',data:{title:'업무 하나',status:'doing',assigneeEmployeeId:'e',startDate:'2026-11-01',endDate:'2026-11-05',checklist:{a:{title:'확인',checked:true},b:{title:'검토',checked:false}}}} as any;
+it.each(['board','table','timeline','mine'] as const)('%s에서 같은 업무를 열고 실제 체크 진행률을 보여준다',view=>{const open=vi.fn();render(<ProjectViews view={view} tasks={[row]} employeeId="e" names={{e:'담당자'}} onOpen={open}/>);fireEvent.click(screen.getAllByRole('button',{name:/업무 하나/})[0]);expect(open).toHaveBeenCalledWith(row);if(view!=='timeline')expect(screen.getByText(/1\/2/)).toBeInTheDocument();});
+it('내 작업은 현재 프로젝트에서 본인 담당만 표시한다',()=>{render(<ProjectViews view="mine" tasks={[row]} employeeId="other" names={{}} onOpen={vi.fn()}/>);expect(screen.queryByText('업무 하나')).toBeNull();expect(screen.getByText('표시할 업무가 없습니다.')).toBeVisible();});
+
+it('타임라인은 실제 기간 막대와 미정 업무를 따로 표시한다',()=>{const none={...row,id:'unknown',data:{...row.data,title:'미정 업무',startDate:null,endDate:null}};render(<ProjectViews view="timeline" tasks={[row,none]} employeeId="e" names={{}} onOpen={vi.fn()}/>);expect(screen.getByRole('button',{name:'업무 하나 일정 열기'})).toHaveStyle({width:'100%'});expect(screen.getByText('기간 미정')).toBeVisible();expect(screen.getByText('미정 업무')).toBeVisible();expect(screen.getByText('2026-11-01')).toBeVisible();});

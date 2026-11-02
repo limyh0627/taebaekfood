@@ -2,6 +2,8 @@ import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {createSessionIdentityLifetime,sessionActorKey} from './sessionIdentityLifetime';
+
+it('현재 세대 ticket은 준비 상태만 캡처하며 같은 UID ABA도 폐기된다',()=>{const life=createSessionIdentityLifetime();expect(life.captureCurrent()).toBeNull();let observation=life.begin('a');life.resolve(observation,'a:e:c:staff');const first=life.captureCurrent();expect(first).not.toBeNull();observation=life.begin('b');life.resolve(observation,'b:e:c:staff');observation=life.begin('a');life.resolve(observation,'a:e:c:staff');expect(life.isCurrent(first!)).toBe(false);expect(life.captureCurrent()).not.toBeNull();});
 const A='uid:employee:taebaek:staff',B='uid:employee:punghoe:staff';
 const setup=()=>{const lifetime=createSessionIdentityLifetime(),o=lifetime.begin('uid');lifetime.resolve(o,A);const ticket=lifetime.capture(A)!;return{lifetime,ticket};};
 describe('세션 actor key 기존 식',()=>{

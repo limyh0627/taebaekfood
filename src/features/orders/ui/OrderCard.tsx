@@ -1,3 +1,4 @@
+import { validateOrderProductionRefsForItems } from '../../../../functions/src/shared/orderProductionBatchContract';
 import { OrderRecoveryEntry } from './OrderRecoveryEntry';
 import { isStockProduction } from '../../../shared/orderPurpose';
 import React, { useState, useEffect, memo } from 'react';
@@ -26,6 +27,8 @@ import { 달력열기 } from './orderDateInteraction';
 const baseName = (name: string): string => splitNameVolume({ name }).base;
 
 interface OrderCardProps {
+  onPartialProduction?: (order:Order)=>void;
+  onBatchRelease?: (order:Order)=>void;
   renderOrderEditRecovery?: (order:Order)=>React.ReactNode;
   renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
@@ -78,7 +81,7 @@ export const OrderCard = memo<OrderCardProps>(({
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
   //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
-  onRequestShip, renderOrderRecovery,renderOrderEditRecovery,
+  onRequestShip, renderOrderRecovery,renderOrderEditRecovery,onPartialProduction,onBatchRelease,
 }) => {
   // Compute derived variables
   const products = items;
@@ -415,8 +418,15 @@ export const OrderCard = memo<OrderCardProps>(({
                       const box = item.isBoxUnit && item.boxQuantity;
                       const qty = box ? item.boxQuantity! : item.quantity;
                       const unit = box ? '박스' : (productInfo?.unit || '개');
+                      const refs = order.orderProductionRefsV1;
+                      const hasRefs = Object.prototype.hasOwnProperty.call(order, 'orderProductionRefsV1');
+                      const matching = refs && Array.isArray(refs.lines) && item.lineId ? refs.lines.filter(line => line && line.lineId === item.lineId) : [];
+                      const completed = matching.length === 1 ? matching[0].completedQty : undefined;
+                      let validRefs=false;try{if(hasRefs){validateOrderProductionRefsForItems(refs,order.items as unknown as Record<string,unknown>[]);validRefs=true;}}catch{/* 손상된 누계는 표시하지 않는다. */}
+                      const validCompleted = validRefs && typeof completed === 'number' && Number.isFinite(completed) && completed >= 0 && completed <= qty && Math.round(completed * 1000) / 1000 === completed;
                       return (
                         <span className={`ml-auto pl-1.5 shrink-0 whitespace-nowrap ${isItemChecked ? 'opacity-50' : ''}`}>
+                          {hasRefs && (validCompleted ? <span className="mr-1 text-xs font-bold text-slate-600" aria-label={`완료 ${completed} / 주문 ${qty}`}>완료 {completed} /</span> : <span className="mr-1 text-xs font-bold text-amber-700">완료 수량 확인 필요</span>)}
                           <span className={`text-base font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
                           <span className="text-[12px] font-normal text-slate-400 ml-0.5">{unit}</span>
                         </span>
@@ -767,6 +777,8 @@ export const OrderCard = memo<OrderCardProps>(({
       )}
 
 
+      {!readOnly&&onBatchRelease&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')&&<button type="button" onClick={event=>{event.stopPropagation();onBatchRelease(order)}} className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700">주문 배정 해제 · 생산 재고 유지</button>}
+      {!readOnly&&onPartialProduction&&<button type="button" onClick={event=>{event.stopPropagation();onPartialProduction(order)}} className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700">부분 생산 완료</button>}
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">

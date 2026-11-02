@@ -124,14 +124,240 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['orderStatusAudits', 'orderStockFullAttemptsV1', 'orderManualCorrectionsV1', 'rawManualCorrectionReceipts', 'palletTransactionOperations', 'partnerEditOperations', 'productionRecordOperations', 'workOrderItems', 'workOrderOperations', 'workOrderFences', 'noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
+      return c in ['items','rawInventories','rawMaterialLedger','rawInventoryReversalGuards','rawManualCorrectionReceipts'] || c == 'workProjectsV1' || serverAuditCollection(c) || c in ['orderStatusAudits', 'orderStockFullAttemptsV1', 'orderProductionAssignmentsV1', 'rawMaterialLedger', 'rawInventoryReversalGuards', 'rawInventoryJobs', 'orderManualCorrectionsV1', 'rawManualCorrectionReceipts', 'palletTransactionOperations', 'partnerEditOperations', 'productionRecordOperations', 'workOrderItems', 'workOrderOperations', 'workOrderFences', 'noticeOperations', 'noticePhotoUploads', 'noticeStoragePaths', 'companyInfoOperations', 'fileCabinetCategories', 'fileCabinetSubCategories', 'documentCategoryOperations', 'documentCategoryFences', 'fileCabinetDocs', 'documentMetadataOperations', 'documentUploadReservations', 'documentStoragePaths', 'catalogItemMergeState', 'catalogOrderReferenceProofs', 'catalogItemMergeReceipts', 'helpChatUsage', 'orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'purchaseOrders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequestOperations', 'itemEditorOperations', 'employeeEditOperations', 'partnerItemTermsOperations', 'directoryDeleteOperations', 'quotationOperations', 'accountManagementOperations', 'orderEditOperations', 'orderItemEdits', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit', 'partner_item', 'item_bom', 'item_pack'];
+    }
+
+    // 프로젝트 자료는 참여자 경계가 권한이다. 포괄 회사 규칙과 겹치지 않아야 한다.
+    function projectEmployee() {
+      let employee = get(/databases/$(database)/documents/employees/$(me()));
+      return isEmployee() && canSee(employee.data.companyId)
+        && employee.data.authUid == request.auth.uid && employee.data.get('status', '') != 'out';
+    }
+    function projectAdmin() {
+      return projectEmployee() && request.auth.token.get('isAdmin', false) == true
+        && get(/databases/$(database)/documents/employees/$(me())).data.get('adminAccess', false) == true;
+    }
+    function projectReadable(data) {
+      return projectEmployee() && canSee(data.companyId) && (me() in data.participantIds || projectAdmin());
+    }
+    function projectActive(data) { return projectReadable(data) && data.status == 'active'; }
+    function projectListBounded() { return request.query.limit != null && request.query.limit <= 50; }
+    function projectCreateProof(projectId, data) {
+      let opPath = /databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(data.lastOperationId);
+      let op = getAfter(opPath).data;
+      let r = op.request;
+      return projectEmployee() && !exists(opPath)
+        && op.keys().hasOnly(['version','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','request','status','before','after','at'])
+        && op.keys().hasAll(['version','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','request','status','before','after','at'])
+        && op.version == 1 && op.operationId == data.lastOperationId && op.projectEpoch == data.epoch
+        && op.actorUid == request.auth.uid && op.actorEmployeeId == me() && op.action == 'project.create'
+        && op.before == null && op.after == data && op.at == request.time
+        && ((op.status == 'applied' && data.status == 'active') || (op.status == 'cancelled' && data.status == 'deleted'))
+        && r.keys().hasOnly(['version','companyId','projectId','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','expectedProjectRevision','expectedTargetRevision','input'])
+        && r.keys().hasAll(['version','companyId','projectId','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','expectedProjectRevision','expectedTargetRevision','input'])
+        && r.version == 1 && r.companyId == myCompany() && r.projectId == projectId && r.projectEpoch == data.epoch
+        && r.operationId == op.operationId && r.actorUid == request.auth.uid && r.actorEmployeeId == me() && r.action == op.action
+        && r.target == op.target && r.target == {'kind':'project','id':projectId}
+        && r.expectedProjectRevision == null && r.expectedTargetRevision == null
+        && r.input.keys().hasOnly(['title','description']) && r.input.keys().hasAll(['title','description'])
+        && r.input.title is string && r.input.title.size() > 0 && r.input.title.size() <= 120
+        && r.input.description is string && r.input.description.size() <= 10000
+        && data.keys().hasOnly(['version','companyId','epoch','ownerEmployeeId','participantIds','title','description','revision','status','lastOperationId','createdAt','updatedAt'])
+        && data.keys().hasAll(['version','companyId','epoch','ownerEmployeeId','participantIds','title','description','revision','status','lastOperationId','createdAt','updatedAt'])
+        && data.version == 1 && data.companyId == myCompany() && data.epoch is string && data.epoch.size() > 0
+        && data.ownerEmployeeId == me() && data.participantIds == [me()] && data.title == r.input.title && data.description == r.input.description
+        && data.revision == 1 && data.createdAt == request.time && data.updatedAt == request.time;
+    }
+    function projectRequestOk(r, projectId, operationId) {
+      return r.keys().hasOnly(['version','companyId','projectId','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','expectedProjectRevision','expectedTargetRevision','input'])
+        && r.keys().hasAll(['version','companyId','projectId','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','expectedProjectRevision','expectedTargetRevision','input'])
+        && r.version == 1 && r.companyId == myCompany() && r.projectId == projectId && r.operationId == operationId
+        && r.actorUid == request.auth.uid && r.actorEmployeeId == me() && r.projectEpoch is string && r.projectEpoch.size() > 0
+        && r.action in ['project.edit','project.delete','member.add','member.remove','task.create','task.edit','task.delete','checklist.create','checklist.edit','checklist.delete','comment.create','comment.edit','comment.delete']
+        && r.input is map && r.target is map && r.target.id is string && r.target.id.size() > 0
+        && ((r.action in ['project.edit','project.delete','member.add','member.remove'] && r.target == {'kind':'project','id':projectId})
+          || (r.action in ['task.create','task.edit','task.delete'] && r.target.keys().hasOnly(['kind','id']) && r.target.kind == 'task')
+          || (r.action in ['checklist.create','checklist.edit','checklist.delete','comment.create','comment.edit','comment.delete'] && r.target.keys().hasOnly(['kind','id','taskId']) && r.target.keys().hasAll(['kind','id','taskId']) && r.target.taskId is string && r.target.taskId.size() > 0 && ((r.action.matches('checklist[.].*') && r.target.kind == 'checklist') || (r.action.matches('comment[.].*') && r.target.kind == 'comment'))));
+    }
+    function projectTargetPath(projectId, target) {
+      return target.kind == 'project' ? /databases/$(database)/documents/workProjectsV1/$(projectId)
+        : target.kind == 'task' ? /databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(target.id)
+        : target.kind == 'checklist' ? /databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(target.taskId)
+        : /databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(target.taskId)/comments/$(target.id);
+    }
+    function projectReceiptOk(op, projectId, operationId) {
+      return op.keys().hasOnly(['version','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','request','status','before','after','at'])
+        && op.keys().hasAll(['version','projectEpoch','operationId','actorUid','actorEmployeeId','action','target','request','status','before','after','at'])
+        && op.version == 1 && op.operationId == operationId && op.actorUid == request.auth.uid && op.actorEmployeeId == me()
+        && op.at == request.time && op.projectEpoch == op.request.projectEpoch && op.action == op.request.action && op.target == op.request.target
+        && projectRequestOk(op.request, projectId, operationId);
+    }
+    function projectTags(tags) {
+      let p = tags.concat(['','','','','','','','','','','','','','','','','','','','']);
+      return tags is list && tags.size() <= 20 && !tags.hasAny([''])
+        && p[0] is string && p[0].size() <= 40
+        && p[1] is string && p[1].size() <= 40
+        && p[2] is string && p[2].size() <= 40
+        && p[3] is string && p[3].size() <= 40
+        && p[4] is string && p[4].size() <= 40
+        && p[5] is string && p[5].size() <= 40
+        && p[6] is string && p[6].size() <= 40
+        && p[7] is string && p[7].size() <= 40
+        && p[8] is string && p[8].size() <= 40
+        && p[9] is string && p[9].size() <= 40
+        && p[10] is string && p[10].size() <= 40
+        && p[11] is string && p[11].size() <= 40
+        && p[12] is string && p[12].size() <= 40
+        && p[13] is string && p[13].size() <= 40
+        && p[14] is string && p[14].size() <= 40
+        && p[15] is string && p[15].size() <= 40
+        && p[16] is string && p[16].size() <= 40
+        && p[17] is string && p[17].size() <= 40
+        && p[18] is string && p[18].size() <= 40
+        && p[19] is string && p[19].size() <= 40;
+    }
+    function projectDay(value) {
+      return value == null || (value is string && (value.matches('[0-9]{4}-(0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])')
+        || value.matches('[0-9]{4}-(0[469]|11)-(0[1-9]|[12][0-9]|30)')
+        || value.matches('[0-9]{4}-02-(0[1-9]|1[0-9]|2[0-8])')
+        || value.matches('([0-9]{2}(0[48]|[2468][048]|[13579][26])|(0[48]|[2468][048]|[13579][26])00)-02-29')));
+    }
+    function projectTaskInput(input, parent, before) {
+      return input.keys().hasOnly(['title','description','status','assigneeEmployeeId','startDate','endDate','priority','tags'])
+        && input.keys().hasAll(['title','description','status','assigneeEmployeeId','startDate','endDate','priority','tags'])
+        && input.title is string && input.title.size() > 0 && input.title.size() <= 200 && input.description is string && input.description.size() <= 20000
+        && input.status in ['todo','doing','review','done'] && input.priority in ['low','normal','high'] && projectTags(input.tags)
+        && (input.assigneeEmployeeId == null || (input.assigneeEmployeeId is string && (input.assigneeEmployeeId in parent.participantIds || (before != null && input.assigneeEmployeeId == before.assigneeEmployeeId))))
+        && projectDay(input.startDate) && projectDay(input.endDate) && (input.startDate == null || input.endDate == null || input.startDate <= input.endDate);
+    }
+    function projectTaskFields(after, input) {
+      return after.title == input.title && after.description == input.description && after.status == input.status
+        && after.assigneeEmployeeId == input.assigneeEmployeeId && after.startDate == input.startDate && after.endDate == input.endDate
+        && after.priority == input.priority && after.tags == input.tags;
+    }
+    function projectManager(parent) { return parent.ownerEmployeeId == me() || projectAdmin(); }
+    function projectTargetTransition(projectId, op, parent, before, after) {
+      let r = op.request;
+      let a = r.action;
+      let input = r.input;
+      return (a in ['project.edit','project.delete','member.add','member.remove'] && before == parent && after.revision == before.revision + 1 && r.expectedTargetRevision == before.revision
+          && ((a == 'project.edit' && input.keys().hasOnly(['title','description']) && input.keys().hasAll(['title','description']) && input.title is string && input.title.size() > 0 && input.title.size() <= 120 && input.description is string && input.description.size() <= 10000 && after.title == input.title && after.description == input.description && after.diff(before).affectedKeys().hasOnly(['title','description','revision','lastOperationId','updatedAt']))
+           || (a == 'project.delete' && projectManager(parent) && input.keys().size() == 0 && after.status == 'deleted' && after.diff(before).affectedKeys().hasOnly(['status','revision','lastOperationId','updatedAt']))
+           || (a in ['member.add','member.remove'] && projectManager(parent) && input.keys().hasOnly(['employeeId']) && input.keys().hasAll(['employeeId']) && input.employeeId is string && after.diff(before).affectedKeys().hasOnly(['participantIds','revision','lastOperationId','updatedAt']) && after.participantIds is list && after.participantIds.size() <= 50 && after.participantIds.toSet().size() == after.participantIds.size()
+             && ((a == 'member.add' && !(input.employeeId in before.participantIds) && after.participantIds.toSet().difference(before.participantIds.toSet()) == [input.employeeId].toSet() && before.participantIds.toSet().difference(after.participantIds.toSet()).size() == 0 && get(/databases/$(database)/documents/employees/$(input.employeeId)).data.companyId == parent.companyId && get(/databases/$(database)/documents/employees/$(input.employeeId)).data.get('status','') != 'out')
+               || (a == 'member.remove' && input.employeeId != before.ownerEmployeeId && before.participantIds.toSet().difference(after.participantIds.toSet()) == [input.employeeId].toSet() && after.participantIds.toSet().difference(before.participantIds.toSet()).size() == 0)))))
+        || (a == 'task.create' && before == null && r.expectedTargetRevision == null && projectTaskInput(input,parent,null)
+          && after.keys().hasOnly(['version','projectEpoch','title','description','status','assigneeEmployeeId','startDate','endDate','priority','tags','checklist','revision','deletedAt','lastOperationId','createdAt','updatedAt'])
+          && after.keys().hasAll(['version','projectEpoch','title','description','status','assigneeEmployeeId','startDate','endDate','priority','tags','checklist','revision','deletedAt','lastOperationId','createdAt','updatedAt'])
+          && after.version == 1 && after.projectEpoch == parent.epoch && projectTaskFields(after,input) && after.checklist == {} && after.revision == 1 && after.deletedAt == null && after.lastOperationId == op.operationId && after.createdAt == request.time && after.updatedAt == request.time)
+        || (a in ['task.edit','task.delete','checklist.create','checklist.edit','checklist.delete'] && before != null && before.projectEpoch == parent.epoch && before.deletedAt == null && r.expectedTargetRevision == before.revision && after.revision == before.revision + 1 && after.lastOperationId == op.operationId && after.updatedAt == request.time
+          && ((a == 'task.edit' && projectTaskInput(input,parent,before) && projectTaskFields(after,input) && after.diff(before).affectedKeys().hasOnly(['title','description','status','assigneeEmployeeId','startDate','endDate','priority','tags','revision','lastOperationId','updatedAt']))
+           || (a == 'task.delete' && input.keys().size() == 0 && after.deletedAt == request.time && after.diff(before).affectedKeys().hasOnly(['deletedAt','revision','lastOperationId','updatedAt']))
+           || (a in ['checklist.create','checklist.edit','checklist.delete'] && before.checklist is map && after.checklist is map && after.checklist.size() <= 50 && after.checklist.diff(before.checklist).affectedKeys() == [r.target.id].toSet() && after.diff(before).affectedKeys().hasOnly(['checklist','revision','lastOperationId','updatedAt'])
+             && ((a == 'checklist.delete' && input.keys().size() == 0 && r.target.id in before.checklist && !(r.target.id in after.checklist))
+               || (a in ['checklist.create','checklist.edit'] && input.keys().hasOnly(['title','checked']) && input.keys().hasAll(['title','checked']) && input.title is string && input.title.size() > 0 && input.title.size() <= 500 && input.checked is bool && after.checklist[r.target.id] == input && ((a == 'checklist.create' && !(r.target.id in before.checklist)) || (a == 'checklist.edit' && r.target.id in before.checklist)))))))
+        || (a == 'comment.create' && before == null && r.expectedTargetRevision == null && input.keys().hasOnly(['body']) && input.keys().hasAll(['body']) && input.body is string && input.body.size() > 0 && input.body.size() <= 5000
+          && after.keys().hasOnly(['version','projectEpoch','taskId','authorEmployeeId','body','revision','deletedAt','lastOperationId','createdAt','updatedAt']) && after.keys().hasAll(['version','projectEpoch','taskId','authorEmployeeId','body','revision','deletedAt','lastOperationId','createdAt','updatedAt'])
+          && after.version == 1 && after.projectEpoch == parent.epoch && after.taskId == r.target.taskId && after.authorEmployeeId == me() && after.body == input.body && after.revision == 1 && after.deletedAt == null && after.lastOperationId == op.operationId && after.createdAt == request.time && after.updatedAt == request.time)
+        || (a in ['comment.edit','comment.delete'] && before != null && before.projectEpoch == parent.epoch && before.taskId == r.target.taskId && before.deletedAt == null && r.expectedTargetRevision == before.revision && (before.authorEmployeeId == me() || projectManager(parent)) && after.revision == before.revision + 1 && after.lastOperationId == op.operationId && after.updatedAt == request.time
+          && ((a == 'comment.edit' && input.keys().hasOnly(['body']) && input.keys().hasAll(['body']) && input.body is string && input.body.size() > 0 && input.body.size() <= 5000 && after.body == input.body && after.diff(before).affectedKeys().hasOnly(['body','revision','lastOperationId','updatedAt']))
+           || (a == 'comment.delete' && input.keys().size() == 0 && after.deletedAt == request.time && after.diff(before).affectedKeys().hasOnly(['deletedAt','revision','lastOperationId','updatedAt']))));
+    }
+    function projectNormalProof(projectId, operationId) {
+      let projectPath = /databases/$(database)/documents/workProjectsV1/$(projectId);
+      let opPath = /databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(operationId);
+      let op = getAfter(opPath).data;
+      let r = op.request;
+      let targetPath = projectTargetPath(projectId, r.target);
+      let parent = get(projectPath).data;
+      let nextParent = getAfter(projectPath).data;
+      let before = exists(targetPath) ? get(targetPath).data : null;
+      let after = existsAfter(targetPath) ? getAfter(targetPath).data : null;
+      return !exists(opPath) && projectReceiptOk(op,projectId,operationId)
+        && projectActive(parent) && canSee(nextParent.companyId) && (me() in nextParent.participantIds || projectAdmin()) && parent.epoch == r.projectEpoch
+        && op.status == 'applied' && op.before == before && op.after == after && after != null
+        && after.lastOperationId == operationId
+        && ((before == null && r.expectedTargetRevision == null && after.revision == 1)
+          || (before != null && r.expectedTargetRevision == before.revision && after.revision == before.revision + 1))
+        && r.expectedProjectRevision == parent.revision && nextParent.revision == parent.revision + 1
+        && nextParent.lastOperationId == operationId && nextParent.updatedAt == request.time
+        && (r.target.kind == 'project' || (nextParent.status == 'active' && nextParent.diff(parent).affectedKeys().hasOnly(['revision','lastOperationId','updatedAt'])))
+        && (r.target.kind != 'comment' || (get(/databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(r.target.taskId)).data.projectEpoch == parent.epoch
+          && get(/databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(r.target.taskId)).data.deletedAt == null
+          && get(/databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(r.target.taskId)).data == getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/tasks/$(r.target.taskId)).data));
+    }
+    function projectParentProof(projectId, operationId) {
+      let path = /databases/$(database)/documents/workProjectsV1/$(projectId);
+      let opPath = /databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(operationId);
+      let op = getAfter(opPath).data;
+      let before = resource.data;
+      let after = request.resource.data;
+      return !exists(opPath) && op.status == 'applied' && op.operationId == operationId
+        && ((op.target.kind == 'project' && op.before == before && op.after == after && projectTargetTransition(projectId,op,before,before,after))
+          || (op.target.kind != 'project' && after.status == 'active' && after.diff(before).affectedKeys().hasOnly(['revision','lastOperationId','updatedAt'])))
+        && getAfter(path).data == after;
+    }
+    function projectChildProof(projectId, operationId) {
+      let opPath = /databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(operationId);
+      let op = getAfter(opPath).data;
+      let parent = get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data;
+      let before = resource == null ? null : resource.data;
+      return !exists(opPath) && op.status == 'applied' && op.operationId == operationId
+        && op.before == before && op.after == request.resource.data
+        && projectTargetTransition(projectId,op,parent,before,request.resource.data);
+    }
+    function projectCancelProof(projectId, operationId, op) {
+      let projectPath = /databases/$(database)/documents/workProjectsV1/$(projectId);
+      let targetPath = projectTargetPath(projectId,op.request.target);
+      let parent = get(projectPath).data;
+      let before = exists(targetPath) ? get(targetPath).data : null;
+      let after = existsAfter(targetPath) ? getAfter(targetPath).data : null;
+      return projectEmployee() && projectReceiptOk(op,projectId,operationId) && op.status == 'cancelled'
+        && projectActive(parent) && parent.epoch == op.request.projectEpoch && getAfter(projectPath).data == parent
+        && op.before == before && op.after == before && after == before;
+    }
+    match /workProjectsV1/{projectId} {
+      allow get: if projectEmployee() && (resource == null || projectReadable(resource.data));
+      allow list: if projectListBounded() && projectReadable(resource.data);
+      allow create: if !exists(/databases/$(database)/documents/workProjectsV1/$(projectId)) && projectCreateProof(projectId, request.resource.data);
+      allow update: if projectParentProof(projectId,request.resource.data.lastOperationId);
+      allow delete: if false;
+      match /tasks/{taskId} {
+        allow get: if projectActive(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data);
+        allow list: if projectListBounded() && projectActive(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data);
+        allow create, update: if projectChildProof(projectId,request.resource.data.lastOperationId)
+          && getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(request.resource.data.lastOperationId)).data.target.kind in ['task','checklist']
+          && (getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(request.resource.data.lastOperationId)).data.target.kind == 'task'
+              ? getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(request.resource.data.lastOperationId)).data.target.id == taskId
+              : getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(request.resource.data.lastOperationId)).data.target.taskId == taskId);
+        allow delete: if false;
+        match /comments/{commentId} {
+          allow get: if projectActive(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data);
+          allow list: if projectListBounded() && projectActive(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data);
+          allow create, update: if projectChildProof(projectId,request.resource.data.lastOperationId)
+            && getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)/operations/$(request.resource.data.lastOperationId)).data.target == {'kind':'comment','id':commentId,'taskId':taskId};
+          allow delete: if false;
+        }
+      }
+      match /operations/{operationId} {
+        allow get: if projectEmployee() && ((!exists(/databases/$(database)/documents/workProjectsV1/$(projectId)) && resource == null) || projectReadable(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data));
+        allow list: if projectListBounded() && projectReadable(get(/databases/$(database)/documents/workProjectsV1/$(projectId)).data);
+        allow create: if request.resource.data.operationId == operationId && ((!exists(/databases/$(database)/documents/workProjectsV1/$(projectId))
+          && getAfter(/databases/$(database)/documents/workProjectsV1/$(projectId)).data == request.resource.data.after
+          && projectCreateProof(projectId, request.resource.data.after))
+          || (exists(/databases/$(database)/documents/workProjectsV1/$(projectId))
+            && ((request.resource.data.status == 'applied' && projectNormalProof(projectId,operationId))
+              || (request.resource.data.status == 'cancelled' && projectCancelProof(projectId,operationId,request.resource.data)))));
+        allow update, delete: if false;
+      }
     }
 
     // 미반영·요청 폐기 근거는 서버만 판독한다. 관리자 조회도 열면 최초 원문이 노출된다.
     // 명시 거절만으로 포괄 허용을 이길 수 없으므로 위 hasOwnRule에서도 제외한다.
     // 최초 주문 원문과 규칙 승인은 RPC에서 회사·직원·관리자 권한을 확인한다.
     match /orderStockFullAttemptsV1/{document=**} { allow read, write: if false; }
+    match /orderProductionAssignmentsV1/{document=**} { allow read, write: if false; }
     match /orderManualCorrectionsV1/{document=**} { allow read, write: if false; }
     match /orderStatusAudits/{id} {
       allow get: if getOk();
@@ -144,7 +370,16 @@ service cloud.firestore {
         && !rawWriterCollection('orderStatusAudits') && fullEffectWriteOk('orderStatusAudits')
         && payrollWriteAllowed('orderStatusAudits');
     }
-    match /rawManualCorrectionReceipts/{document=**} { allow read, write: if false; }
+    match /rawManualCorrectionReceipts/{id} {
+      allow get: if isEmployee() && resource != null && resource.data.get('version', 0) == 3
+        && permitActorOk(resource.data);
+      allow update: if isEmployee() && resource.data.get('version', 0) == 3
+        && resource.data.get('kind', '') == 'raw-reverse-group' && permitActorOk(resource.data)
+        && resource.data.get('state', '') == 'prepared' && request.resource.data.get('state', '') == 'applied'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state'])
+        && permitAllEffects(resource.data) && permitBusinessEffect(resource.data);
+      allow list, create, delete: if false;
+    }
     match /palletTransactionOperations/{document=**} { allow read, write: if false; }
     match /noticeOperations/{document=**} { allow read, write: if false; }
     match /noticePhotoUploads/{document=**} { allow read, write: if false; }
@@ -574,6 +809,72 @@ service cloud.firestore {
       return next.get('inventoryWriterProtocolVersion', null) == before.get('inventoryWriterProtocolVersion', null)
         && next.get('inventoryWriteRevision', null) == before.get('inventoryWriteRevision', null);
     }
+    function permitActorOk(p) {
+      let employee = /databases/$(database)/documents/employees/$(me());
+      return isEmployee() && p.get('actorUid', null) == request.auth.uid
+        && p.get('employeeId', null) == me() && p.get('companyId', null) == myCompany()
+        && get(employee).data.get('authUid', null) == request.auth.uid
+        && get(employee).data.get('companyId', 'taebaek') == myCompany()
+        && get(employee).data.get('status', '') != 'out'
+        && get(employee).data.get('name', '') is string && get(employee).data.name.size() > 0;
+    }
+    function permitPath(id) { return /databases/$(database)/documents/rawManualCorrectionReceipts/$(id); }
+    function permitEffectPath(e) { return /databases/$(database)/documents/$(e.collection)/$(e.id); }
+    function permitEffectOk(e) {
+      let path = permitEffectPath(e);
+      return (e.beforeExists ? get(path).data == e.before : !exists(path) && e.before == null)
+        && getAfter(path).data == e.after;
+    }
+    function permitAllEffects(p) {
+      let a = p.get('rawEffects', []);
+      return a is list && a.size() >= 1 && a.size() <= 8
+        && permitEffectOk(a[0]) && (a.size() < 2 || permitEffectOk(a[1]))
+        && (a.size() < 3 || permitEffectOk(a[2])) && (a.size() < 4 || permitEffectOk(a[3]))
+        && (a.size() < 5 || permitEffectOk(a[4])) && (a.size() < 6 || permitEffectOk(a[5]))
+        && (a.size() < 7 || permitEffectOk(a[6])) && (a.size() < 8 || permitEffectOk(a[7]));
+    }
+    function permitBusinessEffect(p) {
+      let b = p.get('businessWitness', {});
+      let path = permitEffectPath(b);
+      return get(path).data == b.before
+        && (b.afterExists ? getAfter(path).data == b.after : !existsAfter(path) && b.after == null);
+    }
+    function permitMarkerValid(value) {
+      return value is map && value.keys().hasOnly(['permitId','slot']) && value.keys().hasAll(['permitId','slot'])
+        && value.permitId is string && value.permitId.matches('^[a-f0-9]{64}$')
+        && value.slot is int && value.slot >= 0 && value.slot < 8;
+    }
+    function permitMarkerPreserved(before, next) {
+      return (('rawReversePermitRefV1' in before) == ('rawReversePermitRefV1' in next))
+        && (!('rawReversePermitRefV1' in before) || (permitMarkerValid(before.rawReversePermitRefV1)
+          && before.rawReversePermitRefV1 == next.rawReversePermitRefV1));
+    }
+    function permitRawTarget(c, id) {
+      let marker = request.resource.data.get('rawReversePermitRefV1', {});
+      let pid = marker is map ? marker.get('permitId', '') : '';
+      let path = permitPath(pid is string && pid.size() > 0 ? pid : '__invalid__');
+      let p = get(path).data;
+      let slot = marker is map ? marker.get('slot', -1) : -1;
+      let effects = p.get('rawEffects', []);
+      return p.get('version', 0) == 3 && p.get('kind', '') == 'raw-reverse-group'
+        && p.actorUid == request.auth.uid && p.employeeId == me() && p.companyId == myCompany()
+        && p.get('state', '') == 'prepared' && getAfter(path).data.get('state', '') == 'applied'
+        && getAfter(path).data.diff(p).affectedKeys().hasOnly(['state'])
+        && effects is list && slot < effects.size() && effects[slot].collection == c && effects[slot].id == id
+        && (effects[slot].beforeExists ? resource != null && resource.data == effects[slot].before : resource == null && effects[slot].before == null)
+        && request.resource.data == effects[slot].after;
+    }
+    function permitBusinessTarget(c, id) {
+      let marker = request.resource.data.rawReversePermitRefV1;
+      let path = permitPath(marker.permitId);
+      let p = get(path).data;
+      let b = p.businessWitness;
+      return p.version == 3 && p.kind == 'raw-reverse-group' && p.actorUid == request.auth.uid
+        && p.employeeId == me() && p.companyId == myCompany() && p.state == 'prepared'
+        && getAfter(path).data.state == 'applied' && getAfter(path).data.diff(p).affectedKeys().hasOnly(['state'])
+        && b.collection == c && b.id == id && b.beforeExists == true && b.afterExists == true
+        && resource != null && resource.data == b.before && request.resource.data == b.after;
+    }
     function rawWriterCollection(c) {
       return c in ['rawInventories', 'rawInventoryJobs', 'rawMaterialLedger', 'rawInventoryReversalGuards'];
     }
@@ -599,6 +900,98 @@ service cloud.firestore {
       return c != 'rawMaterialLedger' || (!(resource != null && 'orderManualCorrectionEffectAuthority' in resource.data)
         && !(request.resource != null && 'orderManualCorrectionEffectAuthority' in request.resource.data));
     }
+    // 신규 원장은 원문과 가역 문서 주소를 묶는다. 긴 해시 주소는 별도 서버 경로가 필요하다.
+    function rawCanonical(op) { return 'op_' + op.toUtf8().toBase64().replace('=+$', ''); }
+    function rawLegacy(op) {
+      let safe = op.replace('[/.$#]', '_').replace('\\[', '_').replace('\\]', '_').replace('\\\\', '_');
+      let cut = safe.size() > 400 ? safe[0:400] : safe;
+      return cut == '' || cut.matches('^__.*__$') ? 'op_' + cut : cut;
+    }
+    function rawProductionFrameOk(op, sourceId) {
+      let n = int(op[4:10]);
+      return op[4:10].matches('^[0-9]{6}$') && op[10:11] == ':' && n > 0
+        && op[11:11+n] == sourceId && sourceId.size() == n && op[11+n:12+n] == ':'
+        && op[12+n:].matches('^op_[A-Za-z0-9_-]+$');
+    }
+    function rawOriginalOk(original, data) {
+      let source = original.get('source', {}) is map ? original.get('source', {}) : {};
+      let sourceType = source.get('type', '');
+      let sourceId = source.get('id', '');
+      let legacyId = original.get('orderId', '');
+      let orderSource = sourceType == 'production' || (sourceType == 'oem' && original.get('operationId', '').matches('^(production-ledger|pl2):.*'));
+      let linkedId = orderSource ? sourceId : (sourceType == '' ? legacyId : '');
+      let orderPath = /databases/$(database)/documents/orders/$(linkedId is string && linkedId.size() > 0 ? linkedId : '__invalid__');
+      return original.get('operationId', null) == data.get('reversalOf', data.get('originalOperationId', null))
+        && original.get('companyId', null) == data.get('companyId', null)
+        && original.get('rawItemId', null) == data.get('rawItemId', null)
+        && !('fullEffectAuthority' in original) && !('orderManualCorrectionEffectAuthority' in original)
+        && (!orderSource || legacyId == '' || legacyId == sourceId)
+        && (linkedId == '' || (linkedId is string && exists(orderPath) && get(orderPath).data.get('companyId', null) == data.companyId
+          && !('orderProductionRefsV1' in get(orderPath).data)
+          && (data.get('source', null) == null || data.source.get('id', null) == linkedId)));
+    }
+    function rawOriginalsOk(modern, legacy, data) {
+      let mp = /databases/$(database)/documents/rawMaterialLedger/$(modern);
+      let lp = /databases/$(database)/documents/rawMaterialLedger/$(legacy);
+      let hasModern = exists(mp);
+      let hasLegacy = exists(lp);
+      let m = hasModern ? get(mp).data : {};
+      let l = hasLegacy ? get(lp).data : {};
+      return (hasModern || hasLegacy) && (!(hasModern && hasLegacy) || m == l)
+        && (hasModern ? rawOriginalOk(m,data) : rawOriginalOk(l,data));
+    }
+    function rawManualReverseOk(id, data, guard) { return rawReverseFrameOk(id,data,guard); }
+    function rawReverseFrameOk(id, data, guard) {
+      let op = guard ? data.get('reverseOperationId', '') : data.get('operationId', '');
+      let original = guard ? data.get('originalOperationId', '') : data.get('reversalOf', '');
+      let modern = rawCanonical(original);
+      let legacy = rawLegacy(original);
+      let guardPath = /databases/$(database)/documents/rawInventoryReversalGuards/$(modern);
+      let movementPath = /databases/$(database)/documents/rawMaterialLedger/$(rawCanonical(op));
+      return op is string && op.size() > 0 && original is string && original.size() > 0
+        && modern.size() <= 1403 && (!guard || id == modern) && rawOriginalsOk(modern,legacy,data)
+        && (guard ? (!exists(movementPath) && getAfter(movementPath).data.get('operationId', null) == op
+          && getAfter(movementPath).data.get('reversalOf', null) == original
+          && getAfter(movementPath).data.get('companyId', null) == data.companyId)
+          : (!exists(guardPath) && getAfter(guardPath).data.get('originalOperationId', null) == original
+          && getAfter(guardPath).data.get('reverseOperationId', null) == op));
+    }
+    function rawOrderSourceOk(c, id, data) {
+      let source = data.get('source', {}) is map ? data.get('source', {}) : {};
+      let type = source.get('type', '');
+      let sourceId = source.get('id', '');
+      let op = data.get('operationId', '');
+      let press = c == 'rawInventoryJobs' && type == 'production' && sourceId is string && sourceId.size() > 0
+        && id == 'raw-press-' + rawCanonical(sourceId) && data.get('rawPressEvidence', {}) is map
+        && data.rawPressEvidence.get('entry', {}) is map && data.rawPressEvidence.entry.get('id', null) == sourceId;
+      let job = c == 'rawInventoryJobs' && type in ['production', 'production-reversal'] && !press;
+      let orderPath = /databases/$(database)/documents/orders/$(sourceId is string && sourceId.size() > 0 ? sourceId : '__invalid__');
+      return (c != 'rawMaterialLedger' || (op is string && op.size() > 0
+          && (id == rawCanonical(op) || (op.toUtf8().toBase64().replace('=+$', '').size() > 1400 && !(type in ['production','oem']) && !op.matches('^(pr2|pl2|rv2):.*') && data.get('kind', '') != 'reverse'))
+          && !op.matches('^production(-ledger)?:.*')
+          && (!op.matches('^(pr2|pl2):.*') || ((type == 'production' && op[0:4] == 'pr2:' || type == 'oem' && op[0:4] == 'pl2:')
+            && sourceId is string && rawProductionFrameOk(op, sourceId)))
+          && (type != 'production' || op.matches('^pr2:.*'))
+          && (!(data.get('kind', '') == 'reverse' || op.matches('^rv2:.*'))
+            || (op.matches('^rv2:.*') ? rawReverseFrameOk(id,data,false) : rawManualReverseOk(id,data,false)))))
+        && (c != 'rawInventoryReversalGuards' || (data.get('reverseOperationId', '').matches('^rv2:.*') ? rawReverseFrameOk(id,data,true) : rawManualReverseOk(id,data,true)))
+        && (!(job || (c == 'rawMaterialLedger' && op.matches('^(pr2|pl2):.*'))) || (sourceId is string && sourceId.size() > 0
+          && exists(orderPath) && get(orderPath).data.get('companyId', null) == data.companyId
+          && !('orderProductionRefsV1' in get(orderPath).data)
+          && (!(type == 'production' || (c == 'rawMaterialLedger' && op.matches('^(pr2|pl2):.*')))
+            || !('legacyRecoveryRetirementV1' in get(orderPath).data)))); 
+    }
+    function rawOrderSourceWriteOk(c, id) {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      return (resource != null && c in ['rawMaterialLedger','rawInventoryReversalGuards']
+        && !('operationId' in before) && !('originalOperationId' in before) && !('reverseOperationId' in before)
+        && next.diff(before).affectedKeys().hasOnly(['note','inventoryWriterProtocolVersion','inventoryWriteRevision']))
+        || (rawOrderSourceOk(c, id, next)
+        && (resource == null || (!(c in ['rawMaterialLedger', 'rawInventoryJobs'])
+          || (next.get('source', null) == before.get('source', null) && next.get('operationId', null) == before.get('operationId', null))))
+        && (resource == null || c != 'rawInventoryReversalGuards' || (next.get('originalOperationId', null) == before.get('originalOperationId', null) && next.get('reverseOperationId', null) == before.get('reverseOperationId', null))));
+    }
     function rawWriterOk(c) {
       let before = resource == null ? {} : resource.data;
       return (c != 'rawMaterialLedger' || (!rawManualCorrectionMarked(before) && !rawManualCorrectionMarked(request.resource.data)))
@@ -618,12 +1011,22 @@ service cloud.firestore {
             && rows.hasAll(protected)
             && rows.size() == rows.removeAll(protected).size() + protected.size()));
     }
+    // 서버 예약 하한은 클라이언트가 만들거나 고치거나 없앨 수 없다.
+    function fullItemFloorOk(before, next, creating) {
+      return creating ? !('serverReservedStockFloorV1' in next)
+        : (('serverReservedStockFloorV1' in before) == ('serverReservedStockFloorV1' in next))
+          && before.get('serverReservedStockFloorV1', null) == next.get('serverReservedStockFloorV1', null)
+          && (!('serverReservedStockFloorV1' in before)
+            || (before.serverReservedStockFloorV1 is number && before.serverReservedStockFloorV1 >= 0
+              && next.get('stock', null) is number && next.stock >= before.serverReservedStockFloorV1));
+    }
     function itemWriteOk(id) {
       let before = resource == null ? {} : resource.data;
       let next = request.resource.data;
       let tomb = itemTombstone(next.companyId, id);
       let floor = resource == null && exists(tomb) ? get(tomb).data.lastDeletedItemRevision : writerRevision(before);
-      return fullItemReservationsOk(before, next, resource == null)
+      return fullItemFloorOk(before, next, resource == null)
+        && fullItemReservationsOk(before, next, resource == null)
         && !(exists(tomb) && get(tomb).data.get('mergedIntoItemId', null) != null) && (resource == null
         ? writerAdvanced(before, next, floor)
         : next.diff(before).affectedKeys().hasAny(['stock', 'lots', 'inventoryReservations', 'stocktakeAnchors', 'allocated', 'inventoryAllocations'])
@@ -633,7 +1036,8 @@ service cloud.firestore {
       let tomb = itemTombstone(resource.data.companyId, id);
       let prior = exists(tomb) ? get(tomb).data.deletionRevision : 0;
       let after = getAfter(tomb).data;
-      return resource.data.get('fullReservationRows', []) is list
+      return !('serverReservedStockFloorV1' in resource.data) && !('rawReversePermitRefV1' in resource.data)
+        && resource.data.get('fullReservationRows', []) is list
         && resource.data.get('fullReservationRows', []).size() == 0
         && writerBeforeOk(resource.data) && after.companyId == resource.data.companyId && after.itemId == id
         && after.inventoryWriterProtocolVersion == 1 && after.beforeRevision == writerRevision(resource.data)
@@ -642,7 +1046,9 @@ service cloud.firestore {
     match /items/{id} {
       allow get: if getOk();
       allow list: if readOk();
-      allow create, update: if createUpdateOk() && inventoryQuantityOk('items') && itemWriteOk(id);
+      allow create, update: if createUpdateOk() && ((permitMarkerPreserved(resource == null ? {} : resource.data, request.resource.data)
+          && inventoryQuantityOk('items') && itemWriteOk(id))
+        || (permitMarkerValid(request.resource.data.get('rawReversePermitRefV1', null)) && permitRawTarget('items',id)));
       allow delete: if deleteOk() && itemDeleteOk(id);
     }
     match /inventoryWriterDeletions/{id} {
@@ -692,10 +1098,17 @@ service cloud.firestore {
           : (('inventoryExecutionProtocol' in before) == ('inventoryExecutionProtocol' in next)
             && before.get('inventoryExecutionProtocol', null) == next.get('inventoryExecutionProtocol', null)))
         && (!('inventoryExecutionProtocol' in before) || !next.diff(before).affectedKeys().hasAny(fullSensitive))
+        && (resource == null ? !('orderProductionRefsV1' in next)
+          : (('orderProductionRefsV1' in before) == ('orderProductionRefsV1' in next)
+            && before.get('orderProductionRefsV1', null) == next.get('orderProductionRefsV1', null)))
+        && (!('orderProductionRefsV1' in before) || !next.diff(before).affectedKeys().hasAny(fullSensitive))
         && (resource == null ? !('orderManualCorrectionRefsV1' in next)
           : (('orderManualCorrectionRefsV1' in before) == ('orderManualCorrectionRefsV1' in next)
             && before.get('orderManualCorrectionRefsV1', null) == next.get('orderManualCorrectionRefsV1', null)))
         && (!('orderManualCorrectionRefsV1' in before) || !next.diff(before).affectedKeys().hasAny(fullSensitive))
+        && (resource == null ? !('legacyRecoveryRetirementV1' in next)
+          : (('legacyRecoveryRetirementV1' in before) == ('legacyRecoveryRetirementV1' in next)
+            && before.get('legacyRecoveryRetirementV1', null) == next.get('legacyRecoveryRetirementV1', null)))
         && next.get('retirementId', null) == before.get('retirementId', null)
         && next.get('retirementClaimPending', null) == before.get('retirementClaimPending', null)
         && !(before.get('retirementClaimPending', false) == true && next.get('inventoryOperation', null) != before.get('inventoryOperation', null))
@@ -762,7 +1175,7 @@ service cloud.firestore {
       let operation = resource.data.get('inventoryOperation', {});
       let audit = /databases/$(database)/documents/orderStatusAudits/$(operation.id);
       let after = getAfter(audit).data;
-      return !('inventoryExecutionProtocol' in resource.data)
+      return !('inventoryExecutionProtocol' in resource.data) && !('legacyRecoveryRetirementV1' in resource.data)
         && !('orderManualCorrectionRefsV1' in resource.data)
         && writerBeforeOk(resource.data) && !exists(audit) && after.companyId == resource.data.companyId
         && after.orderId == id && after.id == operation.id && after.state == 'completed'
@@ -783,6 +1196,25 @@ service cloud.firestore {
         && rawWriterOk('purchaseOrders') && oemCostFieldsOk('purchaseOrders') && catalogPurchaseReferenceOk(id) && payrollWriteAllowed('purchaseOrders');
       allow delete: if isEmployee() && deleteOk() && resource.data.get('oemBatchCost', null) == null && payrollWriteAllowed('purchaseOrders');
     }
+    match /rawInventories/{id} {
+      allow get: if isEmployee() && getOk();
+      allow list: if isEmployee() && readOk();
+      allow create, update: if isEmployee() && createUpdateOk() && ((permitMarkerPreserved(resource == null ? {} : resource.data, request.resource.data)
+          && inventoryQuantityOk('rawInventories') && rawWriterOk('rawInventories'))
+        || (permitMarkerValid(request.resource.data.get('rawReversePermitRefV1', null)) && permitRawTarget('rawInventories',id)));
+      allow delete: if false;
+    }
+    // 원장과 취소가드는 단일 문서 ID를 원문과 대조한다. 포괄 규칙의 OR 경로는 제외한다.
+    match /{rawCollection}/{rawId} {
+      allow get: if rawCollection in ['rawMaterialLedger','rawInventoryReversalGuards','rawInventoryJobs'] && isEmployee() && getOk();
+      allow list: if rawCollection in ['rawMaterialLedger','rawInventoryReversalGuards','rawInventoryJobs'] && isEmployee() && readOk();
+      allow create, update: if rawCollection in ['rawMaterialLedger','rawInventoryReversalGuards','rawInventoryJobs'] && isEmployee()
+        && createUpdateOk() && ((permitMarkerPreserved(resource == null ? {} : resource.data,request.resource.data)
+            && rawOrderSourceWriteOk(rawCollection,rawId) && rawWriterOk(rawCollection)
+            && fullEffectWriteOk(rawCollection) && manualCorrectionEffectWriteOk(rawCollection))
+          || (permitMarkerValid(request.resource.data.get('rawReversePermitRefV1', null))
+            && (rawCollection == 'rawInventoryJobs' ? permitBusinessTarget(rawCollection,rawId) : permitRawTarget(rawCollection,rawId))));
+    }
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
     //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워
     //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
@@ -799,6 +1231,7 @@ service cloud.firestore {
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
                             && inventoryQuantityOk(collection)
+                            && (!rawWriterCollection(collection) || rawOrderSourceWriteOk(collection, ''))
                             && rawWriterOk(collection)
                             && fullEffectWriteOk(collection)
                             && manualCorrectionEffectWriteOk(collection)
@@ -815,3 +1248,4 @@ service cloud.firestore {
     }
   }
 }
+

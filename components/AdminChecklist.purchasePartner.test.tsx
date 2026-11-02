@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import AdminChecklist from './AdminChecklist';
 import type { Partner, PartnerItem, PurchaseOrder } from '../src/shared/types';
@@ -37,4 +37,10 @@ for (const mode of ['선입고', '발주예정'] as const) {
   });
 }
 
-it('선입고 이력의 상태 드롭다운과 초기화는 미발행 기본조건만 복원한다',()=>{HTMLElement.prototype.scrollIntoView=vi.fn();const create=vi.fn();render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()} onCreatePurchaseStatement={create}/>);const query=screen.getByRole('region',{name:'선입고 이력 검색조건'}),filter=screen.getByRole('button',{name:'선입고 전표 상태'});fireEvent.click(filter);fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(filter).toHaveTextContent('전체');fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(filter).toHaveTextContent('전표 미발행만');expect(query).toContainElement(filter);expect(create).not.toHaveBeenCalled();});
+it('선입고 이력의 상태 드롭다운과 초기화는 미발행 기본조건만 복원한다',()=>{HTMLElement.prototype.scrollIntoView=vi.fn();const create=vi.fn();render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()} onCreatePurchaseStatement={create}/>);const query=screen.getByRole('region',{name:'선입고 이력 검색조건'}),filter=screen.getByRole('button',{name:'선입고 전표 상태'});fireEvent.click(filter);fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(filter).toHaveTextContent('전체');fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(filter).toHaveTextContent('전표 미발행만');expect(query).toContainElement(filter);expect(query.closest('table')).toBeNull();expect(create).not.toHaveBeenCalled();});
+
+it('선입고 검색은 표 밖에서 해당 행만 바꾸고 다른 반품 그룹은 유지한다',()=>{
+ HTMLElement.prototype.scrollIntoView=vi.fn();const base={partnerId:'B',partnerName:'합성 거래처',status:'pending',itemId:'item',quantity:1,createdAt:'2026-10-01T00:00:00Z',receivedAt:'2026-10-01T00:00:00Z'};const open={...base,id:'open',items:[{itemId:'i',name:'미발행 품목',quantity:1,unit:'개'}]},done={...base,id:'done',linkedStatementId:'issued',items:[{itemId:'j',name:'발행된 품목',quantity:1,unit:'개'}]};
+ render(<AdminChecklist leaveRequests={[]} adjustmentRequests={[]} employees={[]} onLeaveAction={vi.fn()} onUpdateAdjustmentStatus={vi.fn()} onProcessAdjustment={vi.fn()} receivedOrders={[open,done] as PurchaseOrder[]} />);const panel=screen.getByRole('region',{name:'선입고 이력 검색조건'});expect(panel.closest('table')).toBeNull();expect(screen.getByText('반품 요청 없음')).toBeVisible();expect(screen.getByText(/미발행 품목/)).toBeVisible();expect(screen.queryByText(/발행된 품목/)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'선입고 전표 상태'}));fireEvent.click(screen.getByRole('option',{name:'전체'}));expect(screen.getByText(/발행된 품목/)).toBeVisible();expect(screen.getByText('반품 요청 없음')).toBeVisible();fireEvent.click(within(panel).getByRole('button',{name:'초기화'}));expect(screen.queryByText(/발행된 품목/)).toBeNull();expect(screen.getByText(/미발행 품목/)).toBeVisible();
+});

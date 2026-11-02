@@ -4,9 +4,13 @@ import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {createEmulatorTestPolicy,cleanupOwnedResources} from '../test/emulatorTestPolicy';
 import type {RulesTestEnvironment} from '@firebase/rules-unit-testing';
 const rules=readFileSync('firestore.rules','utf8');
-it('수동정정 영수증은 포괄허용에서 제외하고 클라이언트 접근을 열지 않는다',()=>{
- expect(rules.match(/function hasOwnRule\(c\)[\s\S]*?\n    }/)?.[0]).toContain("'rawManualCorrectionReceipts'");
- expect(rules).toContain('match /rawManualCorrectionReceipts/{document=**} { allow read, write: if false; }');
+function validReceiptRules(text:string){
+ const own=text.match(/function hasOwnRule\(c\)[\s\S]*?\n    }/)?.[0]??'',receipt=text.match(/match \/rawManualCorrectionReceipts\/\{id\} \{[\s\S]*?\n    }/)?.[0]??'';
+ return own.includes("'rawManualCorrectionReceipts'")&&(receipt.match(/permitActorOk\(resource\.data\)/g)??[]).length===2&&(receipt.match(/resource\.data\.get\('version', 0\) == 3/g)??[]).length===2&&["allow get: if isEmployee() && resource != null && resource.data.get('version', 0) == 3",'&& permitActorOk(resource.data)',"resource.data.get('kind', '') == 'raw-reverse-group'","resource.data.get('state', '') == 'prepared' && request.resource.data.get('state', '') == 'applied'","request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state'])",'permitAllEffects(resource.data) && permitBusinessEffect(resource.data)','allow list, create, delete: if false'].every(x=>receipt.includes(x))&&['p.get(\'actorUid\', null) == request.auth.uid',"p.get('employeeId', null) == me()","p.get('companyId', null) == myCompany()",'get(employee).data.get(\'authUid\', null) == request.auth.uid','getAfter(path).data == e.after','get(path).data == e.before','!existsAfter(path) && b.after == null'].every(x=>text.includes(x));
+}
+it('수동정정 영수증은 포괄허용에서 제외하고 V3만 소유자와 전체 효과를 검증한다',()=>{
+ expect(validReceiptRules(rules)).toBe(true);
+ for(const [before,after] of [["resource.data.get('version', 0) == 3",'true'],['&& permitActorOk(resource.data)','&& true'],['permitAllEffects(resource.data) && permitBusinessEffect(resource.data)','true'],["request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state'])",'true'],['getAfter(path).data == e.after','true']]){expect(rules).toContain(before);expect(validReceiptRules(rules.replace(before,after)),before).toBe(false);}
 });
 it('직접 원장 쓰기는 before와 after의 수동 표식을 함께 검사한다',()=>{
  expect(rules).toContain('!rawManualCorrectionMarked(before) && !rawManualCorrectionMarked(request.resource.data)');

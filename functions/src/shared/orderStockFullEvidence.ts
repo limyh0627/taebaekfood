@@ -48,10 +48,11 @@ export function assertLegacyJobLineSnapshot(request:OrderRawBatchRequest,job:Ful
 }
 
 export interface FullHistoricalEvidenceInput {
- tx:Pick<Transaction,'get'>;db:Firestore;companyId:'taebaek'|'punghoe';orderId:string;selfAttemptPath:string;actorUid:string;retirementRequest?:unknown;
+ tx:Pick<Transaction,'get'>;db:Firestore;companyId:'taebaek'|'punghoe';orderId:string;selfAttemptPath?:string;purpose?:'writer'|'historical-source-read-only';actorUid:string;retirementRequest?:unknown;
  codec:{text:(value:unknown)=>string;decode:(value:string)=>any};hash:(value:string)=>string;
  reject:(reason:string,status?:'blocked'|'conflict')=>never;usable:(row:FullRow|undefined,company:string,id:string)=>void;
  materializeTerminal:typeof import('./orderStockFullPlan').materializeOrderStockFullTerminal;
+ batchSource?:{verify:(saved:FullRow,reference:FullRow,owner:FullRow)=>Promise<void>};
  infrastructure:{storedAttempt:(saved:FullRow,reference:FullRow,owner:FullRow)=>OrderStockFullPlan|undefined;protocol:string;attempts:string;object:(value:unknown)=>value is FullRow;id:(value:unknown)=>value is string;path:(path:string)=>void;snapshotNative:(db:Firestore,snapshot:any)=>void;nativeReads:(plan:OrderStockFullPlan)=>FullNativeEvidence[];validateReadEvidence:(plan:OrderStockFullPlan,selfPath:string)=>void;aggregateQuery:(capturedAt:string)=>any;aggregateCandidates:(snapshot:any)=>any[];generationOperationId:(reference:FullRow,uid:string)=>string;attemptId:(reference:any,uid:string)=>string;isRejected:(error:unknown)=>boolean};
 }
 /** DB 원문은 이 거래 안에서만 읽는다. 읽기 캐시는 다음 거래의 CAS를 대신하지 않는다. */
@@ -59,6 +60,7 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
  const {db,companyId:company,orderId,selfAttemptPath,codec,hash:fullHash,usable:fullUsable,materializeTerminal:materializeOrderStockFullTerminal}=input;
  const {protocol:FULL_PROTOCOL,attempts:FULL_ATTEMPTS,object:fullObject,id:fullId,path:fullPath,snapshotNative:fullSnapshotNative,nativeReads:fullNativeReads,validateReadEvidence:validateFullReadEvidence,attemptId:fullAttemptId,isRejected}=input.infrastructure;
  function fullReject(reason:string,status?:'blocked'|'conflict'):never{return input.reject(reason,status);}
+ if(input.purpose!==undefined&&input.purpose!=='writer'&&input.purpose!=='historical-source-read-only'||(input.purpose==='historical-source-read-only'?selfAttemptPath!==undefined:typeof selfAttemptPath!=='string'||!selfAttemptPath))fullReject('invalid-history-context');
  let retirementFailure:{reason:string;status:'blocked'|'conflict'}|undefined,retirementAccess:FullRetirementReadAccess|undefined,freshRetirement:FullRow|undefined,historyVerified=false;
  const {text}=codec,preview={intent:{orderId}},snapshots=new Map<string,any>();let nativeFailure:string|undefined;
  const nativeTx={get:async(ref:any)=>{const result:any=await input.tx.get(ref);try{for(const snapshot of result.docs??[result]){fullSnapshotNative(db,snapshot);const collection=typeof ref.path==='string'?ref.path:typeof ref.collection==='string'?ref.collection:'';const path=snapshot.ref?.path??(result.docs?collection&&snapshot.id?collection+'/'+snapshot.id:undefined:ref.path);if(path)snapshots.set(path,snapshot);}}catch(error){if(isRejected(error))nativeFailure=(error as any).reason;throw error;}return result;}};
@@ -87,6 +89,7 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    if(!saved||saved.version!==1||saved.protocol!==FULL_PROTOCOL||saved.attemptId!==attemptId||saved.state!=='applied'||text(saved.reference)!==text(origin.reference)||text(saved.owner)!==text(origin.owner)||typeof saved.fullPlanText!=='string'||fullHash(saved.fullPlanText)!==saved.fullPlanHash||!fullObject(saved.receipt)||saved.receipt.state!=='applied'||fullHash(text(saved.receipt))!==saved.receiptHash||saved.receipt.fullPlanHash!==saved.fullPlanHash)fullReject('prior-full-provenance-unproven');
    const prior=codec.decode(saved.fullPlanText) as OrderStockFullPlan;
    if(prior.version!==1||prior.protocol!==FULL_PROTOCOL||text(prior.owner)!==text(origin.owner)||prior.intent.companyId!==company||prior.intent.orderId!==preview.intent.orderId||prior.intent.requestId!==origin.reference.requestId||text(prior.intent)!==saved.intentText||fullHash(saved.intentText)!==saved.intentHash||!Array.isArray(prior.readSet)||!Array.isArray(prior.effectSet))fullReject('prior-full-provenance-unproven');
+   if(saved.batchContractVersion===1){if(!input.batchSource)fullReject('prior-full-provenance-unproven');await input.batchSource.verify(saved,origin.reference,origin.owner);}
    input.infrastructure.storedAttempt(saved,origin.reference,origin.owner);
    validateFullReadEvidence(prior,FULL_ATTEMPTS+'/'+attemptId);
    const current=new Map<string,FullRow|undefined>(fullNativeReads(prior).map(row=>[row.path,codec.decode(row.nativeText)]));
@@ -94,6 +97,13 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
    const terminal=materializeOrderStockFullTerminal(db,prior,saved,current,'apply',{now:saved.receipt.at,nowMs:Date.parse(saved.receipt.at)});
    if(text(terminal.next.receipt)!==text(saved.receipt))fullReject('prior-full-receipt-unproven');
    return {saved,prior,terminal};
+  };
+  /** 같은 거래에서 원 주문의 보관된 owner를 읽은 뒤 기존 전체 원문·receipt 검증을 재사용한다. */
+  const verifyAppliedSourceAttempt=async(source:{reference:FullRow;ownerUid:string})=>{
+   if(!fullObject(source)||Object.keys(source).sort().join(',')!=='ownerUid,reference'||!fullObject(source.reference)||source.reference.version!==1||source.reference.companyId!==company||source.reference.orderId!==orderId||!fullId(source.reference.requestId)||typeof source.ownerUid!=='string'||!source.ownerUid)fullReject('prior-full-provenance-unproven');
+   const attemptId=fullAttemptId(source.reference,source.ownerUid),saved=await readHistoricalEvidence(FULL_ATTEMPTS+'/'+attemptId),owner=saved?.owner;
+   if(!fullObject(owner)||owner.uid!==source.ownerUid||owner.companyId!==company||!fullId(owner.employeeId))fullReject('prior-full-provenance-unproven');
+   return appliedAttempt({reference:source.reference,owner});
   };
   const fullSource=async(lineId:string,state:OrderItemInventoryState)=>{
    const origin=validateFullOrigin(state.rawEffectOrigin,lineId,state.attempt);if(!Array.isArray(state.rawEffectReferences))fullReject('invalid-full-raw-origin');
@@ -204,7 +214,7 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
   const aggregateCandidates=async(capturedAt:string)=>{
    if(typeof capturedAt!=='string'||!Number.isFinite(Date.parse(capturedAt)))fullReject('aggregate-source-unproven');
    let query=aggregateSourceQueries.get(capturedAt);if(!query){const result:any=await nativeTx.get(input.infrastructure.aggregateQuery(capturedAt)),candidates=input.infrastructure.aggregateCandidates(result),orderedEvidence:import('./orderStockFullPlan').FullDigestEvidence[]=[];
-    if(result.docs.some((row:any)=>row.ref.path===selfAttemptPath))trackHistorical(selfAttemptPath,undefined,0);
+    if(selfAttemptPath!==undefined&&result.docs.some((row:any)=>row.ref.path===selfAttemptPath))trackHistorical(selfAttemptPath,undefined,0);
     for(const snapshot of candidates){await readHistoricalEvidence(snapshot.ref.path);const row=evidence.get(snapshot.ref.path);if(!row||row.kind!=='digest')fullReject('invalid-history-digest');orderedEvidence.push(row);}
     orderedEvidence.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);query={version:1,companyId:company,orderId,capturedAt,limit:4,orderedEvidence};aggregateSourceQueries.set(capturedAt,query);
    }
@@ -324,5 +334,5 @@ export function createFullHistoricalEvidenceContext(input:FullHistoricalEvidence
  return {order,states:lineBasis.currentStates,operationsByLine,sourceLines};
  };
 
- return {tx:nativeTx as Pick<Transaction,'get'>,verifyRetirementHistory,verifyRetirementAccess,get retirementAccess(){return retirementAccess;},get retirementHandoff(){return freshRetirement;},get retirementFailure(){return retirementFailure;},get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,get aggregateSourceQueries(){return [...aggregateSourceQueries.values()];},verifyCurrentAggregateProduction,verifyCurrentShipment,verifyCurrentLineHistory,verifyCurrentAllocationIssuerRows,readVerifiedOriginalProductionLine};
+ return {tx:nativeTx as Pick<Transaction,'get'>,verifyRetirementHistory,verifyRetirementAccess,get retirementAccess(){return retirementAccess;},get retirementHandoff(){return freshRetirement;},get retirementFailure(){return retirementFailure;},get nativeFailure(){return nativeFailure;},readNative:read,readPast,readHistoricalDigest:readHistoricalEvidence,readPredecessor:predecessor,get readSet(){return [...evidence.values()];},get historyQueries(){return [...historyQueries.values()];},native:original as ReadonlyMap<string,FullRow|undefined>,get aggregateSourceQueries(){return [...aggregateSourceQueries.values()];},verifyCurrentAggregateProduction,verifyCurrentShipment,verifyCurrentLineHistory,verifyCurrentAllocationIssuerRows,readVerifiedOriginalProductionLine,verifyAppliedSourceAttempt};
 }

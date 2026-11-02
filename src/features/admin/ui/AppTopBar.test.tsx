@@ -22,3 +22,4 @@ it('제목 별칭과 알림 표식은 전달받은 값만 반영한다', () => {
  const p = props(), view = render(<AppTopBar {...p} currentView="shipping" hasUnreadNotifications />); expect(screen.getByText('주문·배송')).toBeInTheDocument(); expect(screen.getByRole('button', { name: '알림' }).querySelector('span')).not.toBeNull();
  view.rerender(<AppTopBar {...p} currentView="orders" />); expect(screen.getByText('주문·배송')).toBeInTheDocument(); expect(screen.getByRole('button', { name: '알림' }).querySelector('span')).toBeNull();
 });
+it('프로젝트 메뉴의 상단 제목을 표시한다',()=>{render(<AppTopBar {...props()} currentView="projects"/>);expect(screen.getByText('프로젝트')).toBeVisible();});

@@ -8,11 +8,14 @@ import type { AppNotification, Item, Order, OrderRawInventoryTrace, Partner } fr
 import { companyOf } from '../../shared/types';
 import { baseRawName } from '../../constants/formula';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
-import { operationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
+import { operationDocId,legacyOperationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
 import { buildOrderRawCommands as buildOrderRawCommandsPure, selectOrderRawUsageNames, cancellationRawCommands as cancellationRawCommandsPure } from '../../../functions/src/shared/orderRawCommandPlan';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../../shared/orderRawBatchAttempt';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
+import {buildClientProductionOperationV2,buildClientRawReverseOperationV2} from '../../../functions/src/shared/orderProductionBatchContract';
+
+const reverseId = (original: string) => buildClientRawReverseOperationV2(original, operationDocId(original), legacyOperationDocId(original));
 
 export interface OrderRawInventoryDeps {
   actorName?: string;
@@ -55,7 +58,12 @@ export function buildOrderRawCommands(input:{order:Order;physicalUsage:RawUsageK
  const businessDate = dateOfLocal(order.deliveredAt) || today();
  const customerName = partners.find(partner => partner.id === order.partnerId)?.name || order.partnerName || '';
  const companyId = companyOf(order);
- return buildOrderRawCommandsPure({get orderId(){return order.id;},physicalUsage,ledgerOnlyUsage,attempt,lineId,allItems,companyId,businessDate,customerName,actorName,names});
+ const result = buildOrderRawCommandsPure({get orderId(){return order.id;},physicalUsage,ledgerOnlyUsage,attempt,lineId,allItems,companyId,businessDate,customerName,actorName,names});
+ return {...result,commands:result.commands.map(row => {
+  const operationId = buildClientProductionOperationV2({kind:row.command.kind === 'ledger-consume' ? 'production-ledger' : 'production',orderId:order.id,lineId,attempt,rawItemId:row.command.rawItemId});
+  const id = operationDocId(operationId);
+  return {...row,command:{...row.command,operationId},...(row.options ? {options:{...row.options,...(row.options.newLotId !== undefined ? {newLotId:'lot-'+id} : {}),...(row.options.carryOverLotId !== undefined ? {carryOverLotId:'carry-'+id} : {})}} : {})};
+ })};
 
 }
 
@@ -82,7 +90,7 @@ export function buildOrderRawReversalPlan(input:{order:Order;lineId?:string;allI
       }
       commands.push({
         command: {
-          operationId: `reverse:${originalOperationId}`,
+          operationId: reverseId(originalOperationId),
           ...rawLedgerKeys(rawItem),
           materialSnapshot: baseRawName(rawItem.name),
           effectiveAt,
@@ -164,6 +172,6 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
 export function cancellationRawCommands(
   order: Order, originals: ReadonlyMap<string, string>, effectiveAt: string, actorName?: string,
 ): import('../../shared/rawInventoryCore').RawInventoryCommand[] {
-  return cancellationRawCommandsPure(order,originals,effectiveAt,actorName);
+  return cancellationRawCommandsPure(order,originals,effectiveAt,actorName).map(command => {if(command.kind !== 'reverse') throw Error('원료 취소 명령이 아닙니다.'); return {...command,operationId:reverseId(command.originalOperationId)};});
 }
 

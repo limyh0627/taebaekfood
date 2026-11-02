@@ -1,5 +1,6 @@
 import * as catalogWriter from '../../shared/inventoryWriterProtocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../../shared/firebase',()=>({auth:{currentUser:null},authReady:Promise.resolve()}));
 import type { Item, Order } from '../../shared/types';
 import type { OrderProductLotMutation } from './orderProductLots';
 

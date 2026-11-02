@@ -68,7 +68,17 @@ function validBoundary(path:string,source:string):boolean{
   return false;
 }
 const rawWriter='src/shared/services/orderRawReversalTransaction.ts';
-const rawFiles=[rawWriter,'src/features/admin/orderItemStock.ts','src/features/admin/orderRawInventory.ts','src/shared/rawHolder.ts','functions/src/shared/rawHolder.ts','src/shared/services/rawInventoryService.ts','functions/src/shared/rawInventoryPrepare.ts','functions/src/shared/rawInventoryCore.ts','functions/src/shared/rawPreparedWritePlan.ts','src/shared/orderInventoryGeneration.ts','firestore.rules'] as const;
+const permitWriter='src/shared/services/rawReverseGroupPermit.ts',projectWriter='src/features/projects/services/projectWrites.ts';
+const rawFiles=[rawWriter,permitWriter,'src/features/admin/orderItemStock.ts','src/features/admin/orderRawInventory.ts','src/shared/rawHolder.ts','functions/src/shared/rawHolder.ts','src/shared/services/rawInventoryService.ts','functions/src/shared/rawInventoryPrepare.ts','functions/src/shared/rawInventoryCore.ts','functions/src/shared/rawPreparedWritePlan.ts','src/shared/orderInventoryGeneration.ts','firestore.rules'] as const;
+function validProjectWriter(source:string):boolean{
+ const f=ts.createSourceFile(projectWriter,source,ts.ScriptTarget.Latest,true),writes:ts.CallExpression[]=[];const walk=(n:ts.Node)=>{if(ts.isCallExpression(n)&&/^(?:tx\.(?:set|update|delete|create)|setDoc|addDoc|writeBatch)$/.test(n.expression.getText(f)))writes.push(n);ts.forEachChild(n,walk);};walk(f);
+ const expected=['tx.set(projectRef, nextProject!)','tx.set(projectRef, nextProject!)','tx.set(targetRef, nextTarget!)','tx.set(receiptRef, receipt)'];
+ return writes.length===4&&writes.every((w,i)=>w.getText(f)===expected[i])&&['port.current(scope) && port.auth.currentUser?.uid === scope.actorUid','request.companyId !== scope.companyId','request.actorUid !== scope.actorUid','request.actorEmployeeId !== scope.employeeId','employee.authUid !== scope.actorUid','employee.companyId !== scope.companyId',"employee.status === 'out'",'validateProjectTransition({ project, target, task }, request, actor, at)','project.companyId !== scope.companyId','project.epoch !== request.projectEpoch','assertActive(scope); sameEntry(scope, entry);'].every(x=>source.includes(x));
+}
+function validPermitWriter(source:string,rules:string):boolean{
+ const f=ts.createSourceFile(permitWriter,source,ts.ScriptTarget.Latest,true),writes:ts.CallExpression[]=[];const walk=(n:ts.Node)=>{if(ts.isCallExpression(n)&&/^(?:tx\.(?:set|update|delete|create)|setDoc|addDoc|writeBatch)$/.test(n.expression.getText(f)))writes.push(n);ts.forEachChild(n,walk);};walk(f);
+ return writes.length===2&&writes[0].getText(f)==='tx.set(refs[i],p.rawEffects[i].after)'&&writes[1].getText(f)==="tx.update(receiptRef,{state:'applied'})"&&['sessionIdentityLifetime.captureCurrent()','auth.currentUser!==user','sessionIdentityLifetime.waitUntilReady(ticket)','p.actorUid!==handle.request.actorUid','p.employeeId!==handle.request.employeeId','p.companyId!==handle.request.companyId','p.requestText!==handle.requestText','p.requestHash!==handle.requestHash','expectedHash!==p.effectsHash','codec.text(s.exists()?s.data():null)!==codec.text(e.before)','codec.text(b.before)!==handle.request.business.beforeNativeText',"p.state!=='prepared'"].every(x=>source.includes(x))&&["p.get('state', '') == 'prepared'","getAfter(path).data.get('state', '') == 'applied'",'permitAllEffects(resource.data)','permitBusinessEffect(resource.data)','p.actorUid == request.auth.uid','p.employeeId == me()','p.companyId == myCompany()'].every(x=>rules.includes(x));
+}
 function validRawReversal(sources:Record<string,string>):boolean{
   const src=(name:string)=>sources[name]??'';
   const file=(name:string)=>ts.createSourceFile(name,src(name),ts.ScriptTarget.Latest,true,name.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
@@ -100,12 +110,13 @@ function validRawReversal(sources:Record<string,string>):boolean{
   if(!writer.includes('const first=reads.find((_,i)=>plan.commands[i].command.rawItemId===id)!'))return false;
   if(/\b(?:runTransaction|runInventoryWriterTransaction|executeRawInventoryCommand)\s*\(/.test(writer))return false;
   const caller=src('src/features/admin/orderItemStock.ts');
-  if(!has(caller,"import {prepareOrderRawReversal} from '../../shared/services/orderRawReversalTransaction'",'const applyItemStockDeltas = async','orderMutation.expectedOrderText','orderRawBatchOrderEvidence(order)','assertActor(generation)','assertOrderInventoryGeneration(order,generation)','snapshots.some(snapshot=>snapshot.data()?.companyId!==generation.companyId)','assertReservationExecution(reservation','const rawPrepared=fixedRawReversal?await prepareOrderRawReversal(tx,db,fixedRawReversal','await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)','rawPrepared?.write()'))return false;
-  if(!(caller.indexOf('assertReservationExecution(reservation',caller.indexOf('const applyItemStockDeltas = async'))<caller.indexOf('const rawPrepared=fixedRawReversal')&&caller.indexOf('await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)')<caller.indexOf('rawPrepared?.write()')))return false;
+  if(!has(caller,"import {prepareOrderRawReversal} from '../../shared/services/orderRawReversalTransaction'",'const applyItemStockDeltas = async','orderMutation.expectedOrderText','orderRawBatchOrderEvidence(order)','assertActor(generation)','assertOrderInventoryGeneration(order,generation)','snapshots.some(snapshot=>snapshot.data()?.companyId!==generation.companyId)','assertReservationExecution(reservation','const rawPrepared=activeRawReversal?await prepareOrderRawReversal(tx,db,activeRawReversal','await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)','rawPrepared?.write()'))return false;
+  if(!(caller.indexOf('assertReservationExecution(reservation',caller.indexOf('const applyItemStockDeltas = async'))<caller.indexOf('const rawPrepared=activeRawReversal')&&caller.indexOf('await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)')<caller.indexOf('rawPrepared?.write()')))return false;
   const callerFile=file('src/features/admin/orderItemStock.ts');let owner:ts.VariableDeclaration|undefined;const ownerWalk=(n:ts.Node)=>{if(ts.isVariableDeclaration(n)&&n.name.getText(callerFile)==='applyItemStockDeltas')owner=n;ts.forEachChild(n,ownerWalk);};ownerWalk(callerFile);if(!owner?.initializer)return false;
-  let transaction:ts.CallExpression|undefined;const txWalk=(n:ts.Node)=>{if(ts.isCallExpression(n)&&n.expression.getText(callerFile)==='runInventoryWriterTransaction'&&n.getText(callerFile).includes('const rawPrepared=fixedRawReversal'))transaction=n;ts.forEachChild(n,txWalk);};txWalk(owner.initializer);
+  let transaction:ts.CallExpression|undefined;const txWalk=(n:ts.Node)=>{if(ts.isCallExpression(n)&&n.expression.getText(callerFile)==='runInventoryWriterTransaction'&&n.getText(callerFile).includes('const rawPrepared=activeRawReversal'))transaction=n;ts.forEachChild(n,txWalk);};txWalk(owner.initializer);
   if(!transaction||!ts.isArrowFunction(transaction.arguments[2]))return false;const callback=transaction.arguments[2].body.getText(callerFile);
-  if(!has(callback,'assertReservationExecution(reservation','const rawPrepared=fixedRawReversal?await prepareOrderRawReversal','await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)','rawPrepared?.write()'))return false;
+  if(!has(callback,'assertReservationExecution(reservation','const rawPrepared=activeRawReversal?await prepareOrderRawReversal','await prepareCatalogOrderCommit(db,tx,current.order.id,current.order,patch)','rawPrepared?.write()'))return false;
+  if(!has(callback,"if(groupHandle){if(groupHandle.state!=='prepared')",'readRawReverseGroup(tx,db,groupHandle)','group.write();rawPrepared?.writeJob()','else rawPrepared?.write()')||!validPermitWriter(src(permitWriter),src('firestore.rules')))return false;
   if(!has(generation,'companyId:order.companyId!','sameOrderInventoryGeneration(generationFromOrder(order),generation)'))return false;
   const rules=src('firestore.rules');if(!has(rules,'match /{collection}/{document=**}','&& createUpdateOk()','&& rawWriterOk(collection)','&& fullEffectWriteOk(collection)'))return false;
   const count=roots.flatMap(sourceFiles).flatMap(path=>{const content=sources[path]??readFileSync(path,'utf8'),f=ts.createSourceFile(path,content,ts.ScriptTarget.Latest,true,path.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS),out:string[]=[],names=new Set(['prepareOrderRawReversal']);for(const statement of f.statements)if(ts.isImportDeclaration(statement)&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings))for(const entry of statement.importClause.namedBindings.elements)if((entry.propertyName?.text??entry.name.text)==='prepareOrderRawReversal')names.add(entry.name.text);const visit=(n:ts.Node)=>{if(ts.isCallExpression(n)&&names.has(n.expression.getText(f)))out.push(path);ts.forEachChild(n,visit);};visit(f);return out;});
@@ -127,6 +138,8 @@ describe('회사 쓰기 공통 경계 우회 방지', () => {
       if (allowed.has(path)) return false;
       const source = readFileSync(path, 'utf8');
       if(path===rawWriter)return !validRawReversal(readRawSources());
+      if(path===permitWriter)return !validPermitWriter(source,readFileSync('firestore.rules','utf8'));
+      if(path===projectWriter)return !validProjectWriter(source);
       if(audited.includes(path as typeof audited[number]))return !validBoundary(path,source);
       const firestoreImports = [...source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*['"]firebase\/firestore['"]/g)]
         .map(match => match[1]);
@@ -157,8 +170,13 @@ describe('회사 쓰기 공통 경계 우회 방지', () => {
       [rawWriter,'assertLegacyReversalAuthority(snap.data())','void snap.data()'],
       [rawWriter,'{...first.stateSnap.data(),...p.state}','{...p.state}'],
       [rawWriter,'tx.set(jobRef,','tx.set(extraRef, {});tx.set(jobRef,'],
+      [permitWriter,'p.companyId!==handle.request.companyId','false'],
+      [permitWriter,'codec.text(s.exists()?s.data():null)!==codec.text(e.before)','false'],
+      [permitWriter,"tx.update(receiptRef,{state:'applied'})","tx.update(otherRef,{state:'applied'})"],
+      ['src/features/admin/orderItemStock.ts','group.write();rawPrepared?.writeJob()','rawPrepared?.writeJob()'],
       ['src/features/admin/orderItemStock.ts','const applyItemStockDeltas = async','const unrelated = () => prepareOrderRawReversal(tx,db,plan,ids);\n  const applyItemStockDeltas = async'],
     ];
     for(const [path,before,after] of mutants){expect(sources[path]).toContain(before);expect(validRawReversal({...sources,[path]:sources[path].replace(before,after)}),path+' '+before).toBe(false);}
   });
+  it('프로젝트 거래 예외는 직원·회사와 요청 원문을 검사하며 추가 write를 허용하지 않는다',()=>{const source=readFileSync(projectWriter,'utf8');expect(validProjectWriter(source)).toBe(true);for(const [before,after] of [['employee.companyId !== scope.companyId','false'],['request.actorUid !== scope.actorUid','false'],['tx.set(receiptRef, receipt)','tx.set(otherRef, receipt)']]){expect(source).toContain(before);expect(validProjectWriter(source.replace(before,after))).toBe(false);}expect(validProjectWriter(source.replace('tx.set(receiptRef, receipt)','tx.set(otherRef, {}); tx.set(receiptRef, receipt)'))).toBe(false);});
 });

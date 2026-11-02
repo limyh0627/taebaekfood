@@ -1,6 +1,7 @@
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { inventoryDocId, operationDocId, legacyOperationDocId } from '../../shared/rawInventoryCore';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../shared/firebase',()=>({auth:{currentUser:null},authReady:Promise.resolve()}));
 import { OrderStatus, type Order, type Item } from '../../shared/types';
 import { cancellationEvidence, planOrderCancellation, prepareCancelledItem, prepareOrderInventoryCancellation, executeOrderInventoryCancellation, readOrderCancellationReceipt } from './orderInventoryCancellation';
 
@@ -49,7 +50,7 @@ vi.mock('firebase/firestore', () => {
     }
     throw new Error('동시 변경 재시도 초과');
   };
-  return { doc, getDoc, runTransaction };
+  return { doc, getDoc, getDocFromServer:getDoc, runTransaction };
 });
 
 const order = (patch: Partial<Order> = {}): Order => ({ id: 'o', companyId: 'taebaek', partnerName: '거래처',

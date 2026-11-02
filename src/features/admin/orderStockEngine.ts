@@ -121,6 +121,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     applyItemStockDeltas,
   } = createOrderItemStockOperations({ db, allItems, bomIndex: inputs.bom,getActorUid:deps.getActorUid??(()=>actorAuth?.currentUser?.uid) });
   const generationOf=(order:Order)=>generationFromOrder(order);
+  const requireLegacyOrder=(order:Order)=>{if(Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))throw Error('이 주문은 부분 생산 방식으로 관리됩니다. 주문의 생산·출고 작업에서 다시 확인해 주세요.');};
   const readConfirmedGen0Order=async(orderId:string)=>{const snap=await getDocFromServer(doc(db,'orders',orderId));if(snap.metadata?.fromCache!==false||snap.metadata?.hasPendingWrites!==false)throw Error('서버에서 확정된 원주문을 확인할 수 없어 자동 재생산하지 않았습니다.');return snap;};
   const retireRetainedRequestBeforeClaim=deps.retireRetainedRequestBeforeClaim??(async(order:Order)=>(await import('../../shared/services/orderRequestRetirementService')).retireRetainedOrderRequestBeforeClaim(order));
   const expectedRecordIndex=async(generation:OrderInventoryGeneration,fallback:Order['productionRecordIndex'])=>{
@@ -333,11 +334,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     inventoryOperationId?: string,
     completionPatch?: Record<string, unknown>,
     onStage?:(stage:NonNullable<Order['inventoryOperation']>['stage'])=>void,
+    recovery?:{actorUid:string;now:string;after:Order},
   ) => {
+    requireLegacyOrder(order);
     const generation=generationOf(order);
     const initialRecordIndex=order.productionRecordIndex===undefined?undefined:plain(order.productionRecordIndex);
     await ensureGenerationActor(generation);
-    const capturedAt=fixedTime(order);
+    const capturedAt=recovery?.now??fixedTime(order);
     if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = !isStockProduction(order) && STATUS_WANT_SHIPPED.has(target);
@@ -398,6 +401,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       }
     }
     const reservationContext = reservation ?? orderStockReservationCleanup(order, reservationExtraItemIds);
+    if(recovery)reservationContext.recoveryActorUid=recovery.actorUid;
     let stockCommitted = false;
     let inventoryMayHaveChanged = false;
     let rawReversal:ReturnType<typeof buildOrderRawReversalPlan>;
@@ -423,7 +427,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
         if (order.itemInventory) {
           const reversedAt = new Date().toISOString();
-          patch.itemInventory = Object.fromEntries(Object.entries(order.itemInventory).map(([lineId, state]) => [
+          patch.itemInventory = recovery?.after.itemInventory??Object.fromEntries(Object.entries(order.itemInventory).map(([lineId, state]) => [
             lineId, state.applied ? { ...state, applied: false, reversedAt } : state,
           ]));
         }
@@ -597,12 +601,14 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     let stockCommitted = false;
     let claimed = false;
     let live: Order | undefined;
+    let resumeLegacyReverse=false;
     let operationGeneration:OrderInventoryGeneration|null=null;
     let failureStage: NonNullable<Order['inventoryOperation']>['stage'] = 'claim';
     try {
       const cached = allOrders.find(order => order.id === id) || orders.find(order => order.id === id);
       live = await getFreshOrder(id, true) ?? cached;
       if (!live) throw new Error('주문 정보를 확인할 수 없어 품목 작업을 저장할 수 없습니다.');
+      requireLegacyOrder(live);
 
       let nextItems = ensureOrderLineIds(requestedItems);
       const after = nextItems[itemIndex];
@@ -617,6 +623,32 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const beforeClaim=initialItems[itemIndex];
       if(!beforeClaim||beforeClaim.itemId!==after.itemId||beforeClaim.lineId!==after.lineId)throw Error('주문 품목 순서가 이미 변경되었습니다.');
       const existing=live.inventoryOperation;
+      const recoveryUid=(deps.getActorUid??(()=>actorAuth?.currentUser?.uid))();
+      const recoveryKey=recoveryUid?'raw-reverse-group-v1:'+companyOf(live)+':'+encodeURIComponent(recoveryUid)+':order-reversal:'+encodeURIComponent(id):'';
+      if(!applying&&typeof localStorage!=='undefined'&&typeof localStorage.key==='function'){
+        const prefix='raw-reverse-group-v1:'+companyOf(live)+':',suffix=':order-reversal:'+encodeURIComponent(id);
+        for(let index=0;index<localStorage.length;index++){const key=localStorage.key(index);if(key?.startsWith(prefix)&&key.endsWith(suffix)&&key!==recoveryKey)throw new OrderReservationExecutionConflictError('이전 원료 요청의 계정 또는 화면 상태를 확인해 주세요.');}
+      }
+      if(!applying&&recoveryKey&&typeof localStorage!=='undefined'&&localStorage.getItem(recoveryKey)){
+        const helper=await import('../../shared/services/rawReverseGroupPermit');
+        let retained:Awaited<ReturnType<typeof helper.recoverRawReverseGroup>>;
+        try{retained=await helper.recoverRawReverseGroup(companyOf(live),'order-reversal',id,{assertScope:async()=>{if(deps.getActorUid?.()!==recoveryUid)throw Error('화면 또는 계정이 변경되었습니다.');}});}catch{throw new OrderReservationExecutionConflictError('이전 원료 묶음의 계정과 상태를 확인할 수 없어 최초 요청과 예약을 보존했습니다.');}
+        if(retained){
+          const snapshot=await getDocFromServer(doc(db,'orders',id)),codec=helper.rawGroupCodec(db),afterText=retained.request.business.afterNativeText;
+          if(!snapshot.exists()||typeof afterText!=='string')throw new OrderReservationExecutionConflictError('이전 원료 묶음의 주문 원문을 확인하지 못했습니다.');
+          const afterOrder=codec.decode(afterText) as Order;
+          if(rawPressText(ensureOrderLineIds(afterOrder.items))!==rawPressText(nextItems))throw new OrderReservationExecutionConflictError('이전 원료 묶음과 선택한 주문 품목이 다릅니다.');
+          if(retained.state==='applied'){
+            const beforeOrder=codec.decode(retained.request.business.beforeNativeText) as Order,prior=beforeOrder.itemInventory?.[lineId],originalNow=retained.request.commands[0]?.options.now;
+            const originalPlan=prior&&originalNow?buildOrderRawReversalPlan({order:{...beforeOrder,id,items:[after],rawConsumedLots:prior.rawConsumedLots,rawInventoryAttempt:prior.attempt},lineId,allItems,actorName,effectiveAt:originalNow}):null;
+            const job=originalPlan?await getDocFromServer(doc(db,'rawInventoryJobs',originalPlan.jobId)):null,data=job?.data();
+            if(codec.text(snapshot.data())!==afterText||!job?.exists()||data?.id!==originalPlan?.jobId||data?.companyId!==retained.request.companyId||data?.source?.type!=='production-reversal'||data?.source?.id!==id||data?.status!=='complete'||data?.createdAt!==originalNow||data?.completedAt!==originalNow||rawPressText(data?.expectedOperationIds)!==rawPressText(retained.request.commands.map(row=>row.command.operationId)))throw new OrderReservationExecutionConflictError('완료된 주문 또는 원료 작업 원문이 달라 확인이 필요합니다.');
+            if(deps.getActorUid?.()!==recoveryUid)throw new OrderReservationExecutionConflictError('최초 계정 또는 화면 상태가 변경되었습니다.');helper.clearRawReverseGroup(retained);return;
+          }
+          if(retained.state!=='prepared'||codec.text(snapshot.data())!==retained.request.business.beforeNativeText||existing?.state!=='processing'||existing.kind!=='line'||existing.lineId!==lineId||existing.startedAt!==retained.request.commands[0]?.options.now)throw new OrderReservationExecutionConflictError('이전 주문 작업과 원료 묶음의 최초 원문이 다릅니다.');
+          resumeLegacyReverse=true;
+        }
+      }
       const blockedExisting=existing?.state==='processing'||(existing?.state==='failed'&&!canResumeFailedInventoryOperation(existing,{kind:'line'} as NonNullable<Order['inventoryOperation']>));
       const referenceToken=!existing?(approvedReferenceToken??deps.referenceGuard?.capture()):undefined;
       const newSendGuard=referenceToken?{assertBeforeNewSend:()=>deps.referenceGuard?.assertCurrent(referenceToken)}:undefined;
@@ -627,16 +659,16 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         const checked=initialItems.map((item,index)=>({item:index===itemIndex?after:item,index})).filter(row=>row.item.checked&&!live!.itemInventory?.[row.item.lineId!]?.applied);
         if(checked.length)await preflightProduction(live,checked,plan,itemIndex);
       }
-      let now = new Date().toISOString();
-      let operationId = `order-line-${id}-${lineId}-${Date.now()}`;
+      let now = resumeLegacyReverse?existing!.startedAt:new Date().toISOString();
+      let operationId = resumeLegacyReverse?existing!.id:`order-line-${id}-${lineId}-${Date.now()}`;
       const operation = {
         id: operationId, kind: 'line' as const, lineId, stage: 'claim' as const,
         targetStatus: nextStatus, state: 'processing' as const, startedAt: now, actor: actorName ?? '미기록',
       };
       newSendGuard?.assertBeforeNewSend();
-      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation, newSendGuard);
+      if(!resumeLegacyReverse){if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation, newSendGuard);
       else await updateItem('orders', id, { inventoryOperation: operation });
-      if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;
+      if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;}
       claimed = true;
       const operationOrder = live;
       const generation=generationOf(operationOrder);
@@ -710,7 +742,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           return preview;
         },
         extraItemIds,
-        { preserveOwnAllocation: applying,...(generation?{generation}:{}) },
+        { preserveOwnAllocation: applying,...(generation?{generation}:{}),...(resumeLegacyReverse?{resumeExisting:true,recoveryActorUid:recoveryUid}:{}) },
       );
 
       const deltas = new Map<string, number>();
@@ -832,6 +864,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       }
     } catch (error) {
       if(error instanceof OrderReservationExecutionConflictError)throw error;
+      if(resumeLegacyReverse&&!stockCommitted)throw new OrderReservationExecutionConflictError('기존 원료 묶음을 안전하게 재개하지 못해 최초 요청과 예약을 보존했습니다.');
       if (reservation && !stockCommitted) {
         try { await releaseOrderStockReservation(reservation); }
         catch (releaseError) { if(releaseError instanceof OrderReservationExecutionConflictError)throw releaseError;console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
@@ -857,6 +890,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   const prepareOrderStatusChange = async (id: string, status: OrderStatus): Promise<PreparedOrderStatusChange | undefined> => {
     const order = await getFreshOrder(id, true);
     if (!order) return undefined;
+    requireLegacyOrder(order);
     await reviewPreviousClaim(order);
     const referenceToken=deps.referenceGuard?.capture();
     if(referenceToken)deps.referenceGuard?.assertCurrent(referenceToken);
@@ -870,18 +904,34 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     if (inFlightOrders.has(id)) return;
     inFlightOrders.add(id);
     try {
-      const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+      let order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+      if (!order) order = await getFreshOrder(id, true);
       if (!order) {
         if (isWorkCompletedState(status)) throw new Error('주문 정보를 확인할 수 없어 작업완료 상태로 변경할 수 없습니다.');
-        await updateItem('orders', id, { status });
-        return;
+        throw new Error('주문 정보를 확인할 수 없어 상태를 변경할 수 없습니다.');
       }
+      requireLegacyOrder(order);
       // producedAt·shippedOut은 DB에서 다시 읽는다 — React 상태는 같은 틱에 갱신되지 않아
       // 직전 호출이 이미 생산했는지 알 수 없다.
-      let live = await getFreshOrder(id, !!context.approvedPlan) ?? order;
+      let live = await getFreshOrder(id, true) ?? order;
+      requireLegacyOrder(live);
       await reviewPreviousClaim(live);
       if(await retireRetainedRequestBeforeClaim(live)==='archived-only'){await getFreshOrder(id,true);return;}
       if(await confirmCompletedAtomicRaw(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
+      let recovery:{actorUid:string;now:string;after:Order}|undefined;
+      let recoveryAudit:OrderStatusAudit|undefined;
+      const recoveryUid=(deps.getActorUid??(()=>actorAuth?.currentUser?.uid))(),recoveryPrefix='raw-reverse-group-v1:'+companyOf(live)+':',recoverySuffix=':order-reversal:'+encodeURIComponent(id),recoveryKey=recoveryUid?recoveryPrefix+encodeURIComponent(recoveryUid)+recoverySuffix:'';
+      if(typeof localStorage!=='undefined'&&typeof localStorage.key==='function')for(let index=0;index<localStorage.length;index++){const key=localStorage.key(index);if(key?.startsWith(recoveryPrefix)&&key.endsWith(recoverySuffix)&&key!==recoveryKey)throw new OrderReservationExecutionConflictError('이전 원료 요청의 계정 또는 화면 상태를 확인해 주세요.');}
+      if(recoveryKey&&typeof localStorage!=='undefined'&&localStorage.getItem(recoveryKey)){
+        const helper=await import('../../shared/services/rawReverseGroupPermit');let retained:Awaited<ReturnType<typeof helper.recoverRawReverseGroup>>;
+        try{retained=await helper.recoverRawReverseGroup(companyOf(live),'order-reversal',id,{assertScope:async()=>{if(deps.getActorUid?.()!==recoveryUid)throw Error('화면 또는 계정이 변경되었습니다.');}});}catch{throw new OrderReservationExecutionConflictError('이전 원료 묶음의 계정과 상태를 확인할 수 없어 최초 요청을 보존했습니다.');}
+        if(retained){const codec=helper.rawGroupCodec(db),snapshot=await getDocFromServer(doc(db,'orders',id)),afterText=retained.request.business.afterNativeText;if(!snapshot.exists()||typeof afterText!=='string')throw new OrderReservationExecutionConflictError('이전 주문 원문을 확인하지 못했습니다.');const after=codec.decode(afterText) as Order,before=codec.decode(retained.request.business.beforeNativeText) as Order,now=retained.request.commands[0]?.options.now;
+          if(after.status!==status||!now||Object.entries(context.orderPatch??{}).some(([key,value])=>rawPressText((after as any)[key])!==rawPressText(value)))throw new OrderReservationExecutionConflictError('이전 상태 변경과 현재 선택이 다릅니다.');
+          if(retained.state==='applied'){const rawConsumedLots=before.inventorySnapshots?.production?.rawConsumedLots??before.rawConsumedLots,originalPlan=buildOrderRawReversalPlan({order:{...before,id,rawConsumedLots},allItems,actorName,effectiveAt:now}),job=originalPlan?await getDocFromServer(doc(db,'rawInventoryJobs',originalPlan.jobId)):null,data=job?.data(),originalOperation=before.inventoryOperation,audit=originalOperation?await getDocFromServer(doc(db,'orderStatusAudits',originalOperation.id)):null,auditData=audit?.data();if(codec.text(snapshot.data())!==afterText||!job?.exists()||data?.id!==originalPlan?.jobId||data?.companyId!==retained.request.companyId||data?.source?.type!=='production-reversal'||data?.source?.id!==id||data?.status!=='complete'||data?.createdAt!==now||data?.completedAt!==now||rawPressText(data?.expectedOperationIds)!==rawPressText(retained.request.commands.map(row=>row.command.operationId))||!audit?.exists()||auditData?.id!==originalOperation?.id||auditData?.companyId!==retained.request.companyId||auditData?.orderId!==id||auditData?.state!=='completed'||auditData?.approvedAt!==originalOperation?.startedAt||auditData?.approvedBy!==originalOperation?.actor||auditData?.previousStatus!==before.status||auditData?.nextStatus!==status)throw new OrderReservationExecutionConflictError('완료된 주문·원료 작업 또는 감사 원문이 다릅니다.');if(deps.getActorUid?.()!==recoveryUid)throw new OrderReservationExecutionConflictError('최초 계정 또는 화면 상태가 변경되었습니다.');helper.clearRawReverseGroup(retained);return;}
+          const operation=live.inventoryOperation;if(retained.state!=='prepared'||generationOf(live)||codec.text(snapshot.data())!==retained.request.business.beforeNativeText||operation?.state!=='processing'||operation.kind!=='status'||operation.targetStatus!==status)throw new OrderReservationExecutionConflictError('이전 주문 작업과 원료 묶음의 최초 원문이 다릅니다.');
+          const audit=await getDocFromServer(doc(db,'orderStatusAudits',operation.id)),auditData=audit.data();if(!audit.exists()||auditData?.id!==operation.id||auditData?.companyId!==retained.request.companyId||auditData?.orderId!==id||auditData?.state!=='processing'||auditData?.approvedAt!==operation.startedAt||auditData?.approvedBy!==operation.actor||auditData?.previousStatus!==before.status||auditData?.nextStatus!==status||(context.approvedAt!==undefined&&context.approvedAt!==operation.startedAt)||(context.approvedBy!==undefined&&context.approvedBy!==operation.actor))throw new OrderReservationExecutionConflictError('이전 상태 작업의 감사 원문이 다릅니다.');if(deps.getActorUid?.()!==recoveryUid)throw new OrderReservationExecutionConflictError('최초 계정 또는 화면 상태가 변경되었습니다.');recoveryAudit=auditData as OrderStatusAudit;recovery={actorUid:recoveryUid!,now,after};
+        }
+      }
       if (live.status === status) {
         await updateItem('orders', id, { status });
         return;
@@ -909,14 +959,14 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         return;
       }
       if(STATUS_WANT_PRODUCED.has(status)&&!live.producedAt&&live.inventoryOperation?.state!=='failed'&&live.inventoryOperation?.state!=='processing')await preflightProduction(live,live.items.map((item,index)=>({item,index})),plan);
-      let approvedAt = context.approvedAt ?? new Date().toISOString();
-      const approvedBy = context.approvedBy ?? actorName ?? '미기록';
-      let auditId = `order-status-${id}-${Date.now()}`;
+      let approvedAt = recovery?live.inventoryOperation!.startedAt:context.approvedAt ?? new Date().toISOString();
+      const approvedBy = recovery?live.inventoryOperation!.actor:context.approvedBy ?? actorName ?? '미기록';
+      let auditId = recovery?live.inventoryOperation!.id:`order-status-${id}-${Date.now()}`;
       const operation = { id: auditId, kind: 'status' as const, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
       newSendGuard?.assertBeforeNewSend();
-      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation,newSendGuard);
-      else await updateItem('orders', id, { inventoryOperation: operation });
-      if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
+      if (!recovery&&claimOrderOperation) live = await claimOrderOperation(id, live.status, operation,newSendGuard);
+      else if(!recovery)await updateItem('orders', id, { inventoryOperation: operation });
+      if(!recovery&&claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
       const generation=generationOf(live);
       await ensureGenerationActor(generation);
       if(generation){approvedAt=generation.startedAt;auditId=generation.operationId;}
@@ -925,23 +975,24 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         const approvedRows = JSON.stringify(context.approvedPlan.adjustments);
         const latestRows = JSON.stringify(latestPlan.adjustments);
         if (live.status !== context.approvedFromStatus || context.approvedPlan.legacyEvidenceWarning !== latestPlan.legacyEvidenceWarning || approvedRows !== latestRows) {
+          if(recovery)throw new OrderReservationExecutionConflictError('이전 상태 변경의 승인 계획이 달라 최초 요청을 보존했습니다.');
           if(generation)await clearOrderInventoryGeneration(generation,{mode:'pre-reservation-noop'});else await updateItem('orders', id, { inventoryOperation: null });
           throw new Error('승인 후 주문 상태 또는 재고 원복 계획이 변경되었습니다. 다시 확인해 주세요.');
         }
       }
       let result: { patch: Partial<Order>; stockAdjustments: { itemId: string; delta: number }[]; orderCommitted?: boolean } = { patch: {}, stockAdjustments: [] };
-      const initialAudit: OrderStatusAudit = {
+      const initialAudit: OrderStatusAudit = recoveryAudit??{
         id: auditId, orderId: id, partnerName: live.partnerName, previousStatus: live.status, nextStatus: status,
         approvedBy, approvedAt, state: 'processing', legacyEvidenceWarning: !!context.approvedPlan?.legacyEvidenceWarning,
         stockAdjustments: context.approvedPlan?.adjustments.map(({ itemId, name, unit, delta }) => ({ itemId, name, unit, delta })) ?? [],
       };
       let statusFailureStage:NonNullable<Order['inventoryOperation']>['stage']='claim';
       try {
-        await addItem('orderStatusAudits', initialAudit);
+        if(!recovery)await addItem('orderStatusAudits', initialAudit);
         // 같은 상태 재저장만 재고를 건너뛴다. 예전 주문(DELIVERED)도 실제로 역행시키면
         // 출고·생산 스냅샷을 따라 반드시 원복돼야 한다.
         if (live.status !== status) result = await reconcileOrderStock(live, status, plan, true, generation?.operationId??operation.id,
-          { ...context.orderPatch, status, inventoryOperation: null },stage=>{statusFailureStage=stage;});
+          { ...context.orderPatch, status, inventoryOperation: null },stage=>{statusFailureStage=stage;},recovery);
       // 배송완료일은 **여기서 만들어 넣지 않는다.** 서류 네 종의 유일한 기준일이라,
       // '지금 시각'으로 채우면 새벽에 처리한 건이 다음 날짜로 새서 서류가 갈린다.
       // 판매기록부를 뽑는 쪽이 서류 날짜로 미리 박아 준다. 비어 있으면 알림으로 드러낸다.
@@ -963,6 +1014,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         await addItem('orderStatusAudits', { ...initialAudit, state: 'completed', completedAt: new Date().toISOString(), stockAdjustments: namedAdjustments });
       } catch (error) {
         if(error instanceof OrderReservationExecutionConflictError)throw error;
+        if(recovery&&!result.orderCommitted)throw new OrderReservationExecutionConflictError('이전 상태 작업을 재개하지 못해 최초 요청을 보존했습니다.');
         if (result.orderCommitted) { console.error(`[완료된 주문 후속 기록 실패] ${id}`, error); return; }
         const message = error instanceof Error ? error.message : String(error);
         if(generation)await markOrderInventoryGenerationFailed(generation,message,statusFailureStage);else await updateItem('orders', id, { inventoryOperation: error instanceof OrderInventoryPreconditionError && error.inventoryUnchanged
@@ -975,13 +1027,15 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     }
   };
 
-  const prepareOrderCancellation = (id: string, companyId: ReturnType<typeof import('../../shared/types').companyOf>, action: CancellationAction) =>
-    prepareOrderInventoryCancellation(db, id, companyId, action);
+  const prepareOrderCancellation = async (id: string, companyId: ReturnType<typeof import('../../shared/types').companyOf>, action: CancellationAction) => {
+    const order=await getFreshOrder(id,true);if(!order)throw Error('주문 정보를 확인할 수 없습니다.');requireLegacyOrder(order);
+    return prepareOrderInventoryCancellation(db, id, companyId, action);
+  };
   const executeOrderCancellation = async (ticket: CancellationTicket) => {
     if (inFlightOrders.has(ticket.orderId)) return { status: 'blocked' as const, operationId: ticket.operationId,
       code: 'OTHER_INVENTORY_OPERATION', affectedItemIds: [], inventoryApplied: 'none' as const, retryable: true, deleted: false };
     inFlightOrders.add(ticket.orderId);
-    try { return await executeOrderInventoryCancellation(db, ticket, actorName); }
+    try { const order=await getFreshOrder(ticket.orderId,true);if(!order)throw Error('주문 정보를 확인할 수 없습니다.');requireLegacyOrder(order);return await executeOrderInventoryCancellation(db, ticket, actorName); }
     finally { inFlightOrders.delete(ticket.orderId); }
   };
   const readOrderCancellation = (ticket: CancellationTicket) => readOrderCancellationReceipt(db, ticket);

@@ -520,3 +520,56 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     expect((await issue({ ...input('stmt-13'), statement: discounted, orderIds: [] })).status).toBe('applied');
   });
 });
+
+const sdk8382 = /^(?:127\.0\.0\.1|localhost):8382$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '');
+describe.skipIf(!sdk8382)('부분 주문 전표 원문 증명 SDK', () => {
+  it.each(['legacy','exact','missing','revision','items','company','partner','extra','omitted','null','race','history'] as const)('%s', async scenario => {
+    const { createRequire } = await import('node:module');
+    const sdk: typeof import('firebase-admin') = createRequire(process.cwd() + '/functions/package.json')('firebase-admin');
+    const uid = randomUUID(), project = `demo-trade-proof-${uid}`;
+    const isolated = sdk.initializeApp({projectId:project}, project), store = sdk.firestore(isolated);
+    const id = `proof-${uid}`, orderId = `order-${uid}`, sentinel = store.collection('sentinels').doc(uid);
+    const row = {companyId:'taebaek',partnerId:'p1',invoicePrinted:false,items:[{lineId:'line',itemId:'i1',quantity:1}],orderProductionRefsV1:{version:1,rootOrderId:orderId,revision:1,lines:[{lineId:'line',completedQty:1}],activeAssignmentIds:[]}};
+    const proof = {version:1,orders:[{orderId,companyId:'taebaek',partnerId:'p1',splitRevision:1,itemsText:JSON.stringify(row.items)}]};
+    const body = {...statement(id),orderId,orderSourceProofV1:proof};
+    const request = {...input(id),orderIds:[orderId],statement:body};
+    if(scenario==='legacy'){delete (row as any).orderProductionRefsV1;delete (body as any).orderSourceProofV1;}
+    if(scenario==='missing')delete (body as any).orderSourceProofV1;
+    if(scenario==='revision')proof.orders[0].splitRevision=0;
+    if(scenario==='items')proof.orders[0].itemsText=JSON.stringify([{itemId:'i1',quantity:2}]);
+    if(scenario==='company')proof.orders[0].companyId='punghoe';
+    if(scenario==='partner')proof.orders[0].partnerId='other';
+    if(scenario==='extra')proof.orders.push({...proof.orders[0],orderId:'extra'});
+    if(scenario==='omitted')proof.orders=[];
+    if(scenario==='null')(row as any).orderProductionRefsV1=null;
+    const identity=statementIssueIdentity('taebaek','auth-user',request);
+    const writes=[sentinel,store.collection('partners').doc('p1'),store.collection('accountCodes').doc('sale'),store.collection('orders').doc(orderId),store.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`),store.collection('appMeta').doc('releaseCutover'),store.collection('issuedStatements').doc(id),statementIssueRef(store,identity)];
+    const readOnly=[statementIssueRef(store,{companyId:'punghoe',operationId:request.operationId}),store.collection('cashEntries').doc(id)];
+    try {
+      expect((await Promise.all([...writes,...readOnly].map(ref=>ref.get()))).every(s=>!s.exists)).toBe(true);
+      await sentinel.set({uid,namespace:project});
+      const sent=await sentinel.get();
+      await Promise.all([writes[1].set({companyId:'taebaek',name:'거래처'}),writes[2].set({companyId:'taebaek',code:'800'}),writes[3].set(row),writes[4].set({companyId:'taebaek',tradeDate:date,prefix:'',last:0}),writes[5].set({status:'active',releaseId,voucherNotBefore:{taebaek:date}})]);
+      if(scenario==='race')await writes[3].update({'orderProductionRefsV1.revision':2,'items':[{lineId:'line',itemId:'i1',quantity:2}]});
+      const run=()=>issueTradeStatement(store,'taebaek','auth-user',request);
+      if(['legacy','exact','history'].includes(scenario)){
+        const first=await run();expect(first.status).toBe('applied');
+        if(scenario==='history')await writes[3].update({'orderProductionRefsV1.revision':2});
+        expect(await run()).toEqual({...first,status:'duplicate'});
+        await expect(issueTradeStatement(store,'taebaek','auth-user',{...request,statement:{...body,orderSourceProofV1:{...proof,orders:[]}}})).rejects.toThrow();
+      } else {
+        await expect(run()).rejects.toThrow();
+        expect((await writes[6].get()).exists).toBe(false);
+        expect((await writes[4].get()).get('last')).toBe(0);
+        expect((await writes[3].get()).get('linkedStatementId')).toBeUndefined();
+        expect((await readOnly[1].get()).exists).toBe(false);
+      }
+      const after=await sentinel.get();expect(after.data()).toEqual({uid,namespace:project});expect(after.updateTime!.isEqual(sent.updateTime!)).toBe(true);
+    } finally {
+      await Promise.all(writes.map(ref=>ref.delete()));
+      expect((await Promise.all(writes.map(ref=>ref.get()))).every(s=>!s.exists)).toBe(true);
+      expect((await Promise.all(readOnly.map(ref=>ref.get()))).every(s=>!s.exists)).toBe(true);
+      await isolated.delete();
+    }
+  },30000);
+});

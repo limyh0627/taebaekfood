@@ -15,7 +15,7 @@ const snap = (data: any) => ({exists: () => data !== null, data: () => data});
 function fixture(kind: string, originalKind?: string, item = true) {
   const read: any = {stateRef:'state',movementRef:'movement',guardRef:'guard',itemRef:'item',stateSnap:snap({revision:3}),movementSnap:snap(null),guardSnap:snap(null),itemSnap:snap(item ? {inventoryRevision:5} : null),originalSnap:originalKind ? snap({kind:originalKind}) : null,oldOriginalSnap:null};
   const result: any = {status:'applied',state:{activeLots:[{id:'a', optional:undefined}],recentDepletedLots:[{id:'b'}],stockKg:3},movement:{kind, effectiveAt:'2026-10-28',materialSnapshot:'원료',reportedDeltaKg:-2, extra:undefined},guard:{operationId:'x', unused:undefined}};
-  return {read,result,command:{kind}};
+  return {read,result,command:{kind,source:{type:'reversal',id:'order'}}};
 }
 function capture(writer: any, f: any, options: any = {}) {
   const writes: any[] = []; const tx = {set:(...args:any[])=>writes.push(['set',...args]),update:(...args:any[])=>writes.push(['update',...args])};
@@ -39,6 +39,11 @@ describe('이전 실제 writer payload 대조', () => {
     const old=[...capture(original,first),...capture(original,second)]; const current=[...capture(writePreparedRawCommand,first),...capture(writePreparedRawCommand,second)];
     expect(current).toEqual(old); expect(current.filter(x=>x[1]==='movement')).toHaveLength(2); expect(current.filter(x=>x[1]==='state').at(-1)).toEqual(old.filter(x=>x[1]==='state').at(-1));
   });
+});
+describe('현재 원주문 보호 경계',()=>{
+  const valid=()=>{const f=fixture('reverse','consume');f.command={...f.command,companyId:'taebaek',source:{type:'production',id:'order'}};f.read.originalSnap=snap({kind:'consume',companyId:'taebaek',source:{type:'production',id:'order'}});f.read.sourceOrderId='order';f.read.sourceOrderSnap=snap({companyId:'taebaek'});return f;};
+  it('검증된 원주문은 기존 payload 전체와 순서를 유지한다',()=>{const f=valid();expect(capture(writePreparedRawCommand,f)).toEqual(capture(original,f));});
+  it.each(['mismatch','missing','marker-null','marker-object','company'])('%s 근거는 쓰기 전 거절한다',mode=>{const f=valid();if(mode==='mismatch')f.command.source.id='other';if(mode==='missing')f.read.sourceOrderSnap=snap(null);if(mode==='marker-null')f.read.sourceOrderSnap=snap({companyId:'taebaek',orderProductionRefsV1:null});if(mode==='marker-object')f.read.sourceOrderSnap=snap({companyId:'taebaek',orderProductionRefsV1:{}});if(mode==='company')f.read.sourceOrderSnap=snap({companyId:'punghoe'});const writes:any[]=[];expect(()=>writePreparedRawCommand({set:(...v:any[])=>writes.push(v),update:(...v:any[])=>writes.push(v)} as any,f.command as any,f.read,f.result)).toThrow();expect(writes).toEqual([]);});
 });
 import { buildPreparedRawWritePlan } from './rawPreparedWritePlan';
 import { prepareRawCommand } from './rawInventoryPrepare';

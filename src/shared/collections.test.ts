@@ -88,7 +88,7 @@ const historicalCompatibilityCollections=()=>{
 
 describe('컬렉션 이름', () => {
   it('코드에 쓰인 이름이 모두 collections.ts 에 있다', () => {
-    const privateServer:Record<string,string>={helpChatUsage:'functions/src/helpChat.ts',rawManualCorrectionReceipts:'functions/src/rawManualCorrectionCommand.ts'};
+    const privateServer:Record<string,string>={helpChatUsage:'functions/src/helpChat.ts'};
     const 모름 = [...쓰는이름().entries()].filter(([n,files]) => !isKnownCollection(n)&&!(n in privateServer&&files.every(f=>f.replace(/\\/g,'/')===privateServer[n])));
     for(const [name,path] of Object.entries(privateServer)){expect(isKnownCollection(name)).toBe(false);expect(쓰는이름().get(name)?.map(f=>f.replace(/\\/g,'/'))).toContain(path);}
     const 글 = 모름.map(([n, fs]) => `  '${n}'  ←  ${[...new Set(fs)].join(', ')}`).join('\n');

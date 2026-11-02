@@ -13,10 +13,13 @@ import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../in
  */
 import { doc, getDoc, getDocFromServer, runTransaction, type Firestore } from 'firebase/firestore';
 import { COL } from '../collections';
+import { companyOf } from '../types';
 import { legacyOperationDocId, operationDocId, commandHash, type RawInventoryCommand, type RawInventoryJob, type RawApplyResult } from '../rawInventoryCore';
 import { executeRawInventoryCommand, type RawCommandOptions } from './rawInventoryService';
 import {protectInventoryWriterPatch} from '../inventoryWriterProtocol';
 import { normalizeRawMovement } from './rawInventoryService';
+
+const stableHistoryText=(value:unknown):string=>{if(value===null||typeof value!=='object')return JSON.stringify(value);if(Array.isArray(value))return '['+value.map(stableHistoryText).join(',')+']';const row=value as Record<string,unknown>;return '{'+Object.keys(row).sort().map(key=>JSON.stringify(key)+':'+stableHistoryText(row[key])).join(',')+'}';};
 
 export interface JobCommandInput {
   command: RawInventoryCommand;
@@ -68,10 +71,32 @@ export async function runRawInventoryJob(input: {
   }
 
   //  ① 진행표 준비. 같은 jobId 로 재실행하면 `processing` 이 그대로 이어진다.
+  let historical: JobCommandResult[] | null = null;
   const initial: RawInventoryJob = await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify({jobId:input.jobId,companyId:input.companyId,source:input.source,expected}),companyId:input.companyId,isStillCurrent:async()=>{await input.options?.assertScope?.();return true;}}), async tx => {
     await input.options?.assertScope?.();
+    historical = null;
+    const sourceOrder = input.source.type === 'production' || input.source.type === 'production-reversal' ? await tx.get(doc(database, COL.orders, input.source.id)) : null;
     const snap = await tx.get(jobRef);
     await input.options?.assertScope?.();
+    if (sourceOrder) {
+      if (!sourceOrder.exists() || companyOf(sourceOrder.data()) !== input.companyId) throw Error('원료 작업의 원주문과 회사를 확인할 수 없습니다.');
+      if (Object.prototype.hasOwnProperty.call(sourceOrder.data(), 'orderProductionRefsV1')) {
+        const saved = snap.exists() ? snap.data() as RawInventoryJob : null;
+        if (!saved || saved.status !== 'complete' || saved.companyId !== input.companyId || saved.source.type !== input.source.type || saved.source.id !== input.source.id || JSON.stringify(saved.expectedOperationIds) !== JSON.stringify(expected)) throw Error('부분 생산 주문은 기존 원료 작업으로 처리할 수 없습니다.');
+        const duplicates:JobCommandResult[]=[];
+        for (const row of input.commands) {
+          const modernId=operationDocId(row.command.operationId), legacyId=legacyOperationDocId(row.command.operationId);
+          const modern=await tx.get(doc(database,COL.rawMaterialLedger,modernId));
+          const legacy=legacyId===modernId?null:await tx.get(doc(database,COL.rawMaterialLedger,legacyId));
+          const records=[modern,legacy].filter((item):item is NonNullable<typeof item>=>!!item&&item.exists()).map(item=>normalizeRawMovement(item.data()!));
+          if (records.length>1 && records.some(record=>stableHistoryText(record)!==stableHistoryText(records[0]))) throw Error('기존 원료 이력이 서로 다릅니다.');
+          if (!records.length || records.some(record=>record.operationId!==row.command.operationId || record.companyId!==row.command.companyId || record.rawItemId!==row.command.rawItemId || record.source?.type!==row.command.source.type || record.source?.id!==row.command.source.id || record.commandHash!==commandHash(row.command))) throw Error('기존 원료 작업의 최초 이력을 확인할 수 없습니다.');
+          duplicates.push({input:row,result:{status:'duplicate',movement:records[0]}});
+        }
+        historical=duplicates;
+        return saved;
+      }
+    }
     if (snap.exists()) {
       const cur = snap.data() as RawInventoryJob;
       const 같은계약 = cur.companyId === input.companyId
@@ -97,6 +122,7 @@ export async function runRawInventoryJob(input: {
     return fresh;
   });
 
+  if (historical) return {job:initial,results:historical};
   const results: JobCommandResult[] = [];
   let job = initial;
 

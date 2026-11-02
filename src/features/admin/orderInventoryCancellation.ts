@@ -3,9 +3,10 @@ import {withOrderListProjection} from '../../shared/orderListProjection';
 import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
 import { cancellationEvidenceText } from '../../shared/orderCancellationEvidence';
 import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
-import { doc, getDoc, runTransaction, type Firestore, type Transaction } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, runTransaction, type Firestore, type Transaction } from 'firebase/firestore';
 import { readRawCommandInTransaction, prepareRawCommand, writePreparedRawCommand, normalizeRawMovement } from '../../shared/services/rawInventoryService';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
+import {operationDocId} from '../../shared/rawInventoryCore';
 import { cancellationRawCommands } from './orderRawInventory';
 import { OrderStatus, companyOf, type Order, type OrderInventorySnapshot, type Item } from '../../shared/types';
 
@@ -91,6 +92,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
   const orderRef = doc(db, 'orders', ticket.orderId);
   const auditRef = receiptRef(db, ticket);
   let claimedStartedAt: string | undefined;
+  let groupRetained = false;
   try {
     validateAction(ticket.action);
     if (!/^[a-f0-9]{64}$/.test(ticket.evidence) || ticket.operationId !== `order-cancellation-${ticket.action}-${ticket.orderId}-${ticket.evidence}`) block('CANCELLATION_TICKET_INVALID');
@@ -117,10 +119,26 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       tx.update(orderRef, protectInventoryWriterPatch(snap.data(),{ inventoryOperation: operation }));
       return operation;
     });
-    if (!claim) return completed(ticket);
+    if (!claim) {
+      if(typeof localStorage!=='undefined'){const helper=await import('../../shared/services/rawReverseGroupPermit'),prior=await helper.recoverRawReverseGroup(ticket.companyId,'order-cancel',ticket.orderId);if(prior?.state==='applied')helper.clearRawReverseGroup(prior);}
+      return completed(ticket);
+    }
     claimedStartedAt = claim.startedAt;
 
-    return await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(ticket),companyId:ticket.companyId}), async tx => {
+    let groupHandle:import('../../shared/services/rawReverseGroupPermit').RawGroupHandle|null=null;
+    const preflight=await getDocFromServer(orderRef);
+    if(preflight.exists()&&ticket.action==='delete'){
+      const order={...preflight.data(),id:ticket.orderId} as Order,plan=planOrderCancellation(order,ticket.action),commands=cancellationRawCommands(order,plan.rawOriginals,claim.startedAt,claim.actor);
+      if(commands.some(c=>c.kind==='reverse'&&(operationDocId(c.operationId).startsWith('op_long_')||operationDocId(c.originalOperationId).startsWith('op_long_')))){
+        groupRetained=true;
+        const helper=await import('../../shared/services/rawReverseGroupPermit');groupHandle=await helper.recoverRawReverseGroup(ticket.companyId,'order-cancel',ticket.orderId);
+        if(!groupHandle){const ordered=await runTransaction(db,async tx=>{const reads=await Promise.all(commands.map(command=>readRawCommandInTransaction(tx,db,command)));return commands.map((command,index)=>{const read=reads[index]!,original=read.originalSnap?.exists()?read.originalSnap:read.oldOriginalSnap;if(!original?.exists())throw Error('원료 원본을 확인할 수 없습니다.');return {command,sequence:Number(original.data().sequence)};}).sort((a,b)=>b.sequence-a.sequence).map(row=>{if(row.command.kind!=='reverse')throw Error('원료 취소 명령이 아닙니다.');const op=row.command.operationId;return {command:row.command,options:{now:claim.startedAt,newLotId:`lot-${operationDocId(op)}`,carryOverLotId:`carry-${operationDocId(op)}`,legacy:{type:'auto' as const,orderId:ticket.orderId,addedBy:claim.actor}}};});});
+          const codec=helper.rawGroupCodec(db);groupHandle=await helper.prepareRawReverseGroup(db,{companyId:ticket.companyId,commands:ordered,business:{kind:'order-cancel',id:ticket.orderId,beforeNativeText:codec.text(preflight.data()),afterNativeText:null}});
+        }
+        if(groupHandle.state==='cancelled')throw Error('주문 원료 취소 요청이 중단되었습니다.');
+      }
+    }
+    const completedResult=await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(ticket),companyId:ticket.companyId}), async tx => {
       const reads = new Map<string, Promise<any>>();
       const readTx = { get: (ref: any) => {
         if (!reads.has(ref.path)) reads.set(ref.path, tx.get(ref));
@@ -192,7 +210,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
           writes.set(ref.path, { ref, method: previous?.method === 'set' ? 'set' : 'update', data: { ...previous?.data, ...data } });
         },
       } as unknown as Transaction;
-      for (const row of rawPrepared) writePreparedRawCommand(buffer, row.command, row.read, row.result, { legacy: { type: 'auto', orderId: order.id, addedBy: claim.actor } });
+      if(!groupHandle)for (const row of rawPrepared) writePreparedRawCommand(buffer, row.command, row.read, row.result, { legacy: { type: 'auto', orderId: order.id, addedBy: claim.actor } });
       for (const [id, patch] of patches){const itemRef=doc(db,'items',id),itemSnap=await readTx.get(itemRef);buffer.update(itemRef,protectItemInventoryPatch(itemSnap.data(),patch));}
       const now = new Date().toISOString();
       const auditData = { id: ticket.operationId, companyId: ticket.companyId, orderId: order.id, partnerName: order.partnerName ?? '',
@@ -209,6 +227,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       const oversizedDocument = [...writes.values()].some(write => write.data && new TextEncoder().encode(JSON.stringify(write.data)).byteLength > 512 * 1024);
       if (writes.size > 200 || bytes > 4 * 1024 * 1024 || oversizedDocument) block('CANCELLATION_TRANSACTION_BUDGET');
       // 모든 검증·읽기·계산이 끝나기 전에는 실제 tx에 write하지 않는다.
+      if(groupHandle){if(groupHandle.state!=='prepared')block('RAW_GROUP_STATE_MISMATCH');const group=await (await import('../../shared/services/rawReverseGroupPermit')).readRawReverseGroup(tx,db,groupHandle);group.write();}
       for (const write of writes.values()) {
         if (write.method === 'delete') tx.delete(write.ref);
         else if (write.method === 'set') tx.set(write.ref, write.data!);
@@ -216,6 +235,8 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       }
       return completed(ticket);
     });
+    if(groupHandle){try{const helper=await import('../../shared/services/rawReverseGroupPermit'),confirmed=await helper.recoverRawReverseGroup(ticket.companyId,'order-cancel',ticket.orderId);if(confirmed?.state==='applied')helper.clearRawReverseGroup(confirmed);}catch{/* 거래 성공을 유지하고 최초 요청을 보존한다. */}}
+    return completedResult;
   } catch (error) {
     if (error instanceof CancellationBlocked) {
       // 다른 기기의 커밋 사이에 주문 없음이 보일 수 있으므로 완료표를 먼저 다시 확인한다.
@@ -228,7 +249,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
         }
       }
       const blocked = error as CancellationBlocked;
-      await recordCancellationFailure(db, ticket, blocked.code, claimedStartedAt);
+      if(!groupRetained)await recordCancellationFailure(db, ticket, blocked.code, claimedStartedAt);
       return { status: 'blocked', operationId: ticket.operationId, code: blocked.code, affectedItemIds: blocked.affectedItemIds,
         inventoryApplied: 'none', retryable: blocked.code === 'OTHER_INVENTORY_OPERATION', deleted: false };
     }
@@ -236,7 +257,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
     try { const receipt = await readOrderCancellationReceipt(db, ticket); if (receipt) return receipt; }
     catch { return { status: 'failed', operationId: ticket.operationId, code: 'CANCELLATION_RESULT_UNKNOWN',
       affectedItemIds: [], inventoryApplied: 'unknown', retryable: true, deleted: false }; }
-    await recordCancellationFailure(db, ticket, 'CANCELLATION_TRANSACTION_FAILED', claimedStartedAt);
+    if(!groupRetained)await recordCancellationFailure(db, ticket, 'CANCELLATION_TRANSACTION_FAILED', claimedStartedAt);
     return { status: 'failed', operationId: ticket.operationId, code: 'CANCELLATION_TRANSACTION_FAILED',
       affectedItemIds: [], inventoryApplied: 'unknown', retryable: true, deleted: false };
   }

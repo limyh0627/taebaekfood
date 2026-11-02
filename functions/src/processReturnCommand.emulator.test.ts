@@ -598,3 +598,25 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
   });
 
 });
+
+describe.skipIf(process.env.PARTIAL_EXTRA6_SDK!=='true')('매입 반품 예약 바닥 Admin SDK',()=>{
+ it.each([4,5])('예약 %s개에서 매입 반품 1개를 검사한다',async floor=>{
+  if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8382'||process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||process.env.FIREBASE_CONFIG)throw Error('격리 demo 에뮬레이터 설정 필요');
+  const {createRequire}=await import('node:module');const req=createRequire(process.cwd()+'/functions/package.json'),apps=req('firebase-admin/app'),firestore=req('firebase-admin/firestore');const uuid=randomUUID(),project='demo-return6-'+uuid.replaceAll('-',''),app=apps.initializeApp({projectId:project},'return6-'+uuid),db=firestore.getFirestore(app);
+  const id='extra6-'+uuid,company='taebaek',day='2026-10-03',item=id+'-item',partner=id+'-partner',source=id+'-source',request=id+'-request',operation=id+'-operation',release=id+'-release',counter=voucherSequenceKey(company,day,'반품'),sentinel='items/'+id+'-sentinel';
+  const row={qty:floor,serverProtocol:'full-v1',state:'allocated',orderId:id+'-other',operationId:id+'-other-op',reservationAttemptId:id+'-nonce',createdAt:day+'T00:00:00.000Z'};
+  const seeds:Record<string,any>={['partners/'+partner]:{companyId:company,name:'합성 거래처'},['items/'+item]:{companyId:company,name:'합성 상품',type:'goods',unit:'개',stock:5,serverReservedStockFloorV1:floor,fullReservationRows:[row],inventoryReservations:[row]},['issuedStatements/'+source]:{companyId:company,partnerId:partner,type:'매입',tradeDate:day,totalSupply:200,totalTax:20,totalAmount:220,items:[{itemId:item,accountCode:'500',qty:2,supply:200,tax:20,total:220}]},['returnRequests/'+request]:{companyId:company,partnerId:partner,linkedStatementId:source,returnType:'매입',status:'pending',totalAmount:110,items:[{itemId:item,quantity:1,isResellable:false}]},['appMeta/'+counter]:{companyId:company,tradeDate:day,prefix:'반품',last:0},'appMeta/releaseCutover':{releaseId:release,status:'active',voucherNotBefore:{taebaek:day,punghoe:day}},['appMeta/returnCutover_'+company]:{companyId:company,enabled:true,legacyWritersBlocked:true,auditPassed:true,purchaseGeneralStockEnabled:true},['appMeta/partnerPaymentCutover_'+company]:{companyId:company,enabled:true,legacyWritersBlocked:true,auditPassed:true},[sentinel]:{tag:uuid}};
+  for(const code of ['500','135','251','253'])seeds['accountCodes/'+id+'-'+code]={companyId:company,code};
+  const outputs=['returnOperations/'+operation,'issuedStatements/return-'+operation,'returnApplications/return-'+operation,'appMeta/partnerPaymentState_'+company+'_'+partner];const writable=new Set([...Object.keys(seeds),...outputs]);
+  let cleared=false;try{
+   for(const path of writable)if((await db.doc(path).get()).exists)throw Error('preflight collision '+path);
+   cleared=true;
+   const batch=db.batch();for(const [path,value] of Object.entries(seeds))batch.create(db.doc(path),value);await batch.commit();
+   const wrapper={collection:(name:string)=>db.collection(name),runTransaction:(fn:any)=>db.runTransaction((tx:any)=>fn(new Proxy(tx,{get(target,key){if(['create','set','update','delete'].includes(String(key)))return(ref:any,...args:any[])=>{if(!writable.has(ref.path))throw Error('unregistered write '+ref.path);return target[key](ref,...args);};const v=Reflect.get(target,key,target);return typeof v==='function'?v.bind(target):v;}})))};
+   const call=()=>processGeneralStockReturn(wrapper as any,company,id+'-actor',{operationId:operation,returnRequestId:request,tradeDate:day,expectedPartnerRevision:0,releaseId:release});
+   if(floor===4){expect(await call()).toMatchObject({status:'applied'});expect((await db.doc('items/'+item).get()).get('stock')).toBe(4);expect((await db.doc('items/'+item).get()).get('serverReservedStockFloorV1')).toBe(4);}
+   else {await expect(call()).rejects.toThrow('예약 재고');expect((await db.doc('items/'+item).get()).get('stock')).toBe(5);for(const path of outputs)expect((await db.doc(path).get()).exists).toBe(false);expect((await db.doc('appMeta/'+counter).get()).get('last')).toBe(0);}
+   expect((await db.doc(sentinel).get()).data()).toEqual({tag:uuid});
+  }finally{if(cleared){for(const path of writable)if((await db.doc(path).get()).exists)await db.doc(path).delete();for(const path of writable)if((await db.doc(path).get()).exists)throw Error('cleanup failed '+path);}await db.terminate();await apps.deleteApp(app);}
+ },60000);
+});

@@ -1,4 +1,5 @@
-import {emptyRawInventory,inventoryDocId} from '../../shared/rawInventoryCore';
+import {buildClientProductionOperationV2,buildClientRawReverseOperationV2,parseClientProductionOperationV2} from '../../../functions/src/shared/orderProductionBatchContract';
+import {emptyRawInventory,inventoryDocId,operationDocId,legacyOperationDocId} from '../../shared/rawInventoryCore';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 import { buildStockUseRows, resolveStockUse, toStockUsePlan } from './stockUseRows';
@@ -436,7 +437,8 @@ describe('임가공 판매의 원료수불부 기록', () => {
 
     await engine.reconcileOrderStock(order, OrderStatus.DISPATCHED);
 
-    const operationId = 'production-ledger:oem-order:a1:raw-oem';
+    const operationId = buildClientProductionOperationV2({kind:'production-ledger',orderId:'oem-order',attempt:1,rawItemId:'raw-oem'});
+    expect(parseClientProductionOperationV2(operationId)).toMatchObject({kind:'production-ledger',orderId:'oem-order'});
     expect(stockOf('raw-oem')).toBe(500);
     expect(rawLedger.get(operationId)).toMatchObject({
       kind: 'ledger-consume', used: 3, appliedDeltaKg: 0, lotChanges: [],
@@ -448,7 +450,7 @@ describe('임가공 판매의 원료수불부 기록', () => {
     await engine.reconcileOrderStock(order, OrderStatus.PENDING);
 
     expect(stockOf('raw-oem')).toBe(500);
-    expect(rawLedger.get(`reverse:${operationId}`)).toMatchObject({
+    expect(rawLedger.get(buildClientRawReverseOperationV2(operationId,operationDocId(operationId),legacyOperationDocId(operationId)))).toMatchObject({
       kind: 'reverse', received: 3, appliedDeltaKg: 0, reversalOf: operationId,
     });
   });
@@ -469,14 +471,15 @@ describe('임가공 판매의 원료수불부 기록', () => {
       order.id, 0, [{ ...order.items[0]!, checked: true }], OrderStatus.DISPATCHED,
     );
 
-    const operationId = 'production-ledger:oem-line:line-a:a1:raw-oem';
+    const operationId = buildClientProductionOperationV2({kind:'production-ledger',orderId:'oem-line',lineId:'line-a',attempt:1,rawItemId:'raw-oem'});
+    expect(parseClientProductionOperationV2(operationId)).toMatchObject({kind:'production-ledger',orderId:'oem-line'});
     expect(rawLedger.get(operationId)).toMatchObject({ kind: 'ledger-consume', used: 3 });
 
     const saved = store.orders.get(order.id) as Order;
     await engine.changeOrderItemCompletion(
       order.id, 0, [{ ...saved.items[0]!, checked: false }], OrderStatus.PENDING,
     );
-    expect(rawLedger.get(`reverse:${operationId}`)).toMatchObject({ kind: 'reverse', reversalOf: operationId });
+    expect(rawLedger.get(buildClientRawReverseOperationV2(operationId,operationDocId(operationId),legacyOperationDocId(operationId)))).toMatchObject({ kind: 'reverse', reversalOf: operationId });
   });
 });
 

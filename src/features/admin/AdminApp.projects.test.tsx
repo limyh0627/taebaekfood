@@ -1,0 +1,2 @@
+import {readFileSync} from 'node:fs';import {expect,it} from 'vitest';
+it('관리자와 직원 메뉴에 같은 프로젝트 화면을 연결한다',()=>{const source=readFileSync('src/features/admin/AdminApp.tsx','utf8');expect(source.match(/id:"projects",label:"프로젝트"/g)).toHaveLength(2);expect(source).toContain("currentView === 'projects' && <ProjectsPage");expect(source).toContain('menuIdentity.employeeId===currentUser.id');expect(source).toContain('menuIdentity.companyId===companyId');});

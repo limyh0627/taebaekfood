@@ -1,3 +1,5 @@
+import { OrderProductionWorkflow } from '../orders/ui/OrderProductionRecovery';
+import ProjectsPage from '../projects/ui/ProjectsPage';
 import {readPendingRetirementClaims,requirePreviousRetirementClaimReview,type RetainedRetirementClaimDescriptor} from '../../shared/services/orderRequestRetirementService';
 import type {InventoryReferenceToken} from '../../shared/hooks/useInventoryReferenceGuard';
 import StaticReferenceReadNotice from '../../shared/components/StaticReferenceReadNotice';
@@ -1934,16 +1936,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const fullRecoveryScope:FullRecoveryScope={companyId,actorUid:recoveryActorUid,employeeId:currentUser.id,isAdmin:currentUser.adminAccess===true};
   const pendingFullRecoveries=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.copies:[];
   const fullRecoveryReadError=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.error:'';
+  const batchWorkflowRef=useRef<{companyId:string;uid:string;complete:(order:Order)=>void}|null>(null);
   const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
     const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
     const retirementClaims=pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.orderId===orderId&&row.state!=='unsent');
     const hasCancellation=pendingCancellations.includes(orderId)||processingCancellationIds.includes(orderId);
     const fullCopies=pendingFullRecoveries.filter(row=>row.reference.companyId===companyId&&row.reference.orderId===orderId);
-    if(!hasCancellation&&!pending.length&&!retirementClaims.length&&!fullCopies.length&&!order?.inventoryOperation)return null;
+    if(!hasCancellation&&!pending.length&&!retirementClaims.length&&!fullCopies.length&&!order?.inventoryOperation&&!(order as Order & {legacyRecoveryRetirementV1?:unknown}|undefined)?.legacyRecoveryRetirementV1)return null;
     return <div key={companyId+':'+recoveryActorUid+':'+orderId} aria-label={'주문 처리 확인 '+orderId}>
       {hasCancellation&&<button type="button" disabled={processingCancellationIds.includes(orderId)} className="mt-2 text-sm font-bold text-indigo-700 underline"
         onClick={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)void handleDeleteOrder(orderId);}}>{processingCancellationIds.includes(orderId)?'확인·처리 중':'처리 결과 확인'}</button>}
       <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending} retirementClaims={retirementClaims} fullRecoveryScope={fullRecoveryScope} fullRecoveryCopies={fullCopies} fullRecoveryReadError={fullRecoveryReadError} onOpenFullRecovery={entry=>{if(fullHostLock.current||auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;const run={};fullHostLock.current=run;setFullHost({token:fullHostIdentity.current.token,run,entry});}} onFullRecoveryCopiesChanged={()=>setCancellationRevision(value=>value+1)} onFullRecoverySettled={()=>{if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;setCancellationRevision(value=>value+1);orderListRead?.retry();}}
+        onLegacyMigrated={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)orderListRead?.retry();}} onStartBatch={fresh=>{const host=batchWorkflowRef.current;if(host&&host.companyId===companyId&&host.uid===recoveryActorUid&&auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)host.complete(fresh);}}
         onResumeLine={run=>handleToggleItemChecked(orderId,run.intent.itemIndex,currentUser?.name,run)}
         isCurrentActor={()=>auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={(result,expectedSaved)=>{
         if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope||result.orderId!==orderId)return;
@@ -2416,6 +2420,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const menuEntries = (isAdmin ? [{id:"dashboard",label:"대시보드",groupId:"dash",element:(<NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />)},
 {id:"data-integrity",label:"데이터 점검",groupId:"dash",element:(<NavItem icon={ShieldCheck} label="데이터 점검" active={currentView === 'data-integrity'} onClick={() => handleNavClick('data-integrity')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('data-integrity')} />)},
 {id:"officetalk",label:"오피스톡",groupId:"dash",element:(<NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />)},
+{id:"projects",label:"프로젝트",groupId:"work",element:(<NavItem icon={ClipboardList} label="프로젝트" active={currentView === 'projects'} onClick={() => handleNavClick('projects')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('projects')} />)},
 {id:"orders",label:"주문·배송",groupId:"work",element:(<NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />)},
 {id:"admin-checklist",label:"확인사항",groupId:"work",element:(<NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />)},
 {id:"trade-statement",label:"전표",groupId:"work",element:(<NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />)},
@@ -2453,6 +2458,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </button>)}] : [{id:"notice",label:"공지사항",groupId:"staff-work",element:(<NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />)},
 {id:"officetalk",label:"오피스톡",groupId:"staff-work",element:(<NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />)},
+{id:"projects",label:"프로젝트",groupId:"staff-work",element:(<NavItem icon={ClipboardList} label="프로젝트" active={currentView === 'projects'} onClick={() => handleNavClick('projects')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('projects')} />)},
 {id:"orders",label:"주문·배송",groupId:"staff-work",element:(<NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />)},
 {id:"inventory",label:"재고 관리",groupId:"staff-work",element:(<NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />)},
 {id:"lot-management",label:"생산 관리",groupId:"staff-work",element:(<NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />)},
@@ -2628,6 +2634,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             return true;
           }:undefined} />
           <FinancialOpeningResume key={`${companyId}:${auth.currentUser?.uid ?? ''}`} companyId={companyId} onRecovered={refreshStaticData} />
+          {currentView === 'projects' && <ProjectsPage key={JSON.stringify([companyId,menuIdentity?.uid,menuIdentity?.employeeId,menuIdentity?.admin])} identity={menuIdentity && menuIdentity.uid===auth.currentUser?.uid && menuIdentity.employeeId===currentUser.id && menuIdentity.companyId===companyId ? {companyId,uid:menuIdentity.uid,employeeId:menuIdentity.employeeId,admin:menuIdentity.admin && currentUser.adminAccess===true} : null} employees={employees.filter(e=>e.companyId===companyId && e.status!=='out')} />}
           {/* 초기 데이터 로딩 스켈레톤 */}
           {isDataLoading ? (
             <div className="space-y-4 animate-pulse">
@@ -2747,7 +2754,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'orders' && (
-            <OrdersList
+            <OrderProductionWorkflow key={JSON.stringify([companyId,menuIdentity?.uid,menuIdentity?.employeeId])} companyId={companyId} actorUid={menuIdentity?.uid??''} employeeId={currentUser.id} items={companyItems} isCurrent={()=>!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id}>
+            {actions=>{batchWorkflowRef.current=actions?{companyId,uid:menuIdentity?.uid??'',complete:actions.complete}:null;return <OrdersList batchRecovery={actions?.recovery} onPartialProduction={actions?.complete} onSplitOrder={actions?.split} onBatchStatus={actions?.status} onBatchDelete={actions?.delete} onBatchReverse={actions?.reverse} onBatchRelease={actions?.release}
               renderOrderRecovery={renderOrderRecovery}
               orderRecoveryOrphans={orderRecoveryOrphans}
               companyId={companyId}
@@ -2817,7 +2825,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
               workOrderBindings={workOrderWrites}
-            />
+            />}}
+            </OrderProductionWorkflow>
           )}
           {(currentView === 'inventory' || currentView === 'lot-management') && (
             <>

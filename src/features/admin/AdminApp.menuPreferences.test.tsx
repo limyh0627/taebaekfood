@@ -17,13 +17,14 @@ function catalog(admin:boolean){
  return {entries:evaluate(initializer('menuEntries'),values) as {id:string;label:string;groupId:string;element:React.ReactElement<any>}[],groups:evaluate(initializer('menuGroups'),values),nav,ledger,qr,portal};
 }
 it('실제 관리자·직원 목록을 기준으로 독립 ID와 기존 동작·배지를 보존한다',()=>{
- const c=catalog(true);expect(c.entries).toHaveLength(29);expect(new Set(c.entries.map(r=>r.id)).size).toBe(29);
+ const c=catalog(true);expect(c.entries).toHaveLength(30);expect(new Set(c.entries.map(r=>r.id)).size).toBe(30);
+ c.entries.find(r=>r.id==='projects')!.element.props.onClick();expect(c.nav).toHaveBeenCalledWith('projects');
  c.entries.find(r=>r.id==='ledger-partner')!.element.props.onClick();expect(c.ledger).toHaveBeenCalledWith('partner');expect(c.nav).toHaveBeenCalledWith('ledger-cash');
  c.entries.find(r=>r.id==='ledger-cash')!.element.props.onClick();expect(c.ledger).toHaveBeenCalledWith('cash');
  c.entries.find(r=>r.id==='qr-label')!.element.props.onClick();expect(c.qr).toHaveBeenCalledWith(true);
  c.entries.find(r=>r.id==='partner-portal')!.element.props.onClick();expect(c.portal).toHaveBeenCalled();
  expect(c.entries.find(r=>r.id==='admin-checklist')!.element.props.badge).toBe(7);
- const staff=catalog(false);expect(staff.entries).toHaveLength(12);expect(staff.entries.some(r=>r.id==='hr'||r.id==='trade-statement')).toBe(false);
+ const staff=catalog(false);expect(staff.entries).toHaveLength(13);expect(staff.entries.some(r=>r.id==='hr'||r.id==='trade-statement')).toBe(false);staff.entries.find(r=>r.id==='projects')!.element.props.onClick();expect(staff.nav).toHaveBeenCalledWith('projects');
  expect(normalizeMenuPreferences({version:1,items:[{id:'hr',groupId:'staff-work'}]},staff.groups,staff.entries).items.some(r=>r.id==='hr')).toBe(false);
 });
 it('계정 메뉴는 설정 목록 밖에 고정하고 빈 그룹만 사이드바에서 숨긴다',()=>{

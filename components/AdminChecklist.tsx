@@ -436,9 +436,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
       {/* 입고/반품/발주 통합 탭 */}
       {activeTab === 'ops' && (
+        <div className="space-y-3">
+          <QueryFilterPanel id="admin-inbound-query-title" ariaLabel="선입고 이력 검색조건" onReset={()=>setInboundFilter('pending_voucher')} conditionRow={<><span className="w-full text-xs font-bold text-slate-600">이 조건은 선입고 이력에만 적용됩니다</span>
+<label className={QUERY_FILTER_FIELD_CLASS}>전표 발행 상태<SearchableSelect ariaLabel="선입고 전표 상태" value={inboundFilter} onChange={value=>setInboundFilter(value as typeof inboundFilter)} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'} options={[{value:'pending_voucher',label:'전표 미발행만'},{value:'all',label:'전체'}]}/></label>
+</>} />
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[720px] text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">타입</th>
@@ -489,9 +493,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                       <History size={13} className="text-teal-600" /> 선입고 이력 {inboundFilter === 'pending_voucher' ? `(전표 미발행 ${pendingVoucherCount}건)` : `(전체 ${filteredReceipts.length}건)`}
                     </span>
-                    <QueryFilterPanel id="admin-inbound-query-title" ariaLabel="선입고 이력 검색조건" onReset={()=>setInboundFilter('pending_voucher')} conditionRow={<>
-<label className={QUERY_FILTER_FIELD_CLASS}>전표 발행 상태<SearchableSelect ariaLabel="선입고 전표 상태" value={inboundFilter} onChange={value=>setInboundFilter(value as typeof inboundFilter)} className={(QUERY_FILTER_CONTROL_CLASS) + ' w-full min-w-0 max-w-full'} options={[{value:'pending_voucher',label:'전표 미발행만'},{value:'all',label:'전체'}]}/></label>
-</>} />
+
                   </div>
                 </td></tr>
                 {filteredReceipts.length === 0 ? (
@@ -615,6 +617,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 

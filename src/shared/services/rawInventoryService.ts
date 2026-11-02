@@ -1,4 +1,6 @@
 import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {getAuth} from 'firebase/auth';
+import {sessionIdentityLifetime} from '../sessionIdentityLifetime';
 import { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
 export { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
 import { normalizeRawInventoryState, normalizeRawMovement, type LegacyLedgerFields } from '../../../functions/src/shared/rawInventoryDocument';
@@ -85,7 +87,13 @@ export async function readRawCommandInTransaction(tx: Transaction, database: Fir
         ? tx.get(oldOriginalRef) : Promise.resolve(null),
       command.kind === 'reverse' ? tx.get(guardRef) : Promise.resolve(null),
     ]);
-    return { movementRef, stateRef, itemRef, guardRef, movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap };
+    const original = originalSnap?.exists() ? originalSnap.data() : oldOriginalSnap?.exists() ? oldOriginalSnap.data() : null;
+    const originSource = command.kind === 'reverse' ? original?.source : command.source;
+    const legacyOrderId = command.kind === 'reverse' && !originSource && typeof original?.orderId === 'string' && original.orderId ? original.orderId : null;
+    if (originSource?.type === 'production' && typeof original?.orderId === 'string' && original.orderId && originSource.id !== original.orderId) throw Error('원료 이력의 주문 정보가 서로 다릅니다.');
+    const sourceOrderId = originSource?.type === 'production' && typeof originSource.id === 'string' && originSource.id ? originSource.id : legacyOrderId;
+    const sourceOrderSnap = sourceOrderId ? await tx.get(doc(database, COL.orders, sourceOrderId)) : null;
+    return { movementRef, stateRef, itemRef, guardRef, movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap, sourceOrderId, sourceOrderSnap };
 }
 
 export function writePreparedRawCommand(
@@ -93,6 +101,18 @@ export function writePreparedRawCommand(
   read: Awaited<ReturnType<typeof readRawCommandInTransaction>>,
   result: Extract<RawApplyResult, { status: 'applied' }>, options: RawCommandOptions = {},
 ) {
+  const original = command.kind === 'reverse' ? (read.originalSnap?.exists() ? read.originalSnap.data() : read.oldOriginalSnap?.exists() ? read.oldOriginalSnap.data() : null) : null;
+  const originSource = command.kind === 'reverse' ? original?.source : command.source;
+  const legacyOrderId = command.kind === 'reverse' && !originSource && typeof original?.orderId === 'string' && original.orderId ? original.orderId : null;
+  if (command.kind === 'reverse' && command.source.type === 'production' && !((originSource?.type === 'production' && originSource.id === command.source.id)||(!originSource&&legacyOrderId===command.source.id))) throw Error('원료 취소 요청과 원 이력의 주문이 다릅니다.');
+  if (originSource?.type === 'production' && typeof original?.orderId === 'string' && original.orderId && originSource.id !== original.orderId) throw Error('원료 이력의 주문 정보가 서로 다릅니다.');
+  const expectedOrderId = originSource?.type === 'production' ? originSource.id : legacyOrderId;
+  if (expectedOrderId !== null && expectedOrderId !== undefined || originSource?.type === 'production') {
+    if (typeof expectedOrderId !== 'string' || !expectedOrderId || read.sourceOrderId !== expectedOrderId || !read.sourceOrderSnap?.exists()) throw Error('원료 작업의 원주문을 확인할 수 없습니다.');
+    const order = read.sourceOrderSnap.data();
+    if (companyOf(order) !== command.companyId || (original && original.companyId !== command.companyId)) throw Error('원료 작업과 원주문의 회사가 다릅니다.');
+    if (Object.prototype.hasOwnProperty.call(order, 'orderProductionRefsV1')) throw Error('부분 생산 주문은 기존 원료 작업으로 처리할 수 없습니다.');
+  }
   const plan = buildPreparedRawWritePlan(command, read, result, options);
   tx.set(read.stateRef, protectInventoryWriterPatch(read.stateSnap.exists()?read.stateSnap.data():undefined,plan.state()));
   tx.set(read.movementRef, protectInventoryWriterPatch(read.movementSnap.exists()?read.movementSnap.data():undefined,plan.movement()));
@@ -112,6 +132,12 @@ export async function executeRawInventoryCommand(
   options: RawCommandOptions = {},
 ): Promise<RawApplyResult> {
   command=JSON.parse(JSON.stringify(command));
+  options={...options,...(options.legacy?{legacy:JSON.parse(JSON.stringify(options.legacy))}:{})};
+  const longReverse=command.kind==='reverse'&&(operationDocId(command.operationId).startsWith('op_long_')||operationDocId(command.originalOperationId).startsWith('op_long_'));
+  const initial=longReverse?{user:getAuth().currentUser,ticket:sessionIdentityLifetime.captureCurrent()}:undefined;
+  if(initial&&(!initial.user||!initial.ticket))throw Error('현재 로그인 세대를 확인해 주세요.');
+  const helper=longReverse?await import('./rawReverseGroupPermit'):undefined;
+  const session=helper?await helper.captureRawReverseSession(command.companyId,options.assertScope,initial):undefined;
   await options.assertScope?.();
   const database = options.db ?? (await import('../firebase')).db;
   //  ★ 트랜잭션 밖에서 딱 한 번 정한다.
@@ -119,6 +145,10 @@ export async function executeRawInventoryCommand(
   const opId = operationDocId(command.operationId);
   const newLotId = options.newLotId ?? `lot-${opId}`;
   const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
+
+  if (command.kind === 'reverse' && longReverse) {
+    return helper!.executeLongRawReverse(database,command,{now,newLotId,carryOverLotId,...(options.mirrorToItem===undefined?{}:{mirrorToItem:options.mirrorToItem}),...(options.legacy===undefined?{}:{legacy:options.legacy}),assertScope:session!.assertScope});
+  }
 
   return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify(command),companyId:command.companyId,isStillCurrent:async()=>{await options.assertScope?.();return true;}}), async tx => {
     await options.assertScope?.();

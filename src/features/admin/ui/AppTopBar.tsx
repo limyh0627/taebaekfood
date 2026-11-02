@@ -19,7 +19,7 @@ export function AppTopBar({ currentView, currentUser, hasUnreadNotifications, he
           <div className="flex-1 min-w-0">
             <p className="text-[15px] font-black text-slate-800 truncate">
               {(({
-                'dashboard': '비즈니스 현황', 'data-integrity': '데이터 점검', 'ai-consultant': 'AI 인사이트',
+                'projects': '프로젝트', 'dashboard': '비즈니스 현황', 'data-integrity': '데이터 점검', 'ai-consultant': 'AI 인사이트',
                 'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리', 'lot-management': '생산 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',

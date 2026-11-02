@@ -1,3 +1,4 @@
+import { buildOrderSourceProofV1, type OrderSourceProofV1 } from '../functions/src/shared/orderProductionBatchContract';
 import { useStatementCompanyInfoGuard, type StatementCompanyInfoRead, type StatementCompanyInfoLease } from '../src/features/statements/hooks/useStatementCompanyInfoGuard';
 import StatementEditRecoveryPanel from '../src/features/statements/ui/StatementEditRecoveryPanel';
 import type {StatementEditBindings,StatementEditFollowupPlan,StatementEditProgress} from '../src/shared/services/statementEditWrites';
@@ -1418,6 +1419,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const boxSourceKey=(order:Order,index:number)=>JSON.stringify([companyId,issueActor,order.partnerId,order.id,index,order.items[index]]);
   const currentOrders=useRef(orders);currentOrders.current=orders;
   const currentSelection=useRef(selectedOrderIds);currentSelection.current=selectedOrderIds;
+  const orderSourceProof=useRef<{token:object;uid:string;proof:OrderSourceProofV1;markedIds:string[]}|null>(null);
+  useEffect(()=>{const captured=issueActor;const stop=auth.onAuthStateChanged?.(user=>{if(user?.uid!==captured)orderSourceProof.current=null});return()=>stop?.();},[issueActor]);
+  const proofForOrders=(picked:Order[]):OrderSourceProofV1=>buildOrderSourceProofV1(picked.map(order=>({id:order.id,companyId:companyOf(order),partnerId:order.partnerId!,items:order.items as unknown as Record<string,unknown>[],...(Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')?{orderProductionRefsV1:order.orderProductionRefsV1}:{})})));
+  const proofForSelection=(ids:string[],proof:OrderSourceProofV1)=>{const rows=ids.map(id=>proof.orders.find(row=>row.orderId===id));if(rows.some(row=>!row))throw Error('최초 선택 원문이 없습니다.');return {version:1 as const,orders:rows as OrderSourceProofV1['orders']};};
   const currentPartner=useRef({value:selectedClientId,epoch:0});if(currentPartner.current.value!==selectedClientId)currentPartner.current={value:selectedClientId,epoch:currentPartner.current.epoch+1};
   const boxInputs=useRef({allItems,orderUnitInputs});boxInputs.current={allItems,orderUnitInputs};
   const confirmedOrder=(order:Order,confirmations=boxConfirmations):Order=>({...order,items:order.items.map((line,index)=>{
@@ -1553,6 +1558,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds, companyLease?: StatementCompanyInfoLease): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
     if (unresolvedSelected) { alert('박스당 수량을 확인한 뒤 전표를 발행해 주세요. 원주문과 재고는 변경되지 않았습니다.'); return null; }
     if (!selectedClientId || lineItems.length === 0) return null;
+    let fixedOrderProof:OrderSourceProofV1|undefined;
+    const pickedOrders=selectedOrderIds.map(id=>orders.find(order=>order.id===id));
+    const requiresProof=pickedOrders.some(order=>order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))||orderSourceProof.current?.markedIds.some(id=>selectedOrderIds.includes(id));
+    if(requiresProof){try{const saved=orderSourceProof.current;if(!saved||saved.token!==cashEditScope.current.token||saved.uid!==auth.currentUser?.uid||pickedOrders.some(order=>!order)||saved.markedIds.some(id=>selectedOrderIds.includes(id)&&!pickedOrders.some(order=>order?.id===id&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))))throw Error('missing');fixedOrderProof=proofForSelection(selectedOrderIds,saved.proof);if(JSON.stringify(fixedOrderProof)!==JSON.stringify(proofForOrders(pickedOrders as Order[])))throw Error('changed');}catch{alert('선택한 주문의 최초 원문이 달라졌거나 확인되지 않습니다. 주문을 다시 선택해 주세요.');return null;}} 
     // 입력 실수는 저장 시도 원문을 만들기 전에 고친다. 실패 복구 목록은 송신 결과 확인에만 쓴다.
     if (!isCalendarDay(tradeDate)) { alert('전표일자를 확인해 주세요. 실제 존재하는 날짜를 YYYY-MM-DD 형식으로 입력한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
     if (!Number.isSafeInteger(totalAmount) || totalAmount <= 0) { alert('전표 합계가 0원이거나 올바른 원 단위 금액이 아닙니다. 각 품목의 수량·단가·할인 금액을 확인한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
@@ -1621,7 +1630,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       beforeCost: Number(allItems.find(i => i.id === c.itemId)?.cost ?? 0),
       sourceLineIndex: c.sourceLineIndices?.[0] ?? lineItems.findIndex(line => line.itemId === c.itemId),
     }));
-    const input={command,statement:{...stmt,companyId},costUpdates,
+    const input={command,statement:{...stmt,companyId,...(fixedOrderProof?{orderSourceProofV1:fixedOrderProof}:{})},costUpdates,
       poIds:stmtType==='매입'&&registerInbound?loadedPoIds:[],newPoItems:registerInbound?newPoItems:[]};
     const uid=auth.currentUser?.uid;if(!uid)throw new Error('로그인을 확인해 주세요.');
     const paymentAmount=issuePay?validateTradeStatementPaymentInput(issuePayAmount):0;
@@ -2250,8 +2259,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const pick=next.map(id=>orders.find(row=>row.id===id)).filter((row):row is Order=>!!row);
     if(pick.length!==next.length)return;
     if(pick.some(order=>order.partnerId!==o.partnerId)){alert('같은 거래처의 주문만 함께 선택해 주세요.');return;}
+    let nextProof:OrderSourceProofV1|null=null;try{nextProof=proofForOrders(pick)}catch{}
+    const hasBatch=pick.some(order=>Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))||!!orderSourceProof.current?.markedIds.some(id=>next.includes(id));
+    if(hasBatch&&selectedOrderIds.length){const prior=orderSourceProof.current;try{if(!prior||prior.token!==cashEditScope.current.token||prior.uid!==auth.currentUser?.uid||prior.markedIds.some(id=>next.includes(id)&&!pick.some(order=>order.id===id&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')))||JSON.stringify(proofForSelection(selectedOrderIds,prior.proof))!==JSON.stringify(proofForSelection(selectedOrderIds,nextProof!)))throw Error('changed')}catch{alert('선택한 주문의 원문이 바뀌었거나 확인되지 않습니다. 주문을 다시 선택해 주세요.');return;}}
+    if(hasBatch&&!nextProof){alert('주문 원문을 확인할 수 없습니다. 주문을 다시 확인해 주세요.');return;}
     const confirmed=await confirmOrderConversions(pick);if(!confirmed)return;
     const rows=pick.map(order=>orderToRows(order,confirmed));if(rows.some(row=>row===null)){alert('주문 품목과 박스 수량을 다시 확인해 주세요. 전표 줄은 만들지 않았습니다.');return;}
+    orderSourceProof.current=nextProof&&auth.currentUser?.uid?{token:cashEditScope.current.token,uid:auth.currentUser.uid,proof:nextProof,markedIds:[...new Set([...pick.filter(order=>Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')).map(order=>order.id),...(orderSourceProof.current?.markedIds.filter(id=>next.includes(id))??[])])]}:null;
     setBoxConfirmations(confirmed);setSelectedOrderIds(next);setTradeDate(today());setShowPreview(false);setEditablePrices({});setTaxExemptOverrides({});setManualItems(rows.flatMap(row=>row??[]));
   };
   /** 고르기를 끝내고 양식으로 — 목록 아래 단추가 부른다 */
@@ -3179,6 +3193,7 @@ ${names}
             setLoadedPoIds(prev=>Array.from(new Set([...prev,(purchaseOrder as any).id].filter(Boolean))));
             setTradeDate(today());setManualMode(true);
           }else if(order){
+            try{const proof=proofForOrders([order]);orderSourceProof.current=auth.currentUser?.uid?{token:cashEditScope.current.token,uid:auth.currentUser.uid,proof,markedIds:Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')?[order.id]:[]}:null}catch{orderSourceProof.current=null;}
             setSelectedOrderIds([order.id]);setTradeDate(today());setShowPreview(false);setEditablePrices({});setTaxExemptOverrides({});
           }
         }}/>}

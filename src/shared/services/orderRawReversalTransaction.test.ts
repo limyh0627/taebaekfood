@@ -1,4 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
+vi.mock('../firebase',()=>({auth:{currentUser:null},authReady:Promise.resolve()}));
 import {prepareOrderRawReversal,assertLegacyReversalAuthority} from './orderRawReversalTransaction';
 import {applyRawCommand,emptyRawInventory,inventoryDocId,operationDocId} from '../rawInventoryCore';
 vi.mock('firebase/firestore',()=>({doc:(_db:any,...parts:string[])=>({path:parts.join('/')})}));

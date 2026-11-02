@@ -1,3 +1,5 @@
+import { buildOrderSourceProofV1 } from '../functions/src/shared/orderProductionBatchContract';
+import { companyOf } from '../src/shared/types';
 import type {OrderListReadState} from '../src/shared/hooks/useOrderListRead';
 import ActionButton from '../src/shared/components/ActionButton';
 import {useWorkOrderEditor,type WorkItem} from '../src/features/orders/hooks/useWorkOrderEditor';
@@ -189,6 +191,13 @@ const seoulWeekStart = () => {
 
 
 interface OrdersListProps extends OrderEditBindings {
+  batchRecovery?:React.ReactNode;
+  onSplitOrder?: (order:Order)=>void;
+  onPartialProduction?: (order:Order)=>void;
+  onBatchStatus?: (order:Order,status:'SHIPPED'|'DELIVERED'|'cancel-shipment')=>void;
+  onBatchDelete?: (order:Order)=>void;
+  onBatchReverse?: (order:Order)=>void;
+  onBatchRelease?: (order:Order)=>void;
   renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderRecoveryOrphans?: React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
@@ -275,6 +284,21 @@ type TabType = 'delivery' | 'active' | 'history';
  * (품목 추가 같은 것) 그 문서가 다시 실려 오면서 **카드가 목록 안에서 튀었다.**
  * 무엇을 고쳤든 자리는 그대로여야 눈이 안 흔들린다.
  */
+/** 부분 생산 주문은 원품목을 기존 수정 경로에서 바꾸지 않는다. */
+export function partialOrderDraftIssue(opening:Order,current:Order,items:OrderItem[],deliveryDate:string):string {
+ const marked=(order:Order)=>Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1');
+ if(!marked(opening)&&!marked(current))return '';
+ if(!marked(opening)||!marked(current))return '주문의 생산 정보가 바뀌었습니다. 다시 열어 확인해 주세요.';
+ try {
+  const proof=(order:Order,rows:OrderItem[])=>buildOrderSourceProofV1([{id:order.id,companyId:companyOf(order),partnerId:order.partnerId!,items:rows as unknown as Record<string,unknown>[],orderProductionRefsV1:order.orderProductionRefsV1}]);
+  const before=JSON.stringify(proof(opening,opening.items));
+  const manufacturingDates=(rows:OrderItem[])=>JSON.stringify(rows.map(row=>({lineId:row.lineId??null,mfgDate:row.mfgDate??null})));
+  if(manufacturingDates(opening.items)!==manufacturingDates(current.items)||manufacturingDates(opening.items)!==manufacturingDates(items))return '부분 생산 주문의 제조일은 여기서 바꿀 수 없습니다. 주문을 다시 확인해 주세요.';
+  if(JSON.stringify(opening.orderProductionRefsV1)!==JSON.stringify(current.orderProductionRefsV1)||before!==JSON.stringify(proof(current,current.items))||before!==JSON.stringify(proof(opening,items)))return '부분 생산 주문의 품목은 여기서 바꿀 수 없습니다. 주문을 다시 확인해 주세요.';
+  return '';
+ } catch { return '부분 생산 주문의 원문을 확인할 수 없습니다. 주문을 다시 확인해 주세요.'; }
+}
+
 const byDeliveryThenId = (a: Order, b: Order) =>
   String(a.deliveryDate ?? '').localeCompare(String(b.deliveryDate ?? ''))
   || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
@@ -392,12 +416,12 @@ const 정렬목록 = [
 const OrdersList: React.FC<OrdersListProps> = ({
   companyId,
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [], orderUnitInputs,
-  onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
+  batchRecovery, onSplitOrder, onPartialProduction, onBatchStatus, onBatchDelete, onBatchReverse, onBatchRelease, onUpdateStatus: updateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateNote, onSaveOrderEdit, onUpdateDeliveryBoxes,
   requestScopeKey,onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy,editApplication,hideOrderEditPanel=false,
   onToggleInvoicePrinted,
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
-  onDeleteOrder, onAddClick, onPasteClick,
+  onDeleteOrder: deleteOrder, onAddClick, onPasteClick,
   workOrderItems: workOrderItemsProp = [],
   workOrderBindings,
   currentUserName,
@@ -560,10 +584,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
   /*  **카드를 따라가지 않는다**(2026-09-14 사장님: "움직인 위치로 따라가도록 해놨는데 그거 기능 꺼놔봐").
    *  폰에서 상태가 바뀌면 그 카드가 간 열까지 화면이 저절로 스크롤했다. 손으로 체크하는 중에
    *  화면이 움직이니 다음 줄을 누르려던 손가락이 엉뚱한 데를 짚었다. 이제 제자리에 머문다. */
-  const followItemToggle = (orderId: string, itemIndex: number, actor?: string) =>
-    onToggleItemChecked?.(orderId, itemIndex, actor);
+  const followItemToggle = (orderId: string, itemIndex: number, actor?: string) => {
+    const order=orders.find(row=>row.id===orderId);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const action=order.items[itemIndex]?.checked?onBatchReverse:onPartialProduction;if(action)action(order);else void appNotice('서버에서 생산 내역을 확인해 주세요.','주문 확인');return;}
+    onToggleItemChecked?.(orderId,itemIndex,actor);
+  };
+
+  const onUpdateStatus=(id:string,status:OrderStatus)=>{const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const action=status===OrderStatus.SHIPPED?'SHIPPED':status===OrderStatus.DELIVERED?'DELIVERED':status===OrderStatus.DISPATCHED&&order.status===OrderStatus.SHIPPED?'cancel-shipment':null;if(action&&onBatchStatus){onBatchStatus(order,action);return;}void appNotice('부분 생산 주문은 서버에서 처리 내용을 확인해 주세요.','주문 확인');return;}return updateStatus(id,status);};
+  const onDeleteOrder=async(id:string)=>{const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){if(onBatchDelete)onBatchDelete(order);else await appNotice('부분 생산 주문의 취소 내용을 서버에서 확인해 주세요.','주문 확인');return false;}return await deleteOrder(id)??false;};
 
   const updateStatusWithNotice = async (id: string, status: OrderStatus): Promise<boolean> => {
+    const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){onUpdateStatus(id,status);return false;}
     try {
       await onUpdateStatus(id, status);
       return true;
@@ -577,7 +607,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   const ownEditApplication=useOrderEditApplication({scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),onSaveOrderEdit:editApplication?undefined:onSaveOrderEdit,onReadPendingOrderEdits:editApplication?undefined:onReadPendingOrderEdits,onInspectOrderEdit,onCancelOrderEdit,onReadOrderEditReferences,onCancelOrderEditReference,onDiscardOrderEditCopy});
   const orderEdits=editApplication??ownEditApplication;
-  const onUpdateItems=(opening:Order,items:OrderItem[])=>orderEdits.run(opening,{kind:'items',items});
+  const onUpdateItems=async(opening:Order,items:OrderItem[])=>{const current=orders.find(order=>order.id===opening.id);const issue=current?partialOrderDraftIssue(opening,current,items,opening.deliveryDate.split('T')[0]):'주문 정보를 다시 확인해 주세요.';if(issue){await appNotice(issue,'주문 확인');return {committed:false,cancelled:false};}return orderEdits.run(opening,{kind:'items',items});};
   const {listOrderEditor,setListOrderEditor,editorOrder,showEditorPallet,setShowEditorPallet,openOrderEditor,closeEditor,updateDraftItem,addDraftItem,saveEditor,saveDisabled,saveError,주문수량} = useOrderEditorDraft({orders,embeddedListOnly,scopeKey:companyId+':'+(requestScopeKey??'')+':'+(logActorUid??''),application:orderEdits,onBeforeOpen:()=>{
     setPreviewOrderId(null);
     setEditingOrderId(null);
@@ -879,6 +909,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const requestShip = (orderId: string) => {
     const order = orders.find(candidate => candidate.id === orderId);
     if (!order) return;
+    if(Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){if(onBatchStatus)onBatchStatus(order,'SHIPPED');else void appNotice('부분 생산 주문의 출고 내용을 서버에서 확인해 주세요.','주문 확인');return;}
     const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
     const 빠질것 = shipDeductions(order, items, orderUnitInputs);
     const 수 = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
@@ -936,7 +967,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     partners, items, partnerItems, palletStocks, itemBoms, orderUnitInputs,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
-    onUpdateItems, onUpdateDeliveryDate,
+    onPartialProduction, onBatchRelease, onUpdateItems, onUpdateDeliveryDate,
     onUpdateStatus: updateStatusWithNotice,
     onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType,
     onToggleItemChecked: followItemToggle, onDeleteOrder, currentUserName,
@@ -1050,6 +1081,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       {!hideOrderEditPanel&&<OrderEditRecovery application={orderEdits} allTargets/>}
       {!listOrderEditor&&orderEdits.messageTargetId===null&&orderEdits.message&&<p role="status" className="whitespace-pre-line text-xs text-slate-600">{orderEdits.message}</p>}
       {savedOrderNotice&&<p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">{savedOrderNotice}</p>}
+      {batchRecovery && <div className="flex justify-end">{batchRecovery}</div>}
       {orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {/*  **최상단 헤더는 없앴다**(2026-09-11 사장님: "주문배송 메뉴의 최상단 헤더도 중복되니까
            제거하고"). 바로 아래에 '전체 주문 관리' 제목이 또 있어 같은 말이 두 번 나왔다.
@@ -1111,6 +1143,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <button
                 onClick={() => {
                   const checked = deliveryOrders.filter(o => o.invoicePrinted);
+                  if(checked.some(order=>Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))){void appNotice('부분 생산 주문이 포함되어 있습니다. 해당 주문은 각각 서버 내용을 확인한 뒤 출고해 주세요.','출고 확인');return;}
                   setConfirmModal({
                     title: '출고완료', tone: 'sky', icon: Truck,
                     message: `체크된 ${checked.length}건을 출고 처리하시겠습니까?`,
@@ -2716,6 +2749,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   onToggleInvoicePrinted={onToggleInvoicePrinted}
                   onUpdateInvoiceType={onUpdateInvoiceType}
                   onToggleItemChecked={followItemToggle}
+                  onBatchRelease={onBatchRelease}
                   onDeleteOrder={onDeleteOrder}
                   readOnly
                 />
@@ -2739,14 +2773,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
           .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
         return (
-          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled} saveError={saveError}
+          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={async()=>{const issue=partialOrderDraftIssue(listOrderEditor.opening,editorOrder,listOrderEditor.items,listOrderEditor.deliveryDate);if(issue){await appNotice(issue,'주문 확인');return;}await saveEditor();}} saveDisabled={saveDisabled} saveError={saveError}
             headerAction={(
               /*  **로그 보기**(2026-09-14 사장님). 누르면 이 주문에 누가 무엇을 언제 했는지 뜬다.
                   수정 창은 열어 둔 채로 위에 겹쳐 뜬다 — 고치다 말고 닫히면 적던 것이 날아간다. */
-              <button type="button" onClick={() => setLogOrderId(editorOrder.id)}
+              <><button type="button" onClick={() => setLogOrderId(editorOrder.id)}
                 className="flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[11px] font-black text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <History size={13} aria-hidden="true" />로그
-              </button>
+              </button>{onSplitOrder&&<button type="button" onClick={()=>onSplitOrder(editorOrder)} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700">주문 분할</button>}</>
             )}>
             <OrderEditRecovery application={orderEdits} orderId={listOrderEditor.orderId} includeScopeMessage/>
             <div className="space-y-4">

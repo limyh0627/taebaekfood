@@ -1,6 +1,7 @@
 import { collection, doc, getDocsFromServer, getDocFromServer, query, where } from 'firebase/firestore';
 import { db } from '../../../shared/firebase';
 import { companyOf, type CompanyId, type IssuedStatement } from '../../../shared/types';
+import { dateOfLocal, isCalendarDay } from '../../../shared/day';
 import { planTaxIssue } from '../domain/taxIssue';
 import { taxIssueRequestHash, type TaxIssueCommand } from './applyTaxIssueWrites';
 
@@ -8,7 +9,7 @@ type StoredRow = Record<string, unknown> & { id: string };
 export interface TaxIssueHistoryGroup {
   key: string;
   stmts: IssuedStatement[];
-  totalAmount: number;
+  totalAmount: number | null;
   isBundle: boolean;
   issuedAt: string;
   partnerId: string;
@@ -17,7 +18,9 @@ export interface TaxIssueHistoryGroup {
   originalVerified: boolean;
   notice: string;
 }
-export interface TaxIssueHistoryResult { groups: TaxIssueHistoryGroup[]; error: string }
+export interface TaxHistoryRange { from: string; to: string }
+const inRange = (issuedAt: unknown, range: TaxHistoryRange) => { if (!range.from && !range.to) return true; if (typeof issuedAt !== 'string' || !issuedAt || Number.isNaN(Date.parse(issuedAt))) return false; const date = dateOfLocal(issuedAt); return (!range.from || date >= range.from) && (!range.to || date <= range.to); };
+export interface TaxIssueHistoryResult { groups: TaxIssueHistoryGroup[]; error: string; dateUnknownCount?: number }
 
 async function withReadTimeout<T>(request: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -58,10 +61,9 @@ export async function projectTaxIssueHistory(companyId: CompanyId, statements: I
   const covered = new Set<string>();
   const groups: TaxIssueHistoryGroup[] = [];
   for (const record of records) {
-    if (record.companyId !== companyId || !Array.isArray(record.statementIds)) continue;
-    const ids = record.statementIds.filter((id): id is string => typeof id === 'string');
+    if (record.companyId !== companyId) continue;
+    const ids = Array.isArray(record.statementIds) ? record.statementIds.filter((id): id is string => typeof id === 'string') : [];
     const relevant = ids.filter(id => current.has(id));
-    if (!relevant.length) continue;
     const kind = record.kind === 'taxable' || record.kind === 'exempt' ? record.kind : null;
     relevant.forEach(id => covered.add(`${id}:${kind ?? 'unknown'}`));
     let original: IssuedStatement[] | null = null;
@@ -86,9 +88,9 @@ export async function projectTaxIssueHistory(companyId: CompanyId, statements: I
     if (original && kind) {
       groups.push(...groupStatements(record.id, original, String(record.issuedAt), kind, true, ''));
     } else {
-      groups.push(...groupStatements(record.id, relevant.map(id => current.get(id)!),
-        typeof record.issuedAt === 'string' ? record.issuedAt : '', kind ?? 'legacy', false,
-        '원본 확인 필요: 최초 발행 원문과 처리 기록을 확인하지 못해 재출력할 수 없습니다. 다시 불러와 주세요.'));
+      const notice = '원본 확인 필요: 최초 발행 원문과 처리 기록을 확인하지 못해 재출력할 수 없습니다. 다시 불러와 주세요.';
+      if (relevant.length) groups.push(...groupStatements(record.id, relevant.map(id => current.get(id)!), typeof record.issuedAt === 'string' ? record.issuedAt : '', kind ?? 'legacy', false, notice));
+      else groups.push({key: `${record.id}:unverified`, stmts: [], totalAmount: null, isBundle: false, issuedAt: typeof record.issuedAt === 'string' ? record.issuedAt : '', partnerId: '', kind: kind ?? 'legacy', originalVerified: false, notice});
     }
   }
   for (const statement of current.values()) {
@@ -106,13 +108,13 @@ export async function projectTaxIssueHistory(companyId: CompanyId, statements: I
   return groups.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
 }
 
-export async function readTaxIssueHistory(companyId: CompanyId, statements: IssuedStatement[], isCurrent = () => true): Promise<TaxIssueHistoryResult> {
-  if (!statements.length) return { groups: [], error: '' };
+export async function readTaxIssueHistory(companyId: CompanyId, statements: IssuedStatement[], isCurrent = () => true, range: TaxHistoryRange = {from:'',to:''}): Promise<TaxIssueHistoryResult> {
+  if ((range.from && !isCalendarDay(range.from)) || (range.to && !isCalendarDay(range.to)) || (range.from && range.to && range.from > range.to)) throw new Error('발행일 시작일과 종료일을 올바르게 확인해 주세요.');
   if (!isCurrent()) throw new Error('조회 범위가 변경됐습니다.');
   const snapshot = await withReadTimeout(getDocsFromServer(query(collection(db, 'taxIssueRecords'), where('companyId', '==', companyId))));
-  const ids = new Set(statements.map(row => row.id));
-  const records = snapshot.docs.map(row => ({ ...row.data(), id: row.id } as StoredRow))
-    .filter(row => Array.isArray(row.statementIds) && row.statementIds.some(id => ids.has(id)));
+  const companyRecords = snapshot.docs.map(row => ({ ...row.data(), id: row.id } as StoredRow)).filter(row => row.companyId === companyId);
+  const dateUnknownCount = (range.from || range.to) ? companyRecords.filter(row => typeof row.issuedAt !== 'string' || !row.issuedAt || Number.isNaN(Date.parse(row.issuedAt))).length : 0;
+  const records = companyRecords.filter(row => inRange(row.issuedAt, range));
   const operations = new Map<string, StoredRow | null>();
   let failures = 0;
   // 한꺼번에 무제한 요청하지 않고 연결된 고유 원문만 읽는다.
@@ -125,6 +127,8 @@ export async function readTaxIssueHistory(companyId: CompanyId, statements: Issu
     } catch { operations.set(operationId, null); failures++; }
   }
   if (!isCurrent()) throw new Error('조회 범위가 변경됐습니다.');
-  return { groups: await projectTaxIssueHistory(companyId, statements, records, operations),
+  const groups = await projectTaxIssueHistory(companyId, statements, records, operations);
+  if (!isCurrent()) throw new Error('조회 범위가 변경됐습니다.');
+  return { groups: groups.filter(group => inRange(group.issuedAt, range)), dateUnknownCount: dateUnknownCount + ((range.from || range.to) ? groups.filter(group => group.kind === 'legacy' && !inRange(group.issuedAt, {from:'0001-01-01',to:'9999-12-31'})).length : 0),
     error: failures ? `발행 원문 ${failures}건을 불러오지 못했습니다. 해당 기록은 원본 확인이 필요합니다. 다시 불러와 주세요.` : '' };
 }
