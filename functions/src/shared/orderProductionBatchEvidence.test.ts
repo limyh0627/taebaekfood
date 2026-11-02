@@ -47,3 +47,20 @@ import {readBatchPlannerRequiredPaths,batchEvidenceSnapshot} from './orderProduc
 it('역처리 추가 경로는 같은 거래에서 존재와 부재를 원문으로 관찰하고 scope 밖에서 재사용하지 않는다',async()=>{const f=openingFixture();f.rows.set('rawInventories/raw',{companyId:'taebaek',stockKg:2,native:new Timestamp(100,123)});let context:BatchReadContext|undefined;await withBatchEvidenceScope(f.tx,async scope=>{context=(await readBatchOpening(f.tx,f.db,actor,{companyId:'taebaek',orderId:'주문'},clock,scope)).context;await readBatchPlannerRequiredPaths(context,['rawInventories/raw','rawMaterialLedger/missing','rawInventories/raw']);const reads=batchEvidenceSnapshot(context,scope).reads;expect(reads.find(row=>row.path==='rawInventories/raw')).toMatchObject({exists:true,version:{seconds:100,nanoseconds:123}});expect(reads.find(row=>row.path==='rawMaterialLedger/missing')).toMatchObject({exists:false,version:null});expect(reads.filter(row=>row.path==='rawInventories/raw')).toHaveLength(1);await expect(readBatchPlannerRequiredPaths(context,['employees/other'])).rejects.toThrow('source-unproven');});await expect(readBatchPlannerRequiredPaths(context!,['items/other'])).rejects.toThrow('source-unproven');});
 
 it.each([null,{}, {receiptPath:'forged'}])('미검증 퇴역 marker %j는 fresh 생산 권위가 아니다',async marker=>{const f=openingFixture();f.rows.get('orders/주문').legacyRecoveryRetirementV1=marker;await expect(f.open({companyId:'taebaek',orderId:'주문'},clock)).rejects.toThrow('source-unproven');});
+
+it('0 소모 BOM은 원문을 유지해 열고 잘못된 수량과 회사는 거절한다',async()=>{
+ const f=openingFixture(),input={companyId:'taebaek',orderId:'주문'};
+ f.rows.set('items/테이프',{companyId:'taebaek',name:'테이프',type:'material',unit:'개'});
+ const zero={companyId:'taebaek',parent_id:'박스A',child_id:'테이프',quantity:0,original:'보존'};f.rows.set('item_bom/zero',zero);
+ const before=await f.open(input,clock);expect(f.rows.get('item_bom/zero')).toEqual(zero);f.rows.set('item_bom/zero',{...zero,original:'변경'});const after=await f.open(input,clock);expect(after.opening.opening.token).not.toBe(before.opening.opening.token);f.rows.set('item_bom/zero',zero);
+ for(const quantity of [-1,'0',NaN,Infinity]){f.rows.set('item_bom/zero',{...zero,quantity});await expect(f.open(input,clock)).rejects.toThrow('unit-proof-missing');}
+ f.rows.set('item_bom/zero',{...zero,companyId:'punghoe'});await expect(f.open(input,clock)).rejects.toThrow();
+ f.rows.set('item_bom/zero',zero);f.rows.get('item_bom/bom').quantity=0;await expect(f.open(input,clock)).rejects.toThrow('unit-proof-missing');
+});
+
+it('선택하지 않은 다른 주문 행의 0 소모 BOM도 전체 관측에 남긴다',async()=>{
+ const f=openingFixture(),input={companyId:'taebaek',orderId:'주문'};f.rows.get('orders/주문').items.push({itemId:'재고B',lineId:'줄2',quantity:1});
+ f.rows.set('items/테이프',{companyId:'taebaek',name:'테이프',type:'material',unit:'개'});f.rows.set('item_bom/zero-unselected',{companyId:'taebaek',parent_id:'재고B',child_id:'테이프',quantity:0});
+ const first=await f.open(input,clock);expect(first.opening.rows).toHaveLength(2);expect(f.calls.some(ref=>ref.path==='item_bom'&&ref.value==='재고B')).toBe(true);
+ f.rows.get('item_bom/zero-unselected').quantity=-1;await expect(f.open(input,clock)).rejects.toThrow('unit-proof-missing');
+});

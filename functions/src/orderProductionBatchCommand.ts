@@ -146,7 +146,14 @@ async function savedBatchAction(tx:any,db:Firestore,locator:BatchLocator,scope:B
 /** Public transport returns only normalized summaries; incomplete actions remain blocked. */
 export async function executeOrderProductionBatchCommand(db:Firestore,actor:ReservationPreviewActor|null|undefined,input:unknown,clock:ReservationPreviewClock):Promise<BatchOpenResponse|BatchReversalOpenResult|BatchResult|BatchListResult|BatchLegacyRecoveryResult>{
  if(!actor||typeof actor.uid!=='string'||!actor.uid)throw new HttpsError('unauthenticated','로그인이 필요합니다.');let command:ReturnType<typeof normalizeBatchCommand>;try{command=normalizeBatchCommand(input);}catch{throw new HttpsError('invalid-argument','요청 내용을 확인해 주세요.');}if(!clock||!Number.isFinite(clock.nowMs)||new Date(clock.nowMs).toISOString()!==clock.now)throw new HttpsError('invalid-argument','요청 시간을 확인해 주세요.');
- if(command.mode==='open')return readOrderProductionBatchOpen(db,actor,command,clock);
+ if(command.mode==='open'){
+  try{return await readOrderProductionBatchOpen(db,actor,command,clock);}catch(error){
+   const reason=error instanceof Error?error.message:'';
+   if(reason==='permission-denied')throw new HttpsError('permission-denied','회사 직원 권한을 확인해 주세요.');
+   if(['invalid-input','source-changed','source-unproven','unit-proof-missing','quantity-out-of-range','budget-exceeded','protected-reservation-conflict'].includes(reason))throw new HttpsError('failed-precondition','주문 품목과 생산 근거를 확인해 주세요.');
+   throw new HttpsError('internal','요청 결과를 확인하지 못했습니다. 다시 확인해 주세요.');
+  }
+ }
  if(command.mode==='open-reversal'){try{return await db.runTransaction(tx=>withBatchEvidenceScope(tx,async scope=>normalizeBatchReversalOpenResult((await readBatchSourceReversalOpening(tx,db,actor,command,clock,scope)).opening,command)),{readOnly:true});}catch(error){const reason=error instanceof Error?error.message:'source-unproven';throw new HttpsError(reason==='permission-denied'?'permission-denied':'failed-precondition','원 생산 및 현재 배정 근거를 확인해 주세요.');}}
  if(command.mode==='migrate-legacy-unapplied'||command.mode==='resume-legacy-raw')return executeLegacyRecovery(db,actor,command,clock);
  const locator=command.mode==='prepare-reserve'?{reference:command.intent.reference,originalOwnerUid:actor.uid}:'locator'in command?command.locator:undefined;
