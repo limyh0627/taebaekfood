@@ -76,7 +76,7 @@ replaceOnce('<rect width="3002" height="1617" fill="#FFFFFF"/>','<rect width="30
 const edgeStart=html.indexOf('<g data-edge="1"',html.indexOf('id="erdSvg"'));if(edgeStart<0)throw Error('기존 관계선 없음');html=html.slice(0,edgeStart)+'<g data-added-edges="1">'+edges+'</g>'+html.slice(edgeStart);
 const end=html.indexOf('</svg>',html.indexOf('id="erdSvg"'));if(end<0)throw Error('SVG 없음');
 html=html.slice(0,end)+`<rect x="20" y="1630" width="2960" height="${H-1660}" rx="14" fill="#F8FAFC" stroke="#CBD5E1"/><text x="40" y="1658" font-family="${font}" font-size="16" font-weight="700" fill="#334155">추가 작업·영수증 · 코드 정의 (문서 수 미측정)</text>`+cards+html.slice(end);
-replaceOnce('Firestore taebaek-3abe4 · 컬렉션 85개 · 문서 수는 2026-10-21 운영 DB 기준',`코드 스키마 표 ${Object.keys(D.tables).length}개 · 기존 문서 수 2026-10-21 관측 · 신규 표 미측정 · 2026-11-02 배포 49e65b8 · 부분 생산·분할·프로젝트`);
+replaceOnce('Firestore taebaek-3abe4 · 컬렉션 85개 · 문서 수는 2026-10-21 운영 DB 기준',`코드 스키마 표 ${Object.keys(D.tables).length}개 · 기존 문서 수 2026-10-21 관측 · 신규 표 미측정 · 2026-11-02 스키마 49e65b8 · 화면 2cb4b8c · 생산 수량·프로젝트 UI`);
 replaceOnce('Firestore taebaek-3abe4 · 컬렉션 85개 · 2026-10-21 운영 DB를 읽어 만듦',`기존 85개 관측 + 코드 대조 ${additions.length}개 · 문서 수는 2026-10-21 기준 · 정정 실행 미공개`);
 replaceOnce('모든 문서에 companyId(회사 구분)가 있다 — 이 선은 생략했다. 배열[] 안의 ID도 FK로 표시했다.','회사 구분은 문서별로 확인한다. 선은 애플리케이션의 논리 관계이며 DB의 강제 외래키가 아니다.');
 replaceOnce('function rowHtml(id, m) {','const countText = n => n === null ? "미측정" : n.toLocaleString() + "건";\nfunction rowHtml(id, m) {');
@@ -85,5 +85,5 @@ html=html.replaceAll('${t.c.toLocaleString()}건','${countText(t.c)}').replaceAl
 replaceOnce('const docs = g.ids.reduce((s, id) => s + T[id].c, 0);','const docs = g.ids.reduce((s, id) => s + (T[id].c ?? 0), 0), missing = g.ids.filter(id => T[id].c === null).length;');
 replaceOnce('문서 ${docs.toLocaleString()}건','문서 ${docs.toLocaleString()}건 (기존 관측)${missing ? ` · 미측정 ${missing}개` : ""}');
 replaceOnce("+ (t.k === 'op' ? '<p class=\"kindnote\">", "+ (t.localStatus ? `<p class=\"kindnote\">${esc(t.localStatus)}</p>` : '')\n    + (t.k === 'op' ? '<p class=\"kindnote\">");
-replaceOnce('모든 문서에 있는 companyId(회사 구분)는 뺐습니다. 필드는 이 컬렉션의 문서 30건을 읽어 모았습니다.','기존 필드는 2026-10-21 관측을 바탕으로 하며, 추가 필드는 기존 배포 c7b11e3와 2026-11-02 배포 49e65b8 소스를 대조했습니다. 신규 표의 문서 수는 측정하지 않았습니다.');
+replaceOnce('모든 문서에 있는 companyId(회사 구분)는 뺐습니다. 필드는 이 컬렉션의 문서 30건을 읽어 모았습니다.','기존 필드는 2026-10-21 관측을 바탕으로 하며, 추가 필드는 기존 배포 c7b11e3와 스키마 49e65b8을 대조했습니다. 2026-11-02 화면 배포 2cb4b8c는 저장 구조를 바꾸지 않습니다. 신규 표의 문서 수는 측정하지 않았습니다.');
 writeFileSync(resolve(root,'docs/태백푸드-ERD-현재코드-20261029.html'),html,'utf8');

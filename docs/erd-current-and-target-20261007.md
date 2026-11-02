@@ -581,6 +581,10 @@ source830e948bfa35142f78b11d2b4d5307cd7c257384의 GitHub main 푸시·양Hosting
 | `taxIssueOperations` | `functions/src/taxIssueCommand.ts:18` | `4ece286c264d37789b3605a72a750056edae9d5290073bcdae6dda148efa145d` |
 | `taxIssueRecords` | `functions/src/shared/taxIssue.ts:35` (발행 전표 `statementIds[]` → `issuedStatements`, 종류·금액·발행시각·상태) | `581308970278020f00fbe79fe7bdbea8e9e1cb9371ee47c8bce014a94ca1e205` |
 
+## 2026-11-02 화면 후속 배포 · 2cb4b8c
+
+프로젝트 목록·보드·모달과 기존 생산창의 실제 생산 수량 입력을 Hosting에 반영했다. 저장 스키마와 서버·규칙·인덱스는 직전 `49e65b8` 계약 그대로이며, ERD113개 표와 도형·관계·좌표도 변하지 않는다. 새 순수 입력 모델은 화면 상태이며 DB 필드로 추가하지 않았다. 아래 스키마 대조 근거는 그대로 보존한다. 상세 배포 증빙은 `deploy-production-quantity-20261102.md`다.
+
 ## 2026-11-02 최종 묶음 배포 ERD · 49e65b8
 
 이 절과 현재 코드 HTML은 기존 배포 `c7b11e3`와 2026-11-02 배포·원격 검증을 마친 제품 `49e65b8`을 대조한다. 운영 업무 자료를 변경한 것은 아니며 새 문서 수는 측정하지 않았다. 원본 85개와 기존 추가 23개에 논리 표 5개를 더해 총 113개다. 하위 컬렉션을 논리 표로 세므로 실제 최상위 컬렉션 수가 아니다.
