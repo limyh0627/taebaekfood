@@ -581,9 +581,9 @@ source830e948bfa35142f78b11d2b4d5307cd7c257384의 GitHub main 푸시·양Hosting
 | `taxIssueOperations` | `functions/src/taxIssueCommand.ts:18` | `4ece286c264d37789b3605a72a750056edae9d5290073bcdae6dda148efa145d` |
 | `taxIssueRecords` | `functions/src/shared/taxIssue.ts:35` (발행 전표 `statementIds[]` → `issuedStatements`, 종류·금액·발행시각·상태) | `581308970278020f00fbe79fe7bdbea8e9e1cb9371ee47c8bce014a94ca1e205` |
 
-## 2026-11-02 최종 작업 소스 ERD 후보 · 미배포
+## 2026-11-02 최종 묶음 배포 ERD · 49e65b8
 
-이 절과 현재 코드 HTML은 기존 운영 배포 `c7b11e3`와 별도로 미배포 작업 소스를 대조한 후보이다. 운영 배포와 업무 자료 변경을 뜻하지 않으며 문서 수는 측정하지 않았다. 원본 85개와 기존 추가 23개에 논리 표 5개를 더해 총 113개다. 하위 컬렉션을 논리 표로 세므로 실제 최상위 컬렉션 수가 아니다.
+이 절과 현재 코드 HTML은 기존 배포 `c7b11e3`와 2026-11-02 배포·원격 검증을 마친 제품 `49e65b8`을 대조한다. 운영 업무 자료를 변경한 것은 아니며 새 문서 수는 측정하지 않았다. 원본 85개와 기존 추가 23개에 논리 표 5개를 더해 총 113개다. 하위 컬렉션을 논리 표로 세므로 실제 최상위 컬렉션 수가 아니다.
 
 `workProjectsV1/{projectId}`는 회사와 참여자, 작업은 그 아래 `tasks/{taskId}`, 댓글은 `tasks/{taskId}/comments/{commentId}`, 처리 결과는 `operations/{operationId}`에 보관한다. 상위 프로젝트는 경로로 연결되며 하위 문서에 `projectId`를 추정하지 않는다. 작업의 체크리스트는 map이고, 댓글의 `taskId`는 실제 저장 필드다. 참여자와 회사 관리자 권한은 Rules에서 확인한다. 근거는 `src/features/projects/domain/projectContract.ts`, `src/features/projects/services/projectWrites.ts`, `firestore.rules`다.
 
