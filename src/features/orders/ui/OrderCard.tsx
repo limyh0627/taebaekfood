@@ -81,7 +81,7 @@ export const OrderCard = memo<OrderCardProps>(({
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
   //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
-  onRequestShip, renderOrderRecovery,renderOrderEditRecovery,onPartialProduction,onBatchRelease,
+  onRequestShip, renderOrderRecovery,renderOrderEditRecovery,onBatchRelease,
 }) => {
   // Compute derived variables
   const products = items;
@@ -778,7 +778,6 @@ export const OrderCard = memo<OrderCardProps>(({
 
 
       {!readOnly&&onBatchRelease&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')&&<button type="button" onClick={event=>{event.stopPropagation();onBatchRelease(order)}} className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700">주문 배정 해제 · 생산 재고 유지</button>}
-      {!readOnly&&onPartialProduction&&<button type="button" onClick={event=>{event.stopPropagation();onPartialProduction(order)}} className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700">부분 생산 완료</button>}
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">

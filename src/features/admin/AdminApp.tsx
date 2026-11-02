@@ -1,4 +1,5 @@
 import { OrderProductionWorkflow } from '../orders/ui/OrderProductionRecovery';
+import {resolveProductionRoute,type ProductionTarget} from './productionQuantityDraft';
 import ProjectsPage from '../projects/ui/ProjectsPage';
 import {readPendingRetirementClaims,requirePreviousRetirementClaimReview,type RetainedRetirementClaimDescriptor} from '../../shared/services/orderRequestRetirementService';
 import type {InventoryReferenceToken} from '../../shared/hooks/useInventoryReferenceGuard';
@@ -1684,6 +1685,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const requestOrderStatus = async (id: string, requestedStatus: OrderStatus, orderPatch?: Partial<Order>) => {
     const askScope = orderAskScope.current.token;
+    const pendingOrder=allOrders.find(order=>order.id===id)??orders.find(order=>order.id===id);
+    if(requestedStatus===OrderStatus.DISPATCHED&&!orderPatch&&pendingOrder&&(!pendingOrder.inventoryOperation||Object.prototype.hasOwnProperty.call(pendingOrder,'orderProductionRefsV1'))){
+      const route=resolveProductionRoute(pendingOrder,allItems);
+      if(route.kind==='review'){await awaitNotice(route.message,'주문 확인');return;}
+      if(route.kind==='batch'){try{await requirePreviousRetirementClaimReview(id,companyId,auth.currentUser?.uid??'');}catch{setCancellationRevision(n=>n+1);await awaitNotice('이전 시작 요청의 결과 확인이 필요합니다.','주문 확인');return;}if(orderAskScope.current.token!==askScope)return;const host=batchWorkflowRef.current;if(host&&host.companyId===companyId&&host.uid===auth.currentUser?.uid)host.complete(pendingOrder);else await awaitNotice('현재 로그인과 생산 요청을 확인해 주세요.','주문 확인');return;}
+    }
     let prepared:Awaited<ReturnType<typeof prepareOrderStatusChange>>;
     try{prepared=await prepareOrderStatusChange(id, requestedStatus);}catch(error){if(orderAskScope.current.token===askScope&&error&&typeof error==='object'&&'code' in error&&error.code==='previous-claim-review'){setCancellationRevision(n=>n+1);setAppNotice({message:'이전 시작 요청의 결과 확인이 필요합니다.',subMessage:'주문 카드의 자물쇠를 눌러 현재 서버 상태를 조회해 주세요. 완료 확인 전에는 새 작업을 보내지 않습니다.'});return;}throw error;}
     if (orderAskScope.current.token !== askScope) return;
@@ -1936,7 +1943,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const fullRecoveryScope:FullRecoveryScope={companyId,actorUid:recoveryActorUid,employeeId:currentUser.id,isAdmin:currentUser.adminAccess===true};
   const pendingFullRecoveries=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.copies:[];
   const fullRecoveryReadError=fullRecoverySnapshot.scope===JSON.stringify(fullRecoveryScope)?fullRecoverySnapshot.error:'';
-  const batchWorkflowRef=useRef<{companyId:string;uid:string;complete:(order:Order)=>void}|null>(null);
+  const batchWorkflowRef=useRef<{companyId:string;uid:string;complete:(order:Order,target?:ProductionTarget)=>void;reverse:(order:Order)=>void}|null>(null);
   const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
     const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
     const retirementClaims=pendingRetirementClaims.filter(row=>row.companyId===companyId&&row.actorUid===recoveryActorUid&&row.orderId===orderId&&row.state!=='unsent');
@@ -2039,6 +2046,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (!order || completionSaving.current.has(orderId)){settle({status:'cancelled'});return;}
     if(resumeRun&&(order.id!==orderId||resumeRun.intent.itemIndex!==itemIdx||order.items[itemIdx]?.checked||order.items[itemIdx]?.lineId!==resumeRun.intent.lineId)){settle({status:'cancelled'});return;}
     if(reprepareOnly&&(order.items[itemIdx]?.checked||order.items[itemIdx]?.lineId!==reprepareOnly.lineId))return false;
+    if(!resumeRun&&!reprepareOnly&&order.items[itemIdx]?.checked&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const host=batchWorkflowRef.current;if(host&&host.companyId===companyId&&host.uid===auth.currentUser?.uid)host.reverse(order);else await awaitNotice('현재 로그인과 생산 요청을 확인해 주세요.','주문 확인');return;}
     const normalizedOrder = { ...order, items: ensureOrderLineIds(order.items) };
     const plan = planOrderItemToggle(normalizedOrder, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
     if (!plan){settle({status:'cancelled'});return;}
@@ -2138,6 +2146,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
     try{await requirePreviousRetirementClaimReview(order.id,companyId,auth.currentUser?.uid??'');}catch(error){if(resumeCurrent()){setCancellationRevision(n=>n+1);setAppNotice({message:'이전 시작 요청의 결과 확인이 필요합니다.',subMessage:'주문 카드의 자물쇠를 눌러 현재 서버 상태를 조회해 주세요. 원문은 보존했습니다.'});}settle({status:'failed',error});return {status:'review-required'};}
     if(!resumeCurrent()){settle({status:'cancelled'});return;}
+    if(applying&&!resumeRun&&!reprepareOnly&&(!order.inventoryOperation||Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1'))){const route=resolveProductionRoute(order,allItems,{itemIndex:itemIdx});if(route.kind==='review'){await awaitNotice(route.message,'주문 확인');return;}if(route.kind==='batch'){const host=batchWorkflowRef.current;if(host&&host.companyId===companyId&&host.uid===auth.currentUser?.uid)host.complete(order,{itemIndex:itemIdx});else await awaitNotice('현재 로그인과 생산 요청을 확인해 주세요.','주문 확인');return;}}
     if(!order.inventoryOperation){try{referenceToken=appData.inventoryReferenceGuard?.capture();}catch(error){settle({status:'failed',error});return;}}
     const lineRows = applying && !isStockProduction(order)
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
@@ -2493,7 +2502,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
   return (
-    <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
+    <OrderProductionWorkflow companyId={companyId} actorUid={auth.currentUser?.uid??''} employeeId={currentUser.id} isAdmin={menuIdentity?.admin??isAdmin} ready={!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id} items={companyItems} isCurrent={()=>!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id}>
+    {actions=>{batchWorkflowRef.current=actions?{companyId,uid:menuIdentity?.uid??'',complete:actions.complete,reverse:actions.reverse}:null;return <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
       {fullHost&&fullHost.token===fullHostIdentity.current.token&&<OrderInventoryRecoveryPanel key={fullHost.entry.locator.reference.orderId} companyId={companyId} actorUid={recoveryActorUid} orders={allOrders.filter(row=>row.id===fullHost.entry.locator.reference.orderId)} fullRecoveryScope={fullRecoveryScope} fullRecoveryCopies={pendingFullRecoveries.filter(row=>row.reference.orderId===fullHost.entry.locator.reference.orderId)} initialFullRecovery={fullHost.entry} onCloseFullRecovery={()=>{if(fullHostLock.current===fullHost.run){fullHostLock.current=null;setFullHost(null);}}} isCurrentActor={()=>fullHost.token===fullHostIdentity.current.token&&auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={()=>{}} onFullRecoveryCopiesChanged={()=>{if(fullHost.token===fullHostIdentity.current.token)setCancellationRevision(value=>value+1);}} onFullRecoverySettled={()=>{if(fullHost.token!==fullHostIdentity.current.token||auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;setCancellationRevision(value=>value+1);orderListRead?.retry();}}/>}
       {helpOpen && helpOpen === helpSessionKey && menuIdentity && <React.Suspense fallback={<p role="status">도움말을 여는 중입니다.</p>}><HelpChat key={helpSessionKey} companyId={companyId} userId={menuIdentity.uid} mode={isAdmin?'admin':'staff'} currentView={currentView} onClose={()=>setHelpOpen(null)} onNavigate={id=>{
         if(menuIdentity.uid!==auth.currentUser?.uid)return false;
@@ -2754,8 +2764,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'orders' && (
-            <OrderProductionWorkflow key={JSON.stringify([companyId,menuIdentity?.uid,menuIdentity?.employeeId])} companyId={companyId} actorUid={menuIdentity?.uid??''} employeeId={currentUser.id} items={companyItems} isCurrent={()=>!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id}>
-            {actions=>{batchWorkflowRef.current=actions?{companyId,uid:menuIdentity?.uid??'',complete:actions.complete}:null;return <OrdersList batchRecovery={actions?.recovery} onPartialProduction={actions?.complete} onSplitOrder={actions?.split} onBatchStatus={actions?.status} onBatchDelete={actions?.delete} onBatchReverse={actions?.reverse} onBatchRelease={actions?.release}
+            <OrdersList batchRecovery={actions?.recovery} onPartialProduction={actions?.complete} onSplitOrder={actions?.split} onBatchStatus={actions?.status} onBatchDelete={actions?.delete} onBatchReverse={actions?.reverse} onBatchRelease={actions?.release}
               renderOrderRecovery={renderOrderRecovery}
               orderRecoveryOrphans={orderRecoveryOrphans}
               companyId={companyId}
@@ -2825,8 +2834,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
               workOrderBindings={workOrderWrites}
-            />}}
-            </OrderProductionWorkflow>
+            />
           )}
           {(currentView === 'inventory' || currentView === 'lot-management') && (
             <>
@@ -5273,7 +5281,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         })(),
         document.body
       )}
-    </div>
+    </div>}}
+    </OrderProductionWorkflow>
   );
 };
 

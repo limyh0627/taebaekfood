@@ -15,6 +15,7 @@ import { isGoodsItem } from '../../shared/itemTaxonomy';
 import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows } from './stockUseRows';
+import { resolveProductionRoute } from './productionQuantityDraft';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { OrderStatus } from '../../shared/types';
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
@@ -29,10 +30,10 @@ function harness(scopeOverride?: {current:{companyId:string;token:object}}) {
  const scope = scopeOverride ?? { current: { companyId: 'taebaek', token: {} } };
  let ask: any = null;
  const writer = vi.fn(); const pending = deferred();
- const order = { id: 'A', partnerName: '태백 주문', status: OrderStatus.PENDING, items: [] };
- const request = actualRequest({ isStockProduction, orderAskScope: scope, prepareOrderStatusChange: () => pending.promise,
+ const order = { id: 'A', partnerName: '태백 주문', status: OrderStatus.PENDING, items: [{lineId:'line',itemId:'item',quantity:1,checked:true}] };
+ const request = actualRequest({ resolveProductionRoute, isStockProduction, orderAskScope: scope, prepareOrderStatusChange: () => pending.promise,
  allOrders: [order], orders: [], workStatusFromItems: () => OrderStatus.DISPATCHED,
- requiresCompleteItemsForStatusChange: () => false, OrderStatus, allItems: [], appData: {orderUnitInputs: undefined}, currentUser: {name:'관리자'},
+ requiresCompleteItemsForStatusChange: () => false, OrderStatus, allItems: [{id:'item',name:'합성 제품',type:'product',unit:'개',stock:0}], appData: {orderUnitInputs: undefined}, currentUser: {name:'관리자'},
  buildStockUseRows: () => [{itemId:'item'}], setStockUseAsk: (value: any) => { ask=value; }, setRollbackAsk: (value: any) => {ask=value;}, changeOrderStatus: writer });
  return {scope,request,pending,writer,order,setAsk:(value:any)=>{ask=value;},getAsk:()=>ask};
 }
@@ -148,7 +149,7 @@ function goodsHarness(stock:number) {
  const order={id:'A',partnerName:'태백 주문',status:OrderStatus.PENDING,items:[{itemId:item.id,name:item.name,quantity:2,lineId:'line'}]};
  const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;refs.current.goods=ask;};
  const history=vi.fn().mockResolvedValue(undefined),revision=vi.fn();
- const deps={requirePreviousRetirementClaimReview:history,companyId:'taebaek',auth:{currentUser:{uid:'fixture-viewer'}},setCancellationRevision:revision,OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
+ const deps={resolveProductionRoute,requirePreviousRetirementClaimReview:history,companyId:'taebaek',auth:{currentUser:{uid:'fixture-viewer'}},setCancellationRevision:revision,OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
  const code=ts.transpileModule(`const toggle=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const toggle=new Function(...Object.keys(deps),`${code};return toggle;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
  return{toggle,scope,refs,writer,history,revision,notice:deps.setAppNotice,set,get:()=>ask};

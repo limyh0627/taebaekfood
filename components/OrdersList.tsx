@@ -585,11 +585,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
    *  폰에서 상태가 바뀌면 그 카드가 간 열까지 화면이 저절로 스크롤했다. 손으로 체크하는 중에
    *  화면이 움직이니 다음 줄을 누르려던 손가락이 엉뚱한 데를 짚었다. 이제 제자리에 머문다. */
   const followItemToggle = (orderId: string, itemIndex: number, actor?: string) => {
-    const order=orders.find(row=>row.id===orderId);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const action=order.items[itemIndex]?.checked?onBatchReverse:onPartialProduction;if(action)action(order);else void appNotice('서버에서 생산 내역을 확인해 주세요.','주문 확인');return;}
+    const order=orders.find(row=>row.id===orderId);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')&&order.items[itemIndex]?.checked){if(onBatchReverse)onBatchReverse(order);else void appNotice('서버에서 생산 내역을 확인해 주세요.','주문 확인');return;}
     onToggleItemChecked?.(orderId,itemIndex,actor);
   };
 
-  const onUpdateStatus=(id:string,status:OrderStatus)=>{const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const action=status===OrderStatus.SHIPPED?'SHIPPED':status===OrderStatus.DELIVERED?'DELIVERED':status===OrderStatus.DISPATCHED&&order.status===OrderStatus.SHIPPED?'cancel-shipment':null;if(action&&onBatchStatus){onBatchStatus(order,action);return;}void appNotice('부분 생산 주문은 서버에서 처리 내용을 확인해 주세요.','주문 확인');return;}return updateStatus(id,status);};
+  const onUpdateStatus=(id:string,status:OrderStatus)=>{const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){const action=status===OrderStatus.SHIPPED?'SHIPPED':status===OrderStatus.DELIVERED?'DELIVERED':status===OrderStatus.DISPATCHED&&order.status===OrderStatus.SHIPPED?'cancel-shipment':null;if(action&&onBatchStatus){onBatchStatus(order,action);return;}if(status===OrderStatus.DISPATCHED&&order.status!==OrderStatus.SHIPPED)return updateStatus(id,status);void appNotice('부분 생산 주문은 서버에서 처리 내용을 확인해 주세요.','주문 확인');return;}return updateStatus(id,status);};
   const onDeleteOrder=async(id:string)=>{const order=orders.find(row=>row.id===id);if(order&&Object.prototype.hasOwnProperty.call(order,'orderProductionRefsV1')){if(onBatchDelete)onBatchDelete(order);else await appNotice('부분 생산 주문의 취소 내용을 서버에서 확인해 주세요.','주문 확인');return false;}return await deleteOrder(id)??false;};
 
   const updateStatusWithNotice = async (id: string, status: OrderStatus): Promise<boolean> => {

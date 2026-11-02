@@ -1,0 +1,16 @@
+import { describe, it, expect } from 'vitest';
+import { buildProductionCompletion, parseProductionQuantity, buildProductionDefaults, resolveProductionRoute } from './productionQuantityDraft';
+const hash='a'.repeat(64);
+const unit={version:1,measureId:hash,order:{kind:'box-count',label:'박스',orderedValue:10},sourceLine:{quantity:120,isBoxUnit:true,boxQuantity:10,unitsPerBox:12},stock:{itemId:'a',label:'박스',quantityKind:'count',orderedValue:10,unitsPerOrderUnit:1},loose:{itemId:'c',label:'개',quantityKind:'count',unitsPerBox:12},basis:{kind:'box-stock-bom',orderUnitEvidenceHash:hash,catalogEvidenceHash:hash}} as any;
+const row={lineId:'l',itemId:'a',orderedQty:10,completedQty:0,unit};
+const draft=(production:string,own:string,loose='0')=>({production,own,loose,productionEdited:true});
+describe('생산 수량 변환',()=>{
+ it('재고와 생산을 합치고 구성품은 합치지 않는다',()=>{const r=buildProductionCompletion(row,draft('2','3','12'));expect(r.completeNow).toBe(5);expect(r.choice?.stockUse.loose?.value).toBe(12)});
+ it('공란 생산과 재고만으로 완료하며 0행은 제외한다',()=>{expect(buildProductionCompletion(row,draft('','3')).completeNow).toBe(3);expect(buildProductionCompletion(row,draft('0','0')).choice).toBeNull();expect(()=>buildProductionCompletion(row,draft('0','0','1'))).toThrow()});
+ it('단위 환산과 잔여 수량을 정확히 검사한다',()=>{const r={...row,unit:{...unit,stock:{...unit.stock,label:'개',unitsPerOrderUnit:12}}};expect(buildProductionCompletion(r,draft('24','12')).completeNow).toBe(3);expect(()=>buildProductionCompletion(r,draft('1','0'))).toThrow();expect(()=>buildProductionCompletion(row,draft('9','3'))).toThrow()});
+ it('허용되지 않는 수량을 거절한다',()=>{for(const v of ['-1','1e2','NaN','1.0001'])expect(()=>parseProductionQuantity(v,'bulk','수량')).toThrow();expect(()=>parseProductionQuantity('1.5','count','수량')).toThrow();expect(parseProductionQuantity('','count','수량')).toBeNull()});
+ it('선택 행만 재고를 사용하도록 기본값을 만든다',()=>{const order={items:[{lineId:'l',itemId:'a',...unit.sourceLine},{lineId:'m',itemId:'a',...unit.sourceLine}]} as any;const opening={rows:[row,{...row,lineId:'m'}]} as any;const catalog=[{id:'a',name:'A',type:'product',unit:'개',stock:3}] as any;const result=buildProductionDefaults({order,opening,catalog,target:{lineId:'m'}});expect(result.l.production).toBe('0');expect(result.m.production).not.toBe('0')});
+});
+
+it('중단 표식만 있는 주문은 서버에서 새 생산 가능 여부를 확인한다',()=>{const order={items:[{itemId:'a',quantity:1}],legacyRecoveryRetirementV1:{},rawConsumedLots:[],productionRecordIndex:{},rawInventoryAttempt:3,inventorySnapshots:{}} as any;const catalog=[{id:'a',name:'A',type:'product',unit:'개'}] as any;expect(resolveProductionRoute(order,catalog).kind).toBe('batch');expect(resolveProductionRoute({...order,legacyRecoveryRetirementV1:null,producedAt:'now'},catalog).kind).toBe('batch');expect(resolveProductionRoute({items:order.items,producedAt:'now'} as any,catalog)).toEqual({kind:'legacy',reason:'existing-legacy'})});
+it('동일 품목 두 행은 재고 한 풀을 공유한다',()=>{const order={items:[{lineId:'l',itemId:'a',...unit.sourceLine},{lineId:'m',itemId:'a',...unit.sourceLine}]} as any;const opening={rows:[row,{...row,lineId:'m'}]} as any;const catalog=[{id:'a',name:'A',type:'product',unit:'개',stock:12}] as any;const r=buildProductionDefaults({order,opening,catalog});expect(r.l.own).toBe('10');expect(r.m.own).toBe('2');expect(r.m.production).toBe('8')});
