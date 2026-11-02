@@ -12,4 +12,4 @@
 
 독립 검수는 정확 파일·해시·단위 시험·SDK 결과를 확인해 범위 내 코드 CLEAR로 판정했다. 근거는 비공개 `work/order-completion-zero-bom-{scope,implementation,independent}-20261102.json`과 `work/order-completion-root-emit-20261102.json`에 있다.
 
-배포 후보는 `orderProductionBatchCommand` 한 개다. Hosting·Rules·인덱스·운영 자료·IAM·키는 변경하지 않는다. 사용자가 중단한 DB 정리의 미커밋 코드·Rules·보관본은 이번 커밋과 배포에서 제외하고 보존한다. 이 문서 작성 시점에는 미배포이며, main에는 배포와 원격 검증 후에만 반영한다.
+사용자 승인 후 제품 `5b343f6c13690fd39a8fd209e9c034a06bc1e850`의 `orderProductionBatchCommand` 한 개를 배포하고 원격 검증했다. Hosting·Rules·인덱스·운영 자료·IAM·키는 변경하지 않았다. 사용자가 중단한 DB 정리의 미커밋 코드·Rules·보관본은 이번 커밋과 배포에서 제외하고 보존한다. 상세 운영 검증은 `deploy-order-completion-20261102.md`를 따른다.

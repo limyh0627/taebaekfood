@@ -274,7 +274,7 @@ body:not(.mapview) #mapPane, body.mapview #listPane { display: none; }
   <header class="top">
     <div class="brand">
       <h1>태백푸드 ERD</h1>
-      <p>코드 스키마 표 113개 · 기존 문서 수 2026-10-21 관측 · 신규 표 미측정 · 2026-11-02 스키마 49e65b8 · 화면 2cb4b8c · 생산 수량·프로젝트 UI</p>
+      <p>코드 스키마 표 113개 · 기존 문서 수 2026-10-21 관측 · 신규 표 미측정 · 2026-11-02 스키마 49e65b8 · 화면 2cb4b8c · 서버 수리 5b343f6</p>
     </div>
     <div class="tabs" role="tablist" aria-label="보기">
       <button type="button" class="tab" role="tab" data-view="map" id="tabMap">ERD 그림</button>
@@ -452,7 +452,7 @@ function renderDetail(id) {
     + t.f.map(f => `<li><div class="fl"><code class="fn">${esc(f.n)}</code>${f.pk ? '<b class="pk">PK</b>' : ''}`
       + (f.fk ? `<a class="fk" href="#${f.fk}" style="${gv(T[f.fk].g)}">→ ${esc(T[f.fk].l)}</a>` : '')
       + `<span class="ty">${TYPE[f.t] || esc(f.t)}</span></div>${f.note ? `<p class="fnote">${esc(f.note)}</p>` : ''}</li>`).join('')
-    + `</ul><p class="foot">기존 필드는 2026-10-21 관측을 바탕으로 하며, 추가 필드는 기존 배포 c7b11e3와 스키마 49e65b8을 대조했습니다. 2026-11-02 화면 배포 2cb4b8c는 저장 구조를 바꾸지 않습니다. 신규 표의 문서 수는 측정하지 않았습니다.</p></section></div>`;
+    + `</ul><p class="foot">기존 필드는 2026-10-21 관측을 바탕으로 하며, 추가 필드는 기존 배포 c7b11e3와 스키마 49e65b8을 대조했습니다. 2026-11-02 화면 배포 2cb4b8c와 서버 수리 5b343f6는 저장 구조를 바꾸지 않습니다. 신규 표의 문서 수는 측정하지 않았습니다.</p></section></div>`;
   $('#detail').innerHTML = h;
 }
 
