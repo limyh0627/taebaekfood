@@ -293,9 +293,9 @@ import DataIntegrityMonitor from './DataIntegrityMonitor';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
 import { downloadRawLedgerExcel } from './rawLedgerExcel';
 
-// 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
+// 거래처 주문 포털(웹) URL — 기본은 운영 주소. 로컬 시험 때만 .env의 VITE_PARTNER_PORTAL_URL로 바꾼다
 const PARTNER_PORTAL_URL =
-  (import.meta.env.VITE_PARTNER_PORTAL_URL as string | undefined) || 'http://localhost:3000';
+  (import.meta.env.VITE_PARTNER_PORTAL_URL as string | undefined) || 'https://taebaek-guest.web.app';
 
 const openPartnerPortal = () => {
   window.open(PARTNER_PORTAL_URL, '_blank', 'noopener,noreferrer');
