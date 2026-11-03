@@ -65,3 +65,18 @@ it('다른 휴가의 보관 결과 확인은 현재 변경 초안을 닫지 않�
  await act(async()=>fireEvent.click(within(dialog).getByRole('button',{name:'휴가 작업 결과 확인'})));
  expect(inspect).toHaveBeenCalledExactlyOnceWith('first-plan');expect(screen.getByRole('dialog',{name:/변경 신청/})).toBe(dialog);expect(within(dialog).getByPlaceholderText('변경 사유를 입력하세요.')).toHaveValue('둘째 휴가 미저장 초안');
 });
+
+it('임직원 캘린더는 가로 스크롤 없이 주말을 색으로 나누고 표시 안내를 한 곳에 두며 누른 날의 휴가자를 보여준다',()=>{
+ const other:Employee={...employee,id:'other',name:'다른직원'};
+ const day=new Date();const ymd=`${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+ const leave=(id:string,who:Employee,status:LeaveRequest['status']='approved'):LeaveRequest=>({id,employeeId:who.id,employeeName:who.name,type:'연차',startDate:ymd,endDate:ymd,reason:'',status,requestedAt:ymd,daysUsed:1});
+ const {container}=render(<LeaveManager companyId="taebaek" currentUser={employee} employees={[employee,other]} leaveRequests={[leave('o',other),leave('m',employee),leave('p',other,'pending')]} onAddLeaveRequest={vi.fn()} onLeaveAction={vi.fn().mockResolvedValue({status:"saved"})}/>);
+ fireEvent.click(screen.getByRole('button',{name:'임직원 캘린더'}));
+ expect(container.querySelector('[class*="min-w-[800px]"]')).toBeNull();
+ const legend=screen.getByRole('note',{name:'달력 표시 안내'});for(const label of ['내 휴가','다른 직원 휴가','주말','오늘'])expect(legend).toHaveTextContent(label);
+ expect(screen.getByText('일',{selector:'div'})).toHaveClass('text-rose-500');expect(screen.getByText('토',{selector:'div'})).toHaveClass('text-blue-500');
+ const cell=screen.getByRole('button',{name:`${day.getMonth()+1}월 ${day.getDate()}일 휴가 2명`});
+ const dots=cell.querySelectorAll('span.rounded-full');expect(dots).toHaveLength(2);expect(dots[0]).toHaveClass('bg-indigo-600');expect(dots[1]).toHaveClass('bg-slate-400');
+ const list=screen.getByRole('list');expect(within(list).getAllByRole('listitem').map(li=>li.textContent)).toEqual(['테스트직원연차','다른직원연차']);
+ fireEvent.click(screen.getByRole('button',{name:'다음 달'}));expect(screen.getByText('날짜를 누르면 그날 쉬는 사람이 여기에 나옵니다.')).toBeInTheDocument();
+});

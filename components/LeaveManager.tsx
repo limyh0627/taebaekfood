@@ -170,6 +170,9 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const cancelApplication=async()=>{const result=await application.cancel();if(result.committed){setIsModalOpen(false);resetForm();}};
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(currentUser.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  // 휴대폰 달력에서 누른 날짜 — 칸에는 점만 찍고 명단은 달력 아래에 보여준다
+  const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
+  const moveMonth = (offset: number) => { setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset)); setSelectedDay(null); };
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const actions=useLeaveActions({scopeKey:companyId+':'+currentUser.id+':'+(requestScopeKey??''),onAction:onLeaveAction,readPending:onReadPendingLeaveActions,inspect:onInspectLeaveAction,cancel:onCancelLeaveAction});
   const [modifyTarget, setModifyTarget] = useState<LeaveRequest | null>(null);
@@ -377,28 +380,30 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       {activeTab === 'calendar' && (
         /* Calendar Section */
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-          <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+          <div className="p-4 sm:p-8 border-b border-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+              <div className="hidden sm:flex w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl items-center justify-center shadow-sm">
                 <Calendar size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-black text-slate-800">임직원 휴가 캘린더</h3>
+                <h3 className="text-lg sm:text-xl font-black text-slate-800">임직원 휴가 캘린더</h3>
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">월별 휴가 일정</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+            <div className="flex items-center gap-2 sm:gap-4">
+              <button
+                onClick={() => moveMonth(-1)}
+                aria-label="이전 달"
                 className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-indigo-600"
               >
                 <ChevronRight size={20} className="rotate-180" />
               </button>
-              <span className="text-lg font-black text-slate-800">
+              <span className="text-base sm:text-lg font-black text-slate-800">
                 {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
               </span>
-              <button 
-                onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+              <button
+                onClick={() => moveMonth(1)}
+                aria-label="다음 달"
                 className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-indigo-600"
               >
                 <ChevronRight size={20} />
@@ -406,35 +411,90 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             </div>
           </div>
 
-          <div className="p-8 overflow-x-auto">
-            <div className="min-w-[800px]">
-              <div className="grid grid-cols-7 gap-2 mb-4">
-                {['일', '월', '화', '수', '목', '금', '토'].map(d => (
-                  <div key={d} className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest py-2">{d}</div>
+          {/* 표시 안내 — 달력의 색·점·테두리 뜻은 여기 한 곳에만 적는다 */}
+          <div role="note" aria-label="달력 표시 안내" className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 sm:px-8 pt-4 text-[11px] font-bold text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-indigo-600" />내 휴가</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-400" />다른 직원 휴가</span>
+            <span className="flex items-center gap-1.5 sm:hidden"><span className="font-black text-slate-600">+2</span>= 2명 더</span>
+            <span className="flex items-center gap-1"><span className="font-black text-rose-500">일</span><span className="font-black text-blue-500">토</span>주말</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-indigo-500" />오늘</span>
+          </div>
+
+          <div className="p-3 sm:p-8">
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 sm:mb-4">
+                {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+                  <div key={d} className={`text-center text-[10px] font-black uppercase tracking-widest py-2 ${i === 0 ? 'text-rose-500' : i === 6 ? 'text-blue-500' : 'text-slate-400'}`}>{d}</div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-2">
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
                 {calendarDays.map((date, idx) => {
-                  if (!date) return <div key={`empty-${idx}`} className="aspect-square bg-slate-50/30 rounded-2xl" />;
+                  if (!date) return <div key={`empty-${idx}`} className="bg-slate-50/30 rounded-lg sm:rounded-2xl" />;
 
-                  const leaves = getLeavesForDate(date);
+                  // 내 휴가를 앞에 둬서 점이 잘려도 내 것은 보이게 한다
+                  const leaves = [...getLeavesForDate(date)].sort((a, b) => Number(b.employeeId === currentUser.id) - Number(a.employeeId === currentUser.id));
                   const isToday = date.toDateString() === new Date().toDateString();
+                  const isSelected = selectedDay?.toDateString() === date.toDateString();
+                  const dow = date.getDay();
+                  const dayColor = isToday ? 'text-indigo-600' : dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-blue-500' : 'text-slate-500';
 
                   return (
-                    <div key={date.toISOString()} className={`min-h-[120px] p-3 rounded-2xl border transition-all flex flex-col ${isToday ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-50 hover:border-indigo-100'}`}>
-                      <span className={`text-[10px] font-black mb-2 ${isToday ? 'text-indigo-600' : 'text-slate-400'}`}>{date.getDate()}</span>
-                      <div className="flex-1 overflow-y-auto no-scrollbar space-y-1.5 max-h-[80px]">
+                    <button
+                      type="button"
+                      key={date.toISOString()}
+                      onClick={() => setSelectedDay(date)}
+                      aria-pressed={isSelected}
+                      aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 휴가 ${leaves.length}명`}
+                      className={`min-h-[52px] sm:min-h-[120px] p-1 sm:p-3 rounded-lg sm:rounded-2xl border transition-all flex flex-col items-center sm:items-stretch text-left ${isToday ? 'border-indigo-500 bg-indigo-50/30' : `border-slate-100 sm:border-slate-50 hover:border-indigo-100 ${dow === 0 || dow === 6 ? 'bg-slate-50' : ''}`} ${isSelected ? 'ring-2 ring-indigo-300 sm:ring-0' : ''}`}
+                    >
+                      <span className={`text-[11px] sm:text-[10px] font-black mb-1 sm:mb-2 ${dayColor}`}>{date.getDate()}</span>
+                      {/* 휴대폰: 사람마다 점 하나, 3명 넘으면 +숫자 */}
+                      <div className="flex flex-wrap justify-center gap-0.5 sm:hidden">
+                        {leaves.slice(0, 3).map(l => (
+                          <span key={l.id} className={`h-2 w-2 rounded-full ${l.employeeId === currentUser.id ? 'bg-indigo-600' : 'bg-slate-400'}`} />
+                        ))}
+                        {leaves.length > 3 && <span className="text-[9px] font-black leading-none text-slate-600">+{leaves.length - 3}</span>}
+                      </div>
+                      {/* PC: 칸 안에 이름 */}
+                      <div className="hidden sm:block flex-1 overflow-y-auto no-scrollbar space-y-1.5 max-h-[80px]">
                         {leaves.map(l => (
                           <div key={l.id} className={`px-2 py-1 rounded-lg text-[9px] font-black truncate ${l.employeeId === currentUser.id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
                             {l.employeeName}
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
-            </div>
+
+              {/* 휴대폰: 누른 날짜의 휴가자 명단 */}
+              <div className="sm:hidden mt-3 rounded-xl border border-slate-100 p-3" aria-live="polite">
+                {!selectedDay ? (
+                  <p className="text-xs font-bold text-slate-400">날짜를 누르면 그날 쉬는 사람이 여기에 나옵니다.</p>
+                ) : (() => {
+                  const dayLeaves = [...getLeavesForDate(selectedDay)].sort((a, b) => Number(b.employeeId === currentUser.id) - Number(a.employeeId === currentUser.id));
+                  return (
+                    <>
+                      <p className="text-sm font-black text-slate-800 mb-2">
+                        {selectedDay.getMonth() + 1}월 {selectedDay.getDate()}일 ({['일', '월', '화', '수', '목', '금', '토'][selectedDay.getDay()]}) 휴가자 {dayLeaves.length}명
+                      </p>
+                      {dayLeaves.length === 0 ? (
+                        <p className="text-xs font-bold text-slate-400">쉬는 사람이 없습니다.</p>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {dayLeaves.map(l => (
+                            <li key={l.id} className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${l.employeeId === currentUser.id ? 'bg-indigo-600' : 'bg-slate-400'}`} />
+                              <span>{l.employeeName}</span>
+                              <span className="text-xs text-slate-400">{l.type}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
           </div>
         </div>
       )}
