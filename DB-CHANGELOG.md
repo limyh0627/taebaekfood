@@ -1,5 +1,15 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-11-03 — 생산 처리창 완료 불가 수정·생산 처리 서버 사양 상향 배포, 운영 자료 변경 없음
+
+**작업자:** Claude Code (사장님 배포 지시)
+
+제품 `a914419c`(main)로 서버 함수 `orderProductionBatchCommand` 한 개와 양 Hosting을 배포했다. 함수는 1GiB·CPU 2로 올리고 요청별 시간 기록(`message:"orderProductionBatch timing"` — mode·totalMs·readWaitMs·otherMs·reads·readDocs·attempts)을 추가했다. 처리 규칙·저장 구조는 그대로다. 화면은 `normalizeBatchOpenResult`가 단위를 null-prototype 객체로 돌려주어 11/2 `2cb4b8c` 이후 생산 처리창이 항상 "수량 확인 필요"로 막히던 문제를 고쳤고, 거래처 주문 포털 기본 주소(`https://taebaek-guest.web.app`)와 휴가 캘린더 휴대폰 화면을 포함한다.
+
+- 검증: 공개 파일 관리자 89·직원 94개가 로컬 빌드와 바이트 일치. 함수 메모리 1024 확인, 다른 함수는 256 그대로. Rules·인덱스·다른 함수·운영 자료는 바꾸지 않았다.
+- 같은 날 최지영(하얀집) `ORD-1793662629422`의 미적용 "주문 확보 해제" 요청(14:18 예약)은 사장님이 화면의 "이 요청 중단"으로 취소했다. 서버 감사 기록이 남는 경로이고 직접 DB 수정은 없다.
+- 되돌리기: 함수는 직전 소스 `cd726ee1`로 해당 함수만 재배포한다. Hosting은 콘솔에서 이전 버전으로 롤백한다.
+
 ## 2026-11-02 — 주문완료 검증 수리, 운영 자료 변경 없음
 
 제품 `5b343f6`의 서버 함수 `orderProductionBatchCommand` 한 개만 갱신했다. 명시적 0소모 부자재를 진입·계획 검증에서 허용하되 원문·조회·버전·CAS와 필수 박스 입수 보호를 유지한다. 신규 필드·컬렉션·Rules·인덱스·운영 주문/배합/재고 정정은 없다. 실제 업로드 JS202 SHA와 비대상70함수·Rules·Hosting·FCM 불변을 확인했다. 보류된 DB 정리 자료는 변경하지 않았다. 배포·복구 조건은 `docs/deploy-order-completion-20261102.md`를 따른다.
