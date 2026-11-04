@@ -1,13 +1,17 @@
 # 서버 함수 하나만 배포한다 (Hosting·Rules·인덱스·운영 자료는 건드리지 않는다).
 # 실행: GitHub > Actions > "Deploy one function" > Run workflow, 또는
-#   gh workflow run deploy-function.yml --ref <브랜치> -f function=orderProductionBatchCommand
-# 선택한 브랜치(--ref)의 코드가 배포된다. main이 아닌 브랜치를 배포했으면 나중에 main에 병합해야
+#   gh workflow run deploy-function.yml -f ref=<브랜치> -f function=orderProductionBatchCommand
+# 입력칸 ref의 브랜치 코드가 배포된다(Use workflow from은 main 그대로). main이 아닌 브랜치를 배포했으면 나중에 main에 병합해야
 # 다음 배포 때 수정이 빠지지 않는다. 배포 기록은 DB-CHANGELOG.md에 남긴다.
 name: Deploy one function
 
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: '배포할 브랜치 (위의 Use workflow from은 main 그대로 두고 여기만 바꾼다)'
+        required: true
+        default: perf/batch-reads
       function:
         description: '배포할 함수 이름 (예: orderProductionBatchCommand)'
         required: true
@@ -28,12 +32,18 @@ jobs:
       - name: 함수 이름 확인
         env:
           FN: ${{ inputs.function }}
+          REF: ${{ inputs.ref }}
         run: |
           if ! [[ "$FN" =~ ^[A-Za-z][A-Za-z0-9_]{0,62}$ ]]; then
             echo "함수 이름 형식이 아닙니다: $FN"; exit 1
           fi
+          if ! [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,100}$ ]]; then
+            echo "브랜치 이름 형식이 아닙니다: $REF"; exit 1
+          fi
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: 함수가 index.ts에서 내보내지는지 확인
         env:
@@ -62,10 +72,11 @@ jobs:
         if: always()
         env:
           FN: ${{ inputs.function }}
+          REF: ${{ inputs.ref }}
         run: |
           {
             echo "### 함수 배포: \`$FN\`"
-            echo "- 브랜치: \`${GITHUB_REF_NAME}\`"
-            echo "- 커밋: \`${GITHUB_SHA::8}\`"
+            echo "- 브랜치: \`$REF\`"
+            echo "- 커밋: \`$(git rev-parse --short=8 HEAD 2>/dev/null)\`"
             echo "- 결과: ${{ job.status }}"
           } >> "$GITHUB_STEP_SUMMARY"
