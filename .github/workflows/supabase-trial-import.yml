@@ -17,6 +17,11 @@ on:
         type: boolean
         required: false
         default: false
+      copy_files:
+        description: '서류함 파일도 Supabase Storage로 복사(이미 있는 건 건너뜀). SUPABASE_URL·SUPABASE_SERVICE_ROLE_KEY Secret 필요'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -75,6 +80,20 @@ jobs:
           set -o pipefail
           for f in supabase/sql/03*.sql; do psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f "$f"; done | tee checks.txt
 
+      - uses: google-github-actions/auth@v2
+        if: ${{ inputs.copy_files && inputs.skip_export }}
+        with:
+          credentials_json: ${{ secrets.FIREBASE_FUNCTIONS_DEPLOY_SA }}
+
+      - name: 5-1. 서류함 파일 복사 (Firebase Storage → Supabase Storage, 읽기만)
+        if: ${{ inputs.copy_files }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix scripts/supabase firebase-admin@12 pg@8
+          node scripts/supabase/copy-files.mjs | tee files.txt
+
       - name: 6. 나머지 컬렉션 모양 조사
         run: psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -q -f supabase/sql/040_profile.sql > profile.txt
 
@@ -93,5 +112,6 @@ jobs:
           {
             echo "### Supabase 시험 이전 결과"
             if [ -f export.txt ]; then echo; echo "#### Firestore 복사"; sed -n '/^| 컬렉션/,$p' export.txt; fi
+            if [ -f files.txt ]; then echo; echo "#### 서류함 파일"; sed -n '/^| 서류함/,$p' files.txt; fi
             if [ -f checks.txt ]; then echo; echo '#### 대조'; echo '```'; cat checks.txt; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
