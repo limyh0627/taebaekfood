@@ -3,6 +3,13 @@
 -- 모든 표는 RLS를 켜고 정책은 아직 두지 않는다 = 앱 API로는 아무도 못 읽는다. 시험 단계는 직접 접속만.
 -- 다시 돌려도 되도록 erp 스키마를 통째로 지우고 새로 만든다(시험 전용).
 
+-- 전환(실제 운영 시작) 뒤에는 이 파이프라인이 운영 데이터를 지우지 않게 멈춘다. 표시는 supabase/cutover-mark.sql.
+do $$ begin
+  if to_regclass('app.cutover') is not null then
+    raise exception '이미 실제 운영으로 전환한 DB입니다. 시험 이전을 다시 돌리면 운영 데이터가 지워지므로 멈춥니다.';
+  end if;
+end $$;
+
 drop schema if exists erp cascade;
 create schema erp;
 

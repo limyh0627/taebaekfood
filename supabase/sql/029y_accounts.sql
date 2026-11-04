@@ -21,6 +21,23 @@ begin
 end $$;
 
 -- 계정을 회사에 붙이거나 권한을 바꾼다. 직원 카드와도 잇는다(선택).
+-- 계정 ↔ 직원 카드 연결은 erp.employees.auth_uid에 두지만, 시험 이전은 erp 스키마를 다시 만든다.
+-- 연결을 app 스키마에도 남겨 두고, 이 파일이 돌 때마다 다시 붙인다(계정·소속처럼 이전에 안 지워지게).
+create table if not exists app.member_employees (
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  company_id  text not null,
+  employee_id text not null,
+  primary key (user_id, company_id)
+);
+alter table app.member_employees enable row level security;
+revoke all on app.member_employees from anon, authenticated;
+
+-- 옛 앱의 Firebase uid는 여기 계정과 상관없다 → 지우고, 남겨 둔 연결로 다시 붙인다.
+update erp.employees e set auth_uid = null
+where e.auth_uid is not null and not exists (select 1 from auth.users u where u.id::text = e.auth_uid);
+update erp.employees e set auth_uid = m.user_id::text
+from app.member_employees m where m.employee_id = e.id and m.company_id = e.company_id;
+
 create or replace function public.set_member(p_company text, p_user_id uuid, p_role text, p_employee_id text default null) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -33,8 +50,10 @@ begin
   -- 직원 카드: null이면 그대로, ''이면 연결 끊기, 값이면 그 카드로.
   if p_employee_id is not null then
     update erp.employees set auth_uid = null where company_id = p_company and auth_uid = p_user_id::text and id <> p_employee_id;
+    delete from app.member_employees where user_id = p_user_id and company_id = p_company;
     if p_employee_id <> '' then
       update erp.employees set auth_uid = p_user_id::text where id = p_employee_id and company_id = p_company;
+      insert into app.member_employees (user_id, company_id, employee_id) values (p_user_id, p_company, p_employee_id);
     end if;
   end if;
 end $$;
@@ -46,6 +65,7 @@ begin
   if not (p_company = any (app.my_admin_company_ids())) then raise exception '관리자만 할 수 있습니다.' using errcode = '42501'; end if;
   if p_user_id = auth.uid() then raise exception '나를 뺄 수는 없습니다.'; end if;
   delete from app.memberships where user_id = p_user_id and company_id = p_company;
+  delete from app.member_employees where user_id = p_user_id and company_id = p_company;
   update erp.employees set auth_uid = null where company_id = p_company and auth_uid = p_user_id::text;
 end $$;
 
