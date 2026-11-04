@@ -68,7 +68,7 @@ where l.item_id in (select item_id from top) and l.id not like 'migrate-raw:%'
 group by 1, 2, 3 order by 1, 5;
 
 \echo '## 7-1. 수량 칸이 하나도 없어 0으로 들어간 원장 줄 (형식 문제 의심)'
-select coalesce(r.data->>'kind', r.data->>'type', '(없음)') as "줄 종류", count(*) as "건수",
+select coalesce(r.data->>'kind', r.data->>'type', '(없음)') as "줄 종류", count(distinct r.id) as "건수",
        string_agg(distinct k, ', ') as "있는 칸 예시"
 from raw.docs r
 cross join lateral (select k from jsonb_object_keys(r.data) k limit 40) keys
