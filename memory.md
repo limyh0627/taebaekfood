@@ -2,6 +2,8 @@
 
 오늘 Claude와 정한 것과 확인한 사실. 결정은 "정함", 미룬 것은 "보류"로 적는다.
 
+> **곧 데이터베이스를 Supabase 등으로 옮길 예정(2026-11-04 사장님).** 그래서 아래 2장의 구조 변경은 Firestore에서 단계별로 하지 않고, **옮기면서 새 구조로 바로 만든다.** 오늘 ERD(56개)를 새 표 설계의 출발점으로 쓴다. Firestore에서는 지금 불편한 것(성능 배포 등)만 한다. 보안 문제 두 가지도 이전 후에 고친다.
+
 - 설계안 문서: https://claude.ai/artifact/8SgWX4ikVNeZxWQA3ebHEg
 - 전체 ERD: https://claude.ai/artifact/KSXVUeJZwBiFQz5bzfv6nV
 - 작업 브랜치: `perf/batch-reads` (main에 아직 안 합침)
@@ -112,7 +114,8 @@
 
 ## 4. 보류 (냅두기로 한 것)
 
-- **[보안] 포털이 거래처 계정을 쓰지 않는 문제** — 데이터 정리와 별개로 먼저 고칠 것. 로그인한 포털 계정의 `partnerId`로 거래처를 정하고, 그 거래처 품목·주문만 보이게.
+- **[보안, 이전 후] 포털이 거래처 계정을 쓰지 않는 문제** — 거래처 코드만 알면 그 거래처로 주문 가능. 로그인한 포털 계정의 `partnerId`로 거래처를 정하고, 그 거래처 품목·주문만 보이게.
+- **[보안, 이전 후] 직원 비밀번호 해시가 직원 문서에 있음** — 같은 회사 직원이면 누구나 직원 문서 전체(`passwordHash` 포함)를 읽을 수 있다(`firestore.rules`의 `readOk`). 새 DB에서는 계정(아이디·해시)을 앱이 못 읽는 별도 표로. 직원 로그인은 `functions/src/employeeLogin.ts`(아이디 → 해시 대조 → `authUid`로 Firebase 토큰).
 - `rawDocEntries` → `docLedger` 이름 변경
 - 회사이체 권한을 직원 문서로 옮기기
 - 급여 변경 이력(`payHistory`)을 둘지
@@ -124,4 +127,5 @@
 - [ ] 배포 워크플로로 `perf/batch-reads`의 `orderProductionBatchCommand` 배포 결과 확인 → 성공하면 DB-CHANGELOG 기록, `perf/batch-reads`를 main에 병합
 - [ ] 배포 후 `orderProductionBatch timing` 로그로 처리 시간 비교
 - [ ] 가능하면 PC에서 에뮬레이터 시험: `PARTIAL_BATCH_EMULATOR=true npx vitest run functions/src/orderProductionBatchCommand.emulator.test.ts` (포트 8283)
-- [ ] 1단계 착수 여부 결정
+- [ ] DB 이전 대상(Supabase 등)과 시기 결정 → 오늘 ERD로 새 표 설계
+- [ ] 이전이 몇 달 이상이면, Firestore에서 "주문 처리가 주문 품목·하위 BOM만 읽기"만 먼저 할지 결정
