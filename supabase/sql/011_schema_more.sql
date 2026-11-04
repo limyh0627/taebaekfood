@@ -261,7 +261,7 @@ create table erp.order_interpretation_rules (
 );
 
 -- ---------- 인사 ----------
-alter table erp.employees add column phone text, add column birth_date date,
+alter table erp.employees add column legacy_uid text, add column phone text, add column birth_date date,
   add column health_cert_date date, add column annual_leave jsonb;
 
 create table erp.leave_requests (
@@ -379,7 +379,11 @@ create table erp.chat_rooms (
   name            text,
   is_group        boolean,
   participant_ids text[],
-  last_updated_at timestamptz
+  last_updated_at timestamptz,
+  last_message    text,
+  last_read       jsonb,          -- {사용자 id: 마지막으로 읽은 때}
+  created_by      text,
+  notice          jsonb           -- 대화방 공지 {message_id, text, by, at}
 );
 create table erp.chat_messages (
   id          text primary key,
@@ -390,8 +394,12 @@ create table erp.chat_messages (
   text        text,
   image_url   text,
   file_url    text,
+  file_name   text,
+  images      jsonb,
+  reply_to    jsonb,
   created_at  timestamptz,
-  deleted_at  timestamptz
+  deleted_at  timestamptz,
+  deleted_by  text
 );
 create table erp.notices (
   id         text primary key,

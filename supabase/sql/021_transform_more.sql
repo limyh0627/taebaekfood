@@ -247,7 +247,7 @@ select id, company_id, erp.ref_partner(data->>'partnerId'), coalesce(data->>'ali
 from src where collection = 'orderInterpretationRules';
 
 -- ---------- 인사 ----------
-update erp.employees e set phone = s.data->>'phone', birth_date = erp.to_date(s.data->>'birthDate'),
+update erp.employees e set legacy_uid = s.data->>'authUid', phone = s.data->>'phone', birth_date = erp.to_date(s.data->>'birthDate'),
        health_cert_date = erp.to_date(s.data->>'healthCertDate'), annual_leave = s.data->'annualLeave'
 from src s where s.collection = 'employees' and s.id = e.id;
 
@@ -331,13 +331,16 @@ select id, company_id, data->>'productName', data->>'testItem', nullif(data->>'l
 from src where collection = 'benzopyreneTests';
 
 -- ---------- 협업 ----------
-insert into erp.chat_rooms (id, company_id, name, is_group, participant_ids, last_updated_at)
-select id, company_id, data->>'name', erp.to_bool(data->'isGroup'), erp.txt_arr(data->'participantIds'), erp.to_ts(data->>'lastUpdatedAt')
+insert into erp.chat_rooms (id, company_id, name, is_group, participant_ids, last_updated_at, last_message, last_read, created_by, notice)
+select id, company_id, data->>'name', erp.to_bool(data->'isGroup'), erp.txt_arr(data->'participantIds'), erp.to_ts(data->>'lastUpdatedAt'),
+       data->>'lastMessage', data->'lastReadBy', data->>'createdBy', data->'notice'
 from src where collection = 'chatRooms';
 
-insert into erp.chat_messages (id, company_id, room_id, sender_id, sender_name, text, image_url, file_url, created_at, deleted_at)
+insert into erp.chat_messages (id, company_id, room_id, sender_id, sender_name, text, image_url, file_url, file_name, images, reply_to,
+                               created_at, deleted_at, deleted_by)
 select id, company_id, data->>'roomId', data->>'senderId', data->>'senderName', data->>'text',
-       data->>'imageUrl', data->>'fileUrl', erp.to_ts(data->>'createdAt'), erp.to_ts(data->>'deletedAt')
+       data->>'imageUrl', data->>'fileUrl', data->>'fileName', data->'images', data->'replyTo',
+       erp.to_ts(data->>'createdAt'), erp.to_ts(data->>'deletedAt'), data->>'deletedBy'
 from src s where collection = 'chatMessages' and exists (select 1 from erp.chat_rooms r where r.id = s.data->>'roomId');
 
 insert into erp.import_rejects
@@ -345,7 +348,11 @@ select 'chatMessages', id, '없는 대화방: ' || coalesce(data->>'roomId', '(�
 from src s where collection = 'chatMessages' and not exists (select 1 from erp.chat_rooms r where r.id = s.data->>'roomId');
 
 insert into erp.notices (id, company_id, title, content, tag, author, date, pinned)
-select id, company_id, data->>'title', data->>'content', data->>'tag', data->>'author', erp.to_date(data->>'date'),
+-- 블록(문단·사진)으로 쓴 공지는 글을 이어 붙이고, 사진은 주소 줄로 남긴다.
+select id, company_id, data->>'title',
+       coalesce(nullif(data->>'content', ''), (select string_agg(coalesce(b->>'text', case when b->>'url' is not null then '[사진] ' || (b->>'url') end), E'\n' order by o)
+                                               from jsonb_array_elements(erp.arr(data->'blocks')) with ordinality x(b, o))),
+       data->>'tag', data->>'author', erp.to_date(data->>'date'),
        coalesce(erp.to_bool(data->'pinned'), false)
 from src where collection = 'notices';
 
