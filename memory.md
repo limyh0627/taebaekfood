@@ -2,7 +2,13 @@
 
 오늘 Claude와 정한 것과 확인한 사실. 결정은 "정함", 미룬 것은 "보류"로 적는다.
 
-> **곧 데이터베이스를 Supabase 등으로 옮길 예정(2026-11-04 사장님).** 그래서 아래 2장의 구조 변경은 Firestore에서 단계별로 하지 않고, **옮기면서 새 구조로 바로 만든다.** 오늘 ERD(56개)를 새 표 설계의 출발점으로 쓴다. Firestore에서는 지금 불편한 것(성능 배포 등)만 한다. 보안 문제 두 가지도 이전 후에 고친다.
+> **방향 (2026-11-04 12:35 정함): 범용 ERP를 Supabase로 새로 만들고, 태백도 그리로 옮긴다.**
+> - 원장은 **실제 원장 하나**. 서류용 원장(`rawDocEntries`)·서류 원료 묶음(`RAW_DOC_MERGE`)은 ERP에서 뺀다.
+> - **서류 자동 작성**(원료수불부·생산판매기록부·생산작업기록부)은 **구독에서 고르는 기능**이고, 실제 원장·생산 실적·출고 기준으로 만든다.
+> - **HACCP는 회사 설정으로 켜고 끈다.** 켜면 HACCP 점검 기록이 열리고 서류에 원료 로트를 표시한다(로트는 실제 원장에 있음).
+> - **태백은 서류 자동 작성을 끄고**, ERP에서 기간별 출고·입고·생산을 **내보내서 외부에서 서류를 작성·보관**한다. 그래서 본체에 데이터 내보내기(엑셀·CSV) 기능이 필요하다.
+> - 아래 2장의 구조 변경은 Firestore에서 단계별로 하지 않고 새 ERP에서 바로 만든다. 오늘 ERD(54개)가 출발점. 지금 Firestore에서는 성능 배포 등 당장 불편한 것만 한다. 보안 두 가지는 이전 후 새 구조에서 해결.
+> - 저장소의 `판매용-ERP-분리-설계.md`(코드 한 벌 + 고객사별 Firebase)는 이 방향으로 대체된다.
 
 - 설계안 문서: https://claude.ai/artifact/8SgWX4ikVNeZxWQA3ebHEg
 - 전체 ERD: https://claude.ai/artifact/KSXVUeJZwBiFQz5bzfv6nV
@@ -59,7 +65,6 @@
 | `haccp_*` 7개 + 양식 | `haccpRecords` (`type`) + `haccpTemplates` |
 | `fileCabinetCategories`, `fileCabinetSubCategories`, `fileCabinetDocs` | `fileCategories`(`parentId`) · `files` |
 | `item_pack`, `item_purchase_unit` | `itemUnits` (`kind`) |
-| 코드 상수 `RAW_DOC_MERGE` | `docMaterials` (원료수불부 탭 → 원료 품목 ID) |
 | `accountCodes`, `accountGroups` | `accounts` (`parentId` 계층, 손익·현금흐름 구분은 상위에서 물려받음). 표준 계정과목 이전 계획과 함께 |
 | `retirementProfiles` | `employees.retirement` |
 | `leaveRequests`, `retirementEvents` | 직원 하위 컬렉션 `employees/{직원}/…` |
@@ -76,7 +81,7 @@
 
 ### 그대로 / 필드만 변경
 - `itemFormulas`(배합)는 **BOM과 합치지 않는다.** 등급·서류 품목 단위 비율이라 키(`parent_key`)는 그대로, 원료 쪽만 `childItemId`로. 차감은 비율×수율, 원가는 수율로 나눔.
-- `rawDocEntries`(서류용 원장)는 별도 유지. `material`(원료 이름) → `docMaterialId`. 입고는 실제 원장에서, 사용량은 배송완료 판매에서 배합비로 되계산.
+- `rawDocEntries`(서류용 원장)는 **새 ERP에 넣지 않는다**(맨 위 방향 참고). 태백은 외부에서 서류 작성.
 - `orders`: 겹친 재고 상태 필드 15개 안팎 삭제, 줄별 `producedQty`·`shippedQty`만. 파렛트는 `pallets[].itemId`. 포털 주문은 `portalAccountId`.
 - `employees`: 급여 조건 `pay`(기본급·고정 수당·보험·원천세 기준) 추가. **급여대장(`payrolls`)은 별개 서류**로 매달 이 값을 기본으로 확정, 확정 시 전표 1장. 급여명세서는 대장 줄을 출력(따로 저장 안 함).
 - `cashAccounts`(자금 계좌), 대출, 세금계산서 등은 그대로.
@@ -85,7 +90,7 @@
   - 주문·발주·반품의 품목 줄 모양 통일(`itemId`, 수량, 단위, 단가)
   - 발주 맨 위의 단일 품목 시절 칸(`itemId`, `itemName`, `quantity`, `unit`) 삭제, `items[]`만
 
-### 관청 서류 세 가지 (정함)
+### 관청 서류 세 가지 (태백 현재 방식 — 새 ERP에서는 위 방향으로 대체)
 - **원료수불부·생산판매기록부·생산작업기록부는 같은 근거로 만든다.** 날짜는 생산판매기록부에서 고른 날짜, 생산은 그날 출고분을 양식대로 모은 값, 원료 사용은 그 수량 × 서류 배합비(서류 원료 탭 기준). 계산은 `docOil.ts` 한 곳.
 - 지금 새 생산작업기록부(`productionWorkDocumentRepository.ts`)는 **실제 원장의 원료 차감 줄을 읽는다** → 원료수불부와 양·날짜가 어긋날 수 있다. 서류 기준으로 바꿔야 한다. (주문·원장 전체를 매번 읽어 느리기도 함)
 - 생산판매기록부의 왼쪽 "생산"도 판매 수량을 양식(코드 상수 `topTemplate`, 20·25kg → 1kg 환산 규칙)에 맞춰 모은 값.
@@ -124,7 +129,6 @@
 
 - **[보안, 이전 후] 포털이 거래처 계정을 쓰지 않는 문제** — 거래처 코드만 알면 그 거래처로 주문 가능. 로그인한 포털 계정의 `partnerId`로 거래처를 정하고, 그 거래처 품목·주문만 보이게.
 - **[보안, 이전 후] 직원 비밀번호 해시가 직원 문서에 있음** — 같은 회사 직원이면 누구나 직원 문서 전체(`passwordHash` 포함)를 읽을 수 있다(`firestore.rules`의 `readOk`). 새 DB에서는 계정(아이디·해시)을 앱이 못 읽는 별도 표로. 직원 로그인은 `functions/src/employeeLogin.ts`(아이디 → 해시 대조 → `authUid`로 Firebase 토큰).
-- `rawDocEntries` → `docLedger` 이름 변경
 - 회사이체 권한을 직원 문서로 옮기기
 - 급여 변경 이력(`payHistory`)을 둘지
 - 서류용 배합비가 코드 상수 `PRODUCT_FORMULA`에 따로 있는 것 — 배합 표와 맞춰도 되는지 확인 필요
