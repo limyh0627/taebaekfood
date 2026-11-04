@@ -96,3 +96,7 @@ select count(*) filter (where abs(coalesce(o.total_amount, 0) - coalesce(l.s, 0)
        count(*) as "주문 수"
 from erp.orders o
 left join (select order_id, sum(erp.js_round(coalesce(qty, 0) * coalesce(price, 0))) as s from erp.order_lines group by 1) l on l.order_id = o.id;
+
+\echo '## 13. 미결 명세서 (반제 후 남은 돈) 회사별'
+select company_id as "회사", side as "구분", count(*) filter (where open > 0) as "미결 건수", round(sum(open)) as "미결 합계"
+from erp.open_items group by 1, 2 order by 1, 2;

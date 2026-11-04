@@ -111,8 +111,52 @@ alter view erp.journal_lines set (security_invoker = true);
 alter view erp.partner_balances set (security_invoker = true);
 grant select on erp.journal_raw, erp.journal_lines, erp.journal_skipped, erp.partner_balances to authenticated;
 
+-- ---------- 미결 명세서 (반제) ----------
+-- 거래처·채권/채무별로, 잔액을 세운 전표(청구)와 줄인 전표(결제)를 맞춘다. 태백 앱 allocatePartnerCash와 같은 순서:
+--   1) 사람이 지정한 반제(voucher_applies)를 먼저 채우고  2) 남은 결제는 오래된 청구부터(선입선출).
+-- 잔액(partner_balances)은 이걸 안 쓴다 — 반제가 틀려도 잔액은 안 흔들리고 '어느 명세서냐'만 틀린다.
+create or replace view erp.open_items as
+with net as (
+  select j.company_id, j.partner_id, j.voucher_id,
+         case when j.account_code = '108' then 'AR' else 'AP' end as side,
+         sum(case when j.account_code = '108' then j.debit - j.credit else j.credit - j.debit end) as n
+  from erp.journal_lines j
+  where j.partner_id is not null and j.account_code in ('108', '251', '253')
+  group by 1, 2, 3, 4
+), claims as (
+  select n.*, v.date, v.voucher_no, v.kind from net n join erp.vouchers v on v.id = n.voucher_id where n.n > 0
+), pays as (
+  select company_id, partner_id, side, sum(-n) as amt from net where n < 0 group by 1, 2, 3
+), explicit as (
+  select a.applies_to, sum(a.amount) as amt
+  from erp.voucher_applies a
+  join erp.vouchers pv on pv.id = a.voucher_id and pv.status = 'active'
+  group by 1
+), step1 as (
+  select c.*, least(coalesce(e.amt, 0), c.n) as manual
+  from claims c left join explicit e on e.applies_to = c.voucher_id
+), pool as (
+  select s.company_id, s.partner_id, s.side,
+         greatest(coalesce(max(p.amt), 0) - sum(s.manual), 0) as left_over
+  from step1 s left join pays p on p.company_id = s.company_id and p.partner_id = s.partner_id and p.side = s.side
+  group by 1, 2, 3
+), fifo as (
+  select s.*, s.n - s.manual as rem,
+         sum(s.n - s.manual) over (partition by s.company_id, s.partner_id, s.side order by s.date, s.voucher_id
+                                   rows between unbounded preceding and current row) as cum
+  from step1 s
+)
+select f.company_id, f.partner_id, f.side, f.voucher_id, f.date, f.voucher_no, f.kind,
+       f.n as claim,
+       f.manual + least(greatest(p.left_over - (f.cum - f.rem), 0), f.rem) as settled,
+       f.rem - least(greatest(p.left_over - (f.cum - f.rem), 0), f.rem) as open
+from fifo f join pool p on p.company_id = f.company_id and p.partner_id = f.partner_id and p.side = f.side;
+
+alter view erp.open_items set (security_invoker = true);
+grant select on erp.open_items to authenticated;
+
 -- ---------- 입금·출금 ----------
--- p: {company_id, dir: 입금|출금, date, partner_id, cash_account_id, amount, account_code?, note}
+-- p: {company_id, dir: 입금|출금, date, partner_id, cash_account_id, amount, account_code?, note, applies?: [{voucher_id, amount}]}
 -- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급).
 create or replace function public.record_cash(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -144,6 +188,22 @@ begin
           v_amount, nullif(p->>'note', ''), erp.actor_name(), now(), 'app');
   insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, side, note)
   values (v_id, 1, 'account', v_amount, v_code, case when v_dir = '입금' then '대변' else '차변' end, nullif(p->>'note', ''));
+
+  -- 반제 지정(선택): applies: [{voucher_id, amount}] — 이 돈으로 어느 명세서를 얼마 정리하는지.
+  if jsonb_typeof(p->'applies') = 'array' and jsonb_array_length(p->'applies') > 0 then
+    if exists (select 1 from jsonb_array_elements(p->'applies') a
+               left join erp.vouchers t on t.id = a->>'voucher_id'
+               where t.id is null or t.company_id <> v_company or t.partner_id is distinct from v_partner or t.status <> 'active'
+                  or coalesce((a->>'amount')::numeric, 0) <= 0) then
+      raise exception '반제할 명세서가 이 거래처의 것이 아니거나 금액이 0입니다.';
+    end if;
+    if (select sum((a->>'amount')::numeric) from jsonb_array_elements(p->'applies') a) > v_amount then
+      raise exception '반제 금액 합계가 입출금액보다 큽니다.';
+    end if;
+    insert into erp.voucher_applies (id, company_id, voucher_id, applies_to, amount, created_at)
+    select 'ap-' || gen_random_uuid(), v_company, v_id, a->>'voucher_id', (a->>'amount')::numeric, now()
+    from jsonb_array_elements(p->'applies') a;
+  end if;
   return jsonb_build_object('voucher_id', v_id, 'voucher_no', v_no);
 end $$;
 
