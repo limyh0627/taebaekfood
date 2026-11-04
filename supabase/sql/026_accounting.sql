@@ -22,7 +22,11 @@ create or replace function erp.payable_code(codes text[]) returns text language 
     else '253' end
 $$;
 
+-- 금액이 음수인 줄(반품 명세서 같은 마이너스 전표)은 반대쪽 양수로 돌려 놓는다 — 차변−대변은 그대로다.
 create or replace view erp.journal_raw as
+select j.voucher_id, j.company_id, j.date, j.account_code, j.partner_id,
+       greatest(j.debit, 0) + greatest(-j.credit, 0) as debit, greatest(j.credit, 0) + greatest(-j.debit, 0) as credit, j.note
+from (
 -- 매출·매입 명세서
 with stmt as (
   select v.*, (select array_agg(distinct l.account_code) from erp.voucher_lines l where l.voucher_id = v.id) as codes,
@@ -54,7 +58,7 @@ select v.id, v.company_id, v.date, l.account_code,
        case when l.account_code in ('108', '251', '253') then v.partner_id end,
        case when l.side = '차변' then l.amount else 0 end, case when l.side = '대변' then l.amount else 0 end, l.name
 from erp.vouchers v join erp.voucher_lines l on l.voucher_id = v.id
-where v.status = 'active' and v.kind = '비용' and coalesce(l.amount, 0) <> 0
+where v.status = 'active' and v.kind in ('비용', '기초') and coalesce(l.amount, 0) <> 0
 -- 자금: 대체(상계)
 union all
 select v.id, v.company_id, v.date, l.account_code, v.partner_id,
@@ -75,7 +79,8 @@ from erp.vouchers v
 left join erp.cash_accounts ca on ca.id = v.cash_account_id
 cross join lateral (select sum(case when l.side = '대변' then l.amount else -l.amount end) as net
                     from erp.voucher_lines l where l.voucher_id = v.id) n
-where v.status = 'active' and v.kind in ('입금', '출금') and coalesce(n.net, 0) <> 0;
+where v.status = 'active' and v.kind in ('입금', '출금') and coalesce(n.net, 0) <> 0
+) j;
 
 -- 분개 못 하는 전표와 이유
 create or replace view erp.journal_skipped as

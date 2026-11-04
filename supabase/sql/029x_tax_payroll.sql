@@ -106,7 +106,7 @@ create or replace function erp.assert_admin(p_company text) returns void
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if auth.uid() is null or not (p_company = any (app.my_admin_company_ids())) then
-    raise exception '급여는 관리자만 다룰 수 있습니다.' using errcode = '42501';
+    raise exception '관리자만 할 수 있는 일입니다.' using errcode = '42501';
   end if;
 end $$;
 
