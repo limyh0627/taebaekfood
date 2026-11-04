@@ -216,6 +216,15 @@ from raw_ledger g
 where g.atomic and exists (select 1 from erp.items i where i.id = g.data->>'rawItemId')
 order by g.data->>'rawItemId', g.seq_no;
 
+-- 원자화 줄이 하나도 없는 원료: 옛 기록뿐이라 지금 재고 문서(stockKg)를 이관 기준으로 쓴다.
+insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, effective_date, note)
+select 'migrate-base:' || (r.data->>'rawItemId'), r.company_id, r.data->>'rawItemId',
+       coalesce(erp.to_num(r.data->'stockKg'), 0), true, 'kg', '이관 기준', 'migration', current_date,
+       '원자화 기록이 없는 원료: 지금 재고 문서(stockKg)'
+from src r
+where r.collection = 'rawInventories' and exists (select 1 from erp.items i where i.id = r.data->>'rawItemId')
+  and not exists (select 1 from erp.stock_ledger l where l.id = 'migrate-base:' || (r.data->>'rawItemId'));
+
 -- ---------- 이관 시작 잔고 맞추기 ----------
 -- 원료: 지금 원료 재고 문서(stockKg)와 원장 합계의 남은 차이를 '이관 조정' 한 줄로 넣는다. 0이어야 정상.
 insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, effective_date, note)
