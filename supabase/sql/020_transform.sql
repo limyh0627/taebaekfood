@@ -45,6 +45,10 @@ select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
 from src where collection = 'partners';
 
 -- ---------- 품목 ----------
+-- 기름 밀도(태백 앱 functions/src/shared/formula.ts DENSITY). 품목에 density가 적혀 있으면 그게 먼저.
+create temp table density_map (name text primary key, density numeric);
+insert into density_map values ('통깨참기름', 0.916), ('깨분참기름', 0.916), ('통들깨들기름', 0.924), ('수입들기름', 0.924), ('생들기름', 0.924);
+
 insert into erp.items (id, company_id, name, type, legacy_type, unit, cost, min_stock, procure_type, is_bulk, phantom, archived)
 select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
        case
@@ -62,6 +66,12 @@ select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
        data->>'procureType', coalesce(data->>'subtype', '') = '벌크',
        coalesce((data->>'phantom')::boolean, false), coalesce((data->>'archived')::boolean, false)
 from src where collection = 'items';
+
+-- 벌크·원료를 L로 적어 둔 품목: 재고는 원래 kg으로 셌다(원료 원장 stockKg). 재고 단위는 kg, 화면용으로 L과 밀도를 남긴다.
+update erp.items i set unit = 'kg', display_unit = 'L',
+       density = coalesce(erp.to_num(s.data->'density'), (select d.density from density_map d where d.name = trim(split_part(i.name, '/', 1))))
+from src s
+where s.collection = 'items' and s.id = i.id and (i.is_bulk or i.type = 'RAW') and lower(coalesce(i.unit, '')) in ('l', 'ℓ', '리터');
 
 -- ---------- BOM ----------
 insert into erp.import_rejects

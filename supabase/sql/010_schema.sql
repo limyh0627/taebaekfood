@@ -28,7 +28,9 @@ create table erp.items (
   name         text not null,
   type         text not null check (type in ('RAW','SUB','WIP','FINISHED','GOODS','SERVICE','PALLET','OTHER')),
   legacy_type  text,
-  unit         text,
+  unit         text,            -- 재고·원장 단위. 기름 같은 벌크는 kg으로 센다.
+  display_unit text,            -- 화면에 같이 보여 줄 단위(예: L). 있으면 density로 바꿔 보여 준다.
+  density      numeric,         -- kg/L
   cost         numeric,
   min_stock    numeric,
   procure_type text,

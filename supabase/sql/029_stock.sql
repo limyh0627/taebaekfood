@@ -118,12 +118,13 @@ end $$;
 create or replace function erp.plan_result() returns jsonb language plpgsql stable set search_path = '' as $$
 begin
   return (select coalesce(jsonb_agg(x order by x->>'role', x->>'name'), '[]'::jsonb) from (
-    select jsonb_build_object('item_id', p.item_id, 'name', i.name, 'unit', i.unit, 'role', p.role,
+    select jsonb_build_object('item_id', p.item_id, 'name', i.name, 'unit', i.unit, 'display_unit', i.display_unit,
+             'density', i.density, 'role', p.role,
              'qty', sum(p.qty), 'have', coalesce(b.qty, 0),
              'short', case when p.role = 'use' then greatest(sum(p.qty) - coalesce(b.qty, 0)
                         - coalesce((select sum(qty) from pg_temp._plan q where q.item_id = p.item_id and q.role = 'build'), 0), 0) else 0 end) x
     from pg_temp._plan p join erp.items i on i.id = p.item_id left join erp.stock_balances b on b.item_id = p.item_id
-    group by p.item_id, i.name, i.unit, p.role, b.qty
+    group by p.item_id, i.name, i.unit, i.display_unit, i.density, p.role, b.qty
   ) t);
 end $$;
 
