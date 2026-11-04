@@ -5,15 +5,10 @@ import admin from 'firebase-admin';
 import pg from 'pg';
 
 const PROJECT_ID = 'taebaek-3abe4';
-// 시험 이전 대상(핵심만). 예약·처리 기록처럼 새 구조로 옮기지 않을 컬렉션은 넣지 않는다.
-const COLLECTIONS = [
-  'partners', 'partner_item', 'items', 'item_bom', 'item_formula', 'item_pack', 'item_purchase_unit',
-  'employees', 'orders', 'productionRecords', 'rawMaterialLedger', 'rawInventories',
-];
-// 옮기지 않을 칸. 비밀번호 해시와 푸시 토큰은 새 DB에 절대 두지 않는다.
-const DROP_FIELDS = {
-  employees: ['passwordHash', 'fcmTokens', 'fcmDevices', 'username', 'usernameNormalized'],
-};
+// 최상위 컬렉션을 전부 복사한다. 새 구조로 옮기지 않는 처리 기록·예약·중복 방지 문서만 뺀다.
+const SKIP = /(Operations|AttemptsV1|AssignmentsV1|Reservations|Fences|Guards|Authorizations)$|^(sentinels|authLoginAttempts|helpChatUsage|rawInventoryJobs|inventoryWriterDeletions|orderRequestRetirements|orderManualCorrectionsV1|assignments|rawManualCorrectionReceipts)$/;
+// 옮기지 않을 칸. 비밀번호 해시·푸시 토큰·로그인 아이디는 새 DB에 절대 두지 않는다(어느 컬렉션이든).
+const DROP_KEY = /password|hash|token|fcm|^username/i;
 const BATCH = 400;
 
 if (!process.env.SUPABASE_DB_URL) throw new Error('SUPABASE_DB_URL 환경 변수가 없습니다.');
@@ -36,6 +31,8 @@ function plain(value) {
 const client = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await client.connect();
 
+const COLLECTIONS = (await db.listCollections()).map(c => c.id).filter(n => !SKIP.test(n)).sort();
+console.log(`복사할 컬렉션 ${COLLECTIONS.length}개 (뺀 것: 처리 기록·예약 등)`);
 const summary = [];
 for (const name of COLLECTIONS) {
   await client.query('delete from raw.docs where collection = $1', [name]);
@@ -47,7 +44,7 @@ for (const name of COLLECTIONS) {
     if (snap.empty) break;
     const rows = snap.docs.map(doc => {
       const data = plain(doc.data()) ?? {};
-      for (const f of DROP_FIELDS[name] ?? []) delete data[f];
+      for (const f of Object.keys(data)) if (DROP_KEY.test(f)) delete data[f];
       return { collection: name, id: doc.id, company_id: typeof data.companyId === 'string' ? data.companyId : null, data };
     });
     await client.query(
