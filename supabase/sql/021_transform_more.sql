@@ -102,20 +102,23 @@ select 'cashEntries', s.id, '거래명세서와 같은 id'
 from src s where collection = 'cashEntries'
   and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection <> 'cashEntries');
 
--- 줄이 있으면 그 줄들, 없으면 계정 한 줄.
--- 대체 전표(미수·미지급 상계 등)는 side 없이 부호로 적었다: +는 차변, −는 대변(앱 autoJournal과 같은 규칙).
+-- 줄이 있으면 그 줄들, 없으면 계정 한 줄. 줄은 언제나 차변/대변(side) + 양수 금액으로 고쳐 담는다.
+-- 앱 규칙(cashLineProjection): side가 있으면 그대로. 없으면 부호가 차대다 —
+--   입금·출금: 양수면 '제자리'(입금=대변, 출금=차변), 음수면 반대편.  대체: 양수=차변, 음수=대변.
 insert into erp.voucher_lines (voucher_id, line_no, line_kind, name, amount, account_code, side, note)
-select s.id, l.ord::int, 'account', l.v->>'name',
-       case when l.v->>'side' is null and s.data->>'dir' = '대체' then abs(erp.to_num(l.v->'amount')) else erp.to_num(l.v->'amount') end,
-       l.v->>'accountCode',
-       coalesce(l.v->>'side', case when s.data->>'dir' = '대체'
-                                   then case when erp.to_num(l.v->'amount') >= 0 then '차변' else '대변' end end),
+select s.id, l.ord::int, 'account', l.v->>'name', abs(erp.to_num(l.v->'amount')), l.v->>'accountCode',
+       coalesce(l.v->>'side',
+         case when s.data->>'dir' = '대체' then case when erp.to_num(l.v->'amount') >= 0 then '차변' else '대변' end
+              when (erp.to_num(l.v->'amount') >= 0) = (s.data->>'dir' = '입금') then '대변' else '차변' end),
        l.v->>'note'
 from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'lines')) with ordinality as l(v, ord)
-where s.collection = 'cashEntries' and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection = 'cashEntries');
+where s.collection = 'cashEntries' and erp.to_num(l.v->'amount') is not null
+  and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection = 'cashEntries');
 
-insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, note)
-select s.id, 1, 'account', erp.to_num(s.data->'amount'), s.data->>'accountCode', nullif(s.data->>'note', '')
+insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, side, note)
+select s.id, 1, 'account', abs(erp.to_num(s.data->'amount')), s.data->>'accountCode',
+       case when (erp.to_num(s.data->'amount') >= 0) = (s.data->>'dir' = '입금') then '대변' else '차변' end,
+       nullif(s.data->>'note', '')
 from src s
 where s.collection = 'cashEntries' and jsonb_array_length(erp.arr(s.data->'lines')) = 0
   and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection = 'cashEntries');

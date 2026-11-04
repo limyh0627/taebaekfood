@@ -41,34 +41,27 @@ where collection not in ('partners','partner_item','items','item_bom','item_form
                          'employees','orders','productionRecords','rawMaterialLedger','rawInventories')
 group by 1, 2 order by 3 desc;
 
-\echo '## 10. 전표 금액 대조 (대변 줄이 있으면 복식: 차변 합 = 대변 합 = 전표 금액. 없으면 줄 합 = 전표 금액)'
-with l as (
-  select voucher_id,
-         bool_or(side = '대변') as journal,
-         sum(amount) filter (where side = '차변') as dr,
-         sum(amount) filter (where side = '대변') as cr,
-         sum(amount) as total
-  from erp.voucher_lines group by 1
-)
-select v.legacy_collection as "원본", v.kind as "종류",
-       count(*) filter (where l.journal and (abs(coalesce(l.dr, 0) - coalesce(l.cr, 0)) >= 1)) as "차변≠대변",
-       count(*) filter (where l.journal and abs(coalesce(l.dr, 0) - coalesce(v.amount, 0)) >= 1) as "차변≠전표 금액",
-       count(*) filter (where not l.journal and abs(coalesce(l.total, 0) - coalesce(v.amount, 0)) >= 1) as "줄 합≠전표 금액",
-       count(*) as "전표 수"
-from erp.vouchers v join l on l.voucher_id = v.id
-group by 1, 2 order by 1, 2;
+\echo '## 10. 분개: 회사별 차변 합 = 대변 합'
+select company_id as "회사", count(distinct voucher_id) as "분개된 전표", round(sum(debit)) as "차변 합", round(sum(credit)) as "대변 합"
+from erp.journal_lines group by 1 order by 1;
 
-\echo '## 10-2. 금액이 안 맞는 전표 예시 (최대 10건)'
-with l as (
-  select voucher_id, bool_or(side = '대변') as journal,
-         sum(amount) filter (where side = '차변') as dr, sum(amount) filter (where side = '대변') as cr, sum(amount) as total
-  from erp.voucher_lines group by 1
-)
-select v.id as "전표", v.kind as "종류", v.voucher_no as "번호", v.amount as "전표 금액", l.dr as "차변", l.cr as "대변", l.total as "줄 합"
-from erp.vouchers v join l on l.voucher_id = v.id
-where (l.journal and (abs(coalesce(l.dr, 0) - coalesce(l.cr, 0)) >= 1 or abs(coalesce(l.dr, 0) - coalesce(v.amount, 0)) >= 1))
-   or (not l.journal and abs(coalesce(l.total, 0) - coalesce(v.amount, 0)) >= 1)
-limit 10;
+\echo '## 10-2. 분개 못 한 전표 (이유별, 앱도 같은 전표를 건너뛴다)'
+select company_id as "회사", kind as "종류", reason as "이유", count(*) as "건수", round(sum(amount)) as "금액"
+from erp.journal_skipped group by 1, 2, 3 order by 4 desc;
+
+\echo '## 10-3. 분개 못 한 전표 예시 (최대 10건)'
+select voucher_id as "전표", kind as "종류", voucher_no as "번호", date as "날짜", amount as "금액", reason as "이유", debit as "차변", credit as "대변"
+from erp.journal_skipped order by date desc limit 10;
+
+\echo '## 10-4. 거래처 잔액 상위 — 지금 앱의 거래처 잔액과 대조해 보세요'
+select b.company_id as "회사", p.name as "거래처", round(b.receivable) as "미수", round(b.payable) as "미지급"
+from erp.partner_balances b join erp.partners p on p.id = b.partner_id
+where abs(b.receivable) >= 1 or abs(b.payable) >= 1
+order by greatest(abs(b.receivable), abs(b.payable)) desc limit 25;
+
+\echo '## 10-5. 회사별 미수·미지급 합계'
+select company_id as "회사", round(sum(receivable)) as "미수 합계", round(sum(payable)) as "미지급 합계"
+from erp.partner_balances group by 1 order by 1;
 
 \echo '## 11-1. 발주가 가리키는 없는 명세서 id (최대 15건)'
 select p.id as "발주", r.data->>'linkedStatementId' as "가리키는 명세서", p.status as "상태"
