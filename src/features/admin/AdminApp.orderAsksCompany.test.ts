@@ -15,7 +15,7 @@ import { isGoodsItem } from '../../shared/itemTaxonomy';
 import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows } from './stockUseRows';
-import { resolveProductionRoute } from './productionQuantityDraft';
+import { committedByOthers, findUncheckedGoodsShortages, resolveProductionRoute, stockShortageNotice } from './productionQuantityDraft';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { OrderStatus } from '../../shared/types';
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
@@ -34,7 +34,7 @@ function harness(scopeOverride?: {current:{companyId:string;token:object}}) {
  const request = actualRequest({ resolveProductionRoute, isStockProduction, orderAskScope: scope, prepareOrderStatusChange: () => pending.promise,
  allOrders: [order], orders: [], workStatusFromItems: () => OrderStatus.DISPATCHED,
  requiresCompleteItemsForStatusChange: () => false, OrderStatus, allItems: [{id:'item',name:'합성 제품',type:'product',unit:'개',stock:0}], appData: {orderUnitInputs: undefined}, currentUser: {name:'관리자'},
- buildStockUseRows: () => [{itemId:'item'}], setStockUseAsk: (value: any) => { ask=value; }, setRollbackAsk: (value: any) => {ask=value;}, changeOrderStatus: writer });
+ findUncheckedGoodsShortages, stockShortageNotice, goodsCommitted: new Map(), buildStockUseRows: () => [{itemId:'item'}], setStockUseAsk: (value: any) => { ask=value; }, setRollbackAsk: (value: any) => {ask=value;}, changeOrderStatus: writer });
  return {scope,request,pending,writer,order,setAsk:(value:any)=>{ask=value;},getAsk:()=>ask};
 }
 it('실제 prepare 대기 후 이전 회사 결과는 새 회사 확인창을 덮지 않는다', async () => {
@@ -49,6 +49,11 @@ it('A→B→A 전환도 이전 세대의 준비 결과를 버린다', async () =
 });
 
 function actualConfirm(modal:'ConfirmModal'|'StockUseModal',deps:Record<string,unknown>){const expression=oneModalCallback(modal,'onConfirm',title=>modal==='StockUseModal'||!!title?.initializer&&ts.isStringLiteral(title.initializer)&&title.initializer.text==='되돌리기');const code=ts.transpileModule('const confirm='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return confirm;')(...Object.values(deps)) as (...args:any[])=>Promise<void>;}
+function goodsOrderRequest(stock:number){const writer=vi.fn(),told=vi.fn(async(_message:string,_title?:string)=>{}),pending=deferred(),order={id:'G',partnerName:'상품 주문',status:OrderStatus.PENDING,items:[{lineId:'line',itemId:'goods',quantity:5}]};
+ const request=actualRequest({resolveProductionRoute,isStockProduction,orderAskScope:{current:{companyId:'taebaek',token:{}}},prepareOrderStatusChange:()=>pending.promise,allOrders:[order],orders:[],workStatusFromItems:()=>OrderStatus.DISPATCHED,requiresCompleteItemsForStatusChange:()=>false,OrderStatus,allItems:[{id:'goods',name:'사입품',type:'goods',unit:'개',stock}],appData:{orderUnitInputs:undefined},currentUser:{name:'관리자'},findUncheckedGoodsShortages,stockShortageNotice,goodsCommitted:new Map(),awaitNotice:told,buildStockUseRows:()=>[],setStockUseAsk:vi.fn(),setRollbackAsk:vi.fn(),changeOrderStatus:writer});
+ return {writer,told,run:async()=>{const waiting=request('G',OrderStatus.DISPATCHED);pending.resolve({order});await waiting;}};}
+it('주문 전체 완료도 상품 재고가 부족하면 알리고 상태를 바꾸지 않는다',async()=>{const h=goodsOrderRequest(3);await h.run();expect(h.told).toHaveBeenCalledOnce();expect(h.told.mock.calls[0][0]).toContain('재고가 부족해서 주문을 완료할 수 없습니다.');expect(h.told.mock.calls[0][0]).toContain('사입품: 현재고 3 개 · 이번 주문 5 개');expect(h.told.mock.calls[0][1]).toBe('재고부족');expect(h.writer).not.toHaveBeenCalled();});
+it('주문 전체 완료는 상품 재고가 넉넉하면 묻지 않고 진행한다',async()=>{const h=goodsOrderRequest(5);await h.run();expect(h.told).not.toHaveBeenCalled();expect(h.writer).toHaveBeenCalledOnce();});
 it('현재 회사의 정상 준비는 확인창을 열고, stale direct 상태 변경은 실행하지 않는다', async () => {
  const current=harness();const valid=current.request('A',OrderStatus.DISPATCHED);current.pending.resolve({order:current.order});await valid;
  expect(current.getAsk()).toMatchObject({orderId:'A',scope:current.scope.current.token});
@@ -149,15 +154,15 @@ function goodsHarness(stock:number) {
  const order={id:'A',partnerName:'태백 주문',status:OrderStatus.PENDING,items:[{itemId:item.id,name:item.name,quantity:2,lineId:'line'}]};
  const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;refs.current.goods=ask;};
  const history=vi.fn().mockResolvedValue(undefined),revision=vi.fn();
- const deps={resolveProductionRoute,requirePreviousRetirementClaimReview:history,companyId:'taebaek',auth:{currentUser:{uid:'fixture-viewer'}},setCancellationRevision:revision,OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
+ const deps={stockShortageNotice,committedByOthers,goodsCommitted:new Map(),awaitNotice:vi.fn(async(_message:string,_title?:string)=>{}),resolveProductionRoute,requirePreviousRetirementClaimReview:history,companyId:'taebaek',auth:{currentUser:{uid:'fixture-viewer'}},setCancellationRevision:revision,OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
  const code=ts.transpileModule(`const toggle=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const toggle=new Function(...Object.keys(deps),`${code};return toggle;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
- return{toggle,scope,refs,writer,history,revision,notice:deps.setAppNotice,set,get:()=>ask};
+ return{toggle,scope,refs,writer,history,revision,notice:deps.setAppNotice,awaitNotice:deps.awaitNotice,set,get:()=>ask};
 }
 function actualGoods(prop:'onConfirm'|'onCancel',deps:Record<string,unknown>){const expression=oneModalCallback('ConfirmModal',prop,title=>!!title?.initializer?.getText(file).includes('goodsStockAsk.title'));const code=ts.transpileModule('const callback='+expression.getText(file)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;return new Function(...Object.keys(deps),code+';return callback;')(...Object.values(deps)) as ()=>unknown;}
-it.each([1,3])('실제 상품 재고 %i 확인창의 이전 확인·취소는 새 회사 창을 지우지 않는다',async stock=>{
+it.each([3])('실제 상품 재고 %i 확인창의 이전 확인·취소는 새 회사 창을 지우지 않는다',async stock=>{
  for(const prop of ['onConfirm','onCancel'] as const) {
-  const h=goodsHarness(stock);await h.toggle('A',0);const old=h.get();expect(old.title).toBe(stock<2?'재고부족':'작업완료');
+  const h=goodsHarness(stock);await h.toggle('A',0);const old=h.get();expect(old.title).toBe('작업완료');
   const callback=actualGoods(prop,{goodsStockAsk:old,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});
   h.scope.current={token:{}};const next={scope:h.scope.current.token,title:'풍회 새창'};h.set(next);await callback();expect(h.get()).toBe(next);expect(h.writer).not.toHaveBeenCalled();
  }
@@ -177,10 +182,14 @@ it('상품 확인창은 회사 전환 즉시 감추고 같은 회사 새창도 �
   h.scope.current={token:{}};expect(visible(old,h.scope)).toBe(false);
  }
 });
-it.each([1,3])('현재 상품 재고 %i 확인은 해당 창만 닫고 정상 저장하며 취소는 저장하지 않는다',async stock=>{
+it('상품 재고가 부족하면 그래도 완료 없이 알리고 저장하지 않는다',async()=>{
+ const h=goodsHarness(1);await h.toggle('A',0);expect(h.get()).toBeNull();expect(h.writer).not.toHaveBeenCalled();
+ const told=h.awaitNotice.mock.calls[0];expect(told[0]).toContain('재고가 부족해서 주문을 완료할 수 없습니다.');expect(told[0]).toContain('사입품: 현재고 1 개 · 이번 주문 2 개');expect(told[1]).toBe('재고부족');
+});
+it.each([3])('현재 상품 재고 %i 확인은 해당 창만 닫고 정상 저장하며 취소는 저장하지 않는다',async stock=>{
  for(const prop of ['onConfirm','onCancel'] as const) {
   const h=goodsHarness(stock);await h.toggle('A',0);const ask=h.get();expect(ask.scope).toBe(h.scope.current.token);
-  expect(ask.message).toContain('사입품');expect(ask.subMessage).toContain(stock<2?'음수가 됩니다':'출고할 때 빠집니다');
+  expect(ask.message).toContain('사입품');expect(ask.subMessage).toContain('출고할 때 빠집니다');
   const callback=actualGoods(prop,{goodsStockAsk:ask,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});await callback();expect(h.get()).toBeNull();
   if(prop==='onConfirm')await waitFor(()=>expect(h.writer).toHaveBeenCalledOnce());else expect(h.writer).not.toHaveBeenCalled();
  }

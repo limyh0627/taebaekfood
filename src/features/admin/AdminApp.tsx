@@ -1,5 +1,5 @@
 import { OrderProductionWorkflow } from '../orders/ui/OrderProductionRecovery';
-import {resolveProductionRoute,type ProductionTarget} from './productionQuantityDraft';
+import {buildGoodsCommitted,committedByOthers,findUncheckedGoodsShortages,resolveProductionRoute,stockShortageNotice,type ProductionTarget} from './productionQuantityDraft';
 import ProjectsPage from '../projects/ui/ProjectsPage';
 import {readPendingRetirementClaims,requirePreviousRetirementClaimReview,type RetainedRetirementClaimDescriptor} from '../../shared/services/orderRequestRetirementService';
 import type {InventoryReferenceToken} from '../../shared/hooks/useInventoryReferenceGuard';
@@ -190,7 +190,7 @@ import type { AlertTone } from '../../shared/components/AlertModalShell';
 import { statusLabel } from '../../shared/orderStatusStyle';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
-import StockUseModal from './StockUseModal';
+import StockUseModal,{GoodsCommittedContext} from './StockUseModal';
 import {
   CATALOG_DELETE_BLOCKING_STATUSES,
   catalogItemDeleteBlockers,
@@ -1007,6 +1007,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //  품목이 갈려 있던 시절의 껍데기(`getProductCollection`)를 지웠다 — 늘 'items' 였다(2026-09-06)
 
 
+  const goodsCommitted = useMemo(() => buildGoodsCommitted(allOrders, allItems, appData.orderUnitInputs), [allOrders, allItems, appData.orderUnitInputs]);
+
   // 작업완료(생산됨·미출고) 주문분 — 지금 현재고에 얹혀 있는 완제품 수량(품목별 합).
   //   재고 현황 모달에서 '작업완료 vs 재고'를 쪼개 보여주는 데 쓴다(전체 = 현재고, 재고 = 현재고 − 작업완료).
   //   완사입·임가공은 작업완료 때 재고가 안 늘어나므로 제외 — orderStockEngine.produceOrder의 isGoodsItem/임가공 스킵과 동일 기준.
@@ -1773,6 +1775,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
     const order = cur;
     if (!order || order.producedAt || isStockProduction(order)) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
+    const goodsShort = findUncheckedGoodsShortages(order.items, allItems, appData.orderUnitInputs, goodsCommitted, order.id);
+    if (goodsShort.length) { await awaitNotice(stockShortageNotice(goodsShort), '재고부족'); return; }
     const referenceToken=appData.inventoryReferenceGuard?.capture();
     const rows = buildStockUseRows(order, allItems, appData.orderUnitInputs);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
@@ -2163,13 +2167,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
     /*  **완사입·임가공은 생산이 없다 — 재고로만 나간다.**
      *  그래서 `buildStockUseRows` 가 빼 버리는데, 그냥 지나가면 재고가 모자란 것도 모른다.
-     *  여기서 재고와 주문량을 견줘 **쓸 수 있으면 쓴다고, 모자라면 음수가 된다고** 알린다. */
+     *  여기서 재고와 주문량을 견줘 **쓸 수 있으면 쓴다고 알리고, 모자라면 완료를 막는다.** */
     if(reprepareOnly)return startSave();
     const 완료줄 = plan.items[itemIdx];
     const 완료품목 = 완료줄 ? allItems.find(p => p.id === 완료줄.itemId) : undefined;
     if (applying && lineRows.length === 0 && 완료줄 && 완료품목 && isGoodsItem(완료품목)) {
       const 주문량 = stockUnits(완료줄, 완료품목, appData.orderUnitInputs);
-      const 재고 = unreservedItemStock(완료품목);
+      const 다른주문완료분 = committedByOthers(goodsCommitted, 완료품목.id, orderId);
+      const 재고 = Math.round((unreservedItemStock(완료품목) - 다른주문완료분) * 1000) / 1000;
       const 단위 = unpackComponent(완료품목, appData.orderUnitInputs) ? '박스' : (완료품목.unit || '개');
       const 모자란양 = Math.round((주문량 - 재고) * 1000) / 1000;
       /*  **얼마가 다른 주문에 잡혀 있는지 같이 보여 준다**(2026-09-14 사장님: "참진은 재고가
@@ -2190,17 +2195,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
           그 몫이 이 주문에 잡히고(`inventoryReservations`), 실제로 빠지는 것은 **출고할 때**다
           (`shipOrder`). "쓴다"고 하면 지금 줄어드는 줄 안다. */
       const 출고뒤 = Math.round((재고 - 주문량) * 1000) / 1000;
-      setGoodsStockAsk(모자란양 > 0 ? {
-        //  **분홍**(2026-09-15 사장님: "이 경우는 색 분홍색으로 해줘"). 노랑은 '재고를 다 쓴다'는
-        //  알림에도 쓰고 있어, 재고가 모자라 음수가 될 이 경고와 한 색이면 갈리지 않았다.
-        scope: askScope, title: '재고부족', tone: 'pink',
-        message: `재고가 부족합니다 — “${완료품목.name}”`,
-        subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
-          + `이 주문 몫으로 ${주문량}${단위}를 잡으면, 출고할 때 재고가 ${출고뒤}${단위} 로 음수가 됩니다.\n`
-          + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.${잡힘글}`,
-        confirmText: '그래도 완료',
-        onConfirm: () => { void save(); },onCancel:()=>settle({status:'cancelled'}),
-      } : {
+      /*  2026-11-04 사장님: "상품인 품목들은 … 재고가 부족하다면 재고가 부족해서 주문을 완료할 수 없다는 알람".
+          2026-09-15에 둔 '그래도 완료'(음수 허용)를 이 말씀으로 없앤다. */
+      if (모자란양 > 0) {
+        await awaitNotice(stockShortageNotice([{ name: 완료품목.name, need: 주문량, stock: Math.round((재고 + 다른주문완료분) * 1000) / 1000, others: 다른주문완료분, unit: 단위 }]) + 잡힘글, '재고부족');
+        settle({ status: 'cancelled' });
+        return;
+      }
+      setGoodsStockAsk({
         scope: askScope, title: '작업완료', tone: 'emerald',
         message: `“${완료품목.name}” ${주문량}${단위}를 이 주문 몫으로 잡습니다.`,
         subMessage: `재고에서는 출고할 때 빠집니다 — 지금 ${재고}${단위} → 출고 뒤 ${출고뒤}${단위}.\n`
@@ -2502,6 +2504,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
   return (
+    <GoodsCommittedContext.Provider value={goodsCommitted}>
     <OrderProductionWorkflow companyId={companyId} actorUid={auth.currentUser?.uid??''} employeeId={currentUser.id} isAdmin={menuIdentity?.admin??isAdmin} ready={!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id} items={companyItems} isCurrent={()=>!!menuIdentity&&menuIdentity.uid===auth.currentUser?.uid&&menuIdentity.companyId===companyId&&menuIdentity.employeeId===currentUser.id}>
     {actions=>{batchWorkflowRef.current=actions?{companyId,uid:menuIdentity?.uid??'',complete:actions.complete,reverse:actions.reverse}:null;return <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
       {fullHost&&fullHost.token===fullHostIdentity.current.token&&<OrderInventoryRecoveryPanel key={fullHost.entry.locator.reference.orderId} companyId={companyId} actorUid={recoveryActorUid} orders={allOrders.filter(row=>row.id===fullHost.entry.locator.reference.orderId)} fullRecoveryScope={fullRecoveryScope} fullRecoveryCopies={pendingFullRecoveries.filter(row=>row.reference.orderId===fullHost.entry.locator.reference.orderId)} initialFullRecovery={fullHost.entry} onCloseFullRecovery={()=>{if(fullHostLock.current===fullHost.run){fullHostLock.current=null;setFullHost(null);}}} isCurrentActor={()=>fullHost.token===fullHostIdentity.current.token&&auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={()=>{}} onFullRecoveryCopiesChanged={()=>{if(fullHost.token===fullHostIdentity.current.token)setCancellationRevision(value=>value+1);}} onFullRecoverySettled={()=>{if(fullHost.token!==fullHostIdentity.current.token||auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope)return;setCancellationRevision(value=>value+1);orderListRead?.retry();}}/>}
@@ -5283,6 +5286,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
     </div>}}
     </OrderProductionWorkflow>
+    </GoodsCommittedContext.Provider>
   );
 };
 

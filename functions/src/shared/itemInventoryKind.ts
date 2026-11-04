@@ -1,6 +1,10 @@
 export interface InventoryKindItem { type?: string; unit?: string; subtype?: string; rawMaterialName?: string; density?: number }
 const bulkUnits = new Set(['kg', 'KG', 'L', 'l', '리터', 'ℓ']);
 /** 생산에서 개수 재고로 보는 기존 판정은 상품 로트 지원 때문에 넓히지 않는다. */
+/**
+ * 제 재고를 개수로 드는 품목(완제품·개수 반제품). 생산 처리에서는 이 품목만 주문 몫 예약을 잡는다.
+ * 2026-11-04 사장님: 상품(`type=goods`)은 만들지 않으니 대조 없이 출고 때 재고에서 차감만 한다.
+ */
 export const holdsUnitStockPure = (item: InventoryKindItem | undefined): boolean =>
   !!item && String(item.subtype ?? '') !== '벌크'
   && !bulkUnits.has(String(item.unit ?? '').trim())

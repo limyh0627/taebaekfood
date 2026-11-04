@@ -1,3 +1,5 @@
+import {holdsUnitStockPure} from './itemInventoryKind';
+import {stockShortageError} from './stockShortage';
 import type {Firestore} from 'firebase-admin/firestore';
 import {fullCodec,fullHash,fullId,fullObject,fullReject} from './orderStockFullPlan';
 import {isFullLinePlainJson} from './orderStockFullLinePlan';
@@ -212,12 +214,12 @@ export function prepareBatchShipmentEffects(input:BatchConsumerInput & {targetSt
  const rows=new Map<string,FullRow>(),transitions:BatchOwnerTransition[]=[];
  for(const [id,delta] of changes){
   const row=input.items.get(id),current=input.currentDocuments.get('items/'+id);
-  if(!row||!current||text(row)!==text(current)||(row.companyId??'taebaek')!==reference.companyId||typeof row.stock!=='number'||!Number.isFinite(row.stock)||!Array.isArray(row.inventoryReservations))throw Error('source-unproven');
-  const own=row.inventoryReservations.filter((value:FullRow)=>value?.orderId===reference.orderId);
-  if(own.length!==1||own[0].state!=='allocated'||own[0].qty!==-delta)throw Error('invalid-previous-allocation');
+  if(!row||!current||text(row)!==text(current)||(row.companyId??'taebaek')!==reference.companyId||typeof row.stock!=='number'||!Number.isFinite(row.stock)||holdsUnitStockPure(row)&&!Array.isArray(row.inventoryReservations))throw Error('source-unproven');
+  const own=(row.inventoryReservations??[]).filter((value:FullRow)=>value?.orderId===reference.orderId);
+  if(holdsUnitStockPure(row)?own.length!==1||own[0].state!=='allocated'||own[0].qty!==-delta:own.length!==0)throw Error('invalid-previous-allocation');
   rows.set(id,row);transitions.push({orderId:reference.orderId,itemId:id,removedRows:own,allocation:null});
  }
- if(planOrderStockReservation(reference.orderId,rows,()=>changes,{nowMs:input.clock.nowMs}).shortages.length)throw Error('stock-shortage');
+ const shortages=planOrderStockReservation(reference.orderId,rows,()=>changes,{nowMs:input.clock.nowMs}).shortages;if(shortages.length)throw stockShortageError(shortages,id=>rows.get(id));
  const lotClock={now:input.clock.now,date:kstDateOf(new Date(input.clock.nowMs)),id:'batch-shipment'};
  const lotPlanner=createOrderProductLotPlanner({allItems:input.catalog.allItems,unitInputs:input.catalog.inputs,shipQtyOf:(line,product)=>shipQtyOfLine(line,product,input.catalog.inputs),lotPolicy:{buildProductLot:p=>buildProductLot(p,lotClock),withCarryOverProductLot:(lots,stock,material,kg,carry)=>withCarryOverProductLot(lots,stock,material,kg,carry,lotClock)}});
  const patches=new Map<string,FullRow>(),consumed:FullRow[]=[];
