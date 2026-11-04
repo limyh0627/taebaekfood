@@ -353,7 +353,8 @@ create table erp.haccp_records (
   created_by   text,
   created_at   timestamptz,
   confirmed_by text,
-  confirmed_at timestamptz
+  confirmed_at timestamptz,
+  meta         jsonb          -- 나머지 원문: checkTime·cycle·measureTime·checkZone·inspector·revisionCount, 항목 스냅샷(items) 등
 );
 
 create table erp.benzopyrene_tests (

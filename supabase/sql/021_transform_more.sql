@@ -16,7 +16,7 @@ from raw.docs where (company_id is null or company_id not in ('taebaek', 'pungho
     'deliveryScheduleAudits','quotations','orderInterpretationRules','leaveRequests','payrolls','users',
     'fileCabinetCategories','fileCabinetSubCategories','fileCabinetDocs','haccp_templates','haccp_temp',
     'haccp_sanitation','haccp_personal_hygiene','haccp_periodic_sanitation','haccp_closing_checklist',
-    'haccp_incoming','benzopyreneTests','chatRooms','chatMessages','notices','notifications','dashboardLinks',
+    'haccp_incoming','haccp_cleaning','benzopyreneTests','chatRooms','chatMessages','notices','notifications','dashboardLinks',
     'itemTaxonomy','workProjectsV1','settings','pallets','palletTransactions','itemReceipts','itemUnpackMovements');
 
 -- ---------- 도우미: 있으면 그 id, 없으면 null ----------
@@ -303,12 +303,27 @@ from src s where s.collection = 'fileCabinetDocs';
 insert into erp.haccp_templates (id, company_id, data)
 select id, company_id, data - 'companyId' - 'clonedFrom' from src where collection = 'haccp_templates';
 
-insert into erp.haccp_records (id, company_id, type, date, rows, notes, created_by, created_at, confirmed_by, confirmed_at)
-select collection || ':' || id, company_id, substr(collection, 7),
-       coalesce(data->>'checkDate', data->>'date', data->>'period', data->>'month'),
-       data->'rows', nullif(data->>'specialNotes', ''), data->>'createdBy', erp.to_ts(data->>'createdAt'),
-       data->>'confirmedBy', erp.to_ts(data->>'confirmedAt')
-from src where collection like 'haccp\_%' and collection <> 'haccp_templates';
+-- 하루 2번(작업장 위생: checkTime)·주간/월간(cycle)은 meta에 남겨 같은 날짜의 기록을 가른다.
+-- 위생·주간/월간·마감 점검표의 rows에는 항목 이름이 없고 템플릿 순서로만 맞는다 → 이관 시점 템플릿 항목을 meta.items로 붙인다.
+-- 세척·소독 일지(haccp_cleaning)는 rows 대신 machineRows·areaRows를 쓴다 → rows에 둘을 묶어 둔다.
+insert into erp.haccp_records (id, company_id, type, date, rows, notes, created_by, created_at, confirmed_by, confirmed_at, meta)
+select s.collection || ':' || s.id, s.company_id, substr(s.collection, 7),
+       coalesce(s.data->>'checkDate', s.data->>'date', s.data->>'period', s.data->>'month'),
+       case when s.collection = 'haccp_cleaning' then jsonb_build_object('machineRows', s.data->'machineRows', 'areaRows', s.data->'areaRows')
+            else s.data->'rows' end,
+       nullif(s.data->>'specialNotes', ''), s.data->>'createdBy', erp.to_ts(s.data->>'createdAt'),
+       s.data->>'confirmedBy', erp.to_ts(s.data->>'confirmedAt'),
+       (s.data - 'companyId' - 'rows' - 'machineRows' - 'areaRows' - 'specialNotes')
+         || case when t.data is not null then jsonb_build_object('items', t.data->'items') else '{}'::jsonb end
+from src s
+cross join lateral (select case s.collection when 'haccp_sanitation' then 'sanitation' when 'haccp_closing_checklist' then 'closing_checklist'
+                     when 'haccp_periodic_sanitation' then case when s.data->>'cycle' = 'monthly' then 'monthly_sanitation' else 'weekly_sanitation' end end as key) k
+left join lateral (
+  select x.data from src x
+  where x.collection = 'haccp_templates' and x.company_id = s.company_id
+    and x.id in (k.key, s.company_id || '--' || k.key) and jsonb_typeof(x.data->'items') = 'array'
+  order by x.id = k.key desc limit 1) t on true
+where s.collection like 'haccp\_%' and s.collection <> 'haccp_templates';
 
 insert into erp.benzopyrene_tests (id, company_id, product_name, test_item, lot_no, received_date, completed_date, criteria, result, judgment)
 select id, company_id, data->>'productName', data->>'testItem', nullif(data->>'lotNo', ''), erp.to_date(data->>'receivedDate'),
