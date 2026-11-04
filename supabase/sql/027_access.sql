@@ -51,7 +51,8 @@ begin
   -- company_id가 있는 표: 소속 회사만. 급여는 관리자만.
   for t in
     select c.table_name from information_schema.columns c
-    where c.table_schema = 'erp' and c.column_name = 'company_id'
+    join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
+    where c.table_schema = 'erp' and c.column_name = 'company_id' and t.table_type = 'BASE TABLE'  -- 뷰는 빼고(뷰는 표의 정책을 따른다)
       and c.table_name not in ('payrolls', 'import_rejects')
   loop
     execute format('drop policy if exists member_read on erp.%I', t);
