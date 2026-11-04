@@ -65,13 +65,15 @@ jobs:
           node scripts/supabase/export-firestore.mjs | tee export.txt
 
       - name: 3. 새 표 만들기
-        run: psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f supabase/sql/010_schema.sql
+        run: for f in supabase/sql/01*.sql; do echo "== $f"; psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$f"; done
 
       - name: 4. 변환
-        run: psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f supabase/sql/020_transform.sql
+        run: for f in supabase/sql/02*.sql; do echo "== $f"; psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$f"; done
 
       - name: 5. 대조
-        run: psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f supabase/sql/030_checks.sql | tee checks.txt
+        run: |
+          set -o pipefail
+          for f in supabase/sql/03*.sql; do psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f "$f"; done | tee checks.txt
 
       - name: 6. 나머지 컬렉션 모양 조사
         run: psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -q -f supabase/sql/040_profile.sql > profile.txt

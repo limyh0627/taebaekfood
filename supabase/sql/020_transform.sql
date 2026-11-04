@@ -33,7 +33,9 @@ select collection, id, company_id, data from raw.docs where company_id in ('taeb
 
 insert into erp.import_rejects
 select collection, id, 'companyId 없음 또는 알 수 없는 회사: ' || coalesce(company_id, '(없음)')
-from raw.docs where company_id is null or company_id not in ('taebaek', 'punghoe');
+from raw.docs where (company_id is null or company_id not in ('taebaek', 'punghoe'))
+  and collection in ('partners','partner_item','items','item_bom','item_formula','item_pack','item_purchase_unit',
+                     'employees','orders','productionRecords','rawMaterialLedger','rawInventories');
 
 -- ---------- 거래처 ----------
 insert into erp.partners (id, company_id, name, partner_type, biz_no, is_oem_factory, archived)

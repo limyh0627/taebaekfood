@@ -148,6 +148,7 @@ create table erp.stock_ledger (
   kind           text,
   source_type    text,
   source_id      text,
+  partner_id     text references erp.partners(id),
   reversal_of    text,
   effective_date date,
   note           text
