@@ -74,10 +74,11 @@ select id, company_id, data->>'docNo', erp.to_date(data->>'tradeDate'), coalesce
        'issuedStatements'
 from src where collection = 'issuedStatements';
 
-insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, spec, qty, price, supply, tax, amount, account_code, tax_exempt, note)
+-- 비용 명세서(기초·대출 등)는 계정 줄에 차변/대변(side)이 있다.
+insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, spec, qty, price, supply, tax, amount, account_code, side, tax_exempt, note)
 select s.id, l.ord::int, coalesce(l.v->>'lineKind', 'item'), erp.ref_item(l.v->>'itemId'), l.v->>'name', l.v->>'spec',
        erp.to_num(l.v->'qty'), erp.to_num(l.v->'price'), erp.to_num(l.v->'supply'), erp.to_num(l.v->'tax'),
-       erp.to_num(l.v->'total'), l.v->>'accountCode', erp.to_bool(l.v->'isTaxExempt'), l.v->>'note'
+       erp.to_num(l.v->'total'), l.v->>'accountCode', l.v->>'side', erp.to_bool(l.v->'isTaxExempt'), l.v->>'note'
 from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'items')) with ordinality as l(v, ord)
 where s.collection = 'issuedStatements';
 
