@@ -53,3 +53,26 @@ from erp.companies c;
 select pg_size_pretty(pg_database_size(current_database())) as "전체 DB",
        pg_size_pretty(pg_total_relation_size('raw.docs')) as "raw(원본 복사)",
        pg_size_pretty((select sum(pg_total_relation_size(format('erp.%I', tablename))) from pg_tables where schemaname = 'erp')::bigint) as "erp(새 표)";
+
+\echo '## 7. 차이 큰 원료 6개: 원장 줄 종류별 합계 (어디서 틀어졌는지)'
+with top as (
+  select item_id from erp.stock_ledger
+  where id like 'migrate-raw:%' and abs(qty) >= 0.001
+  order by abs(qty) desc limit 6
+)
+select i.name as "원료", l.kind as "줄 종류", l.stock_effect as "재고 반영",
+       count(*) as "줄 수", round(sum(l.qty), 1) as "합계(kg)",
+       min(l.effective_date) as "처음", max(l.effective_date) as "마지막"
+from erp.stock_ledger l join erp.items i on i.id = l.item_id
+where l.item_id in (select item_id from top) and l.id not like 'migrate-raw:%'
+group by 1, 2, 3 order by 1, 5;
+
+\echo '## 7-1. 수량 칸이 하나도 없어 0으로 들어간 원장 줄 (형식 문제 의심)'
+select coalesce(r.data->>'kind', r.data->>'type', '(없음)') as "줄 종류", count(*) as "건수",
+       string_agg(distinct k, ', ') as "있는 칸 예시"
+from raw.docs r
+cross join lateral (select k from jsonb_object_keys(r.data) k limit 40) keys
+where r.collection = 'rawMaterialLedger'
+  and r.data->'appliedDeltaKg' is null and r.data->'reportedDeltaKg' is null
+  and r.data->'received' is null and r.data->'used' is null
+group by 1 order by 2 desc limit 10;
