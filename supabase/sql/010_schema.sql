@@ -1,0 +1,180 @@
+-- 시험 이전 2단계: 새 ERP 핵심 표 (2026-11-04 ERD 기준, 생산·재고·주문·기준정보만).
+-- 회사는 company_id로 나눈다(태백·풍회). id는 추적을 위해 Firestore 문서 id를 그대로 쓴다.
+-- 모든 표는 RLS를 켜고 정책은 아직 두지 않는다 = 앱 API로는 아무도 못 읽는다. 시험 단계는 직접 접속만.
+-- 다시 돌려도 되도록 erp 스키마를 통째로 지우고 새로 만든다(시험 전용).
+
+drop schema if exists erp cascade;
+create schema erp;
+
+create table erp.companies (
+  id   text primary key,
+  name text not null
+);
+
+create table erp.partners (
+  id             text primary key,
+  company_id     text not null references erp.companies(id),
+  name           text not null,
+  partner_type   text,
+  biz_no         text,
+  is_oem_factory boolean not null default false,
+  archived       boolean not null default false
+);
+
+-- 품목. 재고 수량은 여기 두지 않는다(stock_balances). legacy_type은 지금 앱의 type 값 그대로.
+create table erp.items (
+  id           text primary key,
+  company_id   text not null references erp.companies(id),
+  name         text not null,
+  type         text not null check (type in ('RAW','SUB','WIP','FINISHED','GOODS','SERVICE','PALLET','OTHER')),
+  legacy_type  text,
+  unit         text,
+  cost         numeric,
+  min_stock    numeric,
+  procure_type text,
+  phantom      boolean not null default false,
+  archived     boolean not null default false
+);
+
+create table erp.item_boms (
+  id             text primary key,
+  company_id     text not null references erp.companies(id),
+  parent_item_id text not null references erp.items(id),
+  child_item_id  text not null references erp.items(id),
+  quantity       numeric not null
+);
+
+-- 배합: 키(parent_key)는 등급·서류 품목 이름 그대로, 원료만 품목 ID로. 못 찾은 원료는 child_name만 남긴다.
+create table erp.item_formulas (
+  id            text primary key,
+  company_id    text not null references erp.companies(id),
+  parent_key    text not null,
+  child_item_id text references erp.items(id),
+  child_name    text not null,
+  ratio         numeric not null,
+  yield_rate    numeric
+);
+
+create table erp.item_units (
+  id            text primary key,
+  company_id    text not null references erp.companies(id),
+  item_id       text not null references erp.items(id),
+  kind          text not null check (kind in ('box','purchase')),
+  units_per_box numeric,
+  partner_id    text references erp.partners(id),
+  purchase_unit text,
+  unit_kg       numeric,
+  is_default    boolean
+);
+
+create table erp.partner_items (
+  id         text primary key,
+  company_id text not null references erp.companies(id),
+  partner_id text not null references erp.partners(id),
+  item_id    text not null references erp.items(id),
+  direction  text,
+  price      numeric
+);
+
+-- 직원. 비밀번호 해시·푸시 토큰은 옮기지 않는다.
+create table erp.employees (
+  id           text primary key,
+  company_id   text not null references erp.companies(id),
+  name         text,
+  position     text,
+  department   text,
+  join_date    date,
+  status       text,
+  admin_access boolean not null default false,
+  auth_uid     text
+);
+
+create table erp.orders (
+  id            text primary key,
+  company_id    text not null references erp.companies(id),
+  partner_id    text references erp.partners(id),
+  partner_name  text,
+  status        text,
+  source        text,
+  ship_method   text,
+  delivery_date date,
+  total_amount  numeric,
+  created_at    timestamptz,
+  delivered_at  timestamptz
+);
+
+create table erp.order_lines (
+  order_id text not null references erp.orders(id) on delete cascade,
+  line_no  int  not null,
+  line_id  text,
+  item_id  text references erp.items(id),
+  name     text,
+  qty      numeric,
+  price    numeric,
+  primary key (order_id, line_no)
+);
+
+create table erp.production_runs (
+  id         text primary key,
+  company_id text not null references erp.companies(id),
+  order_id   text references erp.orders(id),
+  line_id    text,
+  item_id    text references erp.items(id),
+  qty        numeric,
+  run_date   date,
+  cost_total numeric
+);
+
+create table erp.lots (
+  id          text primary key,
+  company_id  text not null references erp.companies(id),
+  item_id     text not null references erp.items(id),
+  received_at date,
+  qty_in      numeric,
+  qty_left    numeric,
+  supplier    text,
+  lot_no      text,
+  status      text
+);
+
+-- 실제 원장. 지우거나 고치지 않고 줄을 더한다. stock_effect가 false인 줄(임가공 생산 기록)은 잔고에서 뺀다.
+create table erp.stock_ledger (
+  id             text primary key,
+  company_id     text not null references erp.companies(id),
+  item_id        text not null references erp.items(id),
+  qty            numeric not null,
+  stock_effect   boolean not null default true,
+  unit           text,
+  kind           text,
+  source_type    text,
+  source_id      text,
+  reversal_of    text,
+  effective_date date,
+  note           text
+);
+create index stock_ledger_item on erp.stock_ledger (item_id, effective_date);
+
+create table erp.stock_balances (
+  item_id    text primary key references erp.items(id),
+  company_id text not null references erp.companies(id),
+  qty        numeric not null,
+  unit       text,
+  updated_at timestamptz not null default now()
+);
+
+-- 옮기지 못한 줄과 이유. 데이터 상태를 보는 용도.
+create table erp.import_rejects (
+  collection text,
+  doc_id     text,
+  reason     text
+);
+
+do $$
+declare t text;
+begin
+  for t in select tablename from pg_tables where schemaname = 'erp' loop
+    execute format('alter table erp.%I enable row level security', t);
+  end loop;
+end $$;
+revoke all on schema erp from anon, authenticated;
+revoke all on all tables in schema erp from anon, authenticated;
