@@ -307,6 +307,8 @@ create table erp.payroll_lines (
 -- ---------- 거래처 포털 계정 ----------
 create table erp.partner_accounts (
   uid        text primary key,
+  username   text,
+  type       text,
   company_id text not null references erp.companies(id),
   partner_id text references erp.partners(id),
   name       text,

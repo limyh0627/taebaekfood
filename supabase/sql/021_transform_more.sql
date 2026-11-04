@@ -271,8 +271,8 @@ from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'lines')) wit
 where s.collection = 'payrolls';
 
 -- ---------- 거래처 포털 계정 (옛 users) ----------
-insert into erp.partner_accounts (uid, company_id, partner_id, name, email, phone, status, approved_at)
-select coalesce(data->>'uid', id), company_id, erp.ref_partner(data->>'linkedPartnerId'), data->>'name',
+insert into erp.partner_accounts (uid, username, type, company_id, partner_id, name, email, phone, status, approved_at)
+select coalesce(data->>'uid', id), lower(data->>'username'), data->>'type', company_id, erp.ref_partner(data->>'linkedPartnerId'), data->>'name',
        data->>'email', data->>'phone', data->>'status', erp.to_ts(data->>'approvedAt')
 from src where collection = 'users';
 
