@@ -17,6 +17,9 @@ create table erp.partners (
   name           text not null,
   partner_type   text,
   biz_no         text,
+  owner_name     text,
+  email          text,
+  address        text,
   is_oem_factory boolean not null default false,
   archived       boolean not null default false
 );

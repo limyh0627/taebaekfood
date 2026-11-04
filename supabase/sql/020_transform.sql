@@ -38,9 +38,10 @@ from raw.docs where (company_id is null or company_id not in ('taebaek', 'pungho
                      'employees','orders','productionRecords','rawMaterialLedger','rawInventories');
 
 -- ---------- 거래처 ----------
-insert into erp.partners (id, company_id, name, partner_type, biz_no, is_oem_factory, archived)
+insert into erp.partners (id, company_id, name, partner_type, biz_no, owner_name, email, address, is_oem_factory, archived)
 select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
-       coalesce(data->>'partnerType', data->>'type'), data->>'bizNo',
+       coalesce(data->>'partnerType', data->>'type'), nullif(data->>'bizNo', ''), nullif(data->>'ownerName', ''),
+       nullif(data->>'email', ''), nullif(concat_ws(' ', nullif(data->>'address', ''), nullif(data->>'addressDetail', '')), ''),
        coalesce((data->>'isOemFactory')::boolean, false), coalesce((data->>'archived')::boolean, false)
 from src where collection = 'partners';
 
