@@ -57,6 +57,23 @@ language sql stable security definer set search_path = '' as $$
     and lower(u.email) = lower(case when p_login like '%@%' then p_login else p_login || '@erp.local' end)
 $$;
 
+-- 비밀번호 새로 정하기: 관리자가 자기 회사 직원 아이디(@erp.local)의 비밀번호를 바꿔 준다(이메일이 없어 메일로 재설정할 수 없으니까).
+-- 진짜 이메일 계정은 본인이 바꾸게 둔다. pgcrypto는 Supabase에서 extensions 스키마에 있다.
+create or replace function public.reset_member_password(p_company text, p_user_id uuid, p_password text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not (p_company = any (app.my_admin_company_ids())) then raise exception '관리자만 할 수 있습니다.' using errcode = '42501'; end if;
+  if not exists (select 1 from app.memberships where user_id = p_user_id and company_id = p_company) then raise exception '이 회사 계정이 아닙니다.'; end if;
+  if not exists (select 1 from auth.users where id = p_user_id and email like '%@erp.local') then
+    raise exception '이메일로 가입한 계정은 본인이 로그인해서 바꿔야 합니다.';
+  end if;
+  if length(coalesce(p_password, '')) < 6 then raise exception '비밀번호는 6자 이상입니다.'; end if;
+  update auth.users set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')), updated_at = now()
+  where id = p_user_id;
+end $$;
+revoke all on function public.reset_member_password(text, uuid, text) from public, anon;
+grant execute on function public.reset_member_password(text, uuid, text) to authenticated;
+
 revoke all on function public.company_members(text), public.set_member(text, uuid, text, text),
   public.remove_member(text, uuid), public.find_account(text) from public, anon;
 grant execute on function public.company_members(text), public.set_member(text, uuid, text, text),
