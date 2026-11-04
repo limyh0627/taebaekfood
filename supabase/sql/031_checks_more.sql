@@ -41,10 +41,10 @@ where collection not in ('partners','partner_item','items','item_bom','item_form
                          'employees','orders','productionRecords','rawMaterialLedger','rawInventories')
 group by 1, 2 order by 3 desc;
 
-\echo '## 10. 전표 금액 대조 (차변/대변 줄이 있으면 차변 합 = 대변 합 = 전표 금액, 없으면 줄 합 = 전표 금액)'
+\echo '## 10. 전표 금액 대조 (대변 줄이 있으면 복식: 차변 합 = 대변 합 = 전표 금액. 없으면 줄 합 = 전표 금액)'
 with l as (
   select voucher_id,
-         bool_or(side is not null) as journal,
+         bool_or(side = '대변') as journal,
          sum(amount) filter (where side = '차변') as dr,
          sum(amount) filter (where side = '대변') as cr,
          sum(amount) as total
@@ -60,7 +60,7 @@ group by 1, 2 order by 1, 2;
 
 \echo '## 10-2. 금액이 안 맞는 전표 예시 (최대 10건)'
 with l as (
-  select voucher_id, bool_or(side is not null) as journal,
+  select voucher_id, bool_or(side = '대변') as journal,
          sum(amount) filter (where side = '차변') as dr, sum(amount) filter (where side = '대변') as cr, sum(amount) as total
   from erp.voucher_lines group by 1
 )

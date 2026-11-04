@@ -98,8 +98,14 @@ from src s where collection = 'cashEntries'
   and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection <> 'cashEntries');
 
 -- 줄이 있으면 그 줄들, 없으면 계정 한 줄.
+-- 대체 전표(미수·미지급 상계 등)는 side 없이 부호로 적었다: +는 차변, −는 대변(앱 autoJournal과 같은 규칙).
 insert into erp.voucher_lines (voucher_id, line_no, line_kind, name, amount, account_code, side, note)
-select s.id, l.ord::int, 'account', l.v->>'name', erp.to_num(l.v->'amount'), l.v->>'accountCode', l.v->>'side', l.v->>'note'
+select s.id, l.ord::int, 'account', l.v->>'name',
+       case when l.v->>'side' is null and s.data->>'dir' = '대체' then abs(erp.to_num(l.v->'amount')) else erp.to_num(l.v->'amount') end,
+       l.v->>'accountCode',
+       coalesce(l.v->>'side', case when s.data->>'dir' = '대체'
+                                   then case when erp.to_num(l.v->'amount') >= 0 then '차변' else '대변' end end),
+       l.v->>'note'
 from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'lines')) with ordinality as l(v, ord)
 where s.collection = 'cashEntries' and exists (select 1 from erp.vouchers v where v.id = s.id and v.legacy_collection = 'cashEntries');
 
