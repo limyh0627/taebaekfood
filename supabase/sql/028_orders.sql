@@ -36,6 +36,9 @@ begin
   if p_kind = 'voucher' then
     select coalesce(max(substr(voucher_no, length(head) + 1)::int), 0) into n from erp.vouchers
     where company_id = p_company and voucher_no like head || '%' and substr(voucher_no, length(head) + 1) ~ '^[0-9]+$';
+  elsif p_kind = 'po' then
+    select coalesce(max(substr(po_no, length(head) + 1)::int), 0) into n from erp.purchase_orders
+    where company_id = p_company and po_no like head || '%' and substr(po_no, length(head) + 1) ~ '^[0-9]+$';
   else
     select coalesce(max(substr(card_no, length(head) + 1)::int), 0) into n from erp.orders
     where company_id = p_company and card_no like head || '%' and substr(card_no, length(head) + 1) ~ '^[0-9]+$';

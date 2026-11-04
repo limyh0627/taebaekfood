@@ -189,7 +189,25 @@ create table erp.purchase_order_lines (
   name     text,
   qty      numeric,
   unit     text,
+  price    numeric,              -- 세금 포함 단가
+  tax_exempt boolean,
+  received_qty numeric not null default 0,
   primary key (po_id, line_no)
+);
+-- 매입 명세서가 어느 발주에서 왔나
+alter table erp.vouchers add column po_id text references erp.purchase_orders(id);
+
+-- 입고 한 번 = 줄마다 한 행. 입고 취소 때 받은 수량을 되돌리는 근거.
+create table erp.purchase_receipts (
+  id          text primary key,
+  company_id  text not null references erp.companies(id),
+  po_id       text not null references erp.purchase_orders(id),
+  line_no     int  not null,
+  qty         numeric not null,
+  voucher_id  text references erp.vouchers(id),
+  ledger_id   text,
+  received_on date,
+  canceled_at timestamptz
 );
 
 create table erp.adjustment_requests (

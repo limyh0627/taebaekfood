@@ -195,12 +195,20 @@ select s.id, l.ord::int, erp.ref_item(l.v->>'itemId'), l.v->>'name', erp.to_num(
 from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'items')) with ordinality as l(v, ord)
 where s.collection = 'purchaseOrders';
 
+-- 입고된 발주는 줄 수량을 다 받은 것으로 둔다. 매입 명세서에 발주를 이어 둔다.
+update erp.purchase_order_lines l set received_qty = coalesce(l.qty, 0)
+from erp.purchase_orders p where p.id = l.po_id and p.status in ('received', 'invoiced');
+update erp.vouchers v set po_id = p.id from erp.purchase_orders p where p.voucher_id = v.id;
+
 -- 예전 형식: items 없이 품목 하나를 문서 칸에 직접.
 insert into erp.purchase_order_lines (po_id, line_no, item_id, name, qty)
 select s.id, 1, erp.ref_item(s.data->>'itemId'), s.data->>'itemName', erp.to_num(s.data->'quantity')
 from src s
 where s.collection = 'purchaseOrders' and jsonb_array_length(erp.arr(s.data->'items')) = 0
   and coalesce(s.data->>'itemId', '') <> '';
+
+update erp.purchase_order_lines l set received_qty = coalesce(l.qty, 0)
+from erp.purchase_orders p where p.id = l.po_id and p.status in ('received', 'invoiced') and l.received_qty = 0;
 
 insert into erp.adjustment_requests (id, company_id, item_id, type, status, reason, qty_before, qty_after, po_id, requested_at, processed_at)
 select id, company_id, data->>'itemId', data->>'type', data->>'status', data->>'reason',
