@@ -32,6 +32,7 @@ create table erp.items (
   cost         numeric,
   min_stock    numeric,
   procure_type text,
+  is_bulk      boolean not null default false,
   phantom      boolean not null default false,
   archived     boolean not null default false
 );
@@ -129,7 +130,9 @@ create table erp.production_runs (
   item_id    text references erp.items(id),
   qty        numeric,
   run_date   date,
-  cost_total numeric
+  cost_total numeric,
+  note       text,
+  canceled_at timestamptz
 );
 
 create table erp.lots (

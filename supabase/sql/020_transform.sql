@@ -45,19 +45,22 @@ select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
 from src where collection = 'partners';
 
 -- ---------- 품목 ----------
-insert into erp.items (id, company_id, name, type, legacy_type, unit, cost, min_stock, procure_type, phantom, archived)
+insert into erp.items (id, company_id, name, type, legacy_type, unit, cost, min_stock, procure_type, is_bulk, phantom, archived)
 select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
        case
          when data->>'type' = 'raw' then 'RAW'
          when data->>'type' = 'wip' then 'WIP'
-         when data->>'type' in ('product', '완제품', '향미유', '고춧가루') then 'FINISHED'
+         -- 향미유·고춧가루는 사다 파는 상품(앱 isGoodsItem과 같은 판정)
+         when data->>'type' in ('향미유', '고춧가루') or data->>'category' in ('향미유', '고춧가루') then 'GOODS'
+         when data->>'type' in ('product', '완제품') then 'FINISHED'
          when data->>'type' = 'goods' then 'GOODS'
          when data->>'type' = 'service' then 'SERVICE'
          when data->>'type' in ('submaterial', 'label', 'cap', 'container', 'box', 'tape', '용기', '마개', '테이프', '박스', '라벨') then 'SUB'
          else 'OTHER'
        end,
        data->>'type', data->>'unit', erp.to_num(data->'cost'), erp.to_num(data->'minStock'),
-       data->>'procureType', coalesce((data->>'phantom')::boolean, false), coalesce((data->>'archived')::boolean, false)
+       data->>'procureType', coalesce(data->>'subtype', '') = '벌크',
+       coalesce((data->>'phantom')::boolean, false), coalesce((data->>'archived')::boolean, false)
 from src where collection = 'items';
 
 -- ---------- BOM ----------
