@@ -36,6 +36,9 @@ begin
   if p_kind = 'voucher' then
     select coalesce(max(substr(voucher_no, length(head) + 1)::int), 0) into n from erp.vouchers
     where company_id = p_company and voucher_no like head || '%' and substr(voucher_no, length(head) + 1) ~ '^[0-9]+$';
+  elsif p_kind = 'quote' then
+    select coalesce(max(substr(quote_no, length(head) + 1)::int), 0) into n from erp.quotations
+    where company_id = p_company and quote_no like head || '%' and substr(quote_no, length(head) + 1) ~ '^[0-9]+$';
   elsif p_kind = 'po' then
     select coalesce(max(substr(po_no, length(head) + 1)::int), 0) into n from erp.purchase_orders
     where company_id = p_company and po_no like head || '%' and substr(po_no, length(head) + 1) ~ '^[0-9]+$';

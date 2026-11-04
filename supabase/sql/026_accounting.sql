@@ -175,8 +175,12 @@ declare
   v_code text := coalesce(nullif(p->>'account_code', ''), case when p->>'dir' = '입금' then '108' else '251' end);
   v_id text := 'v-' || gen_random_uuid();
   v_no text;
+  v_loan text := nullif(p->>'loan_id', '');
 begin
   perform erp.assert_member(v_company);
+  if v_loan is not null and not exists (select 1 from erp.loan_contracts where id = v_loan and company_id = v_company) then
+    raise exception '차입금을 찾을 수 없습니다.';
+  end if;
   if v_dir not in ('입금', '출금') then raise exception '입금 또는 출금만 됩니다.'; end if;
   if v_amount is null or v_amount <= 0 or v_amount <> trunc(v_amount) then raise exception '금액은 0보다 큰 원 단위여야 합니다.'; end if;
   if v_partner is not null and not exists (select 1 from erp.partners where id = v_partner and company_id = v_company) then
@@ -187,9 +191,9 @@ begin
     raise exception '통장을 찾을 수 없습니다.';
   end if;
   v_no := erp.next_no(v_company, v_date, '', 'voucher');
-  insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, cash_account_id, account_code,
+  insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, cash_account_id, account_code, loan_id,
                             amount, memo, created_by, created_at, legacy_collection)
-  values (v_id, v_company, v_no, v_date, v_dir, v_partner, (select name from erp.partners where id = v_partner), v_cash, v_code,
+  values (v_id, v_company, v_no, v_date, v_dir, v_partner, (select name from erp.partners where id = v_partner), v_cash, v_code, v_loan,
           v_amount, nullif(p->>'note', ''), erp.actor_name(), now(), 'app');
   insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, side, note)
   values (v_id, 1, 'account', v_amount, v_code, case when v_dir = '입금' then '대변' else '차변' end, nullif(p->>'note', ''));

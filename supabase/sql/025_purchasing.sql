@@ -38,7 +38,8 @@ begin
   if v_id is null then
     v_id := 'po-' || gen_random_uuid();
     insert into erp.purchase_orders (id, company_id, po_no, po_type, partner_id, partner_name, status, note, created_at)
-    values (v_id, v_company, erp.next_no(v_company, v_date, 'PO-', 'po'), 'normal', v_partner,
+    values (v_id, v_company, erp.next_no(v_company, v_date, 'PO-', 'po'),
+            case when p->>'po_type' = 'oem' then 'oem' else 'normal' end, v_partner,
             (select name from erp.partners where id = v_partner), 'pending', nullif(p->>'note', ''), now());
   else
     select * into v_po from erp.purchase_orders where id = v_id for update;
