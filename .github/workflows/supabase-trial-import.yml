@@ -73,6 +73,18 @@ jobs:
       - name: 5. 대조
         run: psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f supabase/sql/030_checks.sql | tee checks.txt
 
+      - name: 6. 나머지 컬렉션 모양 조사
+        run: psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -P pager=off -q -f supabase/sql/040_profile.sql > profile.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: supabase-trial-result
+          path: |
+            checks.txt
+            profile.txt
+          if-no-files-found: ignore
+
       - name: 요약
         if: always()
         run: |
