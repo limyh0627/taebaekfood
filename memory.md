@@ -139,5 +139,23 @@
 - [ ] 배포 워크플로로 `perf/batch-reads`의 `orderProductionBatchCommand` 배포 결과 확인 → 성공하면 DB-CHANGELOG 기록, `perf/batch-reads`를 main에 병합
 - [ ] 배포 후 `orderProductionBatch timing` 로그로 처리 시간 비교
 - [ ] 가능하면 PC에서 에뮬레이터 시험: `PARTIAL_BATCH_EMULATOR=true npx vitest run functions/src/orderProductionBatchCommand.emulator.test.ts` (포트 8283)
-- [ ] DB 이전 대상(Supabase 등)과 시기 결정 → 오늘 ERD로 새 표 설계
+- [x] DB 이전 대상 → **Supabase**(서울, 무료 플랜으로 시험). 시험 이전·새 앱 시작 (아래 6장)
 - [ ] 이전이 몇 달 이상이면, Firestore에서 "주문 처리가 주문 품목·하위 BOM만 읽기"만 먼저 할지 결정
+
+---
+
+## 6. 새 ERP (erp-core) 진행 — 2026-11-04
+
+- 저장소 `limyh0627/erp-core`(React + Supabase), 화면 https://erp-core-ten.vercel.app (Vercel, main 올리면 자동 배포)
+- 시험 이전: 이 저장소 `supabase-trial` 브랜치의 `supabase/sql` + 워크플로 **Supabase trial import**
+  (Firestore는 읽기만. "Firestore 복사는 건너뛰고"면 변환·대조만 다시). 태백+풍회 22MB → 무료 플랜 충분.
+- erp-core의 `supabase/*.sql`(access·orders·stock·accounting)이 원본이고, 이 저장소 `026~029_*.sql`은 복사본.
+- **정함/확인함**
+  - 원료 원장 이관은 앱 잔량 규칙대로: 원자화 줄(balanceAfterKg)만 잔고, 옛 줄은 이력, 원료마다 '이관 기준' 한 줄 → 18개 원료 모두 현재 재고와 일치.
+  - 원료 외 품목은 지금 수량을 '기초'로, 입고·박스 해체·파렛트 이력은 잔고에 안 넣는다.
+  - 기름은 **DB는 kg, 화면은 L 병기**(밀도 0.916/0.924). 입력은 L로 받아 kg으로 바꾼다.
+  - 쓰기는 DB 함수로만(한 함수 = 한 트랜잭션): 주문 저장·출고 확정(재고 차감+매출 전표)·출고 취소, 입고·사용·폐기·실사, 생산(BOM·phantom 배합 전개, 모자란 낱개 먼저 생산), 입금·출금.
+  - 분개는 저장하지 않고 전표에서 뷰로 만든다(앱 autoJournal 규칙). **거래처 잔액이 태백 앱과 일치 확인**(사용자, 15:11).
+  - 원료가 모자라도 생산은 막지 않고 경고 + 음수.
+- **남은 것**: 수금을 명세서에 맞춰 정리(반제), 매입·발주 입고, 세금계산서, 급여, 서류 내보내기(태백), 원료 로트, 거래처 포털, 파일(Firebase Storage → Supabase Storage).
+- 고아 데이터(원본에서 이미 끊김): 거래처-품목 40, 주문 3, 생산기록 1, 정산 1, 채팅 29, 배합 '깨분' 1.
