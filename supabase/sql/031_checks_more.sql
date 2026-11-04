@@ -97,3 +97,9 @@ union all select '발주 → 명세서', count(*) from erp.purchase_orders p
 union all select '휴가 → 직원', count(*) from erp.leave_requests where employee_id is null
 union all select '급여 줄 → 직원', count(*) from erp.payroll_lines where employee_id is null
 union all select '서류 → 분류', count(*) from erp.files where category_id is null;
+
+\echo '## 12. 주문 합계 대조: 주문 totalAmount ≠ 줄(수량×단가) 합'
+select count(*) filter (where abs(coalesce(o.total_amount, 0) - coalesce(l.s, 0)) >= 1) as "안 맞는 주문",
+       count(*) as "주문 수"
+from erp.orders o
+left join (select order_id, sum(erp.js_round(coalesce(qty, 0) * coalesce(price, 0))) as s from erp.order_lines group by 1) l on l.order_id = o.id;

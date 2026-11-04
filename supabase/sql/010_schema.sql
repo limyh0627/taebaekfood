@@ -73,7 +73,9 @@ create table erp.partner_items (
   partner_id text not null references erp.partners(id),
   item_id    text not null references erp.items(id),
   direction  text,
-  price      numeric
+  price      numeric,
+  tax_type   text,
+  account_code text
 );
 
 -- 직원. 비밀번호 해시·푸시 토큰은 옮기지 않는다.
@@ -100,7 +102,11 @@ create table erp.orders (
   delivery_date date,
   total_amount  numeric,
   created_at    timestamptz,
-  delivered_at  timestamptz
+  delivered_at  timestamptz,
+  card_no       text,
+  note          text,
+  shipped_at    timestamptz,
+  voucher_id    text
 );
 
 create table erp.order_lines (
@@ -111,6 +117,7 @@ create table erp.order_lines (
   name     text,
   qty      numeric,
   price    numeric,
+  tax_exempt boolean,
   primary key (order_id, line_no)
 );
 

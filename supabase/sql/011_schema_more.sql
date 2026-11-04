@@ -61,8 +61,11 @@ create table erp.vouchers (
   memo             text,
   created_by       text,
   created_at       timestamptz,
+  status           text not null default 'active' check (status in ('active', 'canceled')),
   legacy_collection text not null
 );
+alter table erp.orders add constraint orders_voucher_fk foreign key (voucher_id) references erp.vouchers(id);
+create unique index vouchers_no on erp.vouchers (company_id, voucher_no) where voucher_no is not null and status = 'active' and legacy_collection = 'app';
 create index vouchers_partner on erp.vouchers (partner_id, date);
 
 -- 전표 줄. 명세서는 품목 줄, 자금 전표는 계정 줄.

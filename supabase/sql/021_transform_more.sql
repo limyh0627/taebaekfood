@@ -82,6 +82,11 @@ select s.id, l.ord::int, coalesce(l.v->>'lineKind', 'item'), erp.ref_item(l.v->>
 from src s cross join lateral jsonb_array_elements(erp.arr(s.data->'items')) with ordinality as l(v, ord)
 where s.collection = 'issuedStatements';
 
+-- 주문 ↔ 명세서 연결 (주문 문서의 linkedStatementId)
+update erp.orders o set voucher_id = v.id
+from src s join erp.vouchers v on v.id = s.data->>'linkedStatementId'
+where s.collection = 'orders' and s.id = o.id;
+
 -- ---------- 전표: 자금 (입금·출금·대체) ----------
 insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, cash_account_id, loan_id,
                           account_code, amount, memo, created_by, created_at, legacy_collection)

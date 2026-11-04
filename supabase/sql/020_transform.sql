@@ -107,9 +107,10 @@ where x.collection = 'partner_item'
   and (not exists (select 1 from erp.partners p where p.id = x.data->>'partnerId')
     or not exists (select 1 from erp.items i where i.id = x.data->>'itemId'));
 
-insert into erp.partner_items (id, company_id, partner_id, item_id, direction, price)
+insert into erp.partner_items (id, company_id, partner_id, item_id, direction, price, tax_type, account_code)
 select x.id, x.company_id, x.data->>'partnerId', x.data->>'itemId',
-       coalesce(x.data->>'Direction', x.data->>'direction'), erp.to_num(x.data->'price')
+       coalesce(x.data->>'Direction', x.data->>'direction'), erp.to_num(x.data->'price'),
+       nullif(x.data->>'taxType', ''), nullif(coalesce(x.data->>'Account_Code', x.data->>'accountCode'), '')
 from src x
 where x.collection = 'partner_item'
   and exists (select 1 from erp.partners p where p.id = x.data->>'partnerId')
@@ -122,18 +123,21 @@ select id, company_id, data->>'name', data->>'position', data->>'department', er
 from src where collection = 'employees';
 
 -- ---------- 주문 + 줄 ----------
-insert into erp.orders (id, company_id, partner_id, partner_name, status, source, ship_method, delivery_date, total_amount, created_at, delivered_at)
+insert into erp.orders (id, company_id, partner_id, partner_name, status, source, ship_method, delivery_date, total_amount, created_at, delivered_at,
+                        card_no, note, shipped_at)
 select o.id, o.company_id,
        case when exists (select 1 from erp.partners p where p.id = o.data->>'partnerId') then o.data->>'partnerId' end,
        o.data->>'partnerName', o.data->>'status', o.data->>'source', o.data->>'shipMethod',
        erp.to_date(o.data->>'deliveryDate'), erp.to_num(o.data->'totalAmount'),
-       erp.to_ts(o.data->>'createdAt'), erp.to_ts(o.data->>'deliveredAt')
+       erp.to_ts(o.data->>'createdAt'), erp.to_ts(o.data->>'deliveredAt'),
+       o.data->>'cardNo', nullif(o.data->>'note', ''), erp.to_ts(coalesce(o.data->>'shipmentConfirmedAt', o.data->>'deliveredAt'))
 from src o where o.collection = 'orders';
 
 insert into erp.order_lines (order_id, line_no, line_id, item_id, name, qty, price)
 select o.id, l.ord::int, l.v->>'lineId',
        case when exists (select 1 from erp.items i where i.id = l.v->>'itemId') then l.v->>'itemId' end,
-       l.v->>'name', erp.to_num(l.v->'quantity'), erp.to_num(l.v->'price')
+       -- 박스 줄은 boxQuantity(박스 수)가 임자다. 없으면 quantity가 그 품목 단위 수량(앱 stockUnits와 같은 규칙).
+       l.v->>'name', coalesce(erp.to_num(l.v->'boxQuantity'), erp.to_num(l.v->'quantity')), erp.to_num(l.v->'price')
 from src o
 cross join lateral jsonb_array_elements(case when jsonb_typeof(o.data->'items') = 'array' then o.data->'items' else '[]'::jsonb end)
   with ordinality as l(v, ord)
