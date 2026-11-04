@@ -195,6 +195,9 @@ begin
   if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
   perform erp.assert_member(o.company_id);
   if o.shipped_at is null then raise exception '출고되지 않은 주문입니다.'; end if;
+  if not exists (select 1 from erp.vouchers where id = o.voucher_id and legacy_collection = 'app') then
+    raise exception '옛 앱에서 출고된 주문은 여기서 취소할 수 없습니다.';
+  end if;
 
   for r in select l.* from erp.stock_ledger l
            where l.source_type = 'order' and l.source_id = o.id and l.kind = '출고' and l.stock_effect
