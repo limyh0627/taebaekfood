@@ -58,6 +58,7 @@
 | `fileCabinetCategories`, `fileCabinetSubCategories`, `fileCabinetDocs` | `fileCategories`(`parentId`) · `files` |
 | `item_pack`, `item_purchase_unit` | `itemUnits` (`kind`) |
 | 코드 상수 `RAW_DOC_MERGE` | `docMaterials` (원료수불부 탭 → 원료 품목 ID) |
+| `accountCodes`, `accountGroups` | `accounts` (`parentId` 계층, 손익·현금흐름 구분은 상위에서 물려받음). 표준 계정과목 이전 계획과 함께 |
 | `retirementProfiles` | `employees.retirement` |
 | `leaveRequests`, `retirementEvents` | 직원 하위 컬렉션 `employees/{직원}/…` |
 
@@ -81,6 +82,11 @@
   - 주문 출고·발주 입고·OEM 입고·반품 처리의 "품목 줄 → 실제 원장 + 전표" 처리를 함수 하나로 공통화
   - 주문·발주·반품의 품목 줄 모양 통일(`itemId`, 수량, 단위, 단가)
   - 발주 맨 위의 단일 품목 시절 칸(`itemId`, `itemName`, `quantity`, `unit`) 삭제, `items[]`만
+
+### ERD 배치 (흐름 중심)
+- 위: 기준정보, 조직·인사 / 가운데: 주문·출고 → 생산(작업지시 → 생산 실적) → 재고(실제 원장) → 회계·자금(전표) / 아래: 반품, 구매·OEM, 서류·품질 / 맨 아래: 협업, 처리 기록·시스템
+- 생산작업기록부·기록부 줄·생산판매기록은 생산이 아니라 **서류·품질** 묶음(원료수불부와 같은 숫자를 쓰는 관청 서류, `docOil.ts`)
+- 줄 안의 연결(`lines[].partnerId`, `lines[].accountCode`)도 선으로 표시
 
 ### 진행 단계
 0. (완료) 묶음 읽기
@@ -108,7 +114,6 @@
 
 - **[보안] 포털이 거래처 계정을 쓰지 않는 문제** — 데이터 정리와 별개로 먼저 고칠 것. 로그인한 포털 계정의 `partnerId`로 거래처를 정하고, 그 거래처 품목·주문만 보이게.
 - `rawDocEntries` → `docLedger` 이름 변경
-- 계정과목 + 계정 묶음 → `accounts`(`parentId` 계층) 통합. 하게 되면 PC의 "표준계정과목-이전계획"과 한 번에.
 - 회사이체 권한을 직원 문서로 옮기기
 - 급여 변경 이력(`payHistory`)을 둘지
 - 서류용 배합비가 코드 상수 `PRODUCT_FORMULA`에 따로 있는 것 — 배합 표와 맞춰도 되는지 확인 필요
