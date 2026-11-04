@@ -3,7 +3,7 @@ import { OrderStatus, type Item, type Order } from '../../shared/types';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { holdsUnitStock, isBulkItem, isGoodsItem } from '../../shared/itemTaxonomy';
-import { stockUnits, unpackComponent, type OrderUnitInputs } from '../../shared/orderUnits';
+import { boxCountOf, stockUnits, unpackComponent, type OrderUnitInputs } from '../../shared/orderUnits';
 import { categoryOf } from '../../shared/productChip';
 import { unreservedItemStock } from './orderItemStock';
 import { resolveStockUse, type StockUseRow } from './stockUseRows';
@@ -56,7 +56,7 @@ export function buildGoodsCommitted(orders:readonly Order[],catalog:readonly Ite
   const refs=(order as Order&{orderProductionRefsV1?:{lines?:{lineId:string;completedQty:number}[]}}).orderProductionRefsV1;
   for(const line of order.items??[]){
    const item=items.get(line.itemId);if(!item||holdsUnitStock(item)||productionLineKind(item)!=='stock-only')continue;
-   const all=stockUnits(line,item,inputs),ordered=line.isBoxUnit&&line.boxQuantity?line.boxQuantity:line.quantity;
+   const all=stockUnits(line,item,inputs),ordered=boxCountOf(line);
    const done=refs?all*(refs.lines?.find(row=>row.lineId===line.lineId)?.completedQty??0)/ordered:line.checked?all:0;if(!(done>0))continue;
    const rows=result.get(item.id)??new Map<string,number>();rows.set(order.id,(rows.get(order.id)??0)+done);result.set(item.id,rows);
   }
