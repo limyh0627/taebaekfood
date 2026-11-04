@@ -164,31 +164,60 @@ where r.collection = 'rawInventories' and l.v->>'id' is not null
   and exists (select 1 from erp.items i where i.id = r.data->>'rawItemId');
 
 -- ---------- 실제 원장: 원료 원장 이력 ----------
--- 새 형식(appliedDeltaKg)이 있으면 그 값, 없으면 예전 형식(received − used).
--- ledger-consume(임가공 생산 기록)은 쓴 양을 남기되 재고는 움직이지 않는 줄(stock_effect false).
+-- 앱의 잔량 규칙(src/shared/rawLedgerBalance.ts)을 따른다.
+--  · 원자화 줄(balanceAfterKg 있음): 확정 잔량을 남긴 줄. qty = appliedDeltaKg, 재고 반영.
+--  · 옛 줄(balanceAfterKg 없음): 실사 앵커(targetKg)로 잔량을 덮어쓰던 시절 기록이라 더해도 잔량이 안 나온다.
+--    이력으로만 남기고(stock_effect false) 잔고 계산에서 뺀다.
+--  · 원료마다 첫 원자화 줄 직전 잔량(= balanceAfterKg − appliedDeltaKg)을 '이관 기준' 한 줄로 넣는다.
+--  · ledger-consume(임가공 생산 기록)은 쓴 양만 남기고 재고는 안 움직인다.
+create temp view raw_ledger as
+select g.*,
+       erp.to_num(g.data->'balanceAfterKg') as bal_after,
+       erp.to_num(g.data->'appliedDeltaKg') as applied,
+       (erp.to_num(g.data->'balanceAfterKg') is not null) as atomic,
+       row_number() over (partition by g.data->>'rawItemId'
+         order by coalesce(erp.to_num(g.data->'sequence'), 0),
+                  coalesce(g.data->>'recordedAt', g.data->>'createdAt', ''), g.id) as seq_no
+from src g
+where g.collection = 'rawMaterialLedger';
+
 insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, source_id, reversal_of, effective_date, note)
 select g.id, g.company_id, g.data->>'rawItemId',
        case when g.data->>'kind' = 'ledger-consume'
             then coalesce(erp.to_num(g.data->'reportedDeltaKg'), -erp.to_num(g.data->'kg'), 0)
-            else coalesce(erp.to_num(g.data->'appliedDeltaKg'),
-                          coalesce(erp.to_num(g.data->'received'), 0) - coalesce(erp.to_num(g.data->'used'), 0)) end,
-       coalesce(g.data->>'kind', '') <> 'ledger-consume',
+            when g.atomic then coalesce(g.applied, 0)
+            when g.data->'targetKg' is not null then 0
+            else coalesce(erp.to_num(g.data->'received'), 0) - coalesce(erp.to_num(g.data->'used'), 0) end,
+       g.atomic and coalesce(g.data->>'kind', '') <> 'ledger-consume',
        'kg', coalesce(g.data->>'kind', g.data->>'type', 'legacy'),
        coalesce(g.data#>>'{source,type}', case when g.data->>'orderId' is not null then 'order' end),
        coalesce(g.data#>>'{source,id}', g.data->>'orderId'),
        g.data->>'reversalOf',
        erp.to_date(coalesce(g.data->>'effectiveAt', g.data->>'date')),
-       g.data->>'note'
-from src g
-where g.collection = 'rawMaterialLedger' and exists (select 1 from erp.items i where i.id = g.data->>'rawItemId');
+       case when not g.atomic and g.data->'targetKg' is not null
+            then concat_ws(' ', g.data->>'note', '(옛 실사: ' || (g.data->>'targetKg') || 'kg로 맞춤)')
+            else g.data->>'note' end
+from raw_ledger g
+where exists (select 1 from erp.items i where i.id = g.data->>'rawItemId');
 
 insert into erp.import_rejects
 select 'rawMaterialLedger', g.id, '원장 줄의 원료 품목이 없음: ' || coalesce(g.data->>'rawItemId', g.data->>'material', '(없음)')
 from src g
 where g.collection = 'rawMaterialLedger' and not exists (select 1 from erp.items i where i.id = g.data->>'rawItemId');
 
+-- 이관 기준: 원료마다 첫 원자화 줄 직전 잔량.
+insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, effective_date, note)
+select distinct on (g.data->>'rawItemId')
+       'migrate-base:' || (g.data->>'rawItemId'), g.company_id, g.data->>'rawItemId',
+       g.bal_after - coalesce(g.applied, 0), true, 'kg', '이관 기준', 'migration',
+       erp.to_date(coalesce(g.data->>'effectiveAt', g.data->>'date')),
+       '첫 원자화 줄 직전 잔량(옛 기록 시절의 마지막 잔량)'
+from raw_ledger g
+where g.atomic and exists (select 1 from erp.items i where i.id = g.data->>'rawItemId')
+order by g.data->>'rawItemId', g.seq_no;
+
 -- ---------- 이관 시작 잔고 맞추기 ----------
--- 원료: 지금 원료 재고 문서(stockKg)와 원장 합계의 차이를 '이관 조정' 한 줄로 넣는다.
+-- 원료: 지금 원료 재고 문서(stockKg)와 원장 합계의 남은 차이를 '이관 조정' 한 줄로 넣는다. 0이어야 정상.
 insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, effective_date, note)
 select 'migrate-raw:' || (r.data->>'rawItemId'), r.company_id, r.data->>'rawItemId',
        coalesce(erp.to_num(r.data->'stockKg'), 0)

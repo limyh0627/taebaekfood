@@ -54,25 +54,38 @@ select pg_size_pretty(pg_database_size(current_database())) as "전체 DB",
        pg_size_pretty(pg_total_relation_size('raw.docs')) as "raw(원본 복사)",
        pg_size_pretty((select sum(pg_total_relation_size(format('erp.%I', tablename))) from pg_tables where schemaname = 'erp')::bigint) as "erp(새 표)";
 
-\echo '## 7. 차이 큰 원료 6개: 원장 줄 종류별 합계 (어디서 틀어졌는지)'
-with top as (
-  select item_id from erp.stock_ledger
-  where id like 'migrate-raw:%' and abs(qty) >= 0.001
-  order by abs(qty) desc limit 6
+\echo '## 7. 원자화 줄 사슬 끊김: 앞 줄 잔량 + 이번 변화 ≠ 이번 잔량 (원료별)'
+with a as (
+  select data->>'rawItemId' as item_id, id,
+         (data->>'balanceAfterKg')::numeric as bal, coalesce((data->>'appliedDeltaKg')::numeric, 0) as applied,
+         lag((data->>'balanceAfterKg')::numeric) over (partition by data->>'rawItemId'
+           order by coalesce((data->>'sequence')::numeric, 0), coalesce(data->>'recordedAt', data->>'createdAt', ''), id) as prev
+  from raw.docs where collection = 'rawMaterialLedger' and jsonb_typeof(data->'balanceAfterKg') = 'number'
 )
-select i.name as "원료", l.kind as "줄 종류", l.stock_effect as "재고 반영",
-       count(*) as "줄 수", round(sum(l.qty), 1) as "합계(kg)",
-       min(l.effective_date) as "처음", max(l.effective_date) as "마지막"
-from erp.stock_ledger l join erp.items i on i.id = l.item_id
-where l.item_id in (select item_id from top) and l.id not like 'migrate-raw:%'
-group by 1, 2, 3 order by 1, 5;
+select i.name as "원료", count(*) as "끊긴 곳", round(sum(a.bal - a.prev - a.applied), 1) as "끊긴 양 합계(kg)"
+from a join erp.items i on i.id = a.item_id
+where a.prev is not null and abs(a.bal - a.prev - a.applied) >= 0.001
+group by 1 order by abs(sum(a.bal - a.prev - a.applied)) desc limit 20;
 
-\echo '## 7-1. 수량 칸이 하나도 없어 0으로 들어간 원장 줄 (형식 문제 의심)'
-select coalesce(r.data->>'kind', r.data->>'type', '(없음)') as "줄 종류", count(distinct r.id) as "건수",
-       string_agg(distinct k, ', ') as "있는 칸 예시"
-from raw.docs r
-cross join lateral (select k from jsonb_object_keys(r.data) k limit 40) keys
-where r.collection = 'rawMaterialLedger'
-  and r.data->'appliedDeltaKg' is null and r.data->'reportedDeltaKg' is null
-  and r.data->'received' is null and r.data->'used' is null
-group by 1 order by 2 desc limit 10;
+\echo '## 7-1. 원료별 이관 기준(옛 기록 마지막 잔량)과 남은 차이'
+select i.name as "원료",
+       round(b.qty, 1) as "이관 기준(kg)",
+       round(r.qty, 3) as "남은 차이(kg)"
+from erp.stock_ledger r
+join erp.items i on i.id = r.item_id
+left join erp.stock_ledger b on b.id = 'migrate-base:' || r.item_id
+where r.id like 'migrate-raw:%'
+order by abs(r.qty) desc limit 20;
+
+\echo '## 7-2. 첫 원자화 줄보다 늦게 들어온 옛 줄 (잔고에서 빠졌을 수 있음)'
+with first_atomic as (
+  select data->>'rawItemId' as item_id, min(coalesce(data->>'recordedAt', data->>'createdAt')) as t
+  from raw.docs where collection = 'rawMaterialLedger' and jsonb_typeof(data->'balanceAfterKg') = 'number' group by 1
+)
+select i.name as "원료", coalesce(d.data->>'kind', d.data->>'type', '(없음)') as "줄 종류", count(*) as "건수",
+       round(sum(coalesce((d.data->>'received')::numeric, 0) - coalesce((d.data->>'used')::numeric, 0)), 1) as "입고−사용(kg)"
+from raw.docs d join first_atomic f on f.item_id = d.data->>'rawItemId'
+join erp.items i on i.id = f.item_id
+where d.collection = 'rawMaterialLedger' and d.data->'balanceAfterKg' is null
+  and coalesce(d.data->>'recordedAt', d.data->>'createdAt') > f.t
+group by 1, 2 order by 1, 2;
