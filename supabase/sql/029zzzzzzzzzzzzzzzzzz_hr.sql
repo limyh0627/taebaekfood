@@ -33,13 +33,14 @@ begin
 end $$;
 
 -- ---------- 휴가 변경·취소 요청(기존 앱 modifyRequest·cancel_pending) ----------
--- 승인된 휴가를 직원이 바꾸거나 물러 달라고 하면 change_request에 담고, 상태는 '승인' 그대로 둔다(결정 전까지 연차 셈은 그대로).
+-- 승인된 휴가를 직원이 바꾸거나 물러 달라고 하면 change_request에 담는다. 기존 앱과 같게 취소 요청은 상태가 '취소 대기'(cancel_pending)가 되어
+-- 연차 셈에서 빠지고, 반려하면 승인으로 돌아온다. 변경 요청은 승인 그대로 두고 modifyRequest만 기다린다.
 -- change_request: {kind: modify|cancel, start_date, end_date, days, reason, requested_at}
 alter table erp.leave_requests add column if not exists change_request jsonb;
 alter table erp.leave_requests add column if not exists change_note text;   -- 마지막 결정 기록(승인·반려)
 update erp.leave_requests set status = 'canceled' where status = 'cancelled';
-update erp.leave_requests set status = 'approved', change_request = jsonb_build_object('kind', 'cancel', 'requested_at', now())
-where status = 'cancel_pending';
+update erp.leave_requests set change_request = jsonb_build_object('kind', 'cancel', 'requested_at', now())
+where status = 'cancel_pending' and change_request is null;
 do $$ begin
   if to_regclass('raw.docs') is null then return; end if;
   update erp.leave_requests l set change_request = jsonb_build_object('kind', 'modify', 'start_date', d.data->'modifyRequest'->>'startDate', 'end_date', d.data->'modifyRequest'->>'endDate',
@@ -59,7 +60,7 @@ begin
   if r.status <> 'approved' then raise exception '승인된 휴가만 변경·취소를 요청합니다. 대기 중이면 그냥 취소하고 다시 신청하세요.'; end if;
   if r.change_request is not null then raise exception '이미 결정을 기다리는 요청이 있습니다.'; end if;
   if v_kind = 'cancel' then
-    update erp.leave_requests set change_request = jsonb_build_object('kind', 'cancel', 'reason', nullif(p->>'reason', ''), 'requested_at', now()) where id = p_id;
+    update erp.leave_requests set status = 'cancel_pending', change_request = jsonb_build_object('kind', 'cancel', 'reason', nullif(p->>'reason', ''), 'requested_at', now()) where id = p_id;
   elsif v_kind = 'modify' then
     if (p->>'start_date') is null or (p->>'end_date')::date < (p->>'start_date')::date then raise exception '날짜를 확인하세요.'; end if;
     if coalesce((p->>'days')::numeric, 0) <= 0 then raise exception '쓰는 날 수를 넣으세요.'; end if;
@@ -85,7 +86,7 @@ begin
            reason = coalesce(c->>'reason', reason), change_request = null,
            change_note = '변경 승인 ' || current_date || ' (전: ' || r.start_date || '~' || r.end_date || ', ' || r.days_used || '일)' where id = p_id;
   else
-    update erp.leave_requests set change_request = null, change_note = case c->>'kind' when 'cancel' then '취소' else '변경' end || ' 요청 반려 ' || current_date where id = p_id;
+    update erp.leave_requests set status = 'approved', change_request = null, change_note = case c->>'kind' when 'cancel' then '취소' else '변경' end || ' 요청 반려 ' || current_date where id = p_id;
   end if;
 end $$;
 revoke all on function public.request_leave_change(text, jsonb), public.decide_leave_change(text, boolean) from public, anon;

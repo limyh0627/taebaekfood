@@ -7,8 +7,8 @@
 --        댓글 고치기·지우기는 쓴 사람이나 만든 사람·관리자.
 
 alter table erp.work_projects add column if not exists updated_at timestamptz;
--- 옛 앱은 active/deleted, 시험판 새 ERP는 todo/doing/done → active/done/deleted 셋으로
-update erp.work_projects set status = case when status in ('done', 'completed') then 'done' when status = 'deleted' then 'deleted' else 'active' end;
+-- 옛 앱과 같게 active/deleted 둘뿐(업무에 '끝남' 상태는 없다 — 할 일마다 끝을 표시)
+update erp.work_projects set status = case when status = 'deleted' then 'deleted' else 'active' end;
 update erp.work_projects set participant_ids = array_remove(array_prepend(owner_id, coalesce(participant_ids, '{}')), null)
 where owner_id is not null and not (owner_id = any (coalesce(participant_ids, '{}')));
 
@@ -102,13 +102,12 @@ language sql security definer set search_path = '' as $$
   update erp.work_projects set updated_at = now() where id = p_project.id;
 $$;
 
--- 프로젝트 만들기·고치기: {id?, company_id, title, description, status active|done}
+-- 프로젝트 만들기·고치기: {id?, company_id, title, description}
 create or replace function public.save_project(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$
-declare v_company text := p->>'company_id'; v_id text := nullif(p->>'id', ''); g record; v_me text; v_status text := coalesce(nullif(p->>'status', ''), 'active');
+declare v_company text := p->>'company_id'; v_id text := nullif(p->>'id', ''); g record; v_me text; v_status text := 'active';
 begin
   if coalesce(trim(p->>'title'), '') = '' then raise exception '제목을 넣으세요.'; end if;
-  if v_status not in ('active', 'done') then raise exception '상태를 고르세요.'; end if;
   if v_id is null then
     perform erp.assert_member(v_company);
     v_me := erp.my_employee(v_company);
@@ -126,8 +125,7 @@ begin
   update erp.work_projects set title = trim(p->>'title'), description = nullif(p->>'description', ''), status = v_status,
          due_date = coalesce((p->>'due_date')::date, due_date)
   where id = v_id;
-  perform erp.project_log(g.proj, g.me, null,
-    case when (g.proj).status <> v_status then case v_status when 'done' then '업무 끝냄' else '업무 다시 엶' end else '업무 고침' end, trim(p->>'title'));
+  perform erp.project_log(g.proj, g.me, null, '업무 고침', trim(p->>'title'));
   return v_id;
 end $$;
 
