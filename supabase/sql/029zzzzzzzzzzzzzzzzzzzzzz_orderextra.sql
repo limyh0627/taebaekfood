@@ -3,6 +3,8 @@
 --  송장 양식(A~E, 택배사 양식), 파렛트(종류별 수량, 교환은 거래처 잔량에서 뺌), 택배 포장 박스(어느 박스 몇 개 — 기록만, 기존 앱도 재고 안 뺌).
 --  파렛트는 출고할 때 거래처로 나간 것으로 원장에 남고(파렛트 화면 거래처별 잔량), 출고 취소하면 되돌린다.
 
+-- 재고 만들기(기존 앱 purpose 'stock-production'): 판매·출고 없이 지정 수량을 생산하는 주문. 거래처 없어도 되고, 출고·명세서가 없다.
+alter table erp.orders add column if not exists purpose text check (purpose in ('stock'));
 alter table erp.orders add column if not exists invoice_type text check (invoice_type in ('A', 'B', 'C', 'D', 'E'));
 alter table erp.orders add column if not exists pallets jsonb not null default '[]';         -- [{item_id, qty, exchange}]
 alter table erp.orders add column if not exists delivery_boxes jsonb not null default '[]';  -- [{item_id, qty}]
@@ -10,6 +12,7 @@ alter table erp.orders add column if not exists delivery_boxes jsonb not null de
 -- 옛 주문에서 옮기기(시험 이전 때만)
 do $$ begin
   if to_regclass('raw.docs') is null then return; end if;
+  update erp.orders o set purpose = 'stock' from raw.docs d where d.collection = 'orders' and d.id = o.id and d.data->>'purpose' = 'stock-production';
   update erp.orders o set
     invoice_type = case when d.data->>'invoiceType' in ('A', 'B', 'C', 'D', 'E') then d.data->>'invoiceType' end,
     pallets = coalesce((select jsonb_agg(jsonb_build_object('item_id', p->>'type', 'qty', (p->>'quantity')::numeric, 'exchange', coalesce((p->>'isExchange')::boolean, false)))

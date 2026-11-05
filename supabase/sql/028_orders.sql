@@ -90,12 +90,14 @@ begin
     raise exception '없는 품목이거나 수량이 0인 줄이 있습니다.';
   end if;
 
+  if v_partner is null and coalesce(p->>'purpose', '') <> 'stock' then raise exception '거래처를 고르세요.'; end if;
   if v_id is null then
     v_id := 'ORD-' || gen_random_uuid();
     insert into erp.orders (id, company_id, partner_id, partner_name, status, source, ship_method, delivery_date,
                             created_at, card_no, note)
     values (v_id, v_company, v_partner, (select name from erp.partners where id = v_partner), 'PENDING', 'erp-core',
             nullif(p->>'ship_method', ''), v_date, now(), erp.next_no(v_company, v_date, 'ORD-', 'order'), nullif(p->>'note', ''));
+    if p->>'purpose' = 'stock' then update erp.orders set purpose = 'stock', partner_name = '재고 만들기' where id = v_id; end if;
   else
     select * into v_order from erp.orders where id = v_id for update;
     if not found or v_order.company_id <> v_company then raise exception '주문을 찾을 수 없습니다.'; end if;

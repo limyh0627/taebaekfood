@@ -1,7 +1,7 @@
 -- erp-core 저장소 supabase/officetalk.sql 복사본. 고칠 때는 erp-core에서 고치고 여기로 복사한다.
 -- 오피스톡 더하기 — 기존 앱과 같게(2026-11-05). comms.sql·projects.sql 뒤에 돈다.
---  이모지 반응(👍❤️😂😮😢👏, 한 사람이 여럿, 다시 누르면 뗌), @이름 멘션 → 그 사람 종 알림,
---  @관리자 → 관리자 모두 종 알림 + 확인사항(멘션), 메시지 → 주문 만들기(만든 주문을 메시지에 표시).
+--  이모지 반응(👍❤️😂😮😢👏, 한 사람이 여럿, 다시 누르면 뗌), 메시지마다 방 사람 모두에게 종 알림(기존 앱과 같음: '보낸 사람 (방)'),
+--  @이름 멘션은 메시지에 남김, @관리자 → 확인사항(멘션), 메시지 → 주문 만들기(만든 주문을 메시지에 표시).
 --  주문 글 읽기에서 사람이 고친 이름 → 품목은 거래처별로 남겨 다음에 그렇게 읽는다(order_interpretation_rules).
 
 alter table erp.chat_messages add column if not exists reactions jsonb not null default '{}';
@@ -61,18 +61,15 @@ begin
   v_preview := coalesce(nullif(left(p->>'text', 60), ''), case when p->'images' is not null then '사진' else '파일' end);
   update erp.chat_rooms set last_message = v_preview, last_updated_at = now(),
          last_read = coalesce(last_read, '{}') || jsonb_build_object(me, now()) where id = r.id;
-  if v_mentions is not null then
-    v_room := coalesce(r.name, case when cardinality(r.participant_ids) > 2 then '단체 대화' else '1:1 대화' end);
-    for t in select unnest(v_mentions) loop
-      if t = 'admin' then
-        perform erp.notify(r.company_id, 'mention', coalesce(v_name, '') || ' → 관리자 (' || v_room || ')', left(p->>'text', 80), r.id, m.user_id::text)
-        from app.memberships m where m.company_id = r.company_id and m.role = 'admin' and m.user_id::text <> me and not (m.user_id::text = any (v_mentions));
-        insert into erp.adjustment_requests (id, company_id, type, status, reason, requested_at)
-        values ('MENTION-' || gen_random_uuid(), r.company_id, 'chat_mention', 'pending', coalesce(v_name, '') || ': ' || left(p->>'text', 300), now());
-      else
-        perform erp.notify(r.company_id, 'mention', coalesce(v_name, '') || '님이 불렀습니다 (' || v_room || ')', left(p->>'text', 80), r.id, t);
-      end if;
-    end loop;
+  v_room := coalesce(r.name, case when cardinality(r.participant_ids) > 2 then '단체 채팅'
+                                   else (select name from public.company_people(r.company_id) where user_id::text = any (array_remove(r.participant_ids, me)) limit 1) end, '대화');
+  for t in select unnest(array_remove(r.participant_ids, me)) loop
+    perform erp.notify(r.company_id, 'mention', coalesce(v_name, '') || ' (' || v_room || ')',
+                       case when length(v_preview) > 40 then left(v_preview, 40) || '…' else v_preview end, r.id, t);
+  end loop;
+  if 'admin' = any (coalesce(v_mentions, '{}')) then
+    insert into erp.adjustment_requests (id, company_id, type, status, reason, requested_at)
+    values ('MENTION-' || gen_random_uuid(), r.company_id, 'chat_mention', 'pending', coalesce(v_name, '') || ': ' || left(p->>'text', 300), now());
   end if;
   return v_id;
 end $$;

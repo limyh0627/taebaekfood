@@ -189,6 +189,7 @@ begin
   perform erp.assert_member(o.company_id);
   if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '이미 출고된 주문입니다.'; end if;
   if o.status = 'ON_HOLD' then raise exception '보류 중인 주문입니다. 보류를 먼저 푸세요.'; end if;
+  if to_jsonb(o)->>'purpose' = 'stock' then raise exception '재고 만들기 주문은 출고하지 않습니다(생산으로 끝).'; end if;
   if exists (select 1 from erp.order_lines where order_id = o.id and item_id is not null and checked_at is null) then
     raise exception '생산 처리 안 한 줄이 있습니다. 모든 줄을 체크(작업완료)한 뒤 출고하세요.';
   end if;
