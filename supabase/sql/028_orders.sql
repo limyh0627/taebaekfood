@@ -120,6 +120,14 @@ begin
 
   select sum((erp.line_amount(qty, price, tax_exempt)).gross) into v_total from erp.order_lines where order_id = v_id;
   update erp.orders set total_amount = v_total where id = v_id;
+  -- 배송지(거래처의 배송지 중 하나)와 기본 출고 방식: 배송지 기본 > 거래처 기본 (기존 앱과 같음)
+  update erp.orders o set
+    ship_to_id = case when p ? 'ship_to_id' then nullif(p->>'ship_to_id', '') else o.ship_to_id end,
+    ship_method = coalesce(o.ship_method,
+      (select x->>'default_ship_method' from erp.partners pt, jsonb_array_elements(pt.ship_tos) x
+       where pt.id = o.partner_id and x->>'id' = coalesce(nullif(p->>'ship_to_id', ''), o.ship_to_id)),
+      (select default_ship_method from erp.partners where id = o.partner_id))
+  where o.id = v_id;
 
   insert into erp.order_history (id, company_id, order_id, kind, changes, by_name, at)
   values ('save:' || gen_random_uuid(), v_company, v_id, case when v_order.id is null then 'create' else 'edit' end,

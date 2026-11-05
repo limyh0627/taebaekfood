@@ -28,7 +28,11 @@ create table erp.partners (
   email          text,
   address        text,
   is_oem_factory boolean not null default false,
-  archived       boolean not null default false
+  archived       boolean not null default false,
+  channel        text,            -- 판매 채널: 일반·택배·스마트스토어 (옛 앱 type)
+  phone text, mobile text, fax text, region text, note text,
+  default_ship_method text,
+  ship_tos       jsonb not null default '[]'   -- 배송지 [{id, name, archived?, default_ship_method?}], 맨 앞이 기본
 );
 
 -- 품목. 재고 수량은 여기 두지 않는다(stock_balances). legacy_type은 지금 앱의 type 값 그대로.
@@ -124,6 +128,7 @@ create table erp.orders (
   note          text,
   shipped_at    timestamptz,
   voucher_id    text,
+  ship_to_id    text,
   note_important boolean not null default false,
   invoice_stage text,                       -- 택배 송장: null → printed → attached
   accounting_excluded boolean not null default false,   -- 거래명세서 발행 안 함

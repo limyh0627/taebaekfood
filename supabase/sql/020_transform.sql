@@ -41,11 +41,21 @@ from raw.docs where (company_id is null or company_id not in ('taebaek', 'pungho
                      'employees','orders','productionRecords','rawMaterialLedger','rawInventories');
 
 -- ---------- 거래처 ----------
-insert into erp.partners (id, company_id, name, partner_type, biz_no, owner_name, email, address, is_oem_factory, archived)
+-- 옛 앱 type = 판매 채널(일반·택배·스마트스토어), partnerType = 매출처/매입처(없으면 매출처). 둘을 섞지 않는다.
+insert into erp.partners (id, company_id, name, partner_type, biz_no, owner_name, email, address, is_oem_factory, archived,
+                          channel, phone, mobile, fax, region, note, default_ship_method, ship_tos)
 select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
-       coalesce(data->>'partnerType', data->>'type'), nullif(data->>'bizNo', ''), nullif(data->>'ownerName', ''),
+       case when data->>'partnerType' in ('매출처', '매입처', '매출+매입처', '금융기관') then data->>'partnerType' else '매출처' end,
+       nullif(data->>'bizNo', ''), nullif(data->>'ownerName', ''),
        nullif(data->>'email', ''), nullif(concat_ws(' ', nullif(data->>'address', ''), nullif(data->>'addressDetail', '')), ''),
-       coalesce((data->>'isOemFactory')::boolean, false), coalesce((data->>'archived')::boolean, false)
+       coalesce((data->>'isOemFactory')::boolean, false), coalesce((data->>'archived')::boolean, false),
+       case when data->>'type' in ('일반', '택배', '스마트스토어') then data->>'type' end,
+       nullif(coalesce(data->>'phone', data->>'tel'), ''), nullif(data->>'mobile', ''), nullif(data->>'fax', ''), nullif(data->>'region', ''), nullif(data->>'note', ''),
+       case when data->>'defaultShipMethod' in ('배송', '화물', '수령', '택배') then data->>'defaultShipMethod' end,
+       coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('id', x->>'id', 'name', x->>'name', 'archived', erp.to_bool(x->'archived'),
+                 'default_ship_method', x->>'defaultShipMethod')) order by o)
+                 from jsonb_array_elements(case when jsonb_typeof(data->'shipTos') = 'array' then data->'shipTos' end) with ordinality t(x, o)
+                 where coalesce(x->>'id', '') <> '' and coalesce(x->>'name', '') <> ''), '[]')
 from src where collection = 'partners';
 
 -- ---------- 품목 ----------
@@ -150,7 +160,7 @@ select o.id, o.company_id,
        erp.to_ts(o.data->>'createdAt'), erp.to_ts(o.data->>'deliveredAt'),
        o.data->>'cardNo', nullif(o.data->>'note', ''), erp.to_ts(coalesce(o.data->>'shipmentConfirmedAt', o.data->>'deliveredAt'))
 from src o where o.collection = 'orders';
-update erp.orders x set note_important = coalesce(erp.to_bool(o.data->'noteImportant'), false), invoice_stage = o.data->>'invoiceStage',
+update erp.orders x set ship_to_id = nullif(o.data->>'shipToId', ''), note_important = coalesce(erp.to_bool(o.data->'noteImportant'), false), invoice_stage = o.data->>'invoiceStage',
        accounting_excluded = coalesce(erp.to_bool(o.data->'accountingExcluded'), false), accounting_excluded_reason = o.data->>'accountingExcludedReason'
 from src o where o.collection = 'orders' and o.id = x.id;
 

@@ -53,7 +53,18 @@ begin
 end $$;
 
 -- ---------- 거래처 ----------
--- p: {id?, company_id, name, partner_type, biz_no, owner_name, email, address, archived?}
+-- 기존 앱 거래처 칸: 판매 채널(일반·택배·스마트스토어), 연락처, 지역, 메모, 기본 출고 방식, 배송지 여러 곳(맨 앞이 기본).
+alter table erp.partners add column if not exists channel text;
+alter table erp.partners add column if not exists phone text;
+alter table erp.partners add column if not exists mobile text;
+alter table erp.partners add column if not exists fax text;
+alter table erp.partners add column if not exists region text;
+alter table erp.partners add column if not exists note text;
+alter table erp.partners add column if not exists default_ship_method text;
+alter table erp.partners add column if not exists ship_tos jsonb not null default '[]';   -- [{id, name, archived?, default_ship_method?}]
+alter table erp.orders add column if not exists ship_to_id text;
+
+-- p: {id?, company_id, name, partner_type, channel?, biz_no, owner_name, email, address, phone, mobile, fax, region, note, default_ship_method?, ship_tos?, is_oem_factory?, archived?}
 create or replace function public.save_partner(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$
 declare v_company text := p->>'company_id'; v_id text := nullif(p->>'id', '');
@@ -61,6 +72,12 @@ begin
   perform erp.assert_member(v_company);
   if coalesce(trim(p->>'name'), '') = '' then raise exception '거래처 이름을 넣으세요.'; end if;
   if coalesce(p->>'partner_type', '') not in ('매출처', '매입처', '매출+매입처', '금융기관') then raise exception '거래처 구분을 고르세요.'; end if;
+  if coalesce(p->>'channel', '') not in ('', '일반', '택배', '스마트스토어') then raise exception '판매 채널은 일반·택배·스마트스토어입니다.'; end if;
+  if coalesce(p->>'default_ship_method', '') not in ('', '배송', '화물', '수령', '택배') then raise exception '출고 방식은 배송·화물·수령·택배입니다.'; end if;
+  if p ? 'ship_tos' and jsonb_typeof(p->'ship_tos') <> 'array' then raise exception '배송지 형식이 맞지 않습니다.'; end if;
+  if exists (select 1 from jsonb_array_elements(coalesce(p->'ship_tos', '[]')) x where coalesce(trim(x->>'name'), '') = '' or coalesce(x->>'id', '') = '') then
+    raise exception '배송지마다 이름이 있어야 합니다.';
+  end if;
   if v_id is null then
     v_id := 'partner-' || gen_random_uuid();
     insert into erp.partners (id, company_id, name) values (v_id, v_company, trim(p->>'name'));
@@ -70,9 +87,15 @@ begin
   update erp.partners set name = trim(p->>'name'), partner_type = p->>'partner_type', biz_no = nullif(trim(p->>'biz_no'), ''),
          owner_name = nullif(trim(p->>'owner_name'), ''), email = nullif(trim(p->>'email'), ''), address = nullif(trim(p->>'address'), ''),
          archived = coalesce((p->>'archived')::boolean, false),
-    category = case when p ? 'category' then nullif(trim(p->>'category'), '') else category end,
-    spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
-    unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end
+         channel = case when p ? 'channel' then nullif(p->>'channel', '') else channel end,
+         phone = case when p ? 'phone' then nullif(trim(p->>'phone'), '') else phone end,
+         mobile = case when p ? 'mobile' then nullif(trim(p->>'mobile'), '') else mobile end,
+         fax = case when p ? 'fax' then nullif(trim(p->>'fax'), '') else fax end,
+         region = case when p ? 'region' then nullif(trim(p->>'region'), '') else region end,
+         note = case when p ? 'note' then nullif(trim(p->>'note'), '') else note end,
+         default_ship_method = case when p ? 'default_ship_method' then nullif(p->>'default_ship_method', '') else default_ship_method end,
+         ship_tos = case when p ? 'ship_tos' then p->'ship_tos' else ship_tos end,
+         is_oem_factory = case when p ? 'is_oem_factory' then coalesce((p->>'is_oem_factory')::boolean, false) else is_oem_factory end
   where id = v_id;
   return v_id;
 end $$;
