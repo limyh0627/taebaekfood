@@ -1,0 +1,39 @@
+name: Diag production open (read-only)
+
+# 읽기 전용: 안 나간 주문이 '생산 처리'에서 막히는 이유를 찾는다. Firestore에 쓰지 않는다.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '최근 며칠 배송일까지 볼지'
+        required: false
+        default: '14'
+      verbose:
+        description: '문제 없는 주문도 품목 줄을 다 찍기'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_FUNCTIONS_DEPLOY_SA }}
+      - name: 진단 (읽기만)
+        env:
+          DAYS: ${{ inputs.days }}
+          VERBOSE: ${{ inputs.verbose && '1' || '' }}
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix scripts/supabase firebase-admin@12
+          node scripts/supabase/diag-production-open.mjs | tee diag.md
+          cat diag.md >> "$GITHUB_STEP_SUMMARY"
