@@ -16,6 +16,9 @@ begin
 exception when others then return null;
 end $$;
 
+create or replace function erp.to_bool(v jsonb) returns boolean language sql immutable as $$
+  select case when jsonb_typeof(v) = 'boolean' then (v #>> '{}')::boolean end $$;
+
 create or replace function erp.to_num(v jsonb) returns numeric language plpgsql immutable as $$
 begin
   if v is null or jsonb_typeof(v) = 'null' then return null; end if;
@@ -146,12 +149,17 @@ select o.id, o.company_id,
        erp.to_ts(o.data->>'createdAt'), erp.to_ts(o.data->>'deliveredAt'),
        o.data->>'cardNo', nullif(o.data->>'note', ''), erp.to_ts(coalesce(o.data->>'shipmentConfirmedAt', o.data->>'deliveredAt'))
 from src o where o.collection = 'orders';
+update erp.orders x set note_important = coalesce(erp.to_bool(o.data->'noteImportant'), false), invoice_stage = o.data->>'invoiceStage',
+       accounting_excluded = coalesce(erp.to_bool(o.data->'accountingExcluded'), false), accounting_excluded_reason = o.data->>'accountingExcludedReason'
+from src o where o.collection = 'orders' and o.id = x.id;
 
-insert into erp.order_lines (order_id, line_no, line_id, item_id, name, qty, price)
+insert into erp.order_lines (order_id, line_no, line_id, item_id, name, qty, price, checked_at, checked_by, made_on, label_stage)
 select o.id, l.ord::int, l.v->>'lineId',
        case when exists (select 1 from erp.items i where i.id = l.v->>'itemId') then l.v->>'itemId' end,
        -- 박스 줄은 boxQuantity(박스 수)가 임자다. 없으면 quantity가 그 품목 단위 수량(앱 stockUnits와 같은 규칙).
-       l.v->>'name', coalesce(erp.to_num(l.v->'boxQuantity'), erp.to_num(l.v->'quantity')), erp.to_num(l.v->'price')
+       l.v->>'name', coalesce(erp.to_num(l.v->'boxQuantity'), erp.to_num(l.v->'quantity')), erp.to_num(l.v->'price'),
+       case when coalesce(erp.to_bool(l.v->'checked'), false) then coalesce(erp.to_ts(l.v->>'producedAt'), erp.to_ts(l.v->>'checkedAt'), erp.to_ts(o.data->>'createdAt'), now()) end,
+       case when coalesce(erp.to_bool(l.v->'checked'), false) then l.v->>'checkedBy' end, erp.to_date(l.v->>'mfgDate'), l.v->>'labelType'
 from src o
 cross join lateral jsonb_array_elements(case when jsonb_typeof(o.data->'items') = 'array' then o.data->'items' else '[]'::jsonb end)
   with ordinality as l(v, ord)

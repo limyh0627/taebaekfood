@@ -119,7 +119,11 @@ create table erp.orders (
   card_no       text,
   note          text,
   shipped_at    timestamptz,
-  voucher_id    text
+  voucher_id    text,
+  note_important boolean not null default false,
+  invoice_stage text,                       -- 택배 송장: null → printed → attached
+  accounting_excluded boolean not null default false,   -- 거래명세서 발행 안 함
+  accounting_excluded_reason text
 );
 
 create table erp.order_lines (
@@ -131,6 +135,11 @@ create table erp.order_lines (
   qty      numeric,
   price    numeric,
   tax_exempt boolean,
+  checked_at timestamptz,        -- 생산 처리(체크) 한 때
+  checked_by text,
+  made_on    date,               -- 제조일(소비기한 = +1년)
+  label_stage text,              -- 라벨: 대기 / 날인 / 부착
+  run_id     text,               -- 이 줄 생산 처리로 만든 생산 기록(되돌리기용). 옛 앱 줄은 비어 있다.
   primary key (order_id, line_no)
 );
 
