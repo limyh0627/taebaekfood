@@ -24,7 +24,10 @@ begin
     display_unit = nullif(p->>'display_unit', ''), density = (p->>'density')::numeric,
     cost = (p->>'cost')::numeric, min_stock = (p->>'min_stock')::numeric, procure_type = nullif(p->>'procure_type', ''),
     is_bulk = coalesce((p->>'is_bulk')::boolean, false), phantom = coalesce((p->>'phantom')::boolean, false),
-    archived = coalesce((p->>'archived')::boolean, false)
+    archived = coalesce((p->>'archived')::boolean, false),
+    category = case when p ? 'category' then nullif(trim(p->>'category'), '') else category end,
+    spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
+    unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end
   where id = v_id;
   return v_id;
 end $$;
@@ -66,7 +69,10 @@ begin
   end if;
   update erp.partners set name = trim(p->>'name'), partner_type = p->>'partner_type', biz_no = nullif(trim(p->>'biz_no'), ''),
          owner_name = nullif(trim(p->>'owner_name'), ''), email = nullif(trim(p->>'email'), ''), address = nullif(trim(p->>'address'), ''),
-         archived = coalesce((p->>'archived')::boolean, false)
+         archived = coalesce((p->>'archived')::boolean, false),
+    category = case when p ? 'category' then nullif(trim(p->>'category'), '') else category end,
+    spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
+    unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end
   where id = v_id;
   return v_id;
 end $$;

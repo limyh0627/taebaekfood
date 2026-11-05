@@ -46,7 +46,11 @@ create table erp.items (
   procure_type text,
   is_bulk      boolean not null default false,
   phantom      boolean not null default false,
-  archived     boolean not null default false
+  archived     boolean not null default false,
+  category     text,            -- 옛 앱 카테고리: 참기름·들기름·라벨·용기·박스·마개·테이프·향미유…
+  subtype      text,            -- 낱개·배송·선물세트·벌크
+  spec         text,            -- 규격(350ml, 1kg * 10)
+  unpackable   boolean not null default false   -- 캔처럼 까서 벌크로 되돌리는 품목(사람이 켬)
 );
 
 create table erp.item_boms (

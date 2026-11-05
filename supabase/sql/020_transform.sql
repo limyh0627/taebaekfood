@@ -53,7 +53,7 @@ from src where collection = 'partners';
 create temp table density_map (name text primary key, density numeric);
 insert into density_map values ('통깨참기름', 0.916), ('깨분참기름', 0.916), ('통들깨들기름', 0.924), ('수입들기름', 0.924), ('생들기름', 0.924);
 
-insert into erp.items (id, company_id, name, type, legacy_type, unit, cost, min_stock, procure_type, is_bulk, phantom, archived)
+insert into erp.items (id, company_id, name, type, legacy_type, unit, cost, min_stock, procure_type, is_bulk, phantom, archived, category, subtype, spec, unpackable)
 select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
        case
          when data->>'type' = 'raw' then 'RAW'
@@ -68,7 +68,8 @@ select id, company_id, coalesce(nullif(data->>'name', ''), '(이름 없음)'),
        end,
        data->>'type', data->>'unit', erp.to_num(data->'cost'), erp.to_num(data->'minStock'),
        data->>'procureType', coalesce(data->>'subtype', '') = '벌크',
-       coalesce((data->>'phantom')::boolean, false), coalesce((data->>'archived')::boolean, false)
+       coalesce((data->>'phantom')::boolean, false), coalesce((data->>'archived')::boolean, false),
+       nullif(data->>'category', ''), nullif(data->>'subtype', ''), nullif(data->>'spec', ''), coalesce(erp.to_bool(data->'unpackable'), false)
 from src where collection = 'items';
 
 -- 벌크·원료를 L로 적어 둔 품목: 재고는 원래 kg으로 셌다(원료 원장 stockKg). 재고 단위는 kg, 화면용으로 L과 밀도를 남긴다.
