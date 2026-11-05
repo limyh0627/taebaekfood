@@ -41,6 +41,7 @@ begin
     'oem_fee', (select count(*) from erp.oem_fee_pending where company_id = p_company),
     'order_no_voucher', (select count(*) from erp.unbilled_orders where company_id = p_company),
     'adjust', (select count(*) from erp.adjustment_requests where company_id = p_company and status = 'pending'),
+    'unclassified', (select count(*) from erp.unclassified_cash where company_id = p_company),
     'low_stock', (select count(*) from erp.items i left join erp.stock_balances b on b.item_id = i.id
                   where i.company_id = p_company and not i.archived and i.type <> 'FINISHED' and coalesce(i.min_stock, 0) > 0 and coalesce(b.qty, 0) < i.min_stock),
     'leave', (select count(*) from erp.leave_requests where company_id = p_company and status = 'pending'),

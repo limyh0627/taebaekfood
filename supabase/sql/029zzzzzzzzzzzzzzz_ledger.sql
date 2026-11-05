@@ -3,7 +3,7 @@
 --  · 일반전표(비용·대출·급여 등): 차변 = 대변인 계정 줄. kind '비용'(화면 이름 '일반'). 거래처는 108·251·253 줄에 붙는다.
 --  · 상계(대체): 한 거래처 안에서 계정끼리 정리. 예) 미수금↔미지급금, 선수금으로 미수 정리, 선급금으로 미지급 정리.
 --  · 현금출납장: 통장·카드·현금별 기초(opening_balance, opening_date) + 그 뒤 입금 − 출금 = 잔액.
---  · 실잔액 맞추기: 실제 잔액을 넣으면 차이만큼 입금/출금 전표(기본 계정: 늘면 930 잡이익, 줄면 960 잡손실, 고칠 수 있음).
+--  · 실잔액 맞추기: 실제 잔액을 넣으면 차이만큼 입금/출금 전표. 계정을 비우면 회계 미분류(분개에서 빠짐, 나중에 계정 지정).
 --  · 거래처원장·시산표·재무상태표: 분개(erp.journal_lines)에서 바로 센다(저장하지 않는다).
 
 -- 계정 이름
@@ -96,7 +96,7 @@ begin
   if v_diff = 0 then return jsonb_build_object('diff', 0, 'book', v_book); end if;
   return public.record_cash(jsonb_build_object('company_id', v_company, 'dir', case when v_diff > 0 then '입금' else '출금' end, 'date', v_date,
            'cash_account_id', v_cash, 'amount', abs(v_diff),
-           'account_code', coalesce(nullif(p->>'account_code', ''), case when v_diff > 0 then '930' else '960' end),
+           'account_code', nullif(p->>'account_code', ''), 'unclassified', nullif(p->>'account_code', '') is null,
            'note', '실잔액 맞추기 ' || v_book || '→' || (p->>'actual') || coalesce(': ' || nullif(p->>'reason', ''), '')))
          || jsonb_build_object('diff', v_diff, 'book', v_book);
 end $$;

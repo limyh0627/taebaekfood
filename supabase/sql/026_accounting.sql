@@ -162,7 +162,7 @@ grant select on erp.open_items to authenticated;
 
 -- ---------- 입금·출금 ----------
 -- p: {company_id, dir: 입금|출금, date, partner_id, cash_account_id, amount, account_code?, note, applies?: [{voucher_id, amount}]}
--- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급).
+-- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급). unclassified: true면 계정 없이(회계 미분류).
 create or replace function public.record_cash(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -172,7 +172,9 @@ declare
   v_amount numeric := (p->>'amount')::numeric;
   v_partner text := nullif(p->>'partner_id', '');
   v_cash text := nullif(p->>'cash_account_id', '');
-  v_code text := coalesce(nullif(p->>'account_code', ''), case when p->>'dir' = '입금' then '108' else '251' end);
+  -- unclassified: 계정 없이(회계 미분류) 저장 — 통장 잔액에는 들어가고 분개에서는 빠진다. 나중에 set_voucher_account로 정한다.
+  v_code text := case when coalesce((p->>'unclassified')::boolean, false) and nullif(p->>'account_code', '') is null then null
+                      else coalesce(nullif(p->>'account_code', ''), case when p->>'dir' = '입금' then '108' else '251' end) end;
   v_id text := 'v-' || gen_random_uuid();
   v_no text;
   v_loan text := nullif(p->>'loan_id', '');
@@ -230,5 +232,32 @@ begin
   update erp.vouchers set status = 'canceled' where id = v.id;
 end $$;
 
-revoke all on function public.record_cash(jsonb), public.cancel_voucher(text) from public, anon;
-grant execute on function public.record_cash(jsonb), public.cancel_voucher(text) to authenticated;
+-- 회계 미분류 입출금에 계정을 정한다(정하면 분개에 들어간다). 거래처 계정(108·251·253)은 거래처가 있어야 한다.
+create or replace function public.set_voucher_account(p_voucher_id text, p_code text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v erp.vouchers;
+begin
+  select * into v from erp.vouchers where id = p_voucher_id for update;
+  if not found then raise exception '전표를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  if v.kind not in ('입금', '출금') or v.status <> 'active' then raise exception '살아 있는 입금·출금 전표만 계정을 정합니다.'; end if;
+  if v.account_code is not null or exists (select 1 from erp.voucher_lines where voucher_id = v.id and account_code is not null) then
+    raise exception '이미 계정이 있는 전표입니다.';
+  end if;
+  if not exists (select 1 from erp.accounts where company_id = v.company_id and code = p_code) then raise exception '없는 계정입니다.'; end if;
+  if p_code in ('108', '251', '253') and v.partner_id is null then raise exception '외상 계정(108·251·253)은 거래처가 있는 전표에만 됩니다.'; end if;
+  update erp.vouchers set account_code = p_code where id = v.id;
+  update erp.voucher_lines set account_code = p_code where voucher_id = v.id;
+end $$;
+
+-- 회계 미분류(계정 없는) 입출금
+create or replace view erp.unclassified_cash as
+select v.id, v.company_id, v.voucher_no, v.date, v.kind, v.amount, v.memo, v.partner_id, coalesce(p.name, v.partner_name) partner_name, v.cash_account_id
+from erp.vouchers v left join erp.partners p on p.id = v.partner_id
+where v.status = 'active' and v.kind in ('입금', '출금')
+  and exists (select 1 from erp.voucher_lines l where l.voucher_id = v.id and coalesce(l.account_code, '') = '');
+alter view erp.unclassified_cash set (security_invoker = true);
+grant select on erp.unclassified_cash to authenticated;
+
+revoke all on function public.record_cash(jsonb), public.cancel_voucher(text), public.set_voucher_account(text, text) from public, anon;
+grant execute on function public.record_cash(jsonb), public.cancel_voucher(text), public.set_voucher_account(text, text) to authenticated;
