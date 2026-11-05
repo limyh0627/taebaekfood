@@ -210,7 +210,8 @@ await log('counts2', `select public.checklist_counts('taebaek')`);
 // 생산 관리
 await log('rules', `select raw_id,product_id,rate from public.press_rules('taebaek') order by 1`);
 const in1=(await one(`select public.record_raw($1) r`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'입고',qty:100,partner_id:'S1',date:'2026-11-01'})])).r;
-const in2=(await one(`select public.record_raw($1) r`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'입고',qty:50,date:'2026-11-02'})])).r;
+await log('raw-nopartner', `select public.record_raw($1)`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'입고',qty:50,date:'2026-11-02'})]);
+const in2=(await one(`select public.record_raw($1) r`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'입고',qty:50,partner_id:'S1',date:'2026-11-02'})])).r;
 const lot2=(await one(`select id from erp.lots where item_id='SES' and received_at='2026-11-02'`)).id;
 const use1=(await one(`select public.record_raw($1) r`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'사용',qty:30.5,lot_id:lot2,date:'2026-11-03'})])).r;
 out('use1', JSON.stringify(use1));

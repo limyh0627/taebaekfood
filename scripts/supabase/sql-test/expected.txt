@@ -108,6 +108,7 @@ adj2 [{"decide_adjustment":""}]
 adjagain "ERR 이미 처리한 요청입니다."
 counts2 [{"checklist_counts":{"leave":2,"adjust":0,"signup":0,"oem_fee":0,"low_stock":0,"po_pending":0,"unclassified":0,"po_no_voucher":0,"order_no_voucher":0}}]
 rules [{"raw_id":"RAW1","product_id":"OIL1","rate":"0.48"},{"raw_id":"RAW2","product_id":"OIL1","rate":"0.48"},{"raw_id":"SES","product_id":"OIL1","rate":"0.48"}]
+raw-nopartner "ERR 입고는 거래처(매입처)를 고르세요."
 use1 {"id":"raw-<id>","rate":0.48,"pressed":14.64,"product":"통깨참기름/벌크"}
 lots [{"received_at":"<시각>","qty_left":"14.640"},{"received_at":"<시각>","qty_left":"100.000"},{"received_at":"<시각>","qty_left":"19.500"}]
 daily [{"day":"<시각>","opening":"150.000","inbound":"0","used":"30.500","corrected":"0","closing":"119.500"},{"day":"<시각>","opening":"100.000","inbound":"50.000","used":"0","corrected":"0","closing":"150.000"}]

@@ -59,6 +59,9 @@ begin
   if i.id is null or not erp.lot_tracked(i.id) then raise exception '원료나 벌크 품목만 기록할 수 있습니다.'; end if;
   if coalesce(v_qty, 0) <= 0 then raise exception '수량을 넣으세요.'; end if;
   if v_kind = '입고' then
+    if not exists (select 1 from erp.partners where id = p->>'partner_id' and company_id = v_company) then
+      raise exception '입고는 거래처(매입처)를 고르세요.';
+    end if;
     perform erp.post_stock(v_id || ':1', v_company, i.id, v_qty, '입고', 'raw', v_id, nullif(p->>'partner_id', ''), v_date, v_note);
     return jsonb_build_object('id', v_id);
   elsif v_kind <> '사용' then raise exception '입고나 사용만 기록합니다.';
