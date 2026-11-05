@@ -304,6 +304,8 @@ begin
                            'oem', po.id, po.partner_id, v_date, po.po_no);
   end loop;
   if n = 0 then raise exception '보낼 수량을 넣으세요.'; end if;
+  -- 원료를 보내면 발주확정(입고대기)으로 본다(기존 앱 송출 = 발주확정)
+  update erp.purchase_orders set status = 'invoiced', invoiced_at = now() where id = po.id and status = 'pending';
   return n;
 end $$;
 

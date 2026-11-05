@@ -56,6 +56,7 @@ begin
   perform erp.assert_member(po.company_id);
   if po.status = 'pending' then raise exception '발주 예정입니다. 발주확정이나 매입전표 발행으로 입고대기에 올린 뒤 입고확정하세요.'; end if;
   if po.status not in ('invoiced', 'partial') then raise exception '입고대기인 발주만 입고확정할 수 있습니다.'; end if;
+  if po.po_type = 'oem' then raise exception '임가공 발주는 가공입고로 받습니다.'; end if;
 
   create temp table if not exists _rcv (line_no int, qty numeric) on commit drop;
   truncate _rcv;
