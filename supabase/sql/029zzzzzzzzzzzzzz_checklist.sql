@@ -64,7 +64,7 @@ begin
     'unclassified', (select count(*) from erp.unclassified_cash where company_id = p_company),
     'low_stock', (select count(*) from erp.items i left join erp.stock_balances b on b.item_id = i.id
                   where i.company_id = p_company and not i.archived and i.type <> 'FINISHED' and coalesce(i.min_stock, 0) > 0 and coalesce(b.qty, 0) < i.min_stock),
-    'leave', (select count(*) from erp.leave_requests where company_id = p_company and status = 'pending'),
+    'leave', (select count(*) from erp.leave_requests where company_id = p_company and (status = 'pending' or (status = 'approved' and change_request is not null))),
     'signup', case when p_company = any (app.my_admin_company_ids()) then (select count(*) from app.partner_users u where u.status = 'pending' and (u.company_id = p_company or u.company_id is null)) else 0 end);
 end $$;
 
