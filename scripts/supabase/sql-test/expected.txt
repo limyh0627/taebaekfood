@@ -329,5 +329,18 @@ so-nopartner "ERR 거래처를 고르세요."
 so-row [{"purpose":"stock","partner_name":"재고 만들기","status":"PENDING"}]
 so-check [{"s":"DISPATCHED"}]
 so-ship "ERR 재고 만들기 주문은 출고하지 않습니다(생산으로 끝)."
+ds-0 [{"q":"98.000"}]
+ds-chk [{"s":"DISPATCHED"}]
+ds-chk-q [{"q":"108.000"}]
+ds-split [{"src":true,"status":"DISPATCHED","qty":"6","chk":true,"run":true},{"src":false,"status":"DISPATCHED","qty":"4","chk":true,"run":true}]
+ds-same-run [{"count":1}]
+ds-unchk-new [{"s":"PENDING"}]
+ds-unchk-q [{"q":"108.000","run_alive":true}]
+ds-del [{"delete_order":""}]
+ds-del-q [{"q":"98.000","alive":0}]
+ds-del-after [{"status":"CANCELED","chk":0,"h":"true"}]
+ds-del-again "ERR 주문을 찾을 수 없습니다."
+ds-chk-deleted "ERR 삭제한 주문입니다."
+ds-del-shipped "ERR 출고된 주문은 지울 수 없습니다. 출고를 먼저 취소하세요."
 030_checks.sql errors 0
 031_checks_more.sql errors 0

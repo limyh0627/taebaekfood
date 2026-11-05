@@ -80,6 +80,7 @@ begin
   select * into o from erp.orders where id = p_order_id for update;
   if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
   perform erp.assert_member(o.company_id);
+  if o.status = 'CANCELED' then raise exception '삭제한 주문입니다.'; end if;
   if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '출고된 주문입니다. 출고를 먼저 취소하세요.'; end if;
   select * into l from erp.order_lines where order_id = o.id and line_no = p_line_no for update;
   if not found then raise exception '주문 줄을 찾을 수 없습니다.'; end if;
@@ -103,7 +104,10 @@ begin
     where order_id = o.id and line_no = l.line_no;
   else
     if l.checked_at is null then return jsonb_build_object('status', o.status); end if;
-    if l.run_id is not null then
+    if l.run_id is not null and exists (select 1 from erp.order_lines x where x.run_id = l.run_id and x.checked_at is not null
+                                          and not (x.order_id = o.id and x.line_no = l.line_no)) then
+      null;  -- 나눈 주문과 같이 쓰는 생산: 다른 쪽이 아직 체크돼 있으면 생산은 그대로 두고 이 줄 체크만 푼다(마지막 줄을 풀 때 되돌린다)
+    elsif l.run_id is not null then
       perform public.cancel_production(l.run_id, '체크 풀기 ' || coalesce(o.card_no, o.id));
     elsif i.id is not null and erp.is_produced(i) and not exists (select 1 from erp.production_runs where order_id = o.id and line_no = l.line_no) then
       raise exception '옛 앱에서 생산 처리한 줄이라 여기서 되돌릴 수 없습니다(재고는 재고 화면에서 실사로 맞추세요).';
@@ -187,6 +191,7 @@ begin
   select * into o from erp.orders where id = p_order_id for update;
   if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
   perform erp.assert_member(o.company_id);
+  if o.status = 'CANCELED' then raise exception '삭제한 주문입니다.'; end if;
   if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '이미 출고된 주문입니다.'; end if;
   if o.status = 'ON_HOLD' then raise exception '보류 중인 주문입니다. 보류를 먼저 푸세요.'; end if;
   if to_jsonb(o)->>'purpose' = 'stock' then raise exception '재고 만들기 주문은 출고하지 않습니다(생산으로 끝).'; end if;
@@ -308,6 +313,7 @@ begin
   select * into o from erp.orders where id = p_order_id for update;
   if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
   perform erp.assert_member(o.company_id);
+  if o.status = 'CANCELED' then raise exception '삭제한 주문입니다.'; end if;
   if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '출고된 주문은 나눌 수 없습니다.'; end if;
   v_date := coalesce((p->>'delivery_date')::date, o.delivery_date);
   create temp table if not exists _split (line_no int, qty numeric) on commit drop;
@@ -316,9 +322,6 @@ begin
   if not exists (select 1 from _split) then raise exception '뗄 줄과 수량을 고르세요.'; end if;
   if exists (select 1 from _split s left join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no
              where l.order_id is null or s.qty > l.qty) then raise exception '주문에 없는 줄이거나 수량보다 많이 뗍니다.'; end if;
-  if exists (select 1 from _split s join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no where l.checked_at is not null) then
-    raise exception '생산 처리한 줄은 뗄 수 없습니다. 체크를 풀고 떼세요.';
-  end if;
   if not exists (select 1 from erp.order_lines l left join _split s on s.line_no = l.line_no where l.order_id = o.id and l.qty - coalesce(s.qty, 0) > 0) then
     raise exception '전부 떼면 원래 주문이 빕니다. 배송일만 바꾸려면 배송일을 고치세요.';
   end if;
@@ -328,18 +331,44 @@ begin
           nullif(concat_ws(' ', coalesce(o.card_no, '원 주문') || '에서 나눔', nullif(o.note, '')), ''), o.delivery_slot);
   for r in select l.*, s.qty moved from _split s join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no order by l.line_no loop
     n := n + 1;
-    insert into erp.order_lines (order_id, line_no, item_id, name, qty, price, tax_exempt, made_on, label_stage)
-    values (v_new, n, r.item_id, r.name, r.moved, r.price, r.tax_exempt, r.made_on, r.label_stage);
+    -- 체크(완료)한 줄은 줄 전체가 완료라, 떼어 간 몫도 완료로 간다(기존 앱: 완료 수량은 새 주문 수량을 넘을 수 없고 남는 완료가 원주문을 넘을 수 없다).
+    -- 생산을 다시 만들지 않고 같은 생산(run_id)을 같이 가리킨다.
+    insert into erp.order_lines (order_id, line_no, item_id, name, qty, price, tax_exempt, made_on, label_stage, checked_at, checked_by, run_id)
+    values (v_new, n, r.item_id, r.name, r.moved, r.price, r.tax_exempt, r.made_on, r.label_stage, r.checked_at, r.checked_by, r.run_id);
     if r.qty - r.moved > 0 then update erp.order_lines set qty = qty - r.moved where order_id = o.id and line_no = r.line_no;
     else delete from erp.order_lines where order_id = o.id and line_no = r.line_no; end if;
   end loop;
   update erp.orders x set total_amount = (select sum((erp.line_amount(qty, price, tax_exempt)).gross) from erp.order_lines where order_id = x.id) where x.id in (o.id, v_new);
   perform erp.sync_order_status(o.id);
+  perform erp.sync_order_status(v_new);
   insert into erp.order_history (id, company_id, order_id, kind, changes, by_name, at)
   values ('split:' || gen_random_uuid(), o.company_id, o.id, 'split', jsonb_build_object('to', v_no, 'lines', p->'lines', 'delivery_date', v_date), erp.actor_name(), now()),
          ('split:' || gen_random_uuid(), o.company_id, v_new, 'split', jsonb_build_object('from', o.card_no), erp.actor_name(), now());
   return jsonb_build_object('order_id', v_new, 'card_no', v_no);
 end $$;
+-- 주문 삭제(기존 앱 '주문 삭제'): 출고 전만. 생산 처리한 줄은 생산을 되돌리고(나눈 주문과 같이 쓰는 생산은 남김), 주문은 '취소'로 남겨 기록을 지킨다.
+create or replace function public.delete_order(p_order_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare o erp.orders; l record;
+begin
+  select * into o from erp.orders where id = p_order_id for update;
+  if not found or o.status = 'CANCELED' then raise exception '주문을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(o.company_id);
+  if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '출고된 주문은 지울 수 없습니다. 출고를 먼저 취소하세요.'; end if;
+  if o.voucher_id is not null then raise exception '매출 전표가 있는 주문입니다. 전표를 먼저 취소하세요.'; end if;
+  for l in select * from erp.order_lines where order_id = o.id and checked_at is not null and run_id is not null loop
+    if not exists (select 1 from erp.order_lines x where x.run_id = l.run_id and x.checked_at is not null and x.order_id <> o.id) then
+      perform public.cancel_production(l.run_id, '주문 삭제 ' || coalesce(o.card_no, o.id));
+    end if;
+  end loop;
+  update erp.order_lines set checked_at = null, checked_by = null, run_id = null where order_id = o.id;
+  update erp.orders set status = 'CANCELED' where id = o.id;
+  insert into erp.order_history (id, company_id, order_id, kind, changes, by_name, at)
+  values ('status:' || gen_random_uuid(), o.company_id, o.id, 'status', jsonb_build_object('from', o.status, 'to', 'CANCELED', 'deleted', true), erp.actor_name(), now());
+end $$;
+revoke all on function public.delete_order(text) from public, anon;
+grant execute on function public.delete_order(text) to authenticated;
+
 revoke all on function public.split_order(text, jsonb) from public, anon;
 grant execute on function public.split_order(text, jsonb) to authenticated;
 

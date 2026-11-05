@@ -520,6 +520,23 @@ const sto=(await one(`select public.save_order('{"company_id":"taebaek","purpose
 await log('so-row', `select purpose, partner_name, status from erp.orders where id=$1`,[sto]);
 await log('so-check', `select public.check_order_line($1,1,true,2,null)->>'status' s`,[sto]);
 await log('so-ship', `select public.ship_order($1,'배송',null,true)`,[sto]);
+// 완료한 줄 나누기 → 같은 생산을 같이 가리킨다. 한쪽 체크 풀기는 생산을 남기고, 마지막 쪽을 지우면 생산을 되돌린다. 주문 삭제.
+const ds=(await one(`select public.save_order($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P7',delivery_date:'2026-11-08',lines:[{item_id:'FG1',qty:10,price:100}]})])).v;
+const fgq=`(select qty from erp.stock_balances where item_id='FG1')`;
+await log('ds-0', `select ${fgq} q`);
+await log('ds-chk', `select public.check_order_line($1,1,true,10)->>'status' s`,[ds]);
+await log('ds-chk-q', `select ${fgq} q`);
+const dsn=(await one(`select public.split_order($1,'{"lines":[{"line_no":1,"qty":4}]}') r`,[ds])).r.order_id;
+await log('ds-split', `select o.id=$1 src, o.status, l.qty, l.checked_at is not null chk, l.run_id is not null run from erp.orders o join erp.order_lines l on l.order_id=o.id where o.id in ($1,$2) order by 1 desc`,[ds,dsn]);
+await log('ds-same-run', `select count(distinct run_id) from erp.order_lines where order_id in ($1,$2)`,[ds,dsn]);
+await log('ds-unchk-new', `select public.check_order_line($1,1,false)->>'status' s`,[dsn]);
+await log('ds-unchk-q', `select ${fgq} q, (select r.canceled_at is null from erp.production_runs r join erp.order_lines l on l.run_id=r.id where l.order_id=$1) run_alive`,[ds]);
+await log('ds-del', `select public.delete_order($1)`,[ds]);
+await log('ds-del-q', `select ${fgq} q, (select count(*) from erp.production_runs where order_id=$1 and canceled_at is null) alive`,[ds]);
+await log('ds-del-after', `select status, (select count(*) from erp.order_lines where order_id=$1 and checked_at is not null) chk, (select changes->>'deleted' from erp.order_history where order_id=$1 and kind='status' order by at desc limit 1) h from erp.orders where id=$1`,[ds]);
+await log('ds-del-again', `select public.delete_order($1)`,[ds]);
+await log('ds-chk-deleted', `select public.check_order_line($1,1,true)`,[ds]);
+await log('ds-del-shipped', `select public.delete_order('O1')`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
