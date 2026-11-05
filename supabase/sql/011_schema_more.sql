@@ -275,7 +275,8 @@ create table erp.leave_requests (
   days_used    numeric,
   status       text,
   reason       text,
-  requested_at date
+  requested_at date,
+  deducts_leave boolean
 );
 
 create table erp.payrolls (

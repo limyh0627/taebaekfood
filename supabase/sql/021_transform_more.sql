@@ -251,10 +251,10 @@ update erp.employees e set legacy_uid = s.data->>'authUid', phone = s.data->>'ph
        health_cert_date = erp.to_date(s.data->>'healthCertDate'), annual_leave = s.data->'annualLeave'
 from src s where s.collection = 'employees' and s.id = e.id;
 
-insert into erp.leave_requests (id, company_id, employee_id, employee_name, type, start_date, end_date, days_used, status, reason, requested_at)
+insert into erp.leave_requests (id, company_id, employee_id, employee_name, type, start_date, end_date, days_used, status, reason, requested_at, deducts_leave)
 select id, company_id, erp.ref_employee(data->>'employeeId'), data->>'employeeName', data->>'type',
        erp.to_date(data->>'startDate'), erp.to_date(data->>'endDate'), erp.to_num(data->'daysUsed'),
-       data->>'status', data->>'reason', erp.to_date(data->>'requestedAt')
+       data->>'status', data->>'reason', erp.to_date(data->>'requestedAt'), erp.to_bool(data->'deductsLeave')
 from src where collection = 'leaveRequests';
 
 insert into erp.payrolls (id, company_id, year_month, pay_date, voucher_id, note)
