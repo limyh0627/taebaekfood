@@ -39,6 +39,28 @@ end $$;
 revoke all on function public.request_adjustment(text, text, numeric, text) from public, anon;
 grant execute on function public.request_adjustment(text, text, numeric, text) to authenticated;
 
+-- 전표 수정 요청(기존 앱 pendingStatementEdits): 직원이 명세서의 틀린 곳을 적어 올리면 관리자가 확인사항에서 보고
+-- 전표 화면에서 취소·다시 발행한 뒤 '확인' 처리한다(새 ERP는 발행된 전표를 고치지 않고 취소 후 다시 낸다).
+alter table erp.adjustment_requests add column if not exists voucher_id text;
+create or replace function public.request_voucher_edit(p_voucher text, p_reason text) returns text
+language plpgsql security definer set search_path = '' as $$
+declare v erp.vouchers; v_id text := 'VEDIT-' || gen_random_uuid();
+begin
+  select * into v from erp.vouchers where id = p_voucher;
+  if not found then raise exception '전표를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  if v.status <> 'active' then raise exception '취소된 전표입니다.'; end if;
+  if coalesce(trim(p_reason), '') = '' then raise exception '무엇을 어떻게 고쳐야 하는지 적어 주세요.'; end if;
+  if exists (select 1 from erp.adjustment_requests where voucher_id = p_voucher and status = 'pending') then raise exception '이 전표는 이미 수정 요청이 올라가 있습니다.'; end if;
+  insert into erp.adjustment_requests (id, company_id, type, status, reason, voucher_id, requested_at)
+  values (v_id, v.company_id, 'voucher_edit', 'pending',
+          coalesce(v.voucher_no, '') || ' ' || coalesce(v.partner_name, '') || ': ' || left(trim(p_reason), 300)
+            || ' (' || coalesce((select name from public.company_people(v.company_id) where user_id = auth.uid()), erp.actor_name(), '') || ')', p_voucher, now());
+  return v_id;
+end $$;
+revoke all on function public.request_voucher_edit(text, text) from public, anon;
+grant execute on function public.request_voucher_edit(text, text) to authenticated;
+
 -- 새 ERP에서 출고했는데 거래명세서를 안 낸 주문(옛 앱 주문은 뺀다)
 create or replace view erp.unbilled_orders as
 select o.id, o.company_id, o.card_no, o.delivery_date, o.partner_id, coalesce(p.name, o.partner_name) partner_name, o.total_amount
