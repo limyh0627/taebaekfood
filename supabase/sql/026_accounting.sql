@@ -216,7 +216,7 @@ begin
   return jsonb_build_object('voucher_id', v_id, 'voucher_no', v_no);
 end $$;
 
--- 새 앱에서 만든 입금·출금 전표만 취소한다(주문 매출 전표는 출고 취소로).
+-- 새 앱에서 만든 입금·출금·일반·상계 전표를 취소한다(매출·매입 명세서는 cancel_sales_voucher·cancel_purchase_voucher).
 create or replace function public.cancel_voucher(p_voucher_id text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare v erp.vouchers;
@@ -225,7 +225,7 @@ begin
   if not found then raise exception '전표를 찾을 수 없습니다.'; end if;
   perform erp.assert_member(v.company_id);
   if v.legacy_collection <> 'app' then raise exception '옛 앱의 전표는 여기서 취소할 수 없습니다.'; end if;
-  if v.kind not in ('입금', '출금') then raise exception '매출 전표는 주문의 출고 취소로 취소하세요.'; end if;
+  if v.kind not in ('입금', '출금', '비용', '대체') then raise exception '매출·매입 전표는 전표 화면의 전표 취소(또는 반품 취소)로 취소하세요.'; end if;
   if v.status = 'canceled' then raise exception '이미 취소된 전표입니다.'; end if;
   update erp.vouchers set status = 'canceled' where id = v.id;
 end $$;
