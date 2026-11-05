@@ -61,6 +61,33 @@ for (const name of COLLECTIONS) {
   summary.push([name, count]);
   console.log(`${name}: ${count}건`);
 }
+// 하위 컬렉션: 업무(workProjectsV1) 안의 할 일(tasks)과 할 일 댓글(comments). 최상위만 돌면 빠진다.
+async function putRows(name, rows) {
+  if (!rows.length) return;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await client.query(
+      `insert into raw.docs (collection, id, company_id, data)
+       select collection, id, company_id, data from jsonb_to_recordset($1::jsonb) as x(collection text, id text, company_id text, data jsonb)
+       on conflict (collection, id) do update set company_id = excluded.company_id, data = excluded.data, imported_at = now()`,
+      [JSON.stringify(rows.slice(i, i + BATCH))]);
+  }
+}
+const clean = (doc, extra) => { const d = plain(doc.data()) ?? {}; for (const f of Object.keys(d)) if (DROP_KEY.test(f)) delete d[f]; return { ...d, ...extra }; };
+for (const sub of ['workProjectTasks', 'workProjectComments']) await client.query('delete from raw.docs where collection = $1', [sub]);
+let nTask = 0, nComment = 0;
+for (const p of (await db.collection('workProjectsV1').get()).docs) {
+  const company = typeof p.data().companyId === 'string' ? p.data().companyId : null;
+  const tasks = (await p.ref.collection('tasks').get()).docs;
+  await putRows('workProjectTasks', tasks.map(t => ({ collection: 'workProjectTasks', id: `${p.id}:${t.id}`, company_id: company, data: clean(t, { projectId: p.id, taskId: t.id }) })));
+  nTask += tasks.length;
+  for (const t of tasks) {
+    const cs = (await t.ref.collection('comments').get()).docs;
+    await putRows('workProjectComments', cs.map(c => ({ collection: 'workProjectComments', id: `${p.id}:${t.id}:${c.id}`, company_id: company, data: clean(c, { projectId: p.id, taskId: t.id }) })));
+    nComment += cs.length;
+  }
+}
+summary.push(['workProjectTasks(하위)', nTask], ['workProjectComments(하위)', nComment]);
+console.log(`업무 할 일 ${nTask}건, 댓글 ${nComment}건`);
 await client.end();
 
 console.log('\n| 컬렉션 | 복사한 문서 |\n|---|---|');
