@@ -3,6 +3,11 @@
 -- 모든 표는 RLS를 켜고 정책은 아직 두지 않는다 = 앱 API로는 아무도 못 읽는다. 시험 단계는 직접 접속만.
 -- 다시 돌려도 되도록 erp 스키마를 통째로 지우고 새로 만든다(시험 전용).
 
+-- 날짜는 한국 시간으로. 기본(UTC)이면 한국 00~09시에 '오늘'이 어제로 잡혀 전표·원장 날짜와 번호가 하루 밀린다.
+-- 데이터베이스 설정은 새 접속부터 먹으므로 이번 이전 세션에도 따로 건다.
+do $$ begin execute format('alter database %I set timezone to %L', current_database(), 'Asia/Seoul'); end $$;
+set timezone to 'Asia/Seoul';
+
 -- 전환(실제 운영 시작) 뒤에는 이 파이프라인이 운영 데이터를 지우지 않게 멈춘다. 표시는 supabase/cutover-mark.sql.
 do $$ begin
   if to_regclass('app.cutover') is not null then
