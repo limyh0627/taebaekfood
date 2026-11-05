@@ -67,12 +67,22 @@ for (const o of orders) {
     if (packs.some(r => !Number.isSafeInteger(r.units_per_box) || r.units_per_box <= 1)) problems.push(`#${i + 1} item_pack 박스당 개수가 정수>1 아님`);
     if (new Set(packs.map(r => r.units_per_box)).size > 1) problems.push(`#${i + 1} item_pack 박스당 개수가 여러 개(${[...new Set(packs.map(r => r.units_per_box))].join('/')})`);
     const boms = bom.map(s => s.data());
-    if (boms.length) info.push(`  item_bom: ${boms.length}줄 ${boms.map(r => `${r.child_id}×${r.quantity}(${r.companyId ?? 'undef'})`).join(', ')}`);
+    const childDocs = new Map();
+    for (const r of boms) if (r.child_id) { const c = await db.doc('items/' + r.child_id).get(); childDocs.set(r.child_id, c.exists ? c.data() : null); }
+    if (boms.length) info.push(`  item_bom: ${boms.length}줄 ${boms.map(r => { const c = childDocs.get(r.child_id); return `${r.child_id}×${r.quantity}(${r.companyId ?? 'undef'}, "${c?.name ?? '없음'}" type=${c?.type ?? '-'} unit=${c?.unit ?? '-'}${c && 'archived' in c ? ' archived=' + c.archived : ''})`; }).join(', ')}`);
+    // 서버 unpackComponent: BOM 자식 중 type이 product/완제품인 것이 정확히 하나이고 수량 > 1이어야 '박스 재고 품목'
+    const prodKids = boms.filter(r => ['product', '완제품'].includes(childDocs.get(r.child_id)?.type));
+    const component = prodKids.length === 1 && prodKids[0].quantity > 1 ? { id: prodKids[0].child_id, count: prodKids[0].quantity } : null;
+    info.push(`  박스 낱개 구성(서버 판정): ${component ? `${component.id} × ${component.count}` : `없음 (완제품 자식 ${prodKids.length}개)`}`);
+    if (p.unit === '박스' && !component) problems.push(`#${i + 1} 단위가 '박스'인데 서버가 낱개 구성을 못 찾음(BOM 자식 중 완제품이 정확히 1개, 수량 2 이상이어야 함. 지금 완제품 자식 ${prodKids.length}개)`);
+    if (component && (!Number.isSafeInteger(component.count) || typeof childDocs.get(component.id)?.unit !== 'string' || !childDocs.get(component.id).unit.trim()))
+      problems.push(`#${i + 1} 낱개 구성 개수가 정수가 아니거나 낱개 품목 단위가 없음`);
+    if (component && l.unitsPerBox !== undefined && l.unitsPerBox !== component.count) problems.push(`#${i + 1} 줄 박스당 개수(${l.unitsPerBox}) ≠ BOM 낱개 수(${component.count})`);
+    if (component && l.boxQuantity !== undefined && ![l.boxQuantity, l.boxQuantity * component.count].includes(l.quantity)) problems.push(`#${i + 1} 줄 박스 수·수량이 BOM과 안 맞음`);
     for (const r of boms) {
       if (r.companyId !== company) problems.push(`#${i + 1} BOM 줄 companyId가 다름(${r.companyId ?? 'undef'})`);
       if (typeof r.quantity !== 'number' || !Number.isFinite(r.quantity) || r.quantity < 0) problems.push(`#${i + 1} BOM 수량이 숫자 아님(${r.child_id})`);
-      const c = r.child_id ? await db.doc('items/' + r.child_id).get() : null;
-      const cd = c?.exists ? c.data() : null;
+      const cd = r.child_id ? childDocs.get(r.child_id) : null;
       if (!cd) problems.push(`#${i + 1} BOM 구성품 문서 없음(${r.child_id})`);
       else {
         if (cd.companyId !== company) problems.push(`#${i + 1} BOM 구성품 "${cd.name}" companyId(${cd.companyId ?? 'undef'}) 다름`);
@@ -80,8 +90,7 @@ for (const o of orders) {
         if (typeof cd.unit !== 'string' || !cd.unit.trim()) problems.push(`#${i + 1} BOM 구성품 "${cd.name}" 단위 없음`);
       }
     }
-    if (p.unit === '박스' && !boms.length) problems.push(`#${i + 1} 단위가 '박스'인데 BOM(낱개 구성)이 없음`);
-    if (l.isBoxUnit === true && p.unit !== '박스') {
+    if (!component && l.isBoxUnit === true) {
       const n = packs[0]?.units_per_box;
       if (!n || l.unitsPerBox !== n || typeof l.boxQuantity !== 'number' || l.quantity !== l.boxQuantity * n)
         problems.push(`#${i + 1} 박스 주문인데 박스당 개수가 안 맞음(주문 ${l.boxQuantity}박스×${l.unitsPerBox} = ${l.quantity}, 품목 박스당 ${n ?? '없음'})`);
