@@ -35,7 +35,7 @@ declare
 begin
   select * into src from erp.vouchers where id = p->>'voucher_id' for update;
   if not found then raise exception '명세서를 찾을 수 없습니다.'; end if;
-  perform erp.assert_member(src.company_id);
+  perform erp.assert_admin(src.company_id);  -- 직원은 반품 요청(request_return) → 관리자 확인사항에서 반품 처리(기존 앱과 같음)
   if src.kind not in ('매출', '매입') then raise exception '매출·매입 명세서만 반품할 수 있습니다.'; end if;
   if src.status <> 'active' then raise exception '취소된 명세서입니다.'; end if;
   if src.return_of is not null then raise exception '반품 명세서는 다시 반품할 수 없습니다.'; end if;
@@ -124,6 +124,34 @@ end $$;
 drop trigger if exists vouchers_guard_returned on erp.vouchers;
 create trigger vouchers_guard_returned before update of status on erp.vouchers
 for each row execute function erp.guard_returned_voucher();
+
+-- 직원 반품 요청: 고른 줄·수량·재입고 여부를 담아 확인사항에 올린다. 관리자가 승인하면 그대로 create_return.
+alter table erp.adjustment_requests add column if not exists payload jsonb;
+alter table erp.adjustment_requests add column if not exists voucher_id text;
+create or replace function public.request_return(p jsonb) returns text
+language plpgsql security definer set search_path = '' as $$
+declare src erp.vouchers; v_id text := 'RET-' || gen_random_uuid(); v_desc text;
+begin
+  select * into src from erp.vouchers where id = p->>'voucher_id';
+  if not found then raise exception '명세서를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(src.company_id);
+  if src.kind not in ('매출', '매입') or src.status <> 'active' or src.return_of is not null then raise exception '반품할 수 없는 명세서입니다.'; end if;
+  if exists (select 1 from erp.adjustment_requests where type = 'return_request' and status = 'pending' and payload->>'voucher_id' = src.id) then
+    raise exception '이 명세서는 이미 반품 요청이 올라가 있습니다.';
+  end if;
+  select string_agg(coalesce(l.name, '') || ' ' || (x->>'qty'), ', ') into v_desc
+  from jsonb_array_elements(coalesce(p->'lines', '[]')) x join erp.voucher_lines l on l.voucher_id = src.id and l.line_no = (x->>'line_no')::int
+  where coalesce((x->>'qty')::numeric, 0) > 0;
+  if v_desc is null then raise exception '돌려받을 수량을 넣으세요.'; end if;
+  insert into erp.adjustment_requests (id, company_id, type, status, reason, voucher_id, payload, requested_at)
+  values (v_id, src.company_id, 'return_request', 'pending',
+          coalesce(src.voucher_no, '') || ' ' || coalesce(src.partner_name, '') || ' — ' || v_desc || coalesce(' · ' || nullif(p->>'memo', ''), '')
+            || ' (' || coalesce((select name from public.company_people(src.company_id) where user_id = auth.uid()), erp.actor_name(), '') || ')',
+          src.id, p, now());
+  return v_id;
+end $$;
+revoke all on function public.request_return(jsonb) from public, anon;
+grant execute on function public.request_return(jsonb) to authenticated;
 
 revoke all on function public.create_return(jsonb), public.cancel_return(text) from public, anon;
 grant execute on function public.create_return(jsonb), public.cancel_return(text) to authenticated;

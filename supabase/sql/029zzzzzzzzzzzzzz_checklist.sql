@@ -15,6 +15,8 @@ begin
   if p_approve and r.type = 'quantity_change' then
     if r.item_id is null or r.qty_after is null then raise exception '품목이나 요청 수량이 없어 맞출 수 없습니다. 반려하고 재고 화면에서 실사하세요.'; end if;
     perform public.stocktake(r.company_id, r.item_id, r.qty_after, null, coalesce('조정 요청 승인: ' || nullif(r.reason, ''), '조정 요청 승인'));
+  elsif p_approve and r.type = 'return_request' then
+    perform public.create_return(r.payload);
   end if;
   update erp.adjustment_requests set status = case when p_approve then 'processed' else 'rejected' end, processed_at = now() where id = r.id;
 end $$;
