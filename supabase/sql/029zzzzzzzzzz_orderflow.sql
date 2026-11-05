@@ -296,6 +296,52 @@ begin
   update erp.orders set voucher_id = null where voucher_id = v.id;
 end $$;
 
+-- ---------- 주문 분할(기존 앱 '분할') ----------
+-- 줄의 수량 일부(또는 전부)를 새 주문으로 뗀다. 같은 거래처·출고 방식, 배송일은 새로 고를 수 있다.
+-- 생산 처리(체크)한 줄은 떼지 않는다(생산 근거가 줄에 묶여 있다) — 체크를 풀고 떼거나 그대로 둔다.
+-- p: {lines: [{line_no, qty}], delivery_date?}
+create or replace function public.split_order(p_order_id text, p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare o erp.orders; v_new text := 'ord-' || gen_random_uuid(); v_date date; r record; n int := 0; v_no text;
+begin
+  select * into o from erp.orders where id = p_order_id for update;
+  if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(o.company_id);
+  if o.shipped_at is not null or o.status in ('SHIPPED', 'DELIVERED') then raise exception '출고된 주문은 나눌 수 없습니다.'; end if;
+  v_date := coalesce((p->>'delivery_date')::date, o.delivery_date);
+  create temp table if not exists _split (line_no int, qty numeric) on commit drop;
+  truncate _split;
+  insert into _split select (x->>'line_no')::int, (x->>'qty')::numeric from jsonb_array_elements(coalesce(p->'lines', '[]')) x where coalesce((x->>'qty')::numeric, 0) > 0;
+  if not exists (select 1 from _split) then raise exception '뗄 줄과 수량을 고르세요.'; end if;
+  if exists (select 1 from _split s left join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no
+             where l.order_id is null or s.qty > l.qty) then raise exception '주문에 없는 줄이거나 수량보다 많이 뗍니다.'; end if;
+  if exists (select 1 from _split s join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no where l.checked_at is not null) then
+    raise exception '생산 처리한 줄은 뗄 수 없습니다. 체크를 풀고 떼세요.';
+  end if;
+  if not exists (select 1 from erp.order_lines l left join _split s on s.line_no = l.line_no where l.order_id = o.id and l.qty - coalesce(s.qty, 0) > 0) then
+    raise exception '전부 떼면 원래 주문이 빕니다. 배송일만 바꾸려면 배송일을 고치세요.';
+  end if;
+  v_no := erp.next_no(o.company_id, v_date, 'ORD-', 'order');
+  insert into erp.orders (id, company_id, partner_id, partner_name, status, source, ship_method, delivery_date, created_at, card_no, note, delivery_slot)
+  values (v_new, o.company_id, o.partner_id, o.partner_name, 'PENDING', o.source, o.ship_method, v_date, now(), v_no,
+          nullif(concat_ws(' ', coalesce(o.card_no, '원 주문') || '에서 나눔', nullif(o.note, '')), ''), o.delivery_slot);
+  for r in select l.*, s.qty moved from _split s join erp.order_lines l on l.order_id = o.id and l.line_no = s.line_no order by l.line_no loop
+    n := n + 1;
+    insert into erp.order_lines (order_id, line_no, item_id, name, qty, price, tax_exempt, made_on, label_stage)
+    values (v_new, n, r.item_id, r.name, r.moved, r.price, r.tax_exempt, r.made_on, r.label_stage);
+    if r.qty - r.moved > 0 then update erp.order_lines set qty = qty - r.moved where order_id = o.id and line_no = r.line_no;
+    else delete from erp.order_lines where order_id = o.id and line_no = r.line_no; end if;
+  end loop;
+  update erp.orders x set total_amount = (select sum((erp.line_amount(qty, price, tax_exempt)).gross) from erp.order_lines where order_id = x.id) where x.id in (o.id, v_new);
+  perform erp.sync_order_status(o.id);
+  insert into erp.order_history (id, company_id, order_id, kind, changes, by_name, at)
+  values ('split:' || gen_random_uuid(), o.company_id, o.id, 'split', jsonb_build_object('to', v_no, 'lines', p->'lines', 'delivery_date', v_date), erp.actor_name(), now()),
+         ('split:' || gen_random_uuid(), o.company_id, v_new, 'split', jsonb_build_object('from', o.card_no), erp.actor_name(), now());
+  return jsonb_build_object('order_id', v_new, 'card_no', v_no);
+end $$;
+revoke all on function public.split_order(text, jsonb) from public, anon;
+grant execute on function public.split_order(text, jsonb) to authenticated;
+
 revoke all on function public.preview_order_line(text, int, numeric), public.check_order_line(text, int, boolean, numeric, date),
   public.set_order_line_meta(text, int, jsonb), public.set_order_meta(text, jsonb), public.ship_order(text, text, date, boolean),
   public.cancel_shipment(text, text), public.create_sales_voucher(jsonb), public.cancel_sales_voucher(text) from public, anon;
