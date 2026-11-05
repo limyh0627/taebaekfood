@@ -52,6 +52,47 @@ begin
   from jsonb_array_elements(p_lines) l;
 end $$;
 
+-- ---------- 품목 분류 관리 ----------
+-- 분류 이름 바꾸기(같은 이름이 있으면 합쳐진다). p_type을 주면 그 종류 품목만.
+create or replace function public.rename_item_category(p_company text, p_from text, p_to text, p_type text default null) returns int
+language plpgsql security definer set search_path = '' as $$
+declare n int;
+begin
+  perform erp.assert_member(p_company);
+  if coalesce(trim(p_from), '') = '' then raise exception '바꿀 분류를 고르세요.'; end if;
+  update erp.items set category = nullif(trim(p_to), '')
+  where company_id = p_company and category = p_from and (p_type is null or type = p_type);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- 박스 품목 만들기: 낱개 품목 → '이름 박스(n)', 단위 박스, BOM = 낱개 × n (+ 박스 부자재 1개를 고르면 함께)
+create or replace function public.make_box_item(p_item text, p_count int, p_box_sub text default null) returns text
+language plpgsql security definer set search_path = '' as $$
+declare i erp.items; v_id text := 'item-' || gen_random_uuid(); v_name text;
+begin
+  select * into i from erp.items where id = p_item;
+  if not found then raise exception '품목을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(i.company_id);
+  if coalesce(p_count, 0) < 2 then raise exception '박스당 개수는 2 이상입니다.'; end if;
+  if i.type <> 'FINISHED' then raise exception '완제품만 박스 품목을 만듭니다(박스는 완제품 낱개를 품어야 개봉·박스 주문이 됩니다).'; end if;
+  v_name := i.name || ' 박스(' || p_count || ')';
+  if exists (select 1 from erp.items where company_id = i.company_id and name = v_name and not archived) then raise exception '같은 이름의 박스 품목이 이미 있습니다: %', v_name; end if;
+  insert into erp.items (id, company_id, name, type, unit, procure_type, category, subtype, spec, cost, archived)
+  values (v_id, i.company_id, v_name, 'FINISHED', '박스', i.procure_type, i.category, i.subtype,
+          case when i.spec is not null then i.spec || ' * ' || p_count end, case when i.cost is not null then i.cost * p_count end, false);
+  -- 박스 품목은 완제품 낱개 한 가지를 품어야 개봉·주문 박스 판정이 된다(기존 앱 규칙).
+  insert into erp.item_boms (id, company_id, parent_item_id, child_item_id, quantity) values ('bom-' || gen_random_uuid(), i.company_id, v_id, i.id, p_count);
+  if p_box_sub is not null then
+    if not exists (select 1 from erp.items where id = p_box_sub and company_id = i.company_id and type = 'SUB') then raise exception '박스 부자재를 찾을 수 없습니다.'; end if;
+    insert into erp.item_boms (id, company_id, parent_item_id, child_item_id, quantity) values ('bom-' || gen_random_uuid(), i.company_id, v_id, p_box_sub, 1);
+  end if;
+  return v_id;
+end $$;
+
+revoke all on function public.rename_item_category(text, text, text, text), public.make_box_item(text, int, text) from public, anon;
+grant execute on function public.rename_item_category(text, text, text, text), public.make_box_item(text, int, text) to authenticated;
+
 -- ---------- 거래처 ----------
 -- 기존 앱 거래처 칸: 판매 채널(일반·택배·스마트스토어), 연락처, 지역, 메모, 기본 출고 방식, 배송지 여러 곳(맨 앞이 기본).
 alter table erp.partners add column if not exists channel text;
