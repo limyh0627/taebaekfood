@@ -154,6 +154,7 @@ begin
   perform erp.assert_member(o.company_id);
   if p ? 'ship_method' and coalesce(p->>'ship_method', '') not in ('', '배송', '화물', '수령', '택배') then raise exception '출고 방식은 배송·화물·수령·택배입니다.'; end if;
   if p ? 'invoice_stage' and coalesce(p->>'invoice_stage', '') not in ('', 'printed', 'attached') then raise exception '송장 단계를 확인하세요.'; end if;
+  if p ? 'delivery_slot' and coalesce(p->>'delivery_slot', '') not in ('', '오전', '오후') then raise exception '오전·오후만 됩니다.'; end if;
   if (p->>'accounting_excluded')::boolean and coalesce(trim(p->>'accounting_excluded_reason'), '') = '' then raise exception '발행 안 하는 이유를 적으세요.'; end if;
   if (p->>'accounting_excluded')::boolean and exists (select 1 from erp.vouchers where id = o.voucher_id and status = 'active') then
     raise exception '이미 명세서가 발행된 주문입니다.';
@@ -165,7 +166,8 @@ begin
     note_important = case when p ? 'note_important' then coalesce((p->>'note_important')::boolean, false) else note_important end,
     accounting_excluded = case when p ? 'accounting_excluded' then coalesce((p->>'accounting_excluded')::boolean, false) else accounting_excluded end,
     accounting_excluded_reason = case when p ? 'accounting_excluded' then nullif(p->>'accounting_excluded_reason', '') else accounting_excluded_reason end,
-    delivery_date = case when p ? 'delivery_date' then (p->>'delivery_date')::date else delivery_date end
+    delivery_date = case when p ? 'delivery_date' then (p->>'delivery_date')::date else delivery_date end,
+    delivery_slot = case when p ? 'delivery_slot' then nullif(p->>'delivery_slot', '') else delivery_slot end
   where id = o.id;
   if p ? 'hold' then
     if o.shipped_at is not null then raise exception '출고된 주문은 보류할 수 없습니다.'; end if;
