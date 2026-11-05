@@ -130,7 +130,7 @@ begin
     select j.account_code, coalesce(ac.name, j.account_code) as nm, j.d, j.c,
            case when j.account_code ~ '^4' then '매출'
                 when j.account_code ~ '^8' then '판매비와관리비'
-                when j.account_code ~ '^9[0-2]' then '영업외수익'
+                when j.account_code ~ '^9([0-2][0-9]|30)$' then '영업외수익'  -- 901~930 영업외수익(930 잡이익), 931~ 영업외비용
                 when j.account_code ~ '^9' then '영업외비용'
                 when j.account_code ~ '^[5-7]' then '제조경비'
            end as sec
