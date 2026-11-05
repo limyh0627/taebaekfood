@@ -161,3 +161,23 @@ revoke all on function public.save_company_info(text, jsonb), public.save_purcha
   public.set_partner_opening(text, text, text, numeric, date), public.save_cash_account(jsonb), public.save_loan(jsonb) from public, anon;
 grant execute on function public.save_company_info(text, jsonb), public.save_purchase_unit(jsonb), public.remove_purchase_unit(text),
   public.set_partner_opening(text, text, text, numeric, date), public.save_cash_account(jsonb), public.save_loan(jsonb) to authenticated;
+
+-- 품목별 기초 재고 금액(기존 앱 재무제표 > 기초 설정과 같음): 품목마다 기초 전표 한 장(146 상품·제품 재고 / 375 이월이익잉여금).
+-- 옛 앱 전표와 같은 id라 다시 넣으면 고쳐지고, 금액 0이면 취소된다. 재고 수량은 바꾸지 않는다(수량은 재고 화면 실사).
+create or replace function public.set_inventory_opening(p_company text, p_item text, p_date date, p_qty numeric, p_value numeric) returns text
+language plpgsql security definer set search_path = '' as $$
+declare v_id text := 'opening-inventory-' || p_company || '-' || p_item; i erp.items;
+begin
+  perform erp.assert_admin(p_company);
+  select * into i from erp.items where id = p_item and company_id = p_company;
+  if i.id is null then raise exception '품목을 찾을 수 없습니다.'; end if;
+  if coalesce(p_value, 0) > 0 and coalesce(p_qty, 0) <= 0 then raise exception '기초 수량을 넣으세요.'; end if;
+  perform erp.put_opening(v_id, p_company, p_date, null, '기초재고-' || p_item,
+                          i.name || ' ' || coalesce(p_qty, 0) || coalesce(i.unit, '') || ' 기초 재고', coalesce(p_value, 0), '146', i.name, '375', '기초 이월이익잉여금');
+  if coalesce(p_value, 0) > 0 then
+    update erp.voucher_lines set qty = p_qty, price = round(p_value / p_qty, 2), spec = i.spec where voucher_id = v_id and line_no = 1;
+  end if;
+  return v_id;
+end $$;
+revoke all on function public.set_inventory_opening(text, text, date, numeric, numeric) from public, anon;
+grant execute on function public.set_inventory_opening(text, text, date, numeric, numeric) to authenticated;
