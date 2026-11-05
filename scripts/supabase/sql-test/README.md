@@ -12,5 +12,6 @@ node run.mjs --update   # 일부러 바꾼 결과면 expected.txt를 다시 적�
 ```
 
 - 새 규칙을 만들면 `cases.mjs` 끝(030 검사 앞)에 그 흐름을 넣고 `--update`.
-- 날짜·시각·uuid·오늘 번호는 지우고 견준다. 오늘 날짜에 따라 바뀌는 결과(배송일 지남 등)가 다르게 나오면 확인 후 `--update`.
+- 시계는 2026-11-05 12:00(한국)에 고정해서 돌린다(cases.mjs 맨 위). 그래도 uuid·시각은 지우고 견준다.
+- SQL 파일은 실제 이전처럼 두 번 돈다. erp 스키마는 다시 만들지만 public 함수는 남으므로, 매개변수 이름을 바꾼 함수는 앞 파일에서 `drop function if exists` 해야 한다.
 - `supabase-trial`에 올리면 GitHub Actions(`Supabase SQL test`)가 저절로 돈다.

@@ -7,6 +7,9 @@ export const lines=[];
 const out=(...a)=>lines.push(a.join(' '));
 const dir=new URL('../../../supabase/sql/', import.meta.url).pathname;
 const copy=name=>fs.readFileSync(dir+fs.readdirSync(dir).find(f=>f.endsWith('_'+name+'.sql')),'utf8');
+// 시계를 2026-11-05 12:00(한국)에 고정한다. 오늘 날짜로 매기는 번호·날짜가 돌리는 날마다 바뀌지 않게.
+const realNow=Date.now.bind(Date), clockOff=Date.UTC(2026,10,5,3,0,0)-realNow();
+Date.now=()=>realNow()+clockOff;
 const db=new PGlite();
 await db.exec(`create role anon; create role authenticated;
 create schema auth; create table auth.users(id uuid primary key, email text, last_sign_in_at timestamptz, raw_user_meta_data jsonb);
@@ -65,9 +68,10 @@ const docs=[
 ];
 const files=fs.readdirSync(dir).filter(f=>f.endsWith('.sql')&&!/^0(00|3|4)/.test(f)).sort();
 const strip=s=>s.split('\n').filter(l=>!l.startsWith('\\')).join('\n');
-for(const f of files){
-  if(f==='020_transform.sql'){ for(const [c,id,co,d] of docs) await db.query('insert into raw.docs(collection,id,company_id,data) values($1,$2,$3,$4)',[c,id,co,JSON.stringify(d)]); }
-  try{ await db.exec(strip(fs.readFileSync(dir+f,'utf8'))); await db.exec('discard temp'); }catch(e){ throw new Error('SQL 파일 실행 실패 '+f+': '+e.message); }
+// 실제 이전처럼 두 번 돈다: erp 스키마는 지우고 다시 만들지만 public 함수는 남아 있어서, 매개변수 이름이 바뀐 함수 등은 두 번째에 걸린다.
+for(const pass of [1,2]) for(const f of files){
+  if(pass===1&&f==='020_transform.sql'){ for(const [c,id,co,d] of docs) await db.query('insert into raw.docs(collection,id,company_id,data) values($1,$2,$3,$4)',[c,id,co,JSON.stringify(d)]); }
+  try{ await db.exec(strip(fs.readFileSync(dir+f,'utf8'))); await db.exec('discard temp'); }catch(e){ throw new Error('SQL 파일 실행 실패('+pass+'번째) '+f+': '+e.message); }
 }
 const U='00000000-0000-0000-0000-000000000001';
 await db.exec(`insert into auth.users(id,email) values('${U}','boss@erp.local'); insert into app.memberships(user_id,company_id,role) values('${U}','taebaek','admin'); select set_config('t.uid','${U}',false);`);
@@ -330,7 +334,7 @@ await db.exec(`select set_config('t.uid','${P}',false)`);
 await log('reg-old', `select public.portal_register('{"username":"moran","name":"모란","phone":"010-1"}')`);
 await log('me', `select public.portal_me()`);
 await log('items', `select * from public.portal_items()`);
-await log('order', `select public.portal_place_order('{"lines":[{"item_id":"FG1","qty":12}],"note":"빨리"}')`);
+await log('order', `select public.portal_place_order('{"lines":[{"item_id":"FG1","qty":12}],"note":"빨리","delivery_date":"2026-11-08"}')`);
 await log('bad', `select public.portal_place_order('{"lines":[{"item_id":"RAW1","qty":1}]}')`);
 await log('orders', `select jsonb_array_length(public.portal_orders())`);
 await log('bal', `select public.portal_balance()`);

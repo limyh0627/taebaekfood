@@ -2,7 +2,7 @@
 // 날짜·시각·번호처럼 돌릴 때마다 바뀌는 값은 지워서 견준다.
 import fs from 'node:fs';
 const here = new URL('.', import.meta.url).pathname;
-const { lines } = await import('./cases.mjs');
+const { lines } = await import('./cases.mjs');  // cases.mjs가 시계를 2026-11-05로 고정한다
 const now = new Date(Date.now() + 9 * 3600e3);
 const ymd = now.toISOString().slice(0, 10), ym = ymd.slice(0, 7), yymmdd = ymd.slice(2).replace(/-/g, '');
 const norm = s => s

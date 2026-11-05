@@ -121,6 +121,7 @@ begin
 end $$;
 
 -- 입고 취소: 그 입고(매입 명세서 한 장)의 재고를 되돌리고 명세서를 취소한다.
+drop function if exists public.cancel_receipt(text);  -- stockflow.sql이 이름을 바꿔 다시 만든다. 두 번째 이전부터 이름 충돌
 create or replace function public.cancel_receipt(p_voucher_id text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare v erp.vouchers; r record;
