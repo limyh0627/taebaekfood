@@ -19,6 +19,26 @@ begin
   update erp.adjustment_requests set status = case when p_approve then 'processed' else 'rejected' end, processed_at = now() where id = r.id;
 end $$;
 
+-- 직원 재고 조정 요청(기존 앱 직원 앱과 같음): 센 수량과 까닭을 남기면 관리자 확인사항에 뜬다
+create or replace function public.request_adjustment(p_company text, p_item text, p_counted numeric, p_reason text) returns text
+language plpgsql security definer set search_path = '' as $$
+declare v_id text := 'ADJ-' || gen_random_uuid(); v_have numeric;
+begin
+  perform erp.assert_member(p_company);
+  if not exists (select 1 from erp.items where id = p_item and company_id = p_company) then raise exception '품목을 찾을 수 없습니다.'; end if;
+  if p_counted is null or p_counted < 0 then raise exception '센 수량을 넣으세요.'; end if;
+  if coalesce(trim(p_reason), '') = '' then raise exception '왜 다른지 적어 주세요(파손·누락 등).'; end if;
+  if exists (select 1 from erp.adjustment_requests where item_id = p_item and type = 'quantity_change' and status = 'pending') then
+    raise exception '이 품목은 이미 승인을 기다리는 조정 요청이 있습니다.';
+  end if;
+  select coalesce(qty, 0) into v_have from erp.stock_balances where item_id = p_item;
+  insert into erp.adjustment_requests (id, company_id, item_id, type, status, reason, qty_before, qty_after, requested_at)
+  values (v_id, p_company, p_item, 'quantity_change', 'pending', left(trim(p_reason), 300) || ' (' || coalesce((select name from public.company_people(p_company) where user_id = auth.uid()), erp.actor_name(), '') || ')', coalesce(v_have, 0), p_counted, now());
+  return v_id;
+end $$;
+revoke all on function public.request_adjustment(text, text, numeric, text) from public, anon;
+grant execute on function public.request_adjustment(text, text, numeric, text) to authenticated;
+
 -- 새 ERP에서 출고했는데 거래명세서를 안 낸 주문(옛 앱 주문은 뺀다)
 create or replace view erp.unbilled_orders as
 select o.id, o.company_id, o.card_no, o.delivery_date, o.partner_id, coalesce(p.name, o.partner_name) partner_name, o.total_amount

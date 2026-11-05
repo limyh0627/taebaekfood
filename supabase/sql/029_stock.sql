@@ -36,7 +36,7 @@ create or replace function public.stocktake(p_company text, p_item text, p_count
 language plpgsql security definer set search_path = '' as $$
 declare v_have numeric; v_diff numeric;
 begin
-  perform erp.assert_member(p_company);
+  perform erp.assert_admin(p_company);  -- 직원은 조정 요청(request_adjustment) → 관리자 확인사항에서 승인
   if not exists (select 1 from erp.items where id = p_item and company_id = p_company) then raise exception '품목을 찾을 수 없습니다.'; end if;
   if p_counted is null or p_counted < 0 then raise exception '센 수량이 올바르지 않습니다.'; end if;
   select qty into v_have from erp.stock_balances where item_id = p_item for update;
