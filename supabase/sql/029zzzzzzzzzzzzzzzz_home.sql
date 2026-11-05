@@ -27,3 +27,28 @@ end $$;
 
 revoke all on function public.save_dashboard_link(jsonb), public.delete_dashboard_link(text) from public, anon;
 grant execute on function public.save_dashboard_link(jsonb), public.delete_dashboard_link(text) to authenticated;
+
+-- 금일 작업순서(기존 앱 OrdersList 작업순서): 날짜마다 줄 순서 하나(현장이 따를 순서는 하나). keys = '주문id:줄번호'
+create table if not exists erp.work_orders (
+  company_id text not null references erp.companies(id),
+  day        date not null,
+  keys       text[] not null default '{}',
+  updated_by text,
+  updated_at timestamptz not null default now(),
+  primary key (company_id, day)
+);
+alter table erp.work_orders enable row level security;
+revoke all on erp.work_orders from anon, authenticated;
+grant select on erp.work_orders to authenticated;
+drop policy if exists member_read on erp.work_orders;
+create policy member_read on erp.work_orders for select to authenticated using (company_id = any (app.my_company_ids()));
+
+create or replace function public.save_work_order(p_company text, p_day date, p_keys text[]) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform erp.assert_member(p_company);
+  insert into erp.work_orders (company_id, day, keys, updated_by) values (p_company, p_day, coalesce(p_keys, '{}'), erp.actor_name())
+  on conflict (company_id, day) do update set keys = excluded.keys, updated_by = excluded.updated_by, updated_at = now();
+end $$;
+revoke all on function public.save_work_order(text, date, text[]) from public, anon;
+grant execute on function public.save_work_order(text, date, text[]) to authenticated;
