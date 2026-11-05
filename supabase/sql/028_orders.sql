@@ -102,8 +102,18 @@ begin
     if v_order.shipped_at is not null or v_order.status in ('SHIPPED', 'DELIVERED') then
       raise exception '출고된 주문은 고칠 수 없습니다. 출고를 먼저 취소하세요.';
     end if;
+    -- 체크(생산 처리)한 줄은 그대로 남아야 한다: 같은 품목·같은 수량이면 체크·제조일·라벨·생산을 이어 붙이고,
+    -- 빠지거나 수량이 바뀌면 막는다(먼저 체크를 풀어 생산을 되돌려야 재고가 맞는다).
+    create temp table if not exists _keep (item_id text, qty numeric, checked_at timestamptz, checked_by text, made_on date, label_stage text, run_id text, used boolean) on commit drop;
+    truncate _keep;
+    insert into _keep select item_id, qty, checked_at, checked_by, made_on, label_stage, run_id, false from erp.order_lines where order_id = v_id;
+    if exists (select 1 from _keep k where k.checked_at is not null and not exists (
+                 select 1 from jsonb_array_elements(p->'lines') x where x->>'item_id' = k.item_id and (x->>'qty')::numeric = k.qty)) then
+      raise exception '체크한 품목을 빼거나 수량을 바꾸려면 그 줄 체크를 먼저 푸세요.';
+    end if;
     update erp.orders set partner_id = v_partner, partner_name = (select name from erp.partners where id = v_partner),
-           ship_method = nullif(p->>'ship_method', ''), delivery_date = v_date, note = nullif(p->>'note', '')
+           ship_method = case when p ? 'ship_method' then nullif(p->>'ship_method', '') else ship_method end,
+           delivery_date = v_date, note = nullif(p->>'note', '')
     where id = v_id;
     delete from erp.order_lines where order_id = v_id;
   end if;
@@ -118,6 +128,19 @@ begin
                      where x.partner_id = v_partner and x.item_id = i.id and coalesce(x.direction, 'out') = 'out'
                      order by x.price is null, x.id limit 1) pi on true;
 
+  if v_order.id is not null then
+    declare k record; v_line int;
+    begin
+      for k in select * from _keep where label_stage is not null or made_on is not null or checked_at is not null order by checked_at nulls last loop
+        select line_no into v_line from erp.order_lines ol where ol.order_id = v_id and ol.item_id = k.item_id
+          and (k.checked_at is null or ol.qty = k.qty) and ol.checked_at is null and ol.label_stage is null and ol.made_on is null order by line_no limit 1;
+        continue when v_line is null;
+        update erp.order_lines set checked_at = k.checked_at, checked_by = k.checked_by, made_on = k.made_on, label_stage = k.label_stage, run_id = k.run_id
+        where order_id = v_id and line_no = v_line;
+        update erp.production_runs set line_no = v_line where id = k.run_id;
+      end loop;
+    end;
+  end if;
   select sum((erp.line_amount(qty, price, tax_exempt)).gross) into v_total from erp.order_lines where order_id = v_id;
   update erp.orders set total_amount = v_total where id = v_id;
   -- 배송지(거래처의 배송지 중 하나)와 기본 출고 방식: 배송지 기본 > 거래처 기본 (기존 앱과 같음)
