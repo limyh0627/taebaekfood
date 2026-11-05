@@ -197,7 +197,7 @@ where s.collection = 'purchaseOrders';
 
 -- 입고된 발주는 줄 수량을 다 받은 것으로 둔다. 매입 명세서에 발주를 이어 둔다.
 update erp.purchase_order_lines l set received_qty = coalesce(l.qty, 0)
-from erp.purchase_orders p where p.id = l.po_id and p.status in ('received', 'invoiced');
+from erp.purchase_orders p where p.id = l.po_id and p.status = 'received';  -- invoiced = 입고대기(아직 안 받음)
 update erp.vouchers v set po_id = p.id from erp.purchase_orders p where p.voucher_id = v.id;
 
 -- 예전 형식: items 없이 품목 하나를 문서 칸에 직접.
@@ -208,7 +208,7 @@ where s.collection = 'purchaseOrders' and jsonb_array_length(erp.arr(s.data->'it
   and coalesce(s.data->>'itemId', '') <> '';
 
 update erp.purchase_order_lines l set received_qty = coalesce(l.qty, 0)
-from erp.purchase_orders p where p.id = l.po_id and p.status in ('received', 'invoiced') and l.received_qty = 0;
+from erp.purchase_orders p where p.id = l.po_id and p.status = 'received' and l.received_qty = 0;  -- invoiced = 입고대기(아직 안 받음)
 
 insert into erp.adjustment_requests (id, company_id, item_id, type, status, reason, qty_before, qty_after, po_id, requested_at, processed_at)
 select id, company_id, data->>'itemId', data->>'type', data->>'status', data->>'reason',
