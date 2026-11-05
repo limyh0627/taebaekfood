@@ -1,0 +1,333 @@
+prev [{"preview_order_line":{"qty":20,"have":120,"plan":[{"qty":10,"have":120,"name":"참기름 300ml","role":"build","unit":"개","short":0,"density":null,"item_id":"FG1","display_unit":null},{"qty":3,"have":5,"name":"통깨참기름","role":"use","unit":"kg","short":0,"density":null,"item_id":"WIP1","display_unit":null}],"unit":"개","produced":true,"reserved_other":0}}]
+ship-early "ERR 생산 처리 안 한 줄이 있습니다. 모든 줄을 체크(작업완료)한 뒤 출고하세요."
+chk [{"check_order_line":{"from":"PENDING","run_id":"prod-<id>","status":"DISPATCHED","produced":10}}]
+after-chk [{"status":"DISPATCHED","has_run":true,"made_on":"<시각>","fg":"130","wip":"2.000"}]
+reserved [{"item_id":"FG1","company_id":"taebaek","qty":"20"}]
+unchk [{"check_order_line":{"from":"DISPATCHED","run_id":null,"status":"PENDING","produced":0}}]
+after-unchk [{"status":"PENDING","fg":"120","wip":"5.000"}]
+hold [{"set_order_status":"","status":"PENDING"}]
+manual "ERR 상태는 체크한 줄 수로 자동입니다. 여기서는 보류만 걸고 풀 수 있습니다."
+unhold [{"set_order_status":"","status":"ON_HOLD"}]
+chk2 [{"check_order_line":{"from":"PENDING","run_id":null,"status":"DISPATCHED","produced":0}}]
+shipprev [{"ship_order":{"lines":[{"out":20,"have":120,"left":100,"name":"참기름 300ml","unit":"개","item_id":"FG1"}],"preview":true}}]
+ship [{"ship_order":{"ok":true,"lines":[{"out":20,"have":120,"left":100,"name":"참기름 300ml","unit":"개","item_id":"FG1"}]}}]
+after-ship [{"status":"SHIPPED","ship_method":"택배","voucher_id":null}]
+unchk-shipped "ERR 출고된 주문입니다. 출고를 먼저 취소하세요."
+excl-noreason "ERR 발행 안 하는 이유를 적으세요."
+sv-again "ERR 다른 거래처 주문이거나, 이미 명세서가 발행됐거나, 발행 안 함으로 표시된 주문이 있습니다."
+sv [{"voucher_no":"<오늘6>-001","kind":"매출","supply":"94545","tax":"9455","amount":"104000","order_id":"O1"}]
+unship-blocked "ERR 거래명세서가 발행된 주문입니다. 전표 화면에서 명세서를 먼저 취소하세요."
+src [{"line_no":1,"qty":"20","supply":"90909","tax":"9091","amount":"100000","account_code":"404"},{"line_no":2,"qty":"1","supply":"3636","tax":"364","amount":"4000","account_code":"404"}]
+bal0 [{"receivable":"104000"}]
+stock0 [{"qty":"100"}]
+ret1 {"r":{"lines":1,"voucher_id":"v-<id>","voucher_no":"<오늘6>-002"}}
+over "ERR 원 명세서에 없는 줄이거나, 남은 수량보다 많이 반품합니다."
+retlines [{"voucher_no":"<오늘6>-002","qty":"-3","supply":"-13636","tax":"-1364","amount":"-15000","note":null},{"voucher_no":"<오늘6>-003","qty":"-17","supply":"-77273","tax":"-7727","amount":"-85000","note":"재고로 안 돌림"}]
+returned [{"voucher_id":"v-<id>","line_no":1,"qty":"20","supply":"90909","tax":"9091","amount":"100000"}]
+bal1 [{"receivable":"4000"}]
+stock1 [{"qty":"103"}]
+jr [{"account_code":"108","debit":"0","credit":"15000"},{"account_code":"404","debit":"13636","credit":"0"},{"account_code":"255","debit":"1364","credit":"0"}]
+skipped [{"count":0}]
+open [{"voucher_no":"<오늘6>-001","claim":"104000","settled":"100000","open":"4000"}]
+unship "ERR 거래명세서가 발행된 주문입니다. 전표 화면에서 명세서를 먼저 취소하세요."
+cancelret [{"cancel_return":""}]
+stock2 [{"qty":"100"}]
+bal2 [{"receivable":"19000"}]
+rcv-early "ERR 발주 예정입니다. 발주확정이나 매입전표 발행으로 입고대기에 올린 뒤 입고확정하세요."
+pv [{"voucher_no":"261104-001","amount":"1701200","st":"invoiced","acc":"500"}]
+pv-again "ERR 다른 거래처 발주이거나, 취소됐거나, 이미 매입전표가 이어진 발주가 있습니다."
+rawpre []
+partial [{"status":"partial"}]
+cancelrcv [{"cancel_receipt":"","status":"partial"}]
+rcv [{"receive_purchase":{"lines":1,"batch_id":"rcv-<id>"}}]
+pocancel "ERR 입고된 발주는 취소할 수 없습니다. 입고를 먼저 취소하세요."
+targets [{"item_id":"BOX1","kind":"box","child_id":"FG1","per":"10"},{"item_id":"CAN1","kind":"can","child_id":"BULK1","per":"16.5"}]
+unpacked [{"item_id":"BOX1","qty":"3"},{"item_id":"FG1","qty":"120.000"}]
+cancelunpack [{"cancel_unpack":""}]
+unpacked2 [{"item_id":"BOX1","qty":"5"},{"item_id":"FG1","qty":"100.000"}]
+can [{"unpack_item":{"id":"unpack-<id>","qty":33,"kind":"can","unit":"kg","child":"참기름 벌크"}}]
+canres [{"item_id":"BULK1","qty":"33.000","lot":"33.000"},{"item_id":"CAN1","qty":"1","lot":"33.000"}]
+toomany "ERR 재고가 1 밖에 없습니다."
+notbox "ERR 개봉할 수 있는 품목이 아닙니다(박스는 BOM에 낱개 한 가지, 캔은 개봉 가능 표시와 벌크 한 가지가 있어야 합니다)."
+cash-in [{"?column?":true}]
+jbad "ERR 차변(5000)과 대변(4000)이 같아야 합니다."
+jnoacc "ERR 없는 계정입니다: 999"
+jl [{"account_code":"811","debit":"50000","credit":"0"},{"account_code":"103","debit":"0","credit":"50000"}]
+off-nopartner "ERR 외상 계정(108·251·253)이나 상계는 거래처가 있어야 합니다."
+bal-before [{"receivable":"-1000","payable":"0"}]
+off [{"?column?":true}]
+bal-after [{"receivable":"-2000","payable":"-1000"}]
+cancelj [{"cancel_voucher":""}]
+pl [{"date":null,"voucher_no":null,"kind":"이월","account_code":"108","debit":"0","credit":"20000","balance":"-20000"},{"date":"<시각>","voucher_no":"<오늘6>-001","kind":"매출","account_code":"108","debit":"104000","credit":"0","balance":"84000"},{"date":"<시각>","voucher_no":"<오늘6>-003","kind":"매출","account_code":"108","debit":"0","credit":"85000","balance":"-1000"},{"date":"<시각>","voucher_no":"<오늘6>-005","kind":"대체","account_code":"108","debit":"0","credit":"1000","balance":"-2000"},{"date":"<시각>","voucher_no":"<오늘6>-005","kind":"대체","account_code":"251","debit":"1000","credit":"0","balance":"1000"}]
+tb [{"account_code":"103","account_name":"보통예금","opening":"1000000","debit":"20000","credit":"0","closing":"1020000"},{"account_code":"108","account_name":"외상매출금","opening":"0","debit":"104000","credit":"106000","closing":"-2000"},{"account_code":"251","account_name":"외상매입금","opening":"0","debit":"1000","credit":"1701200","closing":"-1700200"},{"account_code":"255","account_name":null,"opening":"0","debit":"7727","credit":"9455","closing":"-1728"},{"account_code":"375","account_name":null,"opening":"-1000000","debit":"0","credit":"0","closing":"-1000000"},{"account_code":"404","account_name":null,"opening":"0","debit":"77273","credit":"94545","closing":"-17272"},{"account_code":"500","account_name":null,"opening":"0","debit":"1701200","credit":"0","closing":"1701200"}]
+tbsum [{"d":"0","c":"0"}]
+bs [{"section":"자산","account_code":"103","account_name":"보통예금","amount":"1020000"},{"section":"자산","account_code":"108","account_name":"외상매출금","amount":"-2000"},{"section":"부채","account_code":"251","account_name":"외상매입금","amount":"1700200"},{"section":"부채","account_code":"255","account_name":null,"amount":"1728"},{"section":"자본","account_code":"375","account_name":null,"amount":"1000000"},{"section":"자본","account_code":null,"account_name":"당기순이익","amount":"-1683928"}]
+bscheck [{"sum":"0"}]
+cb [{"name":"국민","balance":"1020000"}]
+adj [{"adjust_cash_balance":{"book":1020000,"diff":-21000,"voucher_id":"v-<id>","voucher_no":"<오늘6>-006"}}]
+cb2 [{"balance":"999000"}]
+book [{"date":"<시각>","kind":"출금","memo":"실잔액 맞추기 1020000→999000: 통장 확인","inflow":"0","outflow":"21000","balance":"999000"},{"date":"<시각>","kind":"입금","memo":null,"inflow":"20000","outflow":"0","balance":"1020000"}]
+unc {"id":"v-<id>"}
+skipped [{"reason":"계정 빠진 줄"}]
+setbad "ERR 외상 계정(108·251·253)은 거래처가 있는 전표에만 됩니다."
+set [{"set_voucher_account":""}]
+jl2 [{"account_code":"103","debit":"0","credit":"21000"},{"account_code":"930","debit":"21000","credit":"0"}]
+setagain "ERR 이미 계정이 있는 전표입니다."
+wo [{"save_work_order":""}]
+wo2 [{"save_work_order":""}]
+wo3 [{"keys":["O2:1"]}]
+link [{"?column?":true}]
+links [{"label":null,"url":"https://hometax.go.kr","sort_order":1}]
+dp [{"day":"<시각>","ordering":["O1"],"groups":[{"id":"g1","name":"김포","orderIds":["O1"]}],"by_name":"이은경"}]
+slot [{"delivery_slot":"오후"}]
+dps [{"save_delivery_plan":""}]
+dp2 [{"ordering":["O1"],"done":["O1"],"groups":[{"id":"g1","name":"김포","orderIds":["O1"]}]}]
+slot2 [{"set_order_meta":"","delivery_slot":"오후"}]
+slot3 [{"delivery_slot":"오전","delivery_date":"<시각>"}]
+split-all "ERR 전부 떼면 원래 주문이 빕니다. 배송일만 바꾸려면 배송일을 고치세요."
+split-over "ERR 주문에 없는 줄이거나 수량보다 많이 뗍니다."
+split-src [{"total_amount":"60000","line_no":1,"qty":"12"}]
+split-new [{"card_no":"ORD-261109-001","delivery_date":"<시각>","total_amount":"45000","note":"원 주문에서 나눔","line_no":1,"name":"참기름","qty":"8"},{"card_no":"ORD-261109-001","delivery_date":"<시각>","total_amount":"45000","note":"원 주문에서 나눔","line_no":2,"name":"참깨","qty":"5"}]
+p7 [{"partner_type":"매출처","channel":"택배","phone":"02-1","default_ship_method":"택배","ship_tos":[{"id":"st1","name":"쿠팡 이천센터"},{"id":"st2","name":"쿠팡 덕평","archived":true}]}]
+savep [{"?column?":true}]
+p7b [{"channel":"스마트스토어","note":"월말 정산","ship_tos":[{"id":"st1","name":"쿠팡 이천센터"}]}]
+savebad "ERR 배송지마다 이름이 있어야 합니다."
+so [{"ship_to_id":"st1","ship_method":"택배"}]
+bx [{"name":"참기름 300ml 박스(12)","unit":"박스","spec":null,"bom":"FG1x12","unpack":"box"}]
+bx2 "ERR 같은 이름의 박스 품목이 이미 있습니다: 참기름 300ml 박스(12)"
+cat [{"rename_item_category":1}]
+extra [{"set_leave_extra":"","annual_leave":null}]
+ex2 [{"annual_leave":{"bonusLeave":2,"carryOverLeave":3.5}}]
+vac [{"company_vacation":2}]
+vac2 [{"employee_name":"이은경","type":"휴가","days_used":"2","status":"approved","deducts_leave":false,"reason":"회사 단체 휴가 (연차 미차감)"},{"employee_name":"정직원","type":"휴가","days_used":"2","status":"approved","deducts_leave":false,"reason":"회사 단체 휴가 (연차 미차감)"}]
+poi [{"status":"invoiced","r":"0"}]
+counts [{"checklist_counts":{"leave":2,"adjust":2,"signup":0,"oem_fee":0,"low_stock":0,"po_pending":0,"unclassified":0,"po_no_voucher":0,"order_no_voucher":0}}]
+adj1 [{"decide_adjustment":"","qty":"100.000"}]
+fg [{"qty":"95.000"}]
+adj2 [{"decide_adjustment":""}]
+adjagain "ERR 이미 처리한 요청입니다."
+counts2 [{"checklist_counts":{"leave":2,"adjust":0,"signup":0,"oem_fee":0,"low_stock":0,"po_pending":0,"unclassified":0,"po_no_voucher":0,"order_no_voucher":0}}]
+rules [{"raw_id":"RAW1","product_id":"OIL1","rate":"0.48"},{"raw_id":"RAW2","product_id":"OIL1","rate":"0.48"},{"raw_id":"SES","product_id":"OIL1","rate":"0.48"}]
+use1 {"id":"raw-<id>","rate":0.48,"pressed":14.64,"product":"통깨참기름/벌크"}
+lots [{"received_at":"<시각>","qty_left":"14.640"},{"received_at":"<시각>","qty_left":"100.000"},{"received_at":"<시각>","qty_left":"19.500"}]
+daily [{"day":"<시각>","opening":"150.000","inbound":"0","used":"30.500","corrected":"0","closing":"119.500"},{"day":"<시각>","opening":"100.000","inbound":"50.000","used":"0","corrected":"0","closing":"150.000"}]
+trace [{"at":"<시각>","kind":"입고","qty":"50.000","note":null},{"at":"<시각>","kind":"사용","qty":"-30.500","note":null}]
+cancel [{"cancel_raw":""}]
+after [{"item_id":"OIL1","qty":"0.000"},{"item_id":"SES","qty":"150.000"}]
+cancel-in-used [{"record_raw":{"id":"raw-<id>","rate":0.48,"pressed":57.6,"product":"통깨참기름/벌크"}}]
+cancel-in "ERR 이 기록으로 들어온 로트를 이미 썼습니다. 쓴 기록을 먼저 취소하거나 실사로 맞추세요."
+notraw "ERR 원료나 벌크 품목만 기록할 수 있습니다."
+saveitem [{"save_item":"CAN1"}]
+cat [{"name":"참기름 300ml 박스(10)","category":"참기름류","spec":"300ml * 10","unpackable":false},{"name":"참기름 18L 캔","category":"참기름","spec":"18L","unpackable":true}]
+raw0 [{"qty":"400"}]
+pret [{"create_return":{"lines":1,"voucher_id":"v-<id>","voucher_no":"<오늘6>-007"}}]
+raw1 [{"qty":"360","lots":"360"}]
+payable [{"payable":"1531080"}]
+tax [{"build_tax_invoices":1}]
+taxrow [{"kind":"계산서","supply":"1531080","tax":"0"}]
+ci [{"save_company_info":""}]
+ci2 [{"data":{"name":"태백식품","bizNo":"139-04-37157","ceoName":"임기주"}}]
+cibad "ERR 사업자등록번호는 숫자 10자리입니다."
+u2 [{"save_purchase_unit":"unit-<id>"}]
+units [{"partner_id":null,"purchase_unit":"포대","unit_kg":"40","is_default":true},{"partner_id":"S1","purchase_unit":"톤백","unit_kg":"1000","is_default":true}]
+urm [{"remove_purchase_unit":""}]
+po1 [{"set_partner_opening":"opening-partner-taebaek-2026-01-01-P1-108"}]
+po2 [{"set_partner_opening":"opening-partner-taebaek-2026-01-01-P1-108"}]
+bal3 [{"receivable":"698000"}]
+po3 [{"set_partner_opening":"opening-partner-taebaek-2026-01-01-S1-251"}]
+pay2 [{"payable":"1831080"}]
+cash [{"account_code":"103","debit":"1000000","credit":"0"},{"account_code":"375","debit":"0","credit":"1000000"},{"account_code":"103","debit":"1000000","credit":"0"},{"account_code":"375","debit":"0","credit":"1000000"}]
+ca0 [{"save_cash_account":"cash-<id>"}]
+cash2 [{"status":"active"},{"status":"canceled"}]
+loan [{"save_loan":"loan-<id>"}]
+loanj [{"account_code":"375","debit":"50000000","credit":"0"},{"account_code":"260","debit":"0","credit":"50000000"}]
+skipped2 [{"count":0}]
+merge [{"merge_items":{"stock_ledger.item_id":1}}]
+merged [{"q":"7.000","a":true}]
+cost [{"item_id":"FG1","type":"FINISHED","cost":"3000","last_buy":null,"computed":null,"missing":"통깨참기름"},{"item_id":"RAW1","type":"RAW","cost":null,"last_buy":"4253.00","computed":"4253.00","missing":null},{"item_id":"WIP1","type":"WIP","cost":null,"last_buy":null,"computed":null,"missing":null}]
+applycost [{"apply_item_costs":1}]
+profit [{"section":"매출","account_code":"404","account_name":"404","amount":"17272"},{"section":"제조경비","account_code":"500","account_name":"500","amount":"1531080"},{"section":"영업외수익","account_code":"930","account_name":"잡이익","amount":"-21000"},{"section":"매출원가(추정)","account_code":null,"account_name":"참기름 300ml","amount":"9000"}]
+stmt [{"kind":"이월","voucher_no":null,"receivable":"700000","payable":"0"},{"kind":"입금","voucher_no":"261103-001","receivable":"-20000","payable":"0"},{"kind":"매출","voucher_no":"<오늘6>-001","receivable":"104000","payable":"0"},{"kind":"매출 반품","voucher_no":"<오늘6>-003","receivable":"-85000","payable":"0"},{"kind":"대체","voucher_no":"<오늘6>-005","receivable":"-1000","payable":"-1000"}]
+quote [{"quote_no":"Q-261104-001","supply":"49091","tax":"4909","amount":"54000","jsonb_array_length":2}]
+issue [{"issue_template":{"voucher_id":"v-<id>","voucher_no":"261125-001"}}]
+issue2 "ERR <이달> 은(는) 이미 발행했습니다."
+issued [{"date":"<시각>","amount":"1100000","memo":"임차료"}]
+repay [{"record_cash":{"voucher_id":"v-<id>","voucher_no":"<오늘6>-008"}}]
+loanbal [{"opening":"50000000","moved":"-5000000","balance":"45000000"}]
+potype [{"po_type":"oem"}]
+oem [{"send_oem":1}]
+oemcancel [{"cancel_oem_send":""}]
+raw [{"qty":"360"}]
+oemstatus [{"status":"invoiced"}]
+oem2 [{"send_oem":1}]
+rcv-oem "ERR 임가공 발주는 가공입고로 받습니다."
+kg [{"a":"1.000","b":"2.748","c":"0.275"}]
+prev [{"oem_receive":{"fee":[],"lines":[{"kg":40,"qty":40,"bulk":false,"name":"볶음참깨 1kg","unit":"개","item_id":"OEMP"},{"kg":50,"qty":50,"bulk":true,"name":"참기름 벌크","unit":"kg","item_id":"BULK1"}],"loss_kg":10,"missing":["볶음참깨 1kg","참기름 벌크"],"sent_kg":100,"fee_total":0,"received_kg":90}}]
+noterms "ERR 공장 조건(가공비 단가)이 없는 품목이 있습니다: 볶음참깨 1kg. 발주 카드의 공장 조건에서 넣으세요(없으면 0원)."
+t1 [{"?column?":true}]
+t2 [{"?column?":true}]
+t3 [{"?column?":true}]
+orc {"id":"oemr-<id>","fee":[{"qty":40,"name":"볶음참깨 1kg 가공비","unit":"kg","price":2200,"item_id":"OEMP","tax_exempt":false},{"qty":40,"name":"볶음참깨 1kg 업체 부자재","unit":"개","price":330,"item_id":"OEMP","tax_exempt":false},{"qty":50,"name":"참기름 벌크 가공비","unit":"kg","price":1100,"item_id":"BULK1","tax_exempt":true}],"loss_kg":10,"sent_kg":100,"received_kg":90}
+pending [{"partner_name":"참깨상회","amount":"156200"}]
+stocks [{"item_id":"BULK1","qty":"83.000"},{"item_id":"OEMP","qty":"40"}]
+cancel-blocked "ERR 돌아온 완제품이나 벌크를 넣으세요."
+feev [{"amount":"156200","name":"볶음참깨 1kg 가공비","qty":"40.000","account_code":"540","la":"88000"},{"amount":"156200","name":"볶음참깨 1kg 업체 부자재","qty":"40","account_code":"540","la":"13200"},{"amount":"156200","name":"참기름 벌크 가공비","qty":"50","account_code":"540","la":"55000"}]
+again "ERR 이미 가공비 전표를 냈습니다."
+cancelrc "ERR 가공비 전표를 먼저 취소하세요."
+cancelv [{"cancel_purchase_voucher":""}]
+cancelrc2 [{"cancel_oem_receive":"","qty":"40"}]
+pal [{"pallet_move":"pallet:<id>"}]
+pal2 [{"pallet_move":"pallet:<id>"}]
+palout [{"item_id":"PL1","partner_id":"P1","out_qty":"10"}]
+palstock [{"qty":"43"}]
+emp [{"name":"김직원","department":"생산","annual_leave":{"total":15}}]
+leave [{"request_leave":"leave-<id>"}]
+leaves [{"status":"canceled","days_used":"1"},{"status":"cancel_pending","days_used":"1"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"}]
+qt [{"save_quality_test":"bzp-<id>"}]
+proj [{"save_project":"proj-<id>"}]
+checks [{"kind":"원가 없는 제품","detail":"볶음참깨 1kg"},{"kind":"원가 없는 제품","detail":"참기름 300ml 박스(10)"},{"kind":"원가 없는 제품","detail":"참기름 18L 캔"}]
+staffdeny "ERR 관리자만 할 수 있는 일입니다."
+staffleave "ERR 내 계정에 직원 카드가 연결돼 있지 않습니다. 관리자에게 연결을 부탁하세요."
+hrec [{"id":"haccp_cleaning:HC1","type":"cleaning","date":"<이달>","rows":{"areaRows":[],"machineRows":[{"machine":"착유기 1호"}]},"meta":{"month":"<이달>"}},{"id":"haccp_sanitation:HS1","type":"sanitation","date":"<이달>-03","rows":[{"note":"","result":"pass","inspector":"이"}],"meta":{"items":[{"item":"바닥","standard":"깨끗"}],"checkDate":"<이달>-03","checkTime":"08:30","createdBy":"이은경"}}]
+hs [{"save_haccp":"haccp_sanitation:HS1"}]
+hs2 [{"id":"haccp_sanitation:HS1","rows":[{"result":"fail"}],"rc":"1"}]
+wk [{"haccp_current_key":"2026-W45"}]
+conf [{"confirm_haccp":""}]
+tpl [{"save_haccp_template":""}]
+tpls [{"id":"sanitation","data":{"items":[{"item":"바닥","standard":"깨끗"}]}},{"id":"taebaek--temp_zones","data":{"zones":[{"name":"냉장","standard":"0~10"}]}}]
+staffpast "ERR 지난 기록은 관리자만 고칠 수 있습니다."
+stafftoday [{"save_haccp":"haccp-temp-<id>"}]
+avail-old-otheremail [{"portal_username_available":false}]
+avail-old-sameemail [{"portal_username_available":true}]
+reg-old [{"portal_register":"approved"}]
+me [{"portal_me":{"name":"모란","type":"business","email":"moran@x.com","phone":"010-1","status":"approved","username":"moran","company_id":"taebaek","partner_id":"P1","partner_name":"모란식품"}}]
+items [{"item_id":"FG1","name":"참기름 300ml","type":"FINISHED","unit":"개","price":"5500","tax_exempt":false,"per_box":"20"}]
+order [{"portal_place_order":{"total":66000,"card_no":"ORD-261108-002","order_id":"WEB-<id>","delivery_date":"<이달>-08"}}]
+bad "ERR 주문할 수 없는 품목이 있습니다."
+orders [{"jsonb_array_length":5}]
+bal [{"portal_balance":"698000"}]
+email [{"portal_login_email":"moran@x.com"}]
+reg-new [{"portal_register":"pending"}]
+new-items "ERR 아직 승인되지 않은 계정입니다. 승인 후 주문할 수 있습니다."
+signups [{"username":"newco","status":"pending","partner_name":null},{"username":"moran","status":"approved","partner_name":"모란식품"}]
+approve [{"decide_partner_user":""}]
+staffreg "ERR 직원 계정으로는 거래처 가입을 할 수 없습니다."
+remap [{"participant_ids":["<id>","fbx"],"last_read":{"<id>":"2026-10-01"}}]
+msgsender [{"sender_id":"<id>"}]
+notice-old [{"content":"첫 줄\n[사진] https://x/y.png"}]
+people [{"name":"boss","role":"admin"},{"name":"정직원","role":"staff"}]
+room-again [{"same":true}]
+send [{"send_chat":"MSG-<id>"}]
+roomrow [{"last_message":"출고 확인 부탁","n":2}]
+del [{"delete_chat":""}]
+notice [{"save_notice":"notice-<id>"}]
+portalnotify [{"type":"new_order","title":"신규 주문","body":"모란식품 주문이 들어왔습니다. 배송일 <이달>-08"}]
+readn [{"read_notifications":""}]
+self [{"open_chat_room":"ROOM-<id>"}]
+pj-import [{"id":"WP1","status":"active","participant_ids":["E1"]},{"id":"WP2","status":"deleted","participant_ids":["E1"]},{"id":"proj-<id>","status":"active","participant_ids":[]}]
+pj-task [{"id":"WP1:t1","status":"doing","assignee_id":"E1","priority":"high","tags":["포장"],"checklist":[{"id":"a","title":"샘플","checked":false},{"id":"b","title":"견적","checked":true}]}]
+pj-cmt [{"id":"WP1:t1:c1","task_id":"WP1:t1","author_id":"E1","body":"견적 받음"}]
+pj-notmember "ERR 이 업무의 참여자만 고칠 수 있습니다."
+pj-own [{"owner_id":"E9","participant_ids":["E9"],"status":"active"}]
+pj-add [{"set_project_member":""}]
+pj-mgr "ERR 업무를 만든 사람이나 관리자만 할 수 있습니다."
+pj-badassignee "ERR 담당은 참여자 중에서 고르세요."
+pj-newtask [{"status":"todo","priority":"normal","tags":["포장","라벨"],"n":1}]
+pj-check [{"check_task_item":""}]
+pj-move [{"save_project_task":"task-<id>"}]
+pj-keepcheck [{"c":"true"}]
+pj-othercmt "ERR 쓴 사람만 고치거나 지울 수 있습니다."
+pj-delcmt [{"save_task_comment":"cmt-<id>"}]
+pj-delproj "ERR 업무를 만든 사람이나 관리자만 할 수 있습니다."
+pj-rm [{"set_project_member":""}]
+pj-unassigned [{"assignee_id":null}]
+pj-delt [{"delete_project_task":""}]
+pj-delproj2 [{"delete_project":""}]
+pj-afterdel "ERR 지운 업무입니다."
+pj-act [{"action":"참여자 넣음","detail":"정직원"},{"action":"할 일 만듦","detail":"라벨 인쇄"},{"action":"체크","detail":"시안"},{"action":"상태 바꿈: 할 일 → 검토","detail":"라벨 인쇄"},{"action":"댓글 씀","detail":"시안 올림"},{"action":"댓글 지움","detail":"시안 올림"},{"action":"참여자 뺌","detail":"정직원"},{"action":"할 일 지움","detail":"라벨 인쇄"},{"action":"업무 지움","detail":"추석 선물세트"}]
+ot-import [{"reactions":{"👍":["fbuid9","fbx"]},"mentions":["E1","admin"],"order_id":"O1"}]
+ot-msg [{"mentions":["<id>","admin"]}]
+ot-ntf [{"type":"mention","title":"정직원 (boss)","target_id":"<id>"}]
+ot-adj [{"type":"chat_mention","status":"pending","reason":"정직원: @임영훈 @관리자 출고 확인"}]
+ot-react [{"react_chat":""}]
+ot-react2 [{"react_chat":""}]
+ot-reactions [{"reactions":{"❤️":["<id>"]}}]
+ot-bademoji "ERR 고를 수 없는 이모지입니다."
+ot-mark [{"mark_chat_order":""}]
+ot-markbad "ERR 주문을 찾을 수 없습니다."
+ot-alias [{"save_order_aliases":1}]
+ot-alias2 [{"save_order_aliases":1}]
+ot-rules [{"partner_id":"P1","alias":"참기름","item_id":"WIP1","status":"approved"}]
+adj-staff-stocktake "ERR 관리자만 할 수 있는 일입니다."
+adj-req-noreason "ERR 왜 다른지 적어 주세요(파손·누락 등)."
+adj-dup "ERR 이 품목은 이미 승인을 기다리는 조정 요청이 있습니다."
+adj-row [{"qty_before":"95.000","qty_after":"90","reason":"파손 2개 (정직원)","status":"pending"}]
+adj-approve [{"decide_adjustment":""}]
+adj-stock [{"qty":"90.000"}]
+lv-import [{"id":"LV1","status":"approved","k":"modify","s":"<이달>-12"},{"id":"LV2","status":"cancel_pending","k":"cancel","s":null},{"id":"LV3","status":"canceled","k":null,"s":null}]
+lv-count [{"n":2}]
+lv-decide1 [{"decide_leave_change":""}]
+lv-decide2 [{"decide_leave_change":""}]
+lv-after [{"id":"LV1","status":"approved","start_date":"<시각>","days_used":"1","change_request":null,"change_note":"변경 승인 <오늘> (전: <이달>-10~<이달>-11, 2일)"},{"id":"LV2","status":"approved","start_date":"<시각>","days_used":"1","change_request":null,"change_note":"취소 요청 반려 <오늘>"}]
+lv-req [{"request_leave_change":""}]
+lv-req2 "ERR 승인된 휴가만 변경·취소를 요청합니다. 대기 중이면 그냥 취소하고 다시 신청하세요."
+lv-nonadmin "ERR 관리자만 할 수 있는 일입니다."
+lv-notmine "ERR 내 휴가만 바꿔 달라고 할 수 있습니다."
+lv-decide3 [{"decide_leave_change":""}]
+lv-after2 [{"status":"canceled"}]
+tx-vouchers [{"kind":"매출","m":"<이달>","count":2}]
+tx-build [{"build_tax_invoices":1}]
+tx-lines [{"tax_invoice_lines":{"items":[{"qty":360,"tax":0,"name":"참깨","spec":"","supply":1531080}],"edited":false}}]
+tx-bad [{"save_tax_invoice_items":""}]
+tx-ok [{"save_tax_invoice_items":""}]
+tx-after [{"item_summary":"참기름 세트 외 1건","items":[{"qty":1,"tax":0,"name":"참기름 세트","spec":"","supply":1530980},{"qty":null,"tax":0,"name":"운반","spec":"","supply":100}]}]
+tx-lines2 [{"e":true}]
+tx-reset [{"save_tax_invoice_items":""}]
+ve-empty "ERR 무엇을 어떻게 고쳐야 하는지 적어 주세요."
+ve-ok [{"ok":true}]
+ve-dup "ERR 이 전표는 이미 수정 요청이 올라가 있습니다."
+ve-row [{"type":"voucher_edit","status":"pending","reason":"<오늘6>-001 모란식품: 수량 20→18 (boss)","v":true}]
+ox-import [{"invoice_type":"C","pallets":[{"qty":3,"item_id":"PL1","exchange":false},{"qty":1,"item_id":"PL1","exchange":true}],"delivery_boxes":[{"qty":2,"item_id":"FG1"}]}]
+ox-hist [{"id":"pallet:<id>","qty":"-10","partner_id":"P1","stock_effect":true},{"id":"pallet:PT1","qty":"-5","partner_id":null,"stock_effect":false},{"id":"pallet:order:O7:PL1","qty":"-3","partner_id":"P1","stock_effect":false},{"id":"pallet:<id>","qty":"3","partner_id":"P1","stock_effect":true}]
+ox-out [{"item_id":"PL1","partner_id":"P1","out_qty":"10"}]
+ox-order {"id":"O7"}
+ox-badtype "ERR 송장 양식은 A~E 중에서 고르세요."
+ox-set [{"set_order_pack":""}]
+ox-ship [{"id":"O7"}]
+ox-bal [{"qty":"41","before":"43"}]
+ox-locked "ERR 출고한 주문의 파렛트는 출고를 취소한 뒤 고치세요."
+ox-unship [{"id":"O7"}]
+ox-bal2 [{"qty":"43"}]
+wd-import [{"id":"taebaek:2026-10-02","special_notes":"이상 없음","revision":3,"item_name":"참기름 300ml","lot_no":"261002-1","raw_used_kg":"12"}]
+wd-produce [{"produce":{"plan":[{"qty":5,"have":90,"name":"참기름 300ml","role":"build","unit":"개","short":0,"density":null,"item_id":"FG1","display_unit":null},{"qty":1.5,"have":7,"name":"통깨참기름","role":"use","unit":"kg","short":0,"density":null,"item_id":"WIP1","display_unit":null}],"run_id":"prod-<id>"}}]
+wd-rundate {"d":"<오늘>"} [{"count":1}]
+wd-fresh [{"v":{"doc":null,"fresh":[{"qty":5,"spec":null,"unit":"개","item_id":"FG1","raw_name":"통깨참기름","item_name":"참기름 300ml","source_id":"prod-<id>","raw_lot_no":null,"raw_item_id":"WIP1","raw_used_kg":1.5,"source_kind":"production","manufactured_date":"<오늘>"}],"lines":[{"qty":5,"spec":null,"unit":"개","item_id":"FG1","raw_name":"통깨참기름","item_name":"참기름 300ml","source_id":"prod-<id>","raw_lot_no":null,"raw_item_id":"WIP1","raw_used_kg":1.5,"source_kind":"production","manufactured_date":"<오늘>"}],"saved":false}}]
+wd-save [{"save_work_document":1}]
+wd-stale "ERR 다른 사람이 먼저 고쳤습니다. 다시 열어서 고치세요."
+wd-saved [{"r":"1","n":1}]
+io-set [{"set_inventory_opening":"opening-inventory-taebaek-FG1"}]
+io-v [{"kind":"기초","amount":"300000","memo":"참기름 300ml 100개 기초 재고","line_no":1,"qty":"100","price":"3000.00","account_code":"146","side":"차변"},{"kind":"기초","amount":"300000","memo":"참기름 300ml 100개 기초 재고","line_no":2,"qty":"1","price":"300000","account_code":"375","side":"대변"}]
+io-tb [{"account_code":"146","debit":"300000","credit":"0"},{"account_code":"375","debit":"0","credit":"300000"}]
+io-zero [{"set_inventory_opening":"opening-inventory-taebaek-FG1"}]
+io-st [{"status":"canceled"}]
+an-m [{"month":"<이달>","section":"매출","account_code":"404","account_name":"404","amount":"17272"},{"month":"<이달>","section":"영업외수익","account_code":"930","account_name":"잡이익","amount":"-21000"},{"month":"<이달>","section":"제조경비","account_code":"500","account_name":"500","amount":"1531080"},{"month":"<이달>","section":"판매비와관리비","account_code":"819","account_name":"819","amount":"1100000"}]
+an-cf [{"month":"2026-01","account_code":"375","account_name":"375","cf_section":null,"in_amount":"1000000","out_amount":"0"},{"month":"<이달>","account_code":"108","account_name":"외상매출금","cf_section":null,"in_amount":"20000","out_amount":"0"},{"month":"<이달>","account_code":"260","account_name":"단기차입금","cf_section":null,"in_amount":"0","out_amount":"5000000"},{"month":"<이달>","account_code":"819","account_name":"819","cf_section":null,"in_amount":"0","out_amount":"1100000"},{"month":"<이달>","account_code":"930","account_name":"잡이익","cf_section":null,"in_amount":"0","out_amount":"21000"}]
+an-p [{"partner_name":"참깨상회","sales":"0","sales_count":0,"purchases":"1531080","receivable":"0","payable":"1831080"},{"partner_name":"모란식품","sales":"19000","sales_count":2,"purchases":"0","receivable":"698000","payable":"-1000"}]
+rr-direct "ERR 관리자만 할 수 있는 일입니다."
+rr-dup "ERR 이 명세서는 이미 반품 요청이 올라가 있습니다."
+rr-row [{"reason":"<오늘6>-001 모란식품 — 참기름 1 · 파손 (정직원)"}]
+rr-approve [{"decide_adjustment":""}]
+rr-made [{"count":3}]
+ed-check [{"check_order_line":{"from":"PENDING","run_id":null,"status":"PROCESSING","produced":0}}]
+ed-meta [{"set_order_line_meta":""}]
+ed-edit [{"save_order":"ORD-<id>"}]
+ed-lines [{"line_no":1,"item_id":"RAW1","qty":"1","c":true,"label_stage":null,"made_on":null},{"line_no":2,"item_id":"FG1","qty":"3","c":false,"label_stage":"날인","made_on":"<시각>"}]
+ed-ship [{"ship_method":"택배"}]
+ed-block [{"save_order":"ORD-<id>"}]
+ed-status [{"status":"PENDING"}]
+so-nopartner "ERR 거래처를 고르세요."
+so-row [{"purpose":"stock","partner_name":"재고 만들기","status":"PENDING"}]
+so-check [{"s":"DISPATCHED"}]
+so-ship "ERR 재고 만들기 주문은 출고하지 않습니다(생산으로 끝)."
+030_checks.sql errors 0
+031_checks_more.sql errors 0

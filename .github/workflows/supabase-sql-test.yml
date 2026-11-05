@@ -1,0 +1,25 @@
+# 새 ERP DB 규칙 시험: supabase/sql을 메모리 Postgres에 돌리고 업무 흐름 결과를 expected.txt와 견준다.
+# 운영·Supabase에는 아무것도 안 붙는다(비밀값 없음).
+name: Supabase SQL test
+
+on:
+  push:
+    branches: [supabase-trial]
+    paths: ['supabase/sql/**', 'scripts/supabase/sql-test/**', '.github/workflows/supabase-sql-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: 시험
+        working-directory: scripts/supabase/sql-test
+        env: { TZ: Asia/Seoul }
+        run: npm install --no-audit --no-fund && node run.mjs
