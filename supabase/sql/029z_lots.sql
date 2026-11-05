@@ -36,8 +36,10 @@ left join (select item_id, sum(qty_left) left_sum from erp.lots where status = '
 where erp.lot_tracked(b.item_id) and b.qty - coalesce(l.left_sum, 0) > 0.0005
 on conflict (id) do nothing;
 
+-- p_lot: 나갈 때 이 로트부터 쓴다(사람이 로트를 고른 사용 기록). 모자라면 나머지는 선입선출.
+drop function if exists erp.post_stock(text, text, text, numeric, text, text, text, text, date, text, text);
 create or replace function erp.post_stock(p_id text, p_company text, p_item text, p_qty numeric, p_kind text,
-  p_source_type text, p_source_id text, p_partner text, p_date date, p_note text, p_reversal_of text default null)
+  p_source_type text, p_source_id text, p_partner text, p_date date, p_note text, p_reversal_of text default null, p_lot text default null)
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_unit text; v_need numeric; v_take numeric; v_lot record; v_lot_id text; v_seq int; v_supplier text;
 begin
@@ -75,7 +77,7 @@ begin
   -- 나감: 오래된 로트부터
   v_need := -p_qty;
   for v_lot in select * from erp.lots where item_id = p_item and status = 'active' and qty_left > 0
-               order by received_at nulls first, lot_no, id for update loop
+               order by (id = p_lot) desc nulls last, received_at nulls first, lot_no, id for update loop
     exit when v_need <= 0.0005;
     v_take := least(v_lot.qty_left, v_need);
     update erp.lots set qty_left = qty_left - v_take,
@@ -86,7 +88,7 @@ begin
   end loop;
 end $$;
 
-revoke all on function erp.post_stock(text, text, text, numeric, text, text, text, text, date, text, text), erp.lot_tracked(text)
+revoke all on function erp.post_stock(text, text, text, numeric, text, text, text, text, date, text, text, text), erp.lot_tracked(text)
   from public, anon, authenticated;
 
 -- 로트 사용 내보내기(서류에 로트를 적을 때): 날짜 × 원료 × 로트별로 들고 난 양
