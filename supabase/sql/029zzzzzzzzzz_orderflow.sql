@@ -122,6 +122,43 @@ begin
   return jsonb_build_object('status', v_status, 'from', o.status, 'run_id', v_run, 'produced', coalesce(v_qty, 0));
 end $$;
 
+-- 체크 풀기 전에 화면에 보여 줄 것: 재고가 어떻게 되는지.
+--  mode: cancel(생산 취소: 만든 완제품이 빠지고 쓴 재료가 돌아옴) / keep(나눈 주문과 같이 쓰는 생산이라 그대로) /
+--        plain(생산 없이 있는 재고로 잡은 줄: 잡아 둔 것만 풂) / legacy(옛 앱 생산이라 못 되돌림)
+create or replace function public.uncheck_preview(p_order_id text, p_line_no int) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare o erp.orders; l erp.order_lines; i erp.items; r erp.production_runs; v_other text; v_moves jsonb;
+begin
+  select * into o from erp.orders where id = p_order_id;
+  if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(o.company_id);
+  select * into l from erp.order_lines where order_id = o.id and line_no = p_line_no;
+  if not found or l.checked_at is null then return jsonb_build_object('mode', 'none'); end if;
+  select * into i from erp.items where id = l.item_id;
+  if l.run_id is not null then
+    select coalesce(oo.card_no, oo.id) into v_other from erp.order_lines x join erp.orders oo on oo.id = x.order_id
+    where x.run_id = l.run_id and x.checked_at is not null and not (x.order_id = o.id and x.line_no = l.line_no) limit 1;
+    select * into r from erp.production_runs where id = l.run_id;
+    if v_other is not null then
+      return jsonb_build_object('mode', 'keep', 'item', l.name, 'qty', l.qty, 'unit', i.unit, 'other', v_other);
+    end if;
+    -- 되돌릴 재고 움직임: 생산 원장 줄의 반대. 같은 품목은 합친다.
+    select coalesce(jsonb_agg(jsonb_build_object('name', m.name, 'qty', m.qty, 'unit', m.unit) order by m.qty desc, m.name), '[]') into v_moves
+    from (select it.name, -round(sum(sl.qty), 3) qty, max(it.unit) unit
+          from erp.stock_ledger sl join erp.items it on it.id = sl.item_id
+          where sl.source_type = 'production' and sl.source_id = l.run_id and sl.reversal_of is null
+          group by it.id, it.name having round(sum(sl.qty), 3) <> 0) m;
+    return jsonb_build_object('mode', 'cancel', 'item', l.name, 'qty', l.qty, 'unit', i.unit, 'produced', r.qty,
+                              'from_stock', greatest(l.qty - coalesce(r.qty, 0), 0), 'moves', v_moves);
+  end if;
+  if i.id is not null and erp.is_produced(i) and not exists (select 1 from erp.production_runs where order_id = o.id and line_no = l.line_no) then
+    return jsonb_build_object('mode', 'legacy', 'item', l.name, 'qty', l.qty, 'unit', i.unit);
+  end if;
+  return jsonb_build_object('mode', 'plain', 'item', l.name, 'qty', l.qty, 'unit', i.unit);
+end $$;
+revoke all on function public.uncheck_preview(text, int) from public, anon;
+grant execute on function public.uncheck_preview(text, int) to authenticated;
+
 -- 제조일·라벨 단계 (줄)
 create or replace function public.set_order_line_meta(p_order_id text, p_line_no int, p jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
