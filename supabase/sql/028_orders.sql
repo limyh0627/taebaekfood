@@ -126,6 +126,15 @@ begin
                      where x.partner_id = v_partner and x.item_id = i.id and coalesce(x.direction, 'out') = 'out'
                      order by x.price is null, x.id limit 1) pi on true;
 
+  -- 직원이 앱에서 새 주문을 넣으면 다른 사람들에게 알림(종·휴대폰, 넣은 사람 빼고). 고치기·재고 만들기는 알리지 않는다.
+  -- erp.notify는 comms.sql, erp.my_name은 prodflow.sql에 있다(실행할 때 찾으므로 순서 상관없음).
+  if v_order.id is null and v_partner is not null then
+    perform erp.notify(v_company, 'new_order', '새 주문',
+      coalesce((select name from erp.partners where id = v_partner), '거래처') || ' · 배송일 ' || to_char(v_date, 'FMMM/FMDD')
+      || ' · ' || (select count(*) from erp.order_lines where order_id = v_id) || '품목'
+      || coalesce(' · ' || nullif(erp.my_name(v_company), ''), ''), v_id);
+  end if;
+
   if v_order.id is not null then
     declare k record; v_line int;
     begin

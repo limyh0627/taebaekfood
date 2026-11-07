@@ -515,6 +515,7 @@ const eo=(await one(`select public.save_order('{"company_id":"taebaek","partner_
 await log('ed-check', `select public.check_order_line($1, 2, true)`,[eo]);
 await log('ed-meta', `select public.set_order_line_meta($1, 1, '{"label_stage":"날인","made_on":"2026-11-01"}')`,[eo]);
 await log('ed-edit', `select public.save_order(jsonb_build_object('id',$1::text,'company_id','taebaek','partner_id','P1','delivery_date','2026-11-21','lines','[{"item_id":"RAW1","qty":1},{"item_id":"FG1","qty":3}]'::jsonb))`,[eo]);
+await log('ord-notify', `select type,title,body,sender_id is not null by_someone from erp.notifications where type='new_order' and linked_id=$1`,[eo]);
 await log('ed-lines', `select line_no,item_id,qty,checked_at is not null c,label_stage,made_on from erp.order_lines where order_id=$1 order by line_no`,[eo]);
 await log('ed-ship', `select ship_method from erp.orders where id=$1`,[eo]);
 await log('ed-block', `select public.save_order(jsonb_build_object('id',$1::text,'company_id','taebaek','partner_id','P1','delivery_date','2026-11-21','lines','[{"item_id":"FG1","qty":3}]'::jsonb))`,[eo]);

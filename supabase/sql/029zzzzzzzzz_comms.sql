@@ -196,16 +196,9 @@ begin
     and (target_id is null or target_id = me);
 end $$;
 
--- 거래처 포털 주문 → 알림
-create or replace function erp.notify_portal_order() returns trigger language plpgsql security definer set search_path = '' as $$
-begin
-  if new.source = 'portal' then
-    perform erp.notify(new.company_id, 'new_order', '신규 주문', coalesce(new.partner_name, '거래처') || ' 주문이 들어왔습니다. 배송일 ' || new.delivery_date, new.id);
-  end if;
-  return new;
-end $$;
+-- 새 주문 알림은 직원이 앱에서 넣은 주문만(orders.sql save_order). 거래처 포털 주문은 알리지 않는다(사장님 결정 2026-11-07).
 drop trigger if exists orders_notify_portal on erp.orders;
-create trigger orders_notify_portal after insert on erp.orders for each row execute function erp.notify_portal_order();
+drop function if exists erp.notify_portal_order();
 
 -- 휴가 신청(대기) → 관리자 알림
 create or replace function erp.notify_leave() returns trigger language plpgsql security definer set search_path = '' as $$
