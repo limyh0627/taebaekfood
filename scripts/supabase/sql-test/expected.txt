@@ -354,5 +354,12 @@ ev-ok [{"set_voucher_evidence":""}]
 ev-after [{"evidence":"세금계산서"}]
 adv-j [{"ok":true}]
 adv-bal [{"advance_received":"50000","advance_paid":"0"}]
+push-bad "ERR 알림 구독 정보가 올바르지 않습니다."
+push-sub [{"save_push_subscription":""}]
+push-mine [{"n":1}]
+push-key [{"no_key_yet":true}]
+push-job [{"t":"boss (정직원)","b":"푸시 시험","url":true,"n":1,"ep":"https://push.example/u2","s":true}]
+push-gone [{"push_result":""}]
+push-left [{"count":0}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0

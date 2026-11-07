@@ -555,6 +555,19 @@ await log('ev-after', `select evidence from erp.vouchers where id=$1`,[vsale]);
 // 선수금·선급금: 일반전표 259·131 줄에도 거래처가 달려 거래처 잔액에 잡힌다
 await log('adv-j', `select public.save_journal($1) is not null ok`,[JSON.stringify({company_id:'taebaek',kind:'비용',date:'2026-11-05',partner_id:'P1',memo:'선수금 받음',lines:[{account_code:'103',side:'차변',amount:50000},{account_code:'259',side:'대변',amount:50000}]})]);
 await log('adv-bal', `select advance_received, advance_paid from erp.partner_balances where partner_id='P1'`);
+// 휴대폰 푸시: 구독 넣기 → 채팅 알림이 생기면 받는 사람 구독이 push_job에 → 끊긴 구독 지우기
+await db.exec(`select set_config('t.uid','${U2}',false)`);
+await log('push-bad', `select public.save_push_subscription('{"endpoint":"http://x"}')`);
+await log('push-sub', `select public.save_push_subscription($1)`,[JSON.stringify({endpoint:'https://push.example/u2',keys:{p256dh:'P',auth:'A'},ua:'test'})]);
+await log('push-mine', `select public.my_push_devices() n`);
+await db.exec(`select set_config('t.uid','${U}',false)`);
+await log('push-key', `select public.push_public_key() is null no_key_yet`);
+const proom=(await one(`select public.open_chat_room('taebaek', array['${U2}']::uuid[]) v`)).v;
+await db.query(`select public.send_chat($1)`,[JSON.stringify({room_id:proom,text:'푸시 시험'})]);
+const pn=(await one(`select id from erp.notifications where body like '푸시 시험%' order by created_at desc limit 1`)).id;
+await log('push-job', `select j->>'title' t, j->>'body' b, j->>'url' like '/chat?room=%' url, jsonb_array_length(j->'subs') n, j->'subs'->0->>'endpoint' ep, length(j->>'secret')>10 s from public.push_job($1) j`,[pn]);
+await log('push-gone', `select public.push_result('https://push.example/u2', false, true)`);
+await log('push-left', `select count(*) from app.push_subscriptions`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
