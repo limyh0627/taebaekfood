@@ -379,6 +379,11 @@ push-key [{"no_key_yet":true}]
 push-job [{"t":"boss (정직원)","b":"푸시 시험","url":true,"n":1,"ep":"https://push.example/u2","s":true}]
 push-gone [{"push_result":""}]
 push-left [{"count":0}]
+cust-mv [{"name":"홍길동","phone":"010-1111-2222","partner_name":"네이버 스마트스토어","marketplace":true}]
+cust-old [{"archived":true}]
+cust-again [{"count":1}]
+cust-set [{"set_order_customer":""}]
+cust-bad "ERR 고객 이름을 넣으세요."
 jt-noname "ERR 템플릿 이름을 넣으세요."
 jt-badacc "ERR 없는 계정이 있습니다: 999999"
 jt-row [{"name":"월 통신비","kind":"비용","memo":"통신비","lines":[{"note":null,"side":"대변","amount":55000,"account_code":"103"},{"note":"회선","side":"차변","amount":null,"account_code":"259"}],"created_by":"boss"}]

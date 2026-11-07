@@ -598,6 +598,18 @@ await log('push-job', `select j->>'title' t, j->>'body' b, j->>'url' like '/chat
 await log('push-gone', `select public.push_result('https://push.example/u2', false, true)`);
 await log('push-left', `select count(*) from app.push_subscriptions`);
 // 전표 템플릿: 저장·이름 겹침·없는 계정·고치기·지우기
+// 스마트스토어 구매자 → 고객: 전표 없는 스마트스토어 거래처는 고객으로, 주문은 네이버 거래처로
+await db.exec(`insert into erp.partners (id, company_id, name, partner_type, channel, mobile, address, archived) values ('SS1','taebaek','홍길동','매출처','스마트스토어','010-1111-2222','서울시',false)`);
+const ssOrder=(await one(`select public.save_order('{"company_id":"taebaek","partner_id":"SS1","delivery_date":"2026-11-09","lines":[{"item_id":"FG1","qty":1}]}') v`)).v;
+await db.exec(copy('customers'));
+await log('cust-mv', `select c.name, c.phone, o.partner_name, p.marketplace from erp.orders o join erp.customers c on c.id=o.customer_id join erp.partners p on p.id=o.partner_id where o.id=$1`,[ssOrder]);
+await log('cust-old', `select archived from erp.partners where id='SS1'`);
+await db.exec(copy('customers'));
+await log('cust-again', `select count(*) from erp.customers where legacy_partner_id='SS1'`);
+const nc=(await one(`select public.save_customer('{"company_id":"taebaek","name":"김철수","phone":"010-3333-4444"}') v`)).v;
+await log('cust-set', `select public.set_order_customer($1,$2)`,[ssOrder,nc]);
+await log('cust-bad', `select public.save_customer('{"company_id":"taebaek","name":" "}')`);
+await db.query(`select public.delete_order($1)`,[ssOrder]);
 await log('jt-noname', `select public.save_journal_template('{"company_id":"taebaek","lines":[{"account_code":"103","side":"차변"}]}')`);
 await log('jt-badacc', `select public.save_journal_template('{"company_id":"taebaek","name":"x","lines":[{"account_code":"999999","side":"차변"}]}')`);
 const jt=(await one(`select public.save_journal_template($1) v`,[JSON.stringify({company_id:'taebaek',name:'월 통신비',kind:'비용',memo:'통신비',lines:[{account_code:'103',side:'대변',amount:'55000',note:''},{account_code:'259',side:'차변',amount:'',note:'회선'}]})])).v;
