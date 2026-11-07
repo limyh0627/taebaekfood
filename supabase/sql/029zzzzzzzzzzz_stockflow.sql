@@ -127,15 +127,21 @@ begin
   insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, po_id, memo, created_by, created_at, legacy_collection)
   values (v_id, v_company, v_no, v_date, '매입', v_partner, (select name from erp.partners where id = v_partner),
           case when cardinality(v_pos) = 1 then v_pos[1] end, nullif(p->>'memo', ''), erp.actor_name(), now(), 'app');
-  for r in select l.*, o.po_no, coalesce(l.price, pi.price, 0) as unit_price, coalesce(l.tax_exempt, pi.tax_type = '면세', false) as exempt
-           from erp.purchase_order_lines l join erp.purchase_orders o on o.id = l.po_id
-           left join lateral (select price, tax_type from erp.partner_items x where x.partner_id = v_partner and x.item_id = l.item_id
-                              and coalesce(x.direction, 'in') = 'in' order by x.price is null, x.id limit 1) pi on true
-           where l.po_id = any (v_pos) order by o.created_at, l.line_no loop
+  -- 여러 발주를 합치면 같은 품목·단가·과세(·임가공 여부)는 한 줄로 수량을 더한다(사장님 2026-11-08). 비고에 발주 번호들.
+  for r in select x.item_id, x.name, sum(x.qty) as qty, x.unit_price, x.exempt, x.oem, string_agg(distinct x.po_no, ', ') as po_no
+           from (select l.item_id, l.name, l.qty, o.po_no, o.created_at, l.line_no, o.po_type = 'oem' as oem,
+                        coalesce(l.price, pi.price, 0) as unit_price, coalesce(l.tax_exempt, pi.tax_type = '면세', false) as exempt
+                 from erp.purchase_order_lines l join erp.purchase_orders o on o.id = l.po_id
+                 left join lateral (select price, tax_type from erp.partner_items x where x.partner_id = v_partner and x.item_id = l.item_id
+                                    and coalesce(x.direction, 'in') = 'in' order by x.price is null, x.id limit 1) pi on true
+                 where l.po_id = any (v_pos)) x
+           group by x.item_id, x.name, x.unit_price, x.exempt, x.oem
+           having sum(x.qty) <> 0
+           order by min(x.created_at), min(x.line_no) loop
     n := n + 1;
     insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, qty, price, supply, tax, amount, account_code, tax_exempt, note)
     select v_id, n, 'item', r.item_id, r.name, r.qty, r.unit_price, a.supply, a.tax, a.gross,
-           case when (select po_type from erp.purchase_orders where id = r.po_id) = 'oem' then '540' else erp.purchase_account(v_partner, r.item_id) end,
+           case when r.oem then '540' else erp.purchase_account(v_partner, r.item_id) end,
            r.exempt, r.po_no
     from erp.line_amount(r.qty, r.unit_price, r.exempt) a;
   end loop;

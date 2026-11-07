@@ -300,8 +300,13 @@ begin
   insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, order_id, memo, created_by, created_at, legacy_collection)
   values (v_id, v_company, v_no, v_date, '매출', v_partner, (select name from erp.partners where id = v_partner),
           case when cardinality(v_orders) = 1 then v_orders[1] end, nullif(p->>'memo', ''), erp.actor_name(), now(), 'app');
-  for r in select l.*, o.card_no from erp.order_lines l join erp.orders o on o.id = l.order_id
-           where l.order_id = any (v_orders) order by o.delivery_date, o.card_no, l.line_no loop
+  -- 여러 주문을 합치면 같은 품목·단가·과세는 한 줄로 수량을 더한다(사장님 2026-11-08). 비고(note)에 주문 번호들을 남긴다.
+  for r in select l.item_id, l.name, sum(l.qty) as qty, l.price, l.tax_exempt, string_agg(distinct o.card_no, ', ') as card_no
+           from erp.order_lines l join erp.orders o on o.id = l.order_id
+           where l.order_id = any (v_orders)
+           group by l.item_id, l.name, l.price, l.tax_exempt
+           having sum(l.qty) <> 0
+           order by min(o.delivery_date), min(o.card_no), min(l.line_no) loop
     n := n + 1;
     insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, qty, price, supply, tax, amount, account_code, tax_exempt, note)
     select v_id, n, 'item', r.item_id, r.name, r.qty, r.price, a.supply, a.tax, a.gross,
