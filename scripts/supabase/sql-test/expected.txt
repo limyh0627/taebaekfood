@@ -229,10 +229,10 @@ self [{"open_chat_room":"ROOM-<id>"}]
 pj-import [{"id":"WP1","status":"active","participant_ids":["E1"]},{"id":"WP2","status":"deleted","participant_ids":["E1"]},{"id":"proj-<id>","status":"active","participant_ids":[]}]
 pj-task [{"id":"WP1:t1","status":"doing","assignee_id":"E1","priority":"high","tags":["포장"],"checklist":[{"id":"a","title":"샘플","checked":false},{"id":"b","title":"견적","checked":true}]}]
 pj-cmt [{"id":"WP1:t1:c1","task_id":"WP1:t1","author_id":"E1","body":"견적 받음"}]
-pj-notmember "ERR 이 업무의 참여자만 고칠 수 있습니다."
+pj-notmember "ERR 이 프로젝트의 참여자만 고칠 수 있습니다."
 pj-own [{"owner_id":"E9","participant_ids":["E9"],"status":"active"}]
 pj-add [{"set_project_member":""}]
-pj-mgr "ERR 업무를 만든 사람이나 관리자만 할 수 있습니다."
+pj-mgr "ERR 프로젝트를 만든 사람이나 관리자만 할 수 있습니다."
 pj-badassignee "ERR 담당은 참여자 중에서 고르세요."
 pj-newtask [{"status":"todo","priority":"normal","tags":["포장","라벨"],"n":1}]
 pj-check [{"check_task_item":""}]
@@ -240,13 +240,13 @@ pj-move [{"save_project_task":"task-<id>"}]
 pj-keepcheck [{"c":"true"}]
 pj-othercmt "ERR 쓴 사람만 고치거나 지울 수 있습니다."
 pj-delcmt [{"save_task_comment":"cmt-<id>"}]
-pj-delproj "ERR 업무를 만든 사람이나 관리자만 할 수 있습니다."
+pj-delproj "ERR 프로젝트를 만든 사람이나 관리자만 할 수 있습니다."
 pj-rm [{"set_project_member":""}]
 pj-unassigned [{"assignee_id":null}]
 pj-delt [{"delete_project_task":""}]
 pj-delproj2 [{"delete_project":""}]
-pj-afterdel "ERR 지운 업무입니다."
-pj-act [{"action":"참여자 넣음","detail":"정직원"},{"action":"할 일 만듦","detail":"라벨 인쇄"},{"action":"체크","detail":"시안"},{"action":"상태 바꿈: 할 일 → 검토","detail":"라벨 인쇄"},{"action":"댓글 씀","detail":"시안 올림"},{"action":"댓글 지움","detail":"시안 올림"},{"action":"참여자 뺌","detail":"정직원"},{"action":"할 일 지움","detail":"라벨 인쇄"},{"action":"업무 지움","detail":"추석 선물세트"}]
+pj-afterdel "ERR 지운 프로젝트입니다."
+pj-act [{"action":"참여자 넣음","detail":"정직원"},{"action":"할 일 만듦","detail":"라벨 인쇄"},{"action":"체크","detail":"시안"},{"action":"상태 바꿈: 할 일 → 검토","detail":"라벨 인쇄"},{"action":"댓글 씀","detail":"시안 올림"},{"action":"댓글 지움","detail":"시안 올림"},{"action":"참여자 뺌","detail":"정직원"},{"action":"할 일 지움","detail":"라벨 인쇄"},{"action":"프로젝트 지움","detail":"추석 선물세트"}]
 ot-import [{"reactions":{"👍":["fbuid9","fbx"]},"mentions":["E1","admin"],"order_id":"O1"}]
 ot-msg [{"mentions":["<id>","admin"]}]
 ot-ntf [{"type":"mention","title":"정직원 (boss)","target_id":"<id>"}]

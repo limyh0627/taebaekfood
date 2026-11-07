@@ -83,16 +83,16 @@ language plpgsql security definer set search_path = '' as $$
 declare v_admin boolean;
 begin
   select * into proj from erp.work_projects where id = p_project for update;
-  if proj.id is null then raise exception '업무를 찾을 수 없습니다.'; end if;
+  if proj.id is null then raise exception '프로젝트를 찾을 수 없습니다.'; end if;
   perform erp.assert_member(proj.company_id);
-  if proj.status = 'deleted' then raise exception '지운 업무입니다.'; end if;
+  if proj.status = 'deleted' then raise exception '지운 프로젝트입니다.'; end if;
   v_admin := proj.company_id = any (app.my_admin_company_ids());
   me := erp.my_employee(proj.company_id);
   if not v_admin and (me is null or not (me = any (coalesce(proj.participant_ids, '{}')))) then
-    raise exception '이 업무의 참여자만 고칠 수 있습니다.';
+    raise exception '이 프로젝트의 참여자만 고칠 수 있습니다.';
   end if;
   manager := v_admin or (me is not null and me = proj.owner_id);
-  if p_manage and not manager then raise exception '업무를 만든 사람이나 관리자만 할 수 있습니다.'; end if;
+  if p_manage and not manager then raise exception '프로젝트를 만든 사람이나 관리자만 할 수 있습니다.'; end if;
 end $$;
 
 create or replace function erp.project_log(p_project erp.work_projects, p_me text, p_task text, p_action text, p_detail text) returns void
@@ -117,15 +117,15 @@ begin
     v_id := 'proj-' || gen_random_uuid();
     insert into erp.work_projects (id, company_id, title, description, status, owner_id, participant_ids, created_at, updated_at)
     values (v_id, v_company, trim(p->>'title'), nullif(p->>'description', ''), v_status, v_me, array_remove(array[v_me], null), now(), now());
-    perform erp.project_log((select w from erp.work_projects w where w.id = v_id), v_me, null, '업무 만듦', trim(p->>'title'));
+    perform erp.project_log((select w from erp.work_projects w where w.id = v_id), v_me, null, '프로젝트 만듦', trim(p->>'title'));
     return v_id;
   end if;
   select * into g from erp.project_guard(v_id);
-  if (g.proj).company_id <> v_company then raise exception '업무를 찾을 수 없습니다.'; end if;
+  if (g.proj).company_id <> v_company then raise exception '프로젝트를 찾을 수 없습니다.'; end if;
   update erp.work_projects set title = trim(p->>'title'), description = nullif(p->>'description', ''), status = v_status,
          due_date = coalesce((p->>'due_date')::date, due_date)
   where id = v_id;
-  perform erp.project_log(g.proj, g.me, null, '업무 고침', trim(p->>'title'));
+  perform erp.project_log(g.proj, g.me, null, '프로젝트 고침', trim(p->>'title'));
   return v_id;
 end $$;
 
@@ -135,7 +135,7 @@ declare g record;
 begin
   select * into g from erp.project_guard(p_id, true);
   update erp.work_projects set status = 'deleted' where id = p_id;
-  perform erp.project_log(g.proj, g.me, null, '업무 지움', (g.proj).title);
+  perform erp.project_log(g.proj, g.me, null, '프로젝트 지움', (g.proj).title);
 end $$;
 
 -- 참여자 넣기·빼기. 만든 사람은 뺄 수 없다.
@@ -151,7 +151,7 @@ begin
     if cardinality(coalesce((g.proj).participant_ids, '{}')) >= 50 then raise exception '참여자는 50명까지입니다.'; end if;
     update erp.work_projects set participant_ids = array_append(coalesce(participant_ids, '{}'), p_employee) where id = p_project;
   else
-    if p_employee = (g.proj).owner_id then raise exception '업무를 만든 사람은 뺄 수 없습니다.'; end if;
+    if p_employee = (g.proj).owner_id then raise exception '프로젝트를 만든 사람은 뺄 수 없습니다.'; end if;
     update erp.work_projects set participant_ids = array_remove(participant_ids, p_employee) where id = p_project;
     update erp.project_tasks set assignee_id = null, updated_at = now() where project_id = p_project and assignee_id = p_employee and deleted_at is null;
   end if;
