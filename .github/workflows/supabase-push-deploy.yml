@@ -1,0 +1,83 @@
+# 휴대폰 푸시(웹 푸시) 서버 배포: Supabase Edge Function 'send-push'를 올리고, DB에 함수 주소를 넣고, 키를 한 번 만든다.
+# 시험 Supabase 프로젝트에만 쓴다. 운영(Firestore·옛 앱)은 건드리지 않는다. 여러 번 돌려도 된다.
+# 필요한 Secret:
+#   SUPABASE_ACCESS_TOKEN  Supabase → 오른쪽 위 계정 → Access Tokens에서 만든 토큰(함수 배포용)
+#   SUPABASE_URL           https://<프로젝트>.supabase.co (이미 있음)
+#   SUPABASE_DB_URL        (이미 있음)
+# 먼저 'Supabase trial import'를 한 번 돌려 push.sql(구독 표·트리거)이 깔려 있어야 한다.
+name: Supabase push deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '함수 코드를 가져올 브랜치'
+        required: true
+        default: supabase-trial
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-trial
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: 준비 확인
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || { echo "브랜치 이름 형식이 아닙니다: $REF"; exit 1; }
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || { echo "SUPABASE_ACCESS_TOKEN Secret이 없습니다(Supabase → Account → Access Tokens)."; exit 1; }
+          [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_DB_URL" ] || { echo "SUPABASE_URL·SUPABASE_DB_URL Secret이 필요합니다."; exit 1; }
+          REF_ID=$(echo "$SUPABASE_URL" | sed -E 's#^https://([a-z0-9]+)\.supabase\.co/?$#\1#')
+          [[ "$REF_ID" =~ ^[a-z0-9]{10,40}$ ]] || { echo "SUPABASE_URL 형식이 이상합니다."; exit 1; }
+          echo "PROJECT_REF=$REF_ID" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.54.11
+
+      - name: 1. 구독 표·트리거가 깔렸나
+        run: |
+          ok=$(psql "$SUPABASE_DB_URL" -X -tAc "select to_regclass('app.push_config') is not null and exists (select 1 from pg_trigger where tgname = 'notifications_push')")
+          [ "$ok" = "t" ] || { echo "push.sql이 아직 안 깔렸습니다. 'Supabase trial import'를 먼저 돌리세요."; exit 1; }
+
+      - name: 2. 함수 올리기(send-push)
+        run: |
+          [ -f supabase/config.toml ] || printf 'project_id = "taebaek-erp"\n' > supabase/config.toml
+          supabase functions deploy send-push --project-ref "$PROJECT_REF" --no-verify-jwt
+
+      - name: 3. DB에 함수 주소 넣기
+        run: |
+          psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -c "update app.push_config set function_url = 'https://${PROJECT_REF}.supabase.co/functions/v1/send-push' where id = 1"
+
+      - name: 4. 키 만들기(처음 한 번)·동작 확인
+        run: |
+          secret=$(psql "$SUPABASE_DB_URL" -X -tAc "select hook_secret from app.push_config where id = 1")
+          echo "::add-mask::$secret"
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o out.txt -w '%{http_code}' -X POST "https://${PROJECT_REF}.supabase.co/functions/v1/send-push" \
+              -H 'Content-Type: application/json' -H "x-push-secret: $secret" -d '{"id":"init"}')
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          echo "함수 응답: $code $(head -c 200 out.txt)"
+          [ "$code" = "200" ] || exit 1
+          has=$(psql "$SUPABASE_DB_URL" -X -tAc "select vapid_public is not null from app.push_config where id = 1")
+          echo "공개 키 준비: $has"
+          [ "$has" = "t" ] || exit 1
+          echo "### 휴대폰 푸시 준비 완료" >> "$GITHUB_STEP_SUMMARY"
+          echo "마이페이지 → 알림 → **이 기기로 받기**를 누르면 됩니다." >> "$GITHUB_STEP_SUMMARY"
