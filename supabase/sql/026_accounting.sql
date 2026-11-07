@@ -27,6 +27,7 @@ $$;
 create table if not exists erp.inventory_snapshots (
   id text primary key, company_id text not null, year_month text not null, value numeric, items jsonb, recorded_at timestamptz
 );
+alter table erp.inventory_snapshots add column if not exists source text;   -- manual(손으로) · auto(말일 자동) · 옛 앱 기록은 비어 있음
 
 create or replace view erp.journal_raw as
 select j.voucher_id, j.company_id, j.date, j.account_code, j.partner_id,
@@ -195,22 +196,28 @@ grant select on erp.open_items to authenticated;
 -- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급). unclassified: true면 계정 없이(회계 미분류).
 -- 이달(또는 고른 달) 기말재고액 기록: 지금 재고 수량 × 품목 원가(분석 › 재고자산과 같은 셈). 같은 달은 덮어쓴다.
 -- 태백은 옛 앱 문서 id(inv-snap-YYYY-MM)를 그대로, 다른 회사는 {회사}--inv-snap-YYYY-MM.
-create or replace function public.save_inventory_snapshot(p_company text, p_ym text) returns numeric
+create or replace function erp.take_inventory_snapshot(p_company text, p_ym text, p_source text default 'manual') returns numeric
 language plpgsql security definer set search_path = '' as $$
 declare v_items jsonb; v_value numeric;
 begin
-  perform erp.assert_admin(p_company);
   if p_ym !~ '^[0-9]{4}-[0-9]{2}$' then raise exception '달을 YYYY-MM으로 넣으세요.'; end if;
   select coalesce(jsonb_agg(jsonb_build_object('itemId', c.item_id, 'name', c.name, 'qty', b.qty, 'value', round(b.qty * coalesce(c.computed, c.cost, 0)))), '[]'),
          coalesce(sum(round(b.qty * coalesce(c.computed, c.cost, 0))), 0)
   into v_items, v_value
-  from public.item_cost_estimate(p_company) c
+  from erp.item_costs(p_company) c
   join erp.stock_balances b on b.item_id = c.item_id and b.company_id = p_company
   where c.type in ('RAW', 'SUB', 'WIP', 'FINISHED', 'GOODS') and b.qty > 0;
-  insert into erp.inventory_snapshots (id, company_id, year_month, value, items, recorded_at)
-  values (case when p_company = 'taebaek' then '' else p_company || '--' end || 'inv-snap-' || p_ym, p_company, p_ym, v_value, v_items, now())
-  on conflict (id) do update set value = excluded.value, items = excluded.items, recorded_at = excluded.recorded_at;
+  insert into erp.inventory_snapshots (id, company_id, year_month, value, items, recorded_at, source)
+  values (case when p_company = 'taebaek' then '' else p_company || '--' end || 'inv-snap-' || p_ym, p_company, p_ym, v_value, v_items, now(), p_source)
+  on conflict (id) do update set value = excluded.value, items = excluded.items, recorded_at = excluded.recorded_at, source = excluded.source;
   return v_value;
+end $$;
+revoke all on function erp.take_inventory_snapshot(text, text, text) from public, anon, authenticated;
+create or replace function public.save_inventory_snapshot(p_company text, p_ym text) returns numeric
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform erp.assert_admin(p_company);
+  return erp.take_inventory_snapshot(p_company, p_ym, 'manual');
 end $$;
 create or replace function public.delete_inventory_snapshot(p_company text, p_ym text) returns void
 language plpgsql security definer set search_path = '' as $$

@@ -572,6 +572,12 @@ await log('inv-save-row', `select id, year_month, jsonb_typeof(items) t from erp
 await log('inv-save-bad', `select public.save_inventory_snapshot('taebaek','2026-1')`);
 await log('inv-del', `select public.delete_inventory_snapshot('taebaek','2026-11')`);
 await db.exec(`delete from erp.inventory_snapshots where company_id='taebaek'`);
+// 판매 때 원가 박기: 새 매출 명세서 줄에 unit_cost가 들어간다
+await log('cost-stamp', `select v.kind, l.item_id, l.unit_cost is not null stamped from erp.voucher_lines l join erp.vouchers v on v.id=l.voucher_id where v.created_at > now() - interval '1 hour' and l.item_id is not null and v.kind in ('매출','매입') order by v.kind, l.item_id limit 6`);
+await log('auto-snap', `select erp.auto_inventory_snapshot() n`);
+await log('inv-save-src', `select public.save_inventory_snapshot('taebaek','2026-10') >= 0 ok`);
+await log('inv-src', `select year_month, source from erp.inventory_snapshots where company_id='taebaek'`);
+await db.exec(`delete from erp.inventory_snapshots where company_id='taebaek'`);
 // 휴대폰 푸시: 구독 넣기 → 채팅 알림이 생기면 받는 사람 구독이 push_job에 → 끊긴 구독 지우기
 await db.exec(`select set_config('t.uid','${U2}',false)`);
 await log('push-bad', `select public.save_push_subscription('{"endpoint":"http://x"}')`);

@@ -48,13 +48,13 @@ end $$;
 -- =====================================================================
 -- 원가: 원료는 마지막 매입 단가(공급가/수량), 제품은 BOM(배합 반제품은 배합 비율로 편다)
 -- =====================================================================
-create or replace function public.item_cost_estimate(p_company text)
+-- erp.item_costs: 권한 확인 없는 셈(월말 자동 기록·판매 원가 박기 트리거가 쓴다). 화면은 public.item_cost_estimate로.
+create or replace function erp.item_costs(p_company text)
 returns table (item_id text, name text, type text, unit text, cost numeric, last_buy numeric, last_buy_date date, computed numeric, missing text)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 declare pass int;
 begin
-  perform erp.assert_member(p_company);
   create temp table if not exists _cost (id text primary key, name text, type text, unit text, phantom boolean, cost numeric, last_buy numeric,
                                          last_date date, computed numeric, missing text) on commit drop;
   truncate _cost;
@@ -96,6 +96,15 @@ begin
 
   return query select c.id, c.name, c.type, c.unit, c.cost, round(c.last_buy, 2), c.last_date, round(c.computed, 2), c.missing
                from _cost c order by c.type, c.name;
+end $$;
+revoke all on function erp.item_costs(text) from public, anon, authenticated;
+
+create or replace function public.item_cost_estimate(p_company text)
+returns table (item_id text, name text, type text, unit text, cost numeric, last_buy numeric, last_buy_date date, computed numeric, missing text)
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform erp.assert_member(p_company);
+  return query select * from erp.item_costs(p_company);
 end $$;
 
 -- 계산한 원가를 품목에 적고 이력을 남긴다. p_items: [{item_id, cost}]
@@ -140,18 +149,19 @@ begin
   from a where a.sec is not null and abs(a.c - a.d) >= 1
   union all
   -- 원가는 재고자산 평가와 같은 값(배합 원가, 없으면 넣어 둔 원가) — 실재고 손익과 견줄 수 있게(2026-11-08)
-  select '매출원가(추정)', null, i.name, sum(l.qty * coalesce(c.computed, c.cost, 0))
+  --  판매 때 박아 둔 원가(voucher_lines.unit_cost, costing.sql)가 있으면 그것, 없으면(옛 전표) 지금 원가
+  select '매출원가(추정)', null, i.name, sum(l.qty * coalesce(l.unit_cost, c.computed, c.cost, 0))
   from erp.voucher_lines l join erp.vouchers v on v.id = l.voucher_id join erp.items i on i.id = l.item_id
-  left join public.item_cost_estimate(p_company) c on c.item_id = l.item_id
+  left join erp.item_costs(p_company) c on c.item_id = l.item_id
   where v.company_id = p_company and v.kind = '매출' and v.status = 'active' and v.date between p_from and p_to
-  group by i.name having sum(l.qty * coalesce(c.computed, c.cost, 0)) <> 0
+  group by i.name having sum(l.qty * coalesce(l.unit_cost, c.computed, c.cost, 0)) <> 0
   union all
   -- 원가를 몰라 0원으로 잡힌 판매 품목(추정이 그만큼 낮게 나온다): amount = 판 수량
   select '원가 모름', null, i.name, sum(l.qty)
   from erp.voucher_lines l join erp.vouchers v on v.id = l.voucher_id join erp.items i on i.id = l.item_id
-  left join public.item_cost_estimate(p_company) c on c.item_id = l.item_id
+  left join erp.item_costs(p_company) c on c.item_id = l.item_id
   where v.company_id = p_company and v.kind = '매출' and v.status = 'active' and v.date between p_from and p_to
-    and coalesce(c.computed, c.cost, 0) = 0
+    and coalesce(l.unit_cost, c.computed, c.cost, 0) = 0
   group by i.name having sum(l.qty) <> 0;
 end $$;
 
