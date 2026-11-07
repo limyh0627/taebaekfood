@@ -569,6 +569,16 @@ const pn=(await one(`select id from erp.notifications where body like '푸시 �
 await log('push-job', `select j->>'title' t, j->>'body' b, j->>'url' like '/chat?room=%' url, jsonb_array_length(j->'subs') n, j->'subs'->0->>'endpoint' ep, length(j->>'secret')>10 s from public.push_job($1) j`,[pn]);
 await log('push-gone', `select public.push_result('https://push.example/u2', false, true)`);
 await log('push-left', `select count(*) from app.push_subscriptions`);
+// 전표 템플릿: 저장·이름 겹침·없는 계정·고치기·지우기
+await log('jt-noname', `select public.save_journal_template('{"company_id":"taebaek","lines":[{"account_code":"103","side":"차변"}]}')`);
+await log('jt-badacc', `select public.save_journal_template('{"company_id":"taebaek","name":"x","lines":[{"account_code":"999999","side":"차변"}]}')`);
+const jt=(await one(`select public.save_journal_template($1) v`,[JSON.stringify({company_id:'taebaek',name:'월 통신비',kind:'비용',memo:'통신비',lines:[{account_code:'103',side:'대변',amount:'55000',note:''},{account_code:'259',side:'차변',amount:'',note:'회선'}]})])).v;
+await log('jt-row', `select name, kind, memo, lines, created_by from erp.journal_templates where id=$1`,[jt]);
+await log('jt-dup', `select public.save_journal_template('{"company_id":"taebaek","name":"월 통신비","lines":[{"account_code":"103","side":"차변"}]}')`);
+await log('jt-edit', `select public.save_journal_template($1) = $2 same`,[JSON.stringify({id:jt,company_id:'taebaek',name:'월 통신비',kind:'대체',partner_id:'P1',lines:[{account_code:'251',side:'차변'},{account_code:'108',side:'대변'}]}),jt]);
+await log('jt-after', `select kind, partner_id, memo, jsonb_array_length(lines) n from erp.journal_templates where id=$1`,[jt]);
+await log('jt-del', `select public.delete_journal_template($1)`,[jt]);
+await log('jt-left', `select count(*) from erp.journal_templates`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
