@@ -139,10 +139,20 @@ begin
   select a.sec, a.account_code, a.nm, case when a.sec in ('매출', '영업외수익') then a.c - a.d else a.d - a.c end
   from a where a.sec is not null and abs(a.c - a.d) >= 1
   union all
-  select '매출원가(추정)', null, i.name, sum(l.qty * coalesce(i.cost, 0))
+  -- 원가는 재고자산 평가와 같은 값(배합 원가, 없으면 넣어 둔 원가) — 실재고 손익과 견줄 수 있게(2026-11-08)
+  select '매출원가(추정)', null, i.name, sum(l.qty * coalesce(c.computed, c.cost, 0))
   from erp.voucher_lines l join erp.vouchers v on v.id = l.voucher_id join erp.items i on i.id = l.item_id
+  left join public.item_cost_estimate(p_company) c on c.item_id = l.item_id
   where v.company_id = p_company and v.kind = '매출' and v.status = 'active' and v.date between p_from and p_to
-  group by i.name having sum(l.qty * coalesce(i.cost, 0)) <> 0;
+  group by i.name having sum(l.qty * coalesce(c.computed, c.cost, 0)) <> 0
+  union all
+  -- 원가를 몰라 0원으로 잡힌 판매 품목(추정이 그만큼 낮게 나온다): amount = 판 수량
+  select '원가 모름', null, i.name, sum(l.qty)
+  from erp.voucher_lines l join erp.vouchers v on v.id = l.voucher_id join erp.items i on i.id = l.item_id
+  left join public.item_cost_estimate(p_company) c on c.item_id = l.item_id
+  where v.company_id = p_company and v.kind = '매출' and v.status = 'active' and v.date between p_from and p_to
+    and coalesce(c.computed, c.cost, 0) = 0
+  group by i.name having sum(l.qty) <> 0;
 end $$;
 
 -- =====================================================================
