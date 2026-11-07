@@ -552,6 +552,9 @@ const vsale=(await one(`select id from erp.vouchers where kind='매출' and stat
 await log('ev-bad', `select public.set_voucher_evidence($1,'간이영수증')`,[vsale]);
 await log('ev-ok', `select public.set_voucher_evidence($1,'세금계산서')`,[vsale]);
 await log('ev-after', `select evidence from erp.vouchers where id=$1`,[vsale]);
+// 선수금·선급금: 일반전표 259·131 줄에도 거래처가 달려 거래처 잔액에 잡힌다
+await log('adv-j', `select public.save_journal($1) is not null ok`,[JSON.stringify({company_id:'taebaek',kind:'비용',date:'2026-11-05',partner_id:'P1',memo:'선수금 받음',lines:[{account_code:'103',side:'차변',amount:50000},{account_code:'259',side:'대변',amount:50000}]})]);
+await log('adv-bal', `select advance_received, advance_paid from erp.partner_balances where partner_id='P1'`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

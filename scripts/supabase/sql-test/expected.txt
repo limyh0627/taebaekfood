@@ -352,5 +352,7 @@ vlist [{"n":true,"kind":"기초","writer":"boss","summary":"기초 미수금","h
 ev-bad "ERR 이 전표에 고를 수 없는 증빙입니다."
 ev-ok [{"set_voucher_evidence":""}]
 ev-after [{"evidence":"세금계산서"}]
+adv-j [{"ok":true}]
+adv-bal [{"advance_received":"50000","advance_paid":"0"}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0

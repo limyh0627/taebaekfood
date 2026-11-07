@@ -55,7 +55,7 @@ from stmt s where s.kind = '매입' and not s.missing
 -- 비용(대체) 명세서: 줄의 차변/대변 그대로
 union all
 select v.id, v.company_id, v.date, l.account_code,
-       case when l.account_code in ('108', '251', '253') then v.partner_id end,
+       case when l.account_code in ('108', '251', '253', '259', '131') then v.partner_id end,   -- 거래처 계정(외상·선수·선급)만 거래처를 단다
        case when l.side = '차변' then l.amount else 0 end, case when l.side = '대변' then l.amount else 0 end, l.name
 from erp.vouchers v join erp.voucher_lines l on l.voucher_id = v.id
 where v.status = 'active' and v.kind in ('비용', '기초') and coalesce(l.amount, 0) <> 0
@@ -101,12 +101,15 @@ select j.* from erp.journal_raw j
 where not exists (select 1 from erp.journal_skipped s where s.voucher_id = j.voucher_id);
 
 -- 거래처 잔액: 미수 = 108 차변−대변, 미지급 = 251·253 대변−차변 (앱 allPartnerBalances와 같은 규칙)
+-- 선수금(259, 미리 받은 돈) = 대변−차변, 선급금(131, 미리 준 돈) = 차변−대변. 거래처원장에서 같이 본다.
 create or replace view erp.partner_balances as
 select j.company_id, j.partner_id,
        sum(case when j.account_code = '108' then j.debit - j.credit else 0 end) as receivable,
-       sum(case when j.account_code in ('251', '253') then j.credit - j.debit else 0 end) as payable
+       sum(case when j.account_code in ('251', '253') then j.credit - j.debit else 0 end) as payable,
+       sum(case when j.account_code = '259' then j.credit - j.debit else 0 end) as advance_received,
+       sum(case when j.account_code = '131' then j.debit - j.credit else 0 end) as advance_paid
 from erp.journal_lines j
-where j.partner_id is not null and j.account_code in ('108', '251', '253')
+where j.partner_id is not null and j.account_code in ('108', '251', '253', '259', '131')
 group by 1, 2;
 
 -- 뷰는 만든 사람 권한으로 돈다 → 화면에서는 소속 회사만 보이게 security_invoker로 둔다(아래 표의 RLS를 따른다).
