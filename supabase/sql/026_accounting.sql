@@ -23,6 +23,11 @@ create or replace function erp.payable_code(codes text[]) returns text language 
 $$;
 
 -- 금액이 음수인 줄(반품 명세서 같은 마이너스 전표)은 반대쪽 양수로 돌려 놓는다 — 차변−대변은 그대로다.
+-- 월말 기말재고액(기존 앱 inventorySnapshots). 손익의 재고 조정(실지재고조사법)에 쓴다.
+create table if not exists erp.inventory_snapshots (
+  id text primary key, company_id text not null, year_month text not null, value numeric, items jsonb, recorded_at timestamptz
+);
+
 create or replace view erp.journal_raw as
 select j.voucher_id, j.company_id, j.date, j.account_code, j.partner_id,
        greatest(j.debit, 0) + greatest(-j.credit, 0) as debit, greatest(j.credit, 0) + greatest(-j.debit, 0) as credit, j.note
@@ -80,6 +85,28 @@ left join erp.cash_accounts ca on ca.id = v.cash_account_id
 cross join lateral (select sum(case when l.side = '대변' then l.amount else -l.amount end) as net
                     from erp.voucher_lines l where l.voucher_id = v.id) n
 where v.status = 'active' and v.kind in ('입금', '출금') and coalesce(n.net, 0) <> 0
+-- 월말 재고 조정(기존 앱 journalizeInventory와 같음): 매입을 원가(500 원료매입)로 턴 것 중 안 팔리고 남은 만큼을 재고자산(146)으로 되돌린다.
+--  그 달 기말재고액 − 전달 기말재고액(첫 달은 기초 전표의 146) 만큼, 늘었으면 146 차변/500 대변, 줄었으면 반대. 날짜는 그 달 말일.
+--  기초 전표 날짜가 든 달까지의 기록은 출발점으로만 쓴다(기초와 겹쳐 두 번 잡히지 않게).
+union all
+select 'inv-adj-' || x.id, x.company_id, x.d, c.code, null,
+       case when (c.code = '146') = (x.delta > 0) then abs(x.delta) else 0 end,
+       case when (c.code = '146') = (x.delta > 0) then 0 else abs(x.delta) end,
+       '재고 조정 ' || x.year_month || ' (실사 ' || to_char(x.value, 'FM999,999,999,999') || '원)'
+from (
+  select s.id, s.company_id, s.year_month, s.value, b.open_ym,
+         (to_date(s.year_month || '-01', 'YYYY-MM-DD') + interval '1 month' - interval '1 day')::date as d,
+         round(coalesce(s.value, 0) - coalesce(lag(s.value) over (partition by s.company_id order by s.year_month), b.base)) as delta
+  from erp.inventory_snapshots s
+  cross join lateral (
+    select coalesce(sum(case when l.side = '차변' then l.amount else -l.amount end), 0) as base, to_char(max(v.date), 'YYYY-MM') as open_ym
+    from erp.vouchers v join erp.voucher_lines l on l.voucher_id = v.id
+    where v.company_id = s.company_id and v.status = 'active' and v.kind = '기초' and l.account_code = '146'
+  ) b
+  where s.year_month ~ '^[0-9]{4}-[0-9]{2}$'
+) x
+cross join (values ('146'), ('500')) c(code)
+where x.delta <> 0 and (x.open_ym is null or x.year_month > x.open_ym)
 ) j;
 
 -- 분개 못 하는 전표와 이유
@@ -166,6 +193,32 @@ grant select on erp.open_items to authenticated;
 -- ---------- 입금·출금 ----------
 -- p: {company_id, dir: 입금|출금, date, partner_id, cash_account_id, amount, account_code?, note, applies?: [{voucher_id, amount}]}
 -- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급). unclassified: true면 계정 없이(회계 미분류).
+-- 이달(또는 고른 달) 기말재고액 기록: 지금 재고 수량 × 품목 원가(분석 › 재고자산과 같은 셈). 같은 달은 덮어쓴다.
+-- 태백은 옛 앱 문서 id(inv-snap-YYYY-MM)를 그대로, 다른 회사는 {회사}--inv-snap-YYYY-MM.
+create or replace function public.save_inventory_snapshot(p_company text, p_ym text) returns numeric
+language plpgsql security definer set search_path = '' as $$
+declare v_items jsonb; v_value numeric;
+begin
+  perform erp.assert_admin(p_company);
+  if p_ym !~ '^[0-9]{4}-[0-9]{2}$' then raise exception '달을 YYYY-MM으로 넣으세요.'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('itemId', c.item_id, 'name', c.name, 'qty', b.qty, 'value', round(b.qty * coalesce(c.computed, c.cost, 0)))), '[]'),
+         coalesce(sum(round(b.qty * coalesce(c.computed, c.cost, 0))), 0)
+  into v_items, v_value
+  from public.item_cost_estimate(p_company) c
+  join erp.stock_balances b on b.item_id = c.item_id and b.company_id = p_company
+  where c.type in ('RAW', 'SUB', 'WIP', 'FINISHED', 'GOODS') and b.qty > 0;
+  insert into erp.inventory_snapshots (id, company_id, year_month, value, items, recorded_at)
+  values (case when p_company = 'taebaek' then '' else p_company || '--' end || 'inv-snap-' || p_ym, p_company, p_ym, v_value, v_items, now())
+  on conflict (id) do update set value = excluded.value, items = excluded.items, recorded_at = excluded.recorded_at;
+  return v_value;
+end $$;
+create or replace function public.delete_inventory_snapshot(p_company text, p_ym text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform erp.assert_admin(p_company);
+  delete from erp.inventory_snapshots where company_id = p_company and year_month = p_ym;
+end $$;
+
 -- 결제 방법(기존 앱 지불·수금 처리): 현금·계좌이체·어음·카드·기타
 alter table erp.vouchers add column if not exists pay_method text;
 
@@ -267,4 +320,6 @@ alter view erp.unclassified_cash set (security_invoker = true);
 grant select on erp.unclassified_cash to authenticated;
 
 revoke all on function public.record_cash(jsonb), public.cancel_voucher(text), public.set_voucher_account(text, text) from public, anon;
+revoke all on function public.save_inventory_snapshot(text, text), public.delete_inventory_snapshot(text, text) from public, anon;
+grant execute on function public.save_inventory_snapshot(text, text), public.delete_inventory_snapshot(text, text) to authenticated;
 grant execute on function public.record_cash(jsonb), public.cancel_voucher(text), public.set_voucher_account(text, text) to authenticated;

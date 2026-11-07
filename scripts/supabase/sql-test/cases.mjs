@@ -562,6 +562,16 @@ await log('adv-j', `select public.save_journal($1) is not null ok`,[JSON.stringi
 await log('adv-bal', `select advance_received, advance_paid from erp.partner_balances where partner_id='P1'`);
 await log('paymethod', `select (public.record_cash($1)->>'voucher_id') is not null ok`,[JSON.stringify({company_id:'taebaek',dir:'입금',date:'2026-11-05',partner_id:'P1',amount:1000,pay_method:'어음',note:'pm'})]);
 await log('paymethod-row', `select pay_method from erp.vouchers where memo='pm'`);
+// 월말 재고 조정(기존 앱 journalizeInventory): 기말재고 증감만큼 146 ↔ 500
+await log('inv-base', `select coalesce(sum(debit-credit),0) base from erp.journal_lines where account_code='146' and voucher_id not like 'inv-adj-%'`);
+await db.exec(`insert into erp.inventory_snapshots (id, company_id, year_month, value) values ('inv-snap-2026-09','taebaek','2026-09',1000000),('inv-snap-2026-10','taebaek','2026-10',700000)`);
+await log('inv-adj', `select voucher_id, date, account_code, debit, credit from erp.journal_lines where voucher_id like 'inv-adj-%' order by voucher_id, account_code`);
+await log('inv-bal', `select sum(debit)=sum(credit) ok from erp.journal_lines`);
+await log('inv-save', `select public.save_inventory_snapshot('taebaek','2026-11') >= 0 ok`);
+await log('inv-save-row', `select id, year_month, jsonb_typeof(items) t from erp.inventory_snapshots where year_month='2026-11'`);
+await log('inv-save-bad', `select public.save_inventory_snapshot('taebaek','2026-1')`);
+await log('inv-del', `select public.delete_inventory_snapshot('taebaek','2026-11')`);
+await db.exec(`delete from erp.inventory_snapshots where company_id='taebaek'`);
 // 휴대폰 푸시: 구독 넣기 → 채팅 알림이 생기면 받는 사람 구독이 push_job에 → 끊긴 구독 지우기
 await db.exec(`select set_config('t.uid','${U2}',false)`);
 await log('push-bad', `select public.save_push_subscription('{"endpoint":"http://x"}')`);

@@ -360,6 +360,13 @@ adv-j [{"ok":true}]
 adv-bal [{"advance_received":"50000","advance_paid":"0"}]
 paymethod [{"ok":true}]
 paymethod-row [{"pay_method":"어음"}]
+inv-base [{"base":"0"}]
+inv-adj [{"voucher_id":"inv-adj-inv-snap-2026-09","date":"<시각>","account_code":"146","debit":"1000000","credit":"0"},{"voucher_id":"inv-adj-inv-snap-2026-09","date":"<시각>","account_code":"500","debit":"0","credit":"1000000"},{"voucher_id":"inv-adj-inv-snap-2026-10","date":"<시각>","account_code":"146","debit":"0","credit":"300000"},{"voucher_id":"inv-adj-inv-snap-2026-10","date":"<시각>","account_code":"500","debit":"300000","credit":"0"}]
+inv-bal [{"ok":true}]
+inv-save [{"ok":true}]
+inv-save-row [{"id":"inv-snap-<이달>","year_month":"<이달>","t":"array"}]
+inv-save-bad "ERR 달을 YYYY-MM으로 넣으세요."
+inv-del [{"delete_inventory_snapshot":""}]
 push-bad "ERR 알림 구독 정보가 올바르지 않습니다."
 push-sub [{"save_push_subscription":""}]
 push-mine [{"n":1}]
