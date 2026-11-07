@@ -106,6 +106,19 @@ begin
   return n;
 end $$;
 
+-- 매칭표에서 짝 하나 지우기(거래처 정보 › 주문 읽기 매칭표, 2026-11-08)
+create or replace function public.delete_order_alias(p_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_company text;
+begin
+  select company_id into v_company from erp.order_interpretation_rules where id = p_id;
+  if v_company is null then raise exception '매칭을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(v_company);
+  delete from erp.order_interpretation_rules where id = p_id;
+end $$;
+revoke all on function public.delete_order_alias(text) from public, anon;
+grant execute on function public.delete_order_alias(text) to authenticated;
+
 revoke all on function public.react_chat(text, text), public.mark_chat_order(text, text), public.save_order_aliases(text, text, jsonb) from public, anon;
 grant execute on function public.react_chat(text, text), public.mark_chat_order(text, text), public.save_order_aliases(text, text, jsonb) to authenticated;
 revoke all on function erp.chat_user(text, text) from public, anon, authenticated;

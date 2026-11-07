@@ -419,6 +419,10 @@ await log('ot-mark', `select public.mark_chat_order($1,'O1')`,[m2]);
 await log('ot-markbad', `select public.mark_chat_order($1,'NOPE')`,[m2]);
 await log('ot-alias', `select public.save_order_aliases('taebaek','P1','[{"alias":"참기름","item_id":"FG1"},{"alias":"x","item_id":"NOPE"}]')`);
 await log('ot-alias2', `select public.save_order_aliases('taebaek','P1','[{"alias":"참 기름","item_id":"WIP1"}]')`);
+const rid=(await one(`select id from erp.order_interpretation_rules where partner_id='P1' order by alias limit 1`)).id;
+await log('ot-alias-del', `select public.delete_order_alias($1)`,[rid]);
+await log('ot-alias-left', `select alias, item_id from erp.order_interpretation_rules where partner_id='P1' and status='approved' order by alias`);
+await log('ot-alias-del2', `select public.delete_order_alias($1)`,[rid]);
 await log('ot-rules', `select partner_id, alias, item_id, status from erp.order_interpretation_rules`);
 await db.exec(`select set_config('t.uid','${U}',false)`);
 // ---- adjustment request ----
