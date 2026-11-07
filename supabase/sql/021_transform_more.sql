@@ -87,6 +87,14 @@ update erp.orders o set voucher_id = v.id
 from src s join erp.vouchers v on v.id = s.data->>'linkedStatementId'
 where s.collection = 'orders' and s.id = o.id;
 
+-- 명세서 쪽 orderId로도 잇는다. 기존 앱은 여러 주문을 한 장에 묶으면 orderId에 'a,b,c'처럼 넣었고,
+-- '전표가 걸렸나'를 이것만으로 봤다(voucheredOrderIds). 위 한 줄짜리 ref_order로는 묶은 명세서가 안 이어져
+-- 출고했는데 명세서 안 낸 주문으로 잘못 잡혔다.
+update erp.orders o set voucher_id = v.id
+from src s cross join lateral regexp_split_to_table(coalesce(s.data->>'orderId', ''), '[,[:space:]]+') x(oid)
+     join erp.vouchers v on v.id = s.id
+where s.collection = 'issuedStatements' and x.oid <> '' and x.oid = o.id and o.voucher_id is null;
+
 -- ---------- 전표: 자금 (입금·출금·대체) ----------
 insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, cash_account_id, loan_id,
                           account_code, amount, memo, created_by, created_at, legacy_collection)

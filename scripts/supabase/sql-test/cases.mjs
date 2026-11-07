@@ -57,6 +57,9 @@ const docs=[
  ['leaveRequests','LV1','taebaek',{employeeId:'E9',employeeName:'정직원',type:'연차',startDate:'2026-11-10',endDate:'2026-11-11',daysUsed:2,status:'approved',modifyRequest:{startDate:'2026-11-12',endDate:'2026-11-12',daysUsed:1,reason:'하루만',status:'pending'}}],
  ['leaveRequests','LV2','taebaek',{employeeId:'E9',employeeName:'정직원',type:'연차',startDate:'2026-12-01',endDate:'2026-12-01',daysUsed:1,status:'cancel_pending'}],
  ['leaveRequests','LV3','taebaek',{employeeId:'E9',type:'연차',startDate:'2026-09-01',endDate:'2026-09-01',daysUsed:1,status:'cancelled'}],
+ ['orders','OB1','taebaek',{partnerId:'P1',partnerName:'모란식품',status:'DELIVERED',deliveryDate:'2026-10-10',createdAt:'2026-10-09T01:00:00.000Z',items:[{lineId:'q',itemId:'FG1',name:'참기름',quantity:1,price:1000}]}],
+ ['orders','OB2','taebaek',{partnerId:'P1',partnerName:'모란식품',status:'DELIVERED',deliveryDate:'2026-10-10',createdAt:'2026-10-09T01:00:00.000Z',items:[{lineId:'q',itemId:'FG1',name:'참기름',quantity:2,price:1000}]}],
+ ['issuedStatements','STB','taebaek',{docNo:'B-1',tradeDate:'2026-10-10',type:'명세서',partnerId:'P1',partnerName:'모란식품',orderId:'OB1, OB2',totalSupply:3000,totalTax:0,totalAmount:3000,createdAt:'2026-10-10T01:00:00.000Z',items:[{name:'참기름',qty:3,price:1000,supply:3000,tax:0,total:3000,accountCode:'401',isTaxExempt:true}]}],
  ['orders','O7','taebaek',{partnerId:'P1',partnerName:'모란식품',status:'SHIPPED',deliveryDate:'2026-10-20',createdAt:'2026-10-19T01:00:00.000Z',invoiceType:'C',pallets:[{type:'PL1',quantity:3},{type:'PL1x',quantity:2},{type:'PL1',quantity:1,isExchange:true}],deliveryBoxes:[{itemId:'FG1',quantity:2}],items:[{lineId:'z',itemId:'FG1',name:'참기름',quantity:1,price:1000}]}],
  ['palletTransactions','PT1','taebaek',{palletId:'PL1',partnerId:'P1',type:'out',quantity:5,isTransfer:true,date:'2026-10-01'}],
  ['productionWorkDocuments','taebaek__production-work__2026-10-02','taebaek',{documentDate:'2026-10-02',specialNotes:'이상 없음',preparedByName:'이은경',revision:3}],
@@ -453,7 +456,7 @@ await log('tx-after', `select item_summary, items from erp.tax_invoices where id
 await log('tx-lines2', `select public.tax_invoice_lines($1)->'edited' e`,[ti.id]);
 await log('tx-reset', `select public.save_tax_invoice_items($1, null)`,[ti.id]);
 // ---- voucher edit request ----
-const ve=(await one(`select id from erp.vouchers where status='active' limit 1`)).id;
+const ve=(await one(`select id from erp.vouchers where status='active' and id<>'STB' limit 1`)).id;
 await log('ve-empty', `select public.request_voucher_edit($1,'')`,[ve]);
 await log('ve-ok', `select public.request_voucher_edit($1,'수량 20→18') is not null ok`,[ve]);
 await log('ve-dup', `select public.request_voucher_edit($1,'또')`,[ve]);
@@ -462,7 +465,7 @@ await log('ve-row', `select type, status, reason, voucher_id is not null v from 
 await log('ox-import', `select invoice_type, pallets, delivery_boxes from erp.orders where id='O7'`);
 await log('ox-hist', `select id, qty, partner_id, stock_effect from erp.stock_ledger where source_type='pallet' order by qty, id`);
 await log('ox-out', `select item_id, partner_id, out_qty from erp.pallet_outstanding`);
-const oo=(await one(`select id from erp.orders where shipped_at is null and partner_id is not null limit 1`));
+const oo=(await one(`select id from erp.orders where shipped_at is null and partner_id is not null and id not in ('OB1','OB2') limit 1`));
 out('ox-order', JSON.stringify(oo));
 if (oo) {
   await log('ox-badtype', `select public.set_order_pack($1,'{"invoice_type":"Z"}')`,[oo.id]);
@@ -541,6 +544,7 @@ await log('ds-del-after', `select status, (select count(*) from erp.order_lines 
 await log('ds-del-again', `select public.delete_order($1)`,[ds]);
 await log('ds-chk-deleted', `select public.check_order_line($1,1,true)`,[ds]);
 await log('ds-del-shipped', `select public.delete_order('O1')`);
+await log('bundled-stmt', `select id, voucher_id from erp.orders where id in ('OB1','OB2') order by id`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

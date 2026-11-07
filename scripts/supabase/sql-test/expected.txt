@@ -27,7 +27,7 @@ returned [{"voucher_id":"v-<id>","line_no":1,"qty":"20","supply":"90909","tax":"
 bal1 [{"receivable":"4000"}]
 stock1 [{"qty":"103"}]
 jr [{"account_code":"108","debit":"0","credit":"15000"},{"account_code":"404","debit":"13636","credit":"0"},{"account_code":"255","debit":"1364","credit":"0"}]
-skipped [{"count":0}]
+skipped [{"count":1}]
 open [{"voucher_no":"<오늘6>-001","claim":"104000","settled":"100000","open":"4000"}]
 unship "ERR 거래명세서가 발행된 주문입니다. 전표 화면에서 명세서를 먼저 취소하세요."
 cancelret [{"cancel_return":""}]
@@ -142,7 +142,7 @@ ca0 [{"save_cash_account":"cash-<id>"}]
 cash2 [{"status":"active"},{"status":"canceled"}]
 loan [{"save_loan":"loan-<id>"}]
 loanj [{"account_code":"375","debit":"50000000","credit":"0"},{"account_code":"260","debit":"0","credit":"50000000"}]
-skipped2 [{"count":0}]
+skipped2 [{"count":1}]
 merge [{"merge_items":{"stock_ledger.item_id":1}}]
 merged [{"q":"7.000","a":true}]
 cost [{"item_id":"FG1","type":"FINISHED","cost":"3000","last_buy":null,"computed":null,"missing":"통깨참기름"},{"item_id":"RAW1","type":"RAW","cost":null,"last_buy":"4253.00","computed":"4253.00","missing":null},{"item_id":"WIP1","type":"WIP","cost":null,"last_buy":null,"computed":null,"missing":null}]
@@ -186,7 +186,7 @@ leave [{"request_leave":"leave-<id>"}]
 leaves [{"status":"canceled","days_used":"1"},{"status":"cancel_pending","days_used":"1"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"},{"status":"approved","days_used":"2"}]
 qt [{"save_quality_test":"bzp-<id>"}]
 proj [{"save_project":"proj-<id>"}]
-checks [{"kind":"원가 없는 제품","detail":"볶음참깨 1kg"},{"kind":"원가 없는 제품","detail":"참기름 300ml 박스(10)"},{"kind":"원가 없는 제품","detail":"참기름 18L 캔"}]
+checks [{"kind":"분개 안 되는 전표","detail":"B-1 명세서 2026-10-10: 차변 ≠ 대변"},{"kind":"원가 없는 제품","detail":"볶음참깨 1kg"},{"kind":"원가 없는 제품","detail":"참기름 300ml 박스(10)"},{"kind":"원가 없는 제품","detail":"참기름 18L 캔"}]
 staffdeny "ERR 관리자만 할 수 있는 일입니다."
 staffleave "ERR 내 계정에 직원 카드가 연결돼 있지 않습니다. 관리자에게 연결을 부탁하세요."
 hrec [{"id":"haccp_cleaning:HC1","type":"cleaning","date":"<이달>","rows":{"areaRows":[],"machineRows":[{"machine":"착유기 1호"}]},"meta":{"month":"<이달>"}},{"id":"haccp_sanitation:HS1","type":"sanitation","date":"<이달>-03","rows":[{"note":"","result":"pass","inspector":"이"}],"meta":{"items":[{"item":"바닥","standard":"깨끗"}],"checkDate":"<이달>-03","checkTime":"08:30","createdBy":"이은경"}}]
@@ -205,7 +205,7 @@ me [{"portal_me":{"name":"모란","type":"business","email":"moran@x.com","phone
 items [{"item_id":"FG1","name":"참기름 300ml","type":"FINISHED","unit":"개","price":"5500","tax_exempt":false,"per_box":"20"}]
 order [{"portal_place_order":{"total":66000,"card_no":"ORD-261108-002","order_id":"WEB-<id>","delivery_date":"<이달>-08"}}]
 bad "ERR 주문할 수 없는 품목이 있습니다."
-orders [{"jsonb_array_length":5}]
+orders [{"jsonb_array_length":7}]
 bal [{"portal_balance":"698000"}]
 email [{"portal_login_email":"moran@x.com"}]
 reg-new [{"portal_register":"pending"}]
@@ -346,5 +346,6 @@ ds-del-after [{"status":"CANCELED","chk":0,"h":"true"}]
 ds-del-again "ERR 주문을 찾을 수 없습니다."
 ds-chk-deleted "ERR 삭제한 주문입니다."
 ds-del-shipped "ERR 출고된 주문은 지울 수 없습니다. 출고를 먼저 취소하세요."
+bundled-stmt [{"id":"OB1","voucher_id":"STB"},{"id":"OB2","voucher_id":"STB"}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0

@@ -100,3 +100,9 @@ left join (select order_id, sum(erp.js_round(coalesce(qty, 0) * coalesce(price, 
 \echo '## 13. 미결 명세서 (반제 후 남은 돈) 회사별'
 select company_id as "회사", side as "구분", count(*) filter (where open > 0) as "미결 건수", round(sum(open)) as "미결 합계"
 from erp.open_items group by 1, 2 order by 1, 2;
+
+\echo '## 14. 출고했는데 명세서 안 낸 주문(확인사항) / 묶은 명세서로 이어진 주문'
+select (select count(*) from erp.unbilled_orders) as "확인사항에 뜨는 수",
+       (select count(*) from erp.orders where shipped_at is not null and voucher_id is null and not accounting_excluded) as "출고+명세서 없음(옛 주문 포함)",
+       (select count(distinct o.id) from erp.orders o join raw.docs s on s.collection = 'issuedStatements' and s.id = o.voucher_id
+         where coalesce(s.data->>'orderId', '') ~ '[,[:space:]]') as "묶은 명세서로 이어진 주문";

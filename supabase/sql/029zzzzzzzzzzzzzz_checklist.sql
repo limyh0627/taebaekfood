@@ -68,7 +68,8 @@ create or replace view erp.unbilled_orders as
 select o.id, o.company_id, o.card_no, o.delivery_date, o.partner_id, coalesce(p.name, o.partner_name) partner_name, o.total_amount
 from erp.orders o left join erp.partners p on p.id = o.partner_id
 where o.shipped_at is not null and o.voucher_id is null and not o.accounting_excluded
-  and exists (select 1 from erp.stock_ledger l where l.source_type = 'order' and l.source_id = o.id);
+  -- 새 ERP 출고(재고 원장 '출고' 줄)만. 옛 원장에도 주문 번호가 붙은 줄(원료 사용 등)이 있어 kind까지 본다.
+  and exists (select 1 from erp.stock_ledger l where l.source_type = 'order' and l.source_id = o.id and l.kind = '출고' and l.stock_effect);
 alter view erp.unbilled_orders set (security_invoker = true);
 grant select on erp.unbilled_orders to authenticated;
 
