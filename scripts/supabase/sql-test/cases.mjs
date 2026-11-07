@@ -224,6 +224,7 @@ const oilLot=(await one(`select id from erp.lots where item_id='OIL1'`)).id;
 await log('trace', `select at,kind,qty,note from public.lot_trace($1)`,[lot2]);
 await log('cancel', `select public.cancel_raw($1)`,[use1.id]);
 await log('after', `select item_id,qty from erp.stock_balances where item_id in ('SES','OIL1') order by 1`);
+await log('raw-writer', `select id like 'un%' un, kind, created_by from erp.stock_ledger where source_type='raw' and source_id in ($1,$2) order by un, kind`,[in2.id,use1.id]);
 await log('cancel-in-used', `select public.record_raw($1)`,[JSON.stringify({company_id:'taebaek',item_id:'SES',kind:'사용',qty:120})]);
 await log('cancel-in', `select public.cancel_raw($1)`,[in1.id]);
 await log('notraw', `select public.record_raw($1)`,[JSON.stringify({company_id:'taebaek',item_id:'FG1',kind:'입고',qty:1})]);

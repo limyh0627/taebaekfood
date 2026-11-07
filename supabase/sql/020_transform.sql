@@ -220,7 +220,7 @@ select g.*,
 from src g
 where g.collection = 'rawMaterialLedger';
 
-insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, source_id, reversal_of, effective_date, note)
+insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, source_id, reversal_of, effective_date, note, created_by)
 select g.id, g.company_id, g.data->>'rawItemId',
        case when g.data->>'kind' = 'ledger-consume'
             then coalesce(erp.to_num(g.data->'reportedDeltaKg'), -erp.to_num(g.data->'kg'), 0)
@@ -235,7 +235,8 @@ select g.id, g.company_id, g.data->>'rawItemId',
        erp.to_date(coalesce(g.data->>'effectiveAt', g.data->>'date')),
        case when not g.atomic and g.data->'targetKg' is not null
             then concat_ws(' ', g.data->>'note', '(옛 실사: ' || (g.data->>'targetKg') || 'kg로 맞춤)')
-            else g.data->>'note' end
+            else g.data->>'note' end,
+       nullif(g.data->>'addedBy', '')
 from raw_ledger g
 where exists (select 1 from erp.items i where i.id = g.data->>'rawItemId');
 

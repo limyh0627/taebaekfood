@@ -196,7 +196,9 @@ create table erp.stock_ledger (
   partner_id     text references erp.partners(id),
   reversal_of    text,
   effective_date date,
-  note           text
+  note           text,
+  created_by     text,          -- 작성자 이름(원료 입고·사용 기록 등). 옛 앱 addedBy
+  created_at     timestamptz default now()
 );
 create index stock_ledger_item on erp.stock_ledger (item_id, effective_date);
 

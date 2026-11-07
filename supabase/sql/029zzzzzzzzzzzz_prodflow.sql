@@ -47,6 +47,13 @@ begin
 end $$;
 
 -- 원료 입고·사용 기록. p: {company_id, item_id, kind: '입고'|'사용', qty(kg), lot_id?, partner_id?, date?, note?, press?: bool(기본 true)}
+-- 원료 기록 작성자(이름). 시험 이전 스키마에도 있지만 erp-core만 쓸 때를 위해.
+alter table erp.stock_ledger add column if not exists created_by text;
+alter table erp.stock_ledger add column if not exists created_at timestamptz default now();
+-- 지금 사용자 이름: 직원 이름 → 계정 이메일
+create or replace function erp.my_name(p_company text) returns text language sql stable security definer set search_path = '' as $$
+  select coalesce((select name from public.company_people(p_company) where user_id = auth.uid() limit 1), erp.actor_name()) $$;
+
 create or replace function public.record_raw(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v_company text := p->>'company_id'; v_item text := p->>'item_id'; v_kind text := p->>'kind';
@@ -63,6 +70,7 @@ begin
       raise exception '입고는 거래처(매입처)를 고르세요.';
     end if;
     perform erp.post_stock(v_id || ':1', v_company, i.id, v_qty, '입고', 'raw', v_id, nullif(p->>'partner_id', ''), v_date, v_note);
+    update erp.stock_ledger set created_by = erp.my_name(v_company) where id = v_id || ':1';
     return jsonb_build_object('id', v_id);
   elsif v_kind <> '사용' then raise exception '입고나 사용만 기록합니다.';
   end if;
@@ -70,6 +78,7 @@ begin
     raise exception '고른 로트를 찾을 수 없습니다.';
   end if;
   perform erp.post_stock(v_id || ':1', v_company, i.id, -v_qty, '사용', 'raw', v_id, null, v_date, v_note, null, v_lot);
+  update erp.stock_ledger set created_by = erp.my_name(v_company) where source_type = 'raw' and source_id = v_id;
   if coalesce((p->>'press')::boolean, true) then
     select * into pr from erp.press_rule(i.id);
     if pr.product_id is not null then
@@ -77,6 +86,7 @@ begin
       if v_out > 0 then
         perform erp.post_stock(v_id || ':2', v_company, pr.product_id, v_out, '착유', 'raw', v_id, null, v_date,
                                erp.base_name(i.name) || ' ' || v_qty || 'kg 착유 (수율 ' || round(pr.rate * 100, 1) || '%)');
+        update erp.stock_ledger set created_by = erp.my_name(v_company) where id = v_id || ':2';
         return jsonb_build_object('id', v_id, 'pressed', v_out, 'product', (select name from erp.items where id = pr.product_id), 'rate', pr.rate);
       end if;
     end if;
@@ -99,6 +109,7 @@ begin
     n := n + 1;
     perform erp.post_stock('un' || r.id, r.company_id, r.item_id, -r.qty, r.kind || ' 취소', 'raw', p_id, r.partner_id,
                            (now() at time zone 'Asia/Seoul')::date, null, r.id);
+    update erp.stock_ledger set created_by = erp.my_name(r.company_id) where id = 'un' || r.id;
   end loop;
   if n = 0 then raise exception '취소할 기록이 없습니다.'; end if;
 end $$;
@@ -151,3 +162,4 @@ end $$;
 revoke all on function public.press_rules(text), public.record_raw(jsonb), public.cancel_raw(text), public.raw_daily(text, text, date, date), public.lot_trace(text) from public, anon;
 grant execute on function public.press_rules(text), public.record_raw(jsonb), public.cancel_raw(text), public.raw_daily(text, text, date, date), public.lot_trace(text) to authenticated;
 revoke all on function erp.press_rule(text) from public, anon;
+revoke all on function erp.my_name(text) from public, anon, authenticated;

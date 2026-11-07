@@ -115,6 +115,7 @@ daily [{"day":"<시각>","opening":"150.000","inbound":"0","used":"30.500","corr
 trace [{"at":"<시각>","kind":"입고","qty":"50.000","note":null},{"at":"<시각>","kind":"사용","qty":"-30.500","note":null}]
 cancel [{"cancel_raw":""}]
 after [{"item_id":"OIL1","qty":"0.000"},{"item_id":"SES","qty":"150.000"}]
+raw-writer [{"un":false,"kind":"사용","created_by":"boss"},{"un":false,"kind":"입고","created_by":"boss"},{"un":false,"kind":"착유","created_by":"boss"},{"un":true,"kind":"사용 취소","created_by":"boss"},{"un":true,"kind":"착유 취소","created_by":"boss"}]
 cancel-in-used [{"record_raw":{"id":"raw-<id>","rate":0.48,"pressed":57.6,"product":"통깨참기름/벌크"}}]
 cancel-in "ERR 이 기록으로 들어온 로트를 이미 썼습니다. 쓴 기록을 먼저 취소하거나 실사로 맞추세요."
 notraw "ERR 원료나 벌크 품목만 기록할 수 있습니다."
