@@ -546,6 +546,12 @@ await log('ds-del-again', `select public.delete_order($1)`,[ds]);
 await log('ds-chk-deleted', `select public.check_order_line($1,1,true)`,[ds]);
 await log('ds-del-shipped', `select public.delete_order('O1')`);
 await log('bundled-stmt', `select id, voucher_id from erp.orders where id in ('OB1','OB2') order by id`);
+// 전표 목록: 담당자 이름, 거래내역 요약, 누적잔액, 남은 돈, 증빙
+await log('vlist', `select voucher_no is not null n, kind, writer, summary, has_items, ar_balance, ap_balance, open_amount, open_side, evidence from public.voucher_list('taebaek','2026-01-01','2026-12-31') where status='active' order by kind, voucher_no, id limit 12`);
+const vsale=(await one(`select id from erp.vouchers where kind='매출' and status='active' order by id limit 1`)).id;
+await log('ev-bad', `select public.set_voucher_evidence($1,'간이영수증')`,[vsale]);
+await log('ev-ok', `select public.set_voucher_evidence($1,'세금계산서')`,[vsale]);
+await log('ev-after', `select evidence from erp.vouchers where id=$1`,[vsale]);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
