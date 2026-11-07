@@ -166,6 +166,9 @@ grant select on erp.open_items to authenticated;
 -- ---------- 입금·출금 ----------
 -- p: {company_id, dir: 입금|출금, date, partner_id, cash_account_id, amount, account_code?, note, applies?: [{voucher_id, amount}]}
 -- 계정을 안 주면 입금은 108(외상매출금 회수), 출금은 251(외상매입금 지급). unclassified: true면 계정 없이(회계 미분류).
+-- 결제 방법(기존 앱 지불·수금 처리): 현금·계좌이체·어음·카드·기타
+alter table erp.vouchers add column if not exists pay_method text;
+
 create or replace function public.record_cash(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -197,9 +200,10 @@ begin
   end if;
   v_no := erp.next_no(v_company, v_date, '', 'voucher');
   insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, cash_account_id, account_code, loan_id,
-                            amount, memo, created_by, created_at, legacy_collection)
+                            amount, memo, created_by, created_at, legacy_collection, pay_method)
   values (v_id, v_company, v_no, v_date, v_dir, v_partner, (select name from erp.partners where id = v_partner), v_cash, v_code, v_loan,
-          v_amount, nullif(p->>'note', ''), erp.actor_name(), now(), 'app');
+          v_amount, nullif(p->>'note', ''), erp.actor_name(), now(), 'app',
+          case when p->>'pay_method' in ('현금', '계좌이체', '어음', '카드', '기타') then p->>'pay_method' end);
   insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, side, note)
   values (v_id, 1, 'account', v_amount, v_code, case when v_dir = '입금' then '대변' else '차변' end, nullif(p->>'note', ''));
 

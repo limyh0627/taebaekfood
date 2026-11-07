@@ -355,6 +355,8 @@ ev-ok [{"set_voucher_evidence":""}]
 ev-after [{"evidence":"세금계산서"}]
 adv-j [{"ok":true}]
 adv-bal [{"advance_received":"50000","advance_paid":"0"}]
+paymethod [{"ok":true}]
+paymethod-row [{"pay_method":"어음"}]
 push-bad "ERR 알림 구독 정보가 올바르지 않습니다."
 push-sub [{"save_push_subscription":""}]
 push-mine [{"n":1}]

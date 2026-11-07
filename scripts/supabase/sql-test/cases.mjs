@@ -556,6 +556,8 @@ await log('ev-after', `select evidence from erp.vouchers where id=$1`,[vsale]);
 // 선수금·선급금: 일반전표 259·131 줄에도 거래처가 달려 거래처 잔액에 잡힌다
 await log('adv-j', `select public.save_journal($1) is not null ok`,[JSON.stringify({company_id:'taebaek',kind:'비용',date:'2026-11-05',partner_id:'P1',memo:'선수금 받음',lines:[{account_code:'103',side:'차변',amount:50000},{account_code:'259',side:'대변',amount:50000}]})]);
 await log('adv-bal', `select advance_received, advance_paid from erp.partner_balances where partner_id='P1'`);
+await log('paymethod', `select (public.record_cash($1)->>'voucher_id') is not null ok`,[JSON.stringify({company_id:'taebaek',dir:'입금',date:'2026-11-05',partner_id:'P1',amount:1000,pay_method:'어음',note:'pm'})]);
+await log('paymethod-row', `select pay_method from erp.vouchers where memo='pm'`);
 // 휴대폰 푸시: 구독 넣기 → 채팅 알림이 생기면 받는 사람 구독이 push_job에 → 끊긴 구독 지우기
 await db.exec(`select set_config('t.uid','${U2}',false)`);
 await log('push-bad', `select public.save_push_subscription('{"endpoint":"http://x"}')`);
