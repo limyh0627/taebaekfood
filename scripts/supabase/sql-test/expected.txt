@@ -405,5 +405,9 @@ jt-del [{"delete_journal_template":""}]
 jt-left [{"count":0}]
 svc-acc [{"type":"SERVICE","account_code":"824","acc":"824"}]
 svc-rcv [{"received_qty":"5","bal":0,"eff":false,"vl":0}]
+menus-set [{"set_member_menus":""}]
+menus-list [{"login":"jung","menus":["/orders","/stock"]}]
+menus-reset [{"set_member_menus":""}]
+menus-mine [{"role":"admin","menus":null}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0

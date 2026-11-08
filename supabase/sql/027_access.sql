@@ -28,11 +28,16 @@ revoke all on function app.my_company_ids(), app.my_admin_company_ids() from pub
 grant usage on schema app to authenticated;
 grant execute on function app.my_company_ids(), app.my_admin_company_ids() to authenticated;
 
+-- 메뉴 권한(2026-11-08): 직원마다 볼 수 있는 메뉴(경로 목록). null이면 기본값(관리자 전부, 직원 기본 묶음 — 화면 lib/menus.ts).
+-- 화면에서 메뉴를 숨기는 것이다. 데이터 권한(관리자만 되는 함수·급여)은 role 그대로.
+alter table app.memberships add column if not exists menus text[];
+
 -- 화면이 부르는 함수: 내가 속한 회사 목록.
+drop function if exists public.my_companies();
 create or replace function public.my_companies()
-returns table (company_id text, company_name text, role text)
+returns table (company_id text, company_name text, role text, menus text[])
 language sql stable security definer set search_path = '' as $$
-  select m.company_id, coalesce(c.name, m.company_id), m.role
+  select m.company_id, coalesce(c.name, m.company_id), m.role, m.menus
   from app.memberships m left join erp.companies c on c.id = m.company_id
   where m.user_id = auth.uid()
   order by 2

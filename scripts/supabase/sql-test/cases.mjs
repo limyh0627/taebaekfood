@@ -644,6 +644,11 @@ await log('svc-acc', `select type, account_code, erp.purchase_account('P1', $1) 
 const glove=(await one(`select public.save_item('{"company_id":"taebaek","name":"니트릴 장갑","type":"SERVICE","unit":"박스"}') v`)).v;
 const gq=(await one(`select public.quick_receive($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'S1',date:'2026-11-08',lines:[{item_id:glove,qty:5,price:12000}]})])).v;
 await log('svc-rcv', `select l.received_qty, (select count(*) from erp.stock_balances where item_id=$1) bal, (select bool_or(stock_effect) from erp.stock_ledger where item_id=$1) eff, (select count(*) from erp.voucher_lines where item_id=$1) vl from erp.purchase_order_lines l where l.po_id=$2`,[glove, gq.po_id]);
+// 메뉴 권한: 관리자가 직원 메뉴를 바꾸고, 목록·내 회사에 보이고, null이면 기본값
+await log('menus-set', `select public.set_member_menus('taebaek', $1, array['/orders','/stock'])`,[U2]);
+await log('menus-list', `select login, menus from public.company_members('taebaek') where login='jung'`);
+await log('menus-reset', `select public.set_member_menus('taebaek', $1, null)`,[U2]);
+await log('menus-mine', `select role, menus from public.my_companies()`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

@@ -7,13 +7,14 @@
 --   가입만으로는 아무것도 못 본다 — 관리자가 아래 함수로 회사에 붙여야 데이터가 보인다.
 
 -- 내 회사의 계정 목록(관리자만)
+drop function if exists public.company_members(text);
 create or replace function public.company_members(p_company text)
-returns table (user_id uuid, login text, role text, employee_id text, employee_name text, created_at timestamptz, last_sign_in_at timestamptz)
+returns table (user_id uuid, login text, role text, employee_id text, employee_name text, created_at timestamptz, last_sign_in_at timestamptz, menus text[])
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if not (p_company = any (app.my_admin_company_ids())) then raise exception '관리자만 볼 수 있습니다.' using errcode = '42501'; end if;
   return query
-  select m.user_id, replace(u.email, '@erp.local', ''), m.role, e.id, e.name, m.created_at, u.last_sign_in_at
+  select m.user_id, replace(u.email, '@erp.local', ''), m.role, e.id, e.name, m.created_at, u.last_sign_in_at, m.menus
   from app.memberships m join auth.users u on u.id = m.user_id
   left join erp.employees e on e.auth_uid = m.user_id::text and e.company_id = m.company_id
   where m.company_id = p_company
@@ -98,3 +99,14 @@ revoke all on function public.company_members(text), public.set_member(text, uui
   public.remove_member(text, uuid), public.find_account(text) from public, anon;
 grant execute on function public.company_members(text), public.set_member(text, uuid, text, text),
   public.remove_member(text, uuid), public.find_account(text) to authenticated;
+
+-- 메뉴 권한 바꾸기(관리자만). p_menus null = 기본값으로 되돌림.
+create or replace function public.set_member_menus(p_company text, p_user_id uuid, p_menus text[]) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not (p_company = any (app.my_admin_company_ids())) then raise exception '관리자만 할 수 있습니다.' using errcode = '42501'; end if;
+  update app.memberships set menus = p_menus where user_id = p_user_id and company_id = p_company;
+  if not found then raise exception '이 회사 계정이 아닙니다.'; end if;
+end $$;
+revoke all on function public.set_member_menus(text, uuid, text[]) from public, anon;
+grant execute on function public.set_member_menus(text, uuid, text[]) to authenticated;
