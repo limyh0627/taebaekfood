@@ -452,6 +452,12 @@ await log('lv-after2', `select status from erp.leave_requests where id='LV2'`);
 // ---- taxdoc ----
 await log('tx-vouchers', `select kind, to_char(date,'YYYY-MM') m, count(*) from erp.vouchers where status='active' and kind='매출' group by 1,2`);
 const txm=(await one(`select to_char(max(date),'YYYY-MM') v from erp.vouchers where status='active' and kind='매출' and partner_id is not null`)).v;
+await log('tx-cand0', `select count(*) n, count(*) filter (where (tax_supply<>0 and not tax_bound) or (exempt<>0 and not exempt_bound)) open from public.tax_invoice_candidates('taebaek',$1,'매출')`,[txm]);
+const txc=(await one(`select voucher_id from public.tax_invoice_candidates('taebaek',$1,'매출') where (tax_supply<>0 and not tax_bound) or (exempt<>0 and not exempt_bound) limit 1`,[txm]));
+await log('tx-for-none', `select public.build_tax_invoices_for('taebaek',$1,'매출','{}')`,[txm]);
+await log('tx-for', `select public.build_tax_invoices_for('taebaek',$1,'매출',array[$2])`,[txm, txc?.voucher_id]);
+await log('tx-for-again', `select public.build_tax_invoices_for('taebaek',$1,'매출',array[$2])`,[txm, txc?.voucher_id]);
+await log('tx-cand1', `select bool_or(tax_bound or exempt_bound) some_bound from public.tax_invoice_candidates('taebaek',$1,'매출') where voucher_id=$2`,[txm, txc?.voucher_id]);
 await log('tx-build', `select public.build_tax_invoices('taebaek',$1,'매출')`,[txm]);
 const ti=(await one(`select id, supply, tax from erp.tax_invoices order by supply desc limit 1`));
 await log('tx-lines', `select public.tax_invoice_lines($1)`,[ti.id]);

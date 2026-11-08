@@ -281,6 +281,11 @@ lv-notmine "ERR 내 휴가만 바꿔 달라고 할 수 있습니다."
 lv-decide3 [{"decide_leave_change":""}]
 lv-after2 [{"status":"canceled"}]
 tx-vouchers [{"kind":"매출","m":"<이달>","count":2}]
+tx-cand0 [{"n":2,"open":2}]
+tx-for-none "ERR 묶을 명세서를 고르세요."
+tx-for [{"build_tax_invoices_for":1}]
+tx-for-again "ERR 고른 명세서가 이미 다 묶였거나 금액이 없습니다."
+tx-cand1 [{"some_bound":true}]
 tx-build [{"build_tax_invoices":1}]
 tx-lines [{"tax_invoice_lines":{"items":[{"qty":360,"tax":0,"name":"참깨","spec":"","supply":1531080}],"edited":false}}]
 tx-bad [{"save_tax_invoice_items":""}]
