@@ -100,7 +100,7 @@ begin
         perform erp.plan_post(o.company_id, v_run, v_date, coalesce(o.card_no, o.id));
       end if;
     end if;
-    update erp.order_lines set checked_at = now(), checked_by = erp.actor_name(), made_on = coalesce(p_made_on, made_on), run_id = v_run
+    update erp.order_lines set checked_at = now(), checked_by = erp.actor_name(), made_on = coalesce(p_made_on, made_on, v_date), run_id = v_run   -- 제조일이 비면 그날로(소비기한 자동)
     where order_id = o.id and line_no = l.line_no;
   else
     if l.checked_at is null then return jsonb_build_object('status', o.status); end if;

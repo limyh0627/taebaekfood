@@ -1,7 +1,7 @@
 -- erp-core 저장소 supabase/workdoc.sql 복사본. 고칠 때는 erp-core에서 고치고 여기로 복사한다.
 -- 생산작업일지(편집) — 기존 앱 '생산작업일지'와 같게(2026-11-05). orderextra.sql 뒤에 돈다.
 --  하루 한 장. 처음 열면 그날 생산 실적(제품·수량)과 거기 들어간 원료·로트로 줄을 채워 보여 주고,
---  사람이 제조번호·유통기한·작업자·비고를 고쳐 저장한다. 저장한 뒤엔 저장한 줄이 기준(생산을 더 하면 '실적에서 다시 채우기').
+--  사람이 제조번호·소비기한·작업자·비고를 고쳐 저장한다. 저장한 뒤엔 저장한 줄이 기준(생산을 더 하면 '실적에서 다시 채우기').
 
 create table if not exists erp.work_documents (
   id            text primary key,           -- 회사:날짜
@@ -73,9 +73,12 @@ end $$;
 create or replace function erp.work_lines_from_runs(p_company text, p_date date) returns jsonb
 language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(x order by x->>'item_name', x->>'raw_name'), '[]') from (
-    select jsonb_build_object('manufactured_date', r.run_date, 'item_id', r.item_id, 'item_name', i.name, 'spec', i.spec, 'qty', r.qty, 'unit', i.unit,
+    -- 소비기한: 주문 카드의 제조일(없으면 생산일) + 365일 — 주문 카드 소비기한과 같은 셈(2026-11-08)
+    select jsonb_build_object('manufactured_date', coalesce(ol.made_on::date, r.run_date), 'item_id', r.item_id, 'item_name', i.name, 'spec', i.spec, 'qty', r.qty, 'unit', i.unit,
+             'expiry_date', coalesce(ol.made_on::date, r.run_date) + 365,
              'raw_item_id', m.item_id, 'raw_name', m.name, 'raw_used_kg', m.used, 'raw_lot_no', m.lots, 'source_kind', 'production', 'source_id', r.id) x
     from erp.production_runs r join erp.items i on i.id = r.item_id
+    left join erp.order_lines ol on ol.order_id = r.order_id and ol.line_no = r.line_no
     left join lateral (
       select l.item_id, ri.name, -sum(l.qty) used,
              (select string_agg(distinct t.lot_no, ', ') from erp.lot_moves lm join erp.lots t on t.id = lm.lot_id
