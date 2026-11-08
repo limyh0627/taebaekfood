@@ -677,6 +677,16 @@ await log('cut-pick', `select public.set_migration_pick('taebaek','unbilled',arr
 await log('cut-orders', `select count(*) from erp.orders where company_id='taebaek' and accounting_excluded_reason like '이관 안 함%'`);
 // 마이페이지 내 급여: 직원 카드가 연결된 계정만, 급여 전표까지 낸 달만
 await log('myslip', `select count(*) from public.my_payslips('taebaek')`);
+// 승인 전 내 휴가 고치기: 대기면 됨, 승인 뒤·남의 것은 막힘
+await db.exec(`update erp.employees set auth_uid='${U2}' where id = (select employee_id from app.member_employees where user_id='${U2}' limit 1); select set_config('t.uid','${U2}',false)`);
+const myLv=(await one(`select public.request_leave('{"company_id":"taebaek","type":"연차","start_date":"2026-12-01","end_date":"2026-12-01","days":1}') v`)).v;
+await log('lv-edit', `select public.update_my_leave($1, '{"type":"오전반차","start_date":"2026-12-02","end_date":"2026-12-02","days":0.5,"reason":"병원"}')`,[myLv]);
+await log('lv-after', `select type, start_date, days_used, reason, status from erp.leave_requests where id=$1`,[myLv]);
+await db.exec(`select set_config('t.uid','${U}',false)`);
+await log('lv-other', `select public.update_my_leave($1, '{"start_date":"2026-12-03","end_date":"2026-12-03","days":1}')`,[myLv]);
+await db.exec(`select public.set_leave_status('${myLv}','approved'); select set_config('t.uid','${U2}',false)`);
+await log('lv-approved', `select public.update_my_leave($1, '{"start_date":"2026-12-03","end_date":"2026-12-03","days":1}')`,[myLv]);
+await db.exec(`select set_config('t.uid','${U}',false)`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

@@ -419,5 +419,9 @@ cut-list [{"kind":"order","ref_id":"OLD1","summary":"참기름 5","amount":"5000
 cut-pick [{"set_migration_pick":1}]
 cut-orders [{"count":1}]
 myslip [{"count":0}]
+lv-edit [{"update_my_leave":""}]
+lv-after [{"type":"오전반차","start_date":"<시각>","days_used":"0.5","reason":"병원","status":"pending"}]
+lv-other "ERR 내 휴가만 고칠 수 있습니다."
+lv-approved "ERR 승인 전(대기) 신청만 고칠 수 있습니다. 승인된 휴가는 변경 요청을 하세요."
 030_checks.sql errors 0
 031_checks_more.sql errors 0

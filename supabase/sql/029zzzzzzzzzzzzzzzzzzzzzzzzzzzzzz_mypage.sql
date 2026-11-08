@@ -19,3 +19,22 @@ begin
 end $$;
 revoke all on function public.my_payslips(text) from public, anon;
 grant execute on function public.my_payslips(text) to authenticated;
+
+-- 승인 전(대기) 내 휴가 고치기(2026-11-08). 종류·날짜·일수·사유. 승인된 것은 request_leave_change(변경 요청)로.
+create or replace function public.update_my_leave(p_id text, p jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare r erp.leave_requests;
+begin
+  select * into r from erp.leave_requests where id = p_id for update;
+  if not found then raise exception '휴가 신청을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(r.company_id);
+  if r.employee_id is distinct from erp.my_employee(r.company_id) then raise exception '내 휴가만 고칠 수 있습니다.'; end if;
+  if r.status <> 'pending' then raise exception '승인 전(대기) 신청만 고칠 수 있습니다. 승인된 휴가는 변경 요청을 하세요.'; end if;
+  if (p->>'start_date') is null or (p->>'end_date')::date < (p->>'start_date')::date then raise exception '날짜를 확인하세요.'; end if;
+  if coalesce((p->>'days')::numeric, 0) <= 0 then raise exception '쓰는 날 수를 넣으세요.'; end if;
+  update erp.leave_requests set type = coalesce(nullif(p->>'type', ''), type), start_date = (p->>'start_date')::date, end_date = (p->>'end_date')::date,
+         days_used = (p->>'days')::numeric, reason = nullif(trim(coalesce(p->>'reason', '')), '')
+  where id = p_id;
+end $$;
+revoke all on function public.update_my_leave(text, jsonb) from public, anon;
+grant execute on function public.update_my_leave(text, jsonb) to authenticated;
