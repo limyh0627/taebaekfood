@@ -180,7 +180,6 @@ begin
   select * into v from erp.vouchers where id = p_voucher_id for update;
   if not found or v.kind <> '매입' or v.return_of is not null then raise exception '매입전표가 아닙니다.'; end if;
   perform erp.assert_member(v.company_id);
-  if v.legacy_collection <> 'app' then raise exception '옛 앱의 전표는 여기서 취소할 수 없습니다.'; end if;
   if v.status <> 'active' then raise exception '이미 취소된 전표입니다.'; end if;
   if exists (select 1 from erp.tax_invoice_vouchers tv join erp.tax_invoices t on t.id = tv.invoice_id where tv.voucher_id = v.id and t.status <> '취소') then
     raise exception '세금계산서에 묶인 전표입니다. 세금계산서를 먼저 취소하세요.';

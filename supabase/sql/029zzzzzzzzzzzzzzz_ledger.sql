@@ -178,3 +178,46 @@ revoke all on function public.save_journal(jsonb), public.cash_book(text, text, 
   public.partner_ledger(text, text, date, date), public.trial_balance(text, date, date), public.balance_sheet(text, date) from public, anon;
 grant execute on function public.save_journal(jsonb), public.cash_book(text, text, date, date), public.adjust_cash_balance(jsonb),
   public.partner_ledger(text, text, date, date), public.trial_balance(text, date, date), public.balance_sheet(text, date) to authenticated;
+
+
+-- 일반·대체 전표 바로 고치기(2026-11-09). p: {voucher_id, date, memo, partner_id, cash_account_id, lines: [{account_code, side, amount, note}]}
+--  저장 규칙은 save_journal과 같다(차변 = 대변, 외상 계정·상계는 거래처). 102·103 줄이 있으면 계좌(없으면 메인통장).
+create or replace function public.update_journal_voucher(p jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v erp.vouchers; v_dr numeric; v_cr numeric; v_bad text; v_partner text; v_cash text;
+begin
+  select * into v from erp.vouchers where id = p->>'voucher_id' for update;
+  if not found or v.kind not in ('비용', '대체') then raise exception '일반·대체 전표가 아닙니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  if v.status <> 'active' then raise exception '취소된 전표입니다.'; end if;
+  if jsonb_typeof(p->'lines') <> 'array' or jsonb_array_length(p->'lines') < 2 then raise exception '줄이 두 개 이상 있어야 합니다.'; end if;
+  select string_agg(distinct coalesce(l->>'account_code', '(빈칸)'), ', ') into v_bad from jsonb_array_elements(p->'lines') l
+  where not exists (select 1 from erp.accounts a where a.company_id = v.company_id and a.code = l->>'account_code');
+  if v_bad is not null then raise exception '없는 계정입니다: %', v_bad; end if;
+  if exists (select 1 from jsonb_array_elements(p->'lines') l where l->>'side' not in ('차변', '대변')
+             or coalesce((l->>'amount')::numeric, 0) <= 0 or (l->>'amount')::numeric <> trunc((l->>'amount')::numeric)) then
+    raise exception '줄마다 차변/대변과 0보다 큰 원 단위 금액을 넣으세요.';
+  end if;
+  select sum(case when l->>'side' = '차변' then (l->>'amount')::numeric else 0 end), sum(case when l->>'side' = '대변' then (l->>'amount')::numeric else 0 end)
+  into v_dr, v_cr from jsonb_array_elements(p->'lines') l;
+  if v_dr <> v_cr then raise exception '차변(%)과 대변(%)이 같아야 합니다.', v_dr, v_cr; end if;
+  v_partner := nullif(p->>'partner_id', '');
+  if v_partner is not null and not exists (select 1 from erp.partners where id = v_partner and company_id = v.company_id) then raise exception '거래처를 찾을 수 없습니다.'; end if;
+  if v_partner is null and (v.kind = '대체' or exists (select 1 from jsonb_array_elements(p->'lines') l where l->>'account_code' in ('108', '251', '253'))) then
+    raise exception '외상 계정(108·251·253)이나 상계는 거래처가 있어야 합니다.';
+  end if;
+  if exists (select 1 from jsonb_array_elements(p->'lines') l where l->>'account_code' in ('102', '103')) then
+    v_cash := coalesce(nullif(p->>'cash_account_id', ''), v.cash_account_id,
+                       (select id from erp.cash_accounts where company_id = v.company_id and active and name like '%메인%' order by name limit 1));
+  end if;
+  update erp.vouchers set date = coalesce(nullif(p->>'date', '')::date, date), memo = nullif(trim(coalesce(p->>'memo', '')), ''), amount = v_dr,
+         partner_id = v_partner, partner_name = (select name from erp.partners where id = v_partner), cash_account_id = v_cash
+  where id = v.id;
+  delete from erp.voucher_lines where voucher_id = v.id;
+  insert into erp.voucher_lines (voucher_id, line_no, line_kind, name, amount, account_code, side, note)
+  select v.id, ord::int, 'account', coalesce(nullif(l->>'note', ''), erp.account_name(v.company_id, l->>'account_code')), (l->>'amount')::numeric,
+         l->>'account_code', l->>'side', nullif(l->>'note', '')
+  from jsonb_array_elements(p->'lines') with ordinality x(l, ord);
+end $$;
+revoke all on function public.update_journal_voucher(jsonb) from public, anon;
+grant execute on function public.update_journal_voucher(jsonb) to authenticated;

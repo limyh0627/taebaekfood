@@ -644,6 +644,14 @@ await log('adv-j', `select public.save_journal($1) is not null ok`,[JSON.stringi
 await log('adv-bal', `select advance_received, advance_paid from erp.partner_balances where partner_id='P1'`);
 await log('paymethod', `select (public.record_cash($1)->>'voucher_id') is not null ok`,[JSON.stringify({company_id:'taebaek',dir:'입금',date:'2026-11-05',partner_id:'P1',amount:1000,pay_method:'어음',note:'pm'})]);
 await log('paymethod-row', `select pay_method from erp.vouchers where memo='pm'`);
+// 입출금·일반전표 바로 고치기(2026-11-09)
+const pmv=(await one(`select id from erp.vouchers where memo='pm' limit 1`)).id;
+await log('cedit', `select public.update_cash_voucher($1)`,[JSON.stringify({voucher_id:pmv,amount:1500,date:'2026-11-06',memo:'pm2'})]);
+await log('cedit-after', `select v.amount, v.memo, l.amount la from erp.vouchers v join erp.voucher_lines l on l.voucher_id=v.id where v.id=$1`,[pmv]);
+const jv=(await one(`select public.save_journal($1) r`,[JSON.stringify({company_id:'taebaek',date:'2026-11-05',memo:'jv',lines:[{account_code:'811',side:'차변',amount:1000},{account_code:'103',side:'대변',amount:1000}]})])).r.voucher_id;
+await log('jedit', `select public.update_journal_voucher($1)`,[JSON.stringify({voucher_id:jv,date:'2026-11-07',memo:'jv2',lines:[{account_code:'811',side:'차변',amount:1200},{account_code:'103',side:'대변',amount:1200}]})]);
+await log('jedit-bad', `select public.update_journal_voucher($1)`,[JSON.stringify({voucher_id:jv,lines:[{account_code:'811',side:'차변',amount:1200},{account_code:'103',side:'대변',amount:1000}]})]);
+await log('jedit-after', `select v.amount, v.memo, json_agg(l.account_code||l.side||l.amount order by l.line_no) from erp.vouchers v join erp.voucher_lines l on l.voucher_id=v.id where v.id=$1 group by v.id`,[jv]);
 // 월말 재고 조정(기존 앱 journalizeInventory): 기말재고 증감만큼 146 ↔ 500
 await log('inv-base', `select coalesce(sum(debit-credit),0) base from erp.journal_lines where account_code='146' and voucher_id not like 'inv-adj-%'`);
 await db.exec(`insert into erp.inventory_snapshots (id, company_id, year_month, value) values ('inv-snap-2026-09','taebaek','2026-09',1000000),('inv-snap-2026-10','taebaek','2026-10',700000)`);

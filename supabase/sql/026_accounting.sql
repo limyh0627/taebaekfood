@@ -293,7 +293,8 @@ begin
   select * into v from erp.vouchers where id = p_voucher_id for update;
   if not found then raise exception '전표를 찾을 수 없습니다.'; end if;
   perform erp.assert_member(v.company_id);
-  if v.legacy_collection <> 'app' then raise exception '옛 앱의 전표는 여기서 취소할 수 없습니다.'; end if;
+  -- 옛 앱 전표도 취소할 수 있다(옛 앱을 안 쓰므로, 2026-11-09). 이관 전 보관(archived) 전표는 status가 달라 아래에서 막힌다.
+  if v.status = 'archived' then raise exception '이관 전 보관 전표입니다.'; end if;
   if v.kind not in ('입금', '출금', '비용', '대체') then raise exception '매출·매입 전표는 전표 화면의 전표 취소(또는 반품 취소)로 취소하세요.'; end if;
   if v.status = 'canceled' then raise exception '이미 취소된 전표입니다.'; end if;
   update erp.vouchers set status = 'canceled' where id = v.id;
@@ -330,3 +331,43 @@ revoke all on function public.record_cash(jsonb), public.cancel_voucher(text), p
 revoke all on function public.save_inventory_snapshot(text, text), public.delete_inventory_snapshot(text, text) from public, anon;
 grant execute on function public.save_inventory_snapshot(text, text), public.delete_inventory_snapshot(text, text) to authenticated;
 grant execute on function public.record_cash(jsonb), public.cancel_voucher(text), public.set_voucher_account(text, text) to authenticated;
+
+
+-- 입금·출금 전표 바로 고치기(2026-11-09). p: {voucher_id, date, amount, partner_id, account_code, cash_account_id, memo, pay_method}
+--  계정 줄이 하나인 전표만 금액·계정을 바꾼다(대출 원금+이자처럼 줄이 여럿이면 날짜·거래처·통장·적요만).
+--  반제(이 돈으로 정리한 명세서)가 걸려 있으면 거래처는 못 바꾸고, 금액은 반제 합계 밑으로 못 내린다.
+create or replace function public.update_cash_voucher(p jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v erp.vouchers; n int; v_amount numeric; v_code text; v_partner text; v_cash text; v_applied numeric;
+begin
+  select * into v from erp.vouchers where id = p->>'voucher_id' for update;
+  if not found or v.kind not in ('입금', '출금') then raise exception '입금·출금 전표가 아닙니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  if v.status <> 'active' then raise exception '취소된 전표입니다.'; end if;
+  select count(*) into n from erp.voucher_lines where voucher_id = v.id;
+  v_partner := case when p ? 'partner_id' then nullif(p->>'partner_id', '') else v.partner_id end;
+  v_cash := case when p ? 'cash_account_id' then nullif(p->>'cash_account_id', '') else v.cash_account_id end;
+  v_amount := coalesce(nullif(p->>'amount', '')::numeric, v.amount);
+  v_code := case when p ? 'account_code' then nullif(p->>'account_code', '') else v.account_code end;
+  if v_partner is not null and not exists (select 1 from erp.partners where id = v_partner and company_id = v.company_id) then raise exception '거래처를 찾을 수 없습니다.'; end if;
+  if v_cash is not null and not exists (select 1 from erp.cash_accounts where id = v_cash and company_id = v.company_id) then raise exception '통장을 찾을 수 없습니다.'; end if;
+  select coalesce(sum(amount), 0) into v_applied from erp.voucher_applies where voucher_id = v.id;
+  if v_applied > 0 and v_partner is distinct from v.partner_id then raise exception '이 돈으로 정리한 명세서가 있어 거래처를 바꿀 수 없습니다.'; end if;
+  if n > 1 and (v_amount <> v.amount or v_code is distinct from v.account_code) then raise exception '줄이 여럿인 전표(원금+이자 등)는 금액·계정을 못 고칩니다. 취소하고 다시 넣으세요.'; end if;
+  if v_amount <= 0 or v_amount <> trunc(v_amount) then raise exception '금액은 0보다 큰 원 단위여야 합니다.'; end if;
+  if v_amount < v_applied then raise exception '이 돈으로 정리한 명세서 합계(%)보다 작게 못 고칩니다.', v_applied; end if;
+  if v_code is not null and not exists (select 1 from erp.accounts where company_id = v.company_id and code = v_code) then raise exception '없는 계정입니다: %', v_code; end if;
+  if v_code in ('108', '251', '253') and v_partner is null then raise exception '외상 계정(108·251·253)은 거래처가 있어야 합니다.'; end if;
+  update erp.vouchers set date = coalesce(nullif(p->>'date', '')::date, date), amount = v_amount, account_code = v_code,
+         partner_id = v_partner, partner_name = (select name from erp.partners where id = v_partner), cash_account_id = v_cash,
+         memo = case when p ? 'memo' then nullif(trim(coalesce(p->>'memo', '')), '') else memo end,
+         pay_method = case when p->>'pay_method' in ('현금', '계좌이체', '어음', '카드', '기타') then p->>'pay_method' else pay_method end
+  where id = v.id;
+  if n <= 1 then
+    delete from erp.voucher_lines where voucher_id = v.id;
+    insert into erp.voucher_lines (voucher_id, line_no, line_kind, amount, account_code, side, note)
+    values (v.id, 1, 'account', v_amount, v_code, case when v.kind = '입금' then '대변' else '차변' end, nullif(trim(coalesce(p->>'memo', v.memo)), ''));
+  end if;
+end $$;
+revoke all on function public.update_cash_voucher(jsonb) from public, anon;
+grant execute on function public.update_cash_voucher(jsonb) to authenticated;
