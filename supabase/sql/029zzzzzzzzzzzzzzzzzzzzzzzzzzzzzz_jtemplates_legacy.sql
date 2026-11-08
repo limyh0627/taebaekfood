@@ -3,8 +3,8 @@
 --  줄 만들기: 분개 줄(transferLines)이 있으면 그대로, 없으면 방향대로
 --   출금 = 차변 계정 / 대변 103 보통예금, 입금 = 차변 103 / 대변 계정, 대체 = 차변 계정 / 대변 253 미지급금. 금액은 옛 금액(0이면 빈칸).
 --  같은 회사에 같은 이름의 템플릿이 이미 있으면 건너뛴다. 다시 돌려도 같다.
-insert into erp.journal_templates (id, company_id, name, kind, partner_id, memo, lines, created_by)
-select 'jt-' || t.id, t.company_id, t.name, '비용', t.partner_id, t.name,
+insert into erp.journal_templates (id, company_id, name, kind, partner_id, memo, category, lines, created_by)
+select 'jt-' || t.id, t.company_id, t.name, '비용', t.partner_id, t.name, erp.guess_template_category(t.name),
   case
     when jsonb_typeof(t.lines) = 'array' and jsonb_array_length(t.lines) > 0 then
       (select jsonb_agg(jsonb_build_object('account_code', coalesce(l->>'accountCode', ''), 'side', coalesce(l->>'side', '차변'),
