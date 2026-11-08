@@ -79,6 +79,31 @@ begin
   order by v.date desc, v.created_at desc nulls last, v.id desc;
 end $$;
 
+-- 거래명세서 인쇄 아래 칸(기존 앱과 같음): 전일미수(미지급) · 금일판매(매입) · 금일입금(지급) · 미수(미지급)잔액
+--  전일 = 그 날짜 전까지 + 같은 날 먼저 낸 명세서, 금일 거래 = 이 명세서, 금일 입금 = 같은 날 받은(낸) 돈.
+create or replace function public.voucher_print_balance(p_id text) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare v erp.vouchers; ar boolean; prev numeric; paid numeric;
+begin
+  select * into v from erp.vouchers where id = p_id;
+  if not found then raise exception '전표를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  ar := v.kind = '매출';
+  select coalesce(sum(case when ar then j.debit - j.credit else j.credit - j.debit end), 0) into prev
+  from erp.journal_lines j left join erp.vouchers x on x.id = j.voucher_id
+  where j.company_id = v.company_id and j.partner_id = v.partner_id
+    and j.account_code = any (case when ar then array['108'] else array['251', '253'] end)
+    and j.voucher_id <> v.id
+    and (j.date < v.date or (j.date = v.date and x.kind in ('매출', '매입') and x.created_at < v.created_at));
+  select coalesce(sum(case when ar then j.credit - j.debit else j.debit - j.credit end), 0) into paid
+  from erp.journal_lines j join erp.vouchers x on x.id = j.voucher_id
+  where j.company_id = v.company_id and j.partner_id = v.partner_id and j.date = v.date and x.kind in ('입금', '출금')
+    and j.account_code = any (case when ar then array['108'] else array['251', '253'] end);
+  return jsonb_build_object('previous', prev, 'trade', coalesce(v.amount, 0), 'received', paid, 'closing', prev + coalesce(v.amount, 0) - paid);
+end $$;
+revoke all on function public.voucher_print_balance(text) from public, anon;
+grant execute on function public.voucher_print_balance(text) to authenticated;
+
 -- 빠른 추가 항목(기존 앱 '빠른 비용': 택배비·상차비…) — voucher_templates kind='expense-preset'. 이름·단가(세금 포함)·과세/면세·계정.
 create or replace function public.save_line_preset(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$

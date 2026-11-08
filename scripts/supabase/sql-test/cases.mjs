@@ -534,6 +534,7 @@ await db.query(`select public.cancel_sales_voucher($1)`,[mv.voucher_id]);
 // 화면에서 고친 줄 그대로(lines): 품목·규격·면세·계정
 const lv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo2],lines:[{item_id:'FG1',name:'참기름 300ml',spec:'300ml',qty:2,price:5500,tax_exempt:false},{name:'택배비',qty:1,price:4000,tax_exempt:true,account_code:'404'}]})])).v;
 await log('vlines', `select name, spec, qty, supply, tax, amount, account_code, tax_exempt from erp.voucher_lines where voucher_id=$1 order by line_no`,[lv.voucher_id]);
+await log('print-bal', `select public.voucher_print_balance($1)`,[lv.voucher_id]);
 await db.query(`select public.cancel_sales_voucher($1)`,[lv.voucher_id]);
 const pr=(await one(`select public.save_line_preset('{"company_id":"taebaek","name":"택배비","amount":4000,"tax":"과세"}') v`)).v;
 await log('preset', `select name, amount, note from erp.voucher_templates where id=$1`,[pr]);
