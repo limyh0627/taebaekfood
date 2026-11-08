@@ -1,4 +1,5 @@
 -- 기준정보(품목·BOM·거래처·거래처별 단가)와 주문 작업 표시. orders.sql 뒤에 돈다.
+-- 기준정보(품목·BOM·거래처·거래처별 단가)와 주문 작업 표시. orders.sql 뒤에 돈다.
 -- 모두 소속 회사 직원만. 지우지 않고 '안 씀(archived)'으로 숨긴다 — 옛 주문·전표가 가리키고 있을 수 있다.
 
 -- ---------- 품목 ----------
@@ -117,7 +118,7 @@ begin
   perform erp.assert_member(v_company);
   if coalesce(trim(p->>'name'), '') = '' then raise exception '거래처 이름을 넣으세요.'; end if;
   if coalesce(p->>'partner_type', '') not in ('매출처', '매입처', '매출+매입처', '금융기관') then raise exception '거래처 구분을 고르세요.'; end if;
-  if coalesce(p->>'channel', '') not in ('', '일반', '택배', '스마트스토어') then raise exception '판매 채널은 일반·택배·스마트스토어입니다.'; end if;
+  if coalesce(p->>'channel', '') not in ('', '일반', '스마트스토어') then raise exception '판매 채널은 일반·스마트스토어입니다. 택배는 출고 방식에서 고르세요.'; end if;
   if coalesce(p->>'default_ship_method', '') not in ('', '배송', '화물', '수령', '택배') then raise exception '출고 방식은 배송·화물·수령·택배입니다.'; end if;
   if p ? 'ship_tos' and jsonb_typeof(p->'ship_tos') <> 'array' then raise exception '배송지 형식이 맞지 않습니다.'; end if;
   if exists (select 1 from jsonb_array_elements(coalesce(p->'ship_tos', '[]')) x where coalesce(trim(x->>'name'), '') = '' or coalesce(x->>'id', '') = '') then

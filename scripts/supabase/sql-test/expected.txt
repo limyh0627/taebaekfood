@@ -88,7 +88,7 @@ split-all "ERR 전부 떼면 원래 주문이 빕니다. 배송일만 바꾸려�
 split-over "ERR 주문에 없는 줄이거나 수량보다 많이 뗍니다."
 split-src [{"total_amount":"60000","line_no":1,"qty":"12"}]
 split-new [{"card_no":"ORD-261109-001","delivery_date":"<시각>","total_amount":"45000","note":"원 주문에서 나눔","line_no":1,"name":"참기름","qty":"8"},{"card_no":"ORD-261109-001","delivery_date":"<시각>","total_amount":"45000","note":"원 주문에서 나눔","line_no":2,"name":"참깨","qty":"5"}]
-p7 [{"partner_type":"매출처","channel":"택배","phone":"02-1","default_ship_method":"택배","ship_tos":[{"id":"st1","name":"쿠팡 이천센터"},{"id":"st2","name":"쿠팡 덕평","archived":true}]}]
+p7 [{"partner_type":"매출처","channel":"일반","phone":"02-1","default_ship_method":"택배","ship_tos":[{"id":"st1","name":"쿠팡 이천센터"},{"id":"st2","name":"쿠팡 덕평","archived":true}]}]
 savep [{"?column?":true}]
 p7b [{"channel":"스마트스토어","note":"월말 정산","ship_tos":[{"id":"st1","name":"쿠팡 이천센터"}]}]
 savebad "ERR 배송지마다 이름이 있어야 합니다."
