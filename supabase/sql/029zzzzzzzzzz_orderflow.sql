@@ -456,3 +456,44 @@ grant execute on function public.preview_order_line(text, int, numeric), public.
   public.set_order_line_meta(text, int, jsonb), public.set_order_meta(text, jsonb), public.ship_order(text, text, date, boolean),
   public.cancel_shipment(text, text), public.create_sales_voucher(jsonb), public.cancel_sales_voucher(text) to authenticated;
 revoke all on function erp.sync_order_status(text), erp.is_produced(erp.items) from public, anon, authenticated;
+
+-- ---------- 명세서 바로 고치기(2026-11-09, '수정 요청' 대신) ----------
+-- 매출·매입 명세서의 날짜·적요·줄(품목·규격·수량·단가·과세·계정·비고)을 그 자리에서 바꾼다. 거래처는 그대로.
+-- 세금계산서에 묶였거나 취소된 명세서는 못 고친다. 이어진 주문·발주는 안 바뀐다(작성 때와 같음). 수금·지불 연결은 그대로 둔다.
+create or replace function public.update_item_voucher(p jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v erp.vouchers; n int := 0; r record;
+begin
+  select * into v from erp.vouchers where id = p->>'voucher_id' for update;
+  if not found or v.kind not in ('매출', '매입') then raise exception '매출·매입 명세서만 고칠 수 있습니다.'; end if;
+  perform erp.assert_member(v.company_id);
+  if v.status <> 'active' then raise exception '취소된 명세서입니다.'; end if;
+  if exists (select 1 from erp.tax_invoice_vouchers tv join erp.tax_invoices t on t.id = tv.invoice_id where tv.voucher_id = v.id and t.status <> '취소') then
+    raise exception '세금계산서에 묶인 명세서입니다. 세금계산서를 먼저 취소하세요.';
+  end if;
+  if exists (select 1 from erp.vouchers where return_of = v.id and status = 'active') then
+    raise exception '반품이 걸린 명세서입니다. 반품을 먼저 취소하세요.';
+  end if;
+  if jsonb_typeof(p->'lines') <> 'array' or not exists (select 1 from jsonb_array_elements(p->'lines') x
+       where coalesce(trim(x->>'name'), '') <> '' and coalesce(nullif(x->>'qty', '')::numeric, 0) <> 0) then
+    raise exception '품목 줄이 하나도 없습니다.';
+  end if;
+  delete from erp.voucher_lines where voucher_id = v.id;
+  for r in select x from jsonb_array_elements(p->'lines') x where coalesce(nullif(x->>'qty', '')::numeric, 0) <> 0 and coalesce(trim(x->>'name'), '') <> '' loop
+    n := n + 1;
+    insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, spec, qty, price, supply, tax, amount, account_code, tax_exempt, note)
+    select v.id, n, 'item', nullif(r.x->>'item_id', ''), trim(r.x->>'name'), nullif(trim(coalesce(r.x->>'spec', '')), ''), (r.x->>'qty')::numeric,
+           coalesce(nullif(r.x->>'price', '')::numeric, 0), a.supply, a.tax, a.gross,
+           coalesce(nullif(r.x->>'account_code', ''),
+                    case when v.kind = '매출' then erp.sales_account(v.partner_id, nullif(r.x->>'item_id', '')) else erp.purchase_account(v.partner_id, nullif(r.x->>'item_id', '')) end),
+           coalesce((r.x->>'tax_exempt')::boolean, false), nullif(trim(coalesce(r.x->>'note', '')), '')
+    from erp.line_amount((r.x->>'qty')::numeric, coalesce(nullif(r.x->>'price', '')::numeric, 0), coalesce((r.x->>'tax_exempt')::boolean, false)) a;
+  end loop;
+  update erp.vouchers t set supply = s.supply, tax = s.tax, amount = s.amount,
+         date = coalesce(nullif(p->>'date', '')::date, t.date),
+         memo = case when p ? 'memo' then nullif(trim(coalesce(p->>'memo', '')), '') else t.memo end
+  from (select sum(supply) supply, sum(tax) tax, sum(amount) amount from erp.voucher_lines where voucher_id = v.id) s
+  where t.id = v.id;
+end $$;
+revoke all on function public.update_item_voucher(jsonb) from public, anon;
+grant execute on function public.update_item_voucher(jsonb) to authenticated;

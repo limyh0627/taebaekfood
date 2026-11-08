@@ -584,6 +584,10 @@ await log('ord-notify', `select type,title,body,sender_id is not null by_someone
 const eo2=(await one(`select public.save_order('{"company_id":"taebaek","partner_id":"P1","delivery_date":"2026-11-22","lines":[{"item_id":"FG1","qty":2}]}') v`)).v;
 const mv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo,eo2]})])).v;
 await log('merge-lines', `select item_id, qty, (note like '%,%') two_orders from erp.voucher_lines where voucher_id=$1 order by line_no`,[mv.voucher_id]);
+// 명세서 바로 고치기(2026-11-09)
+await log('vedit', `select public.update_item_voucher($1)`,[JSON.stringify({voucher_id:mv.voucher_id,date:'2026-11-23',memo:'고침',lines:[{item_id:'FG1',name:'참기름 300ml',qty:3,price:5500},{name:'택배비',qty:1,price:4000,account_code:'404'}]})]);
+await log('vedit-after', `select v.date, v.memo, v.amount, json_agg(l.name||' '||l.qty||' '||l.account_code order by l.line_no) from erp.vouchers v join erp.voucher_lines l on l.voucher_id=v.id where v.id=$1 group by v.id`,[mv.voucher_id]);
+await log('vedit-empty', `select public.update_item_voucher($1)`,[JSON.stringify({voucher_id:mv.voucher_id,lines:[]})]);
 await db.query(`select public.cancel_sales_voucher($1)`,[mv.voucher_id]);
 // 화면에서 고친 줄 그대로(lines): 품목·규격·면세·계정
 const lv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo2],lines:[{item_id:'FG1',name:'참기름 300ml',spec:'300ml',qty:2,price:5500,tax_exempt:false},{name:'택배비',qty:1,price:4000,tax_exempt:true,account_code:'404'}]})])).v;
