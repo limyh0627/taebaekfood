@@ -154,6 +154,10 @@ await log('jbad', `select public.save_journal($1)`,[JSON.stringify({company_id:'
 await log('jnoacc', `select public.save_journal($1)`,[JSON.stringify({company_id:'taebaek',lines:[{account_code:'999',side:'차변',amount:1},{account_code:'103',side:'대변',amount:1}]})]);
 const j1=(await one(`select public.save_journal($1) r`,[JSON.stringify({company_id:'taebaek',date:'2026-11-05',memo:'회식',lines:[{account_code:'811',side:'차변',amount:50000},{account_code:'103',side:'대변',amount:50000}]})])).r;
 await log('jl', `select account_code,debit,credit from erp.journal_lines where voucher_id=$1`,[j1.voucher_id]);
+// 일반전표의 보통예금 줄은 고른 계좌로(2026-11-09): 잔액·출납장에 들어간다
+await db.exec(`select public.save_journal('{"company_id":"taebaek","date":"2026-11-05","memo":"수수료","cash_account_id":"${ca9}","lines":[{"account_code":"811","side":"차변","amount":3000},{"account_code":"103","side":"대변","amount":3000}]}')`);
+await log('jcash', `select balance from erp.cash_balances where cash_account_id=$1`,[ca9]);
+await log('jcashbook', `select kind, inflow, outflow from public.cash_book('taebaek',$1,'2026-11-01','2026-11-30') where memo='수수료'`,[ca9]);
 await log('off-nopartner', `select public.save_journal($1)`,[JSON.stringify({company_id:'taebaek',kind:'대체',lines:[{account_code:'251',side:'차변',amount:1000},{account_code:'108',side:'대변',amount:1000}]})]);
 await log('bal-before', `select receivable,payable from erp.partner_balances where partner_id='P1'`);
 await log('off', `select public.save_journal($1) is not null`,[JSON.stringify({company_id:'taebaek',kind:'대체',partner_id:'P1',date:'2026-11-05',lines:[{account_code:'251',side:'차변',amount:1000},{account_code:'108',side:'대변',amount:1000}]})]);

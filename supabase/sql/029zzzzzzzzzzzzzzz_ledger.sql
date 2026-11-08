@@ -16,7 +16,7 @@ create or replace function public.save_journal(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v_company text := p->>'company_id'; v_kind text := coalesce(p->>'kind', '비용'); v_partner text := nullif(p->>'partner_id', '');
         v_date date := coalesce((p->>'date')::date, (now() at time zone 'Asia/Seoul')::date); v_id text := 'v-' || gen_random_uuid(); v_no text;
-        v_dr numeric; v_cr numeric; v_bad text;
+        v_dr numeric; v_cr numeric; v_bad text; v_cash text;
 begin
   perform erp.assert_member(v_company);
   if v_kind not in ('비용', '대체') then raise exception '일반전표나 상계만 됩니다.'; end if;
@@ -35,9 +35,15 @@ begin
   if v_partner is null and (v_kind = '대체' or exists (select 1 from jsonb_array_elements(p->'lines') l where l->>'account_code' in ('108', '251', '253'))) then
     raise exception '외상 계정(108·251·253)이나 상계는 거래처가 있어야 합니다.';
   end if;
+  -- 현금·보통예금(102·103) 줄이 있으면 어느 계좌인지 남긴다(통장 잔액·출납장에 들어감, 2026-11-09). 안 주면 메인통장.
+  if exists (select 1 from jsonb_array_elements(p->'lines') l where l->>'account_code' in ('102', '103')) then
+    v_cash := coalesce(nullif(p->>'cash_account_id', ''),
+                       (select id from erp.cash_accounts where company_id = v_company and active and name like '%메인%' order by name limit 1));
+    if v_cash is not null and not exists (select 1 from erp.cash_accounts where id = v_cash and company_id = v_company) then raise exception '계좌를 찾을 수 없습니다.'; end if;
+  end if;
   v_no := erp.next_no(v_company, v_date, '', 'voucher');
-  insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, amount, memo, created_by, created_at, legacy_collection)
-  values (v_id, v_company, v_no, v_date, v_kind, v_partner, (select name from erp.partners where id = v_partner), v_dr, nullif(p->>'memo', ''), erp.actor_name(), now(), 'app');
+  insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, amount, memo, cash_account_id, created_by, created_at, legacy_collection)
+  values (v_id, v_company, v_no, v_date, v_kind, v_partner, (select name from erp.partners where id = v_partner), v_dr, nullif(p->>'memo', ''), v_cash, erp.actor_name(), now(), 'app');
   insert into erp.voucher_lines (voucher_id, line_no, line_kind, name, amount, account_code, side, note)
   select v_id, ord::int, 'account', coalesce(nullif(l->>'note', ''), erp.account_name(v_company, l->>'account_code')), (l->>'amount')::numeric,
          l->>'account_code', l->>'side', nullif(l->>'note', '')
@@ -45,13 +51,24 @@ begin
   return jsonb_build_object('voucher_id', v_id, 'voucher_no', v_no);
 end $$;
 
--- 통장별 잔액(오늘까지): 기초 + 기초일 뒤 입금 − 출금. 통장 미지정 전표는 따로.
+-- 계좌 움직임: 입금·출금 전표 + 계좌를 고른 일반·대체 전표의 102·103 줄(차변 = 들어옴, 대변 = 나감). 2026-11-09
+create or replace view erp.cash_moves as
+select v.id voucher_id, v.company_id, v.cash_account_id, v.date, case v.kind when '입금' then v.amount else -v.amount end amt
+from erp.vouchers v where v.status = 'active' and v.kind in ('입금', '출금')
+union all
+select v.id, v.company_id, v.cash_account_id, v.date, sum(case when l.side = '차변' then l.amount else -l.amount end)
+from erp.vouchers v join erp.voucher_lines l on l.voucher_id = v.id
+where v.status = 'active' and v.kind in ('비용', '대체') and v.cash_account_id is not null and l.account_code in ('102', '103')
+group by v.id, v.company_id, v.cash_account_id, v.date;
+alter view erp.cash_moves set (security_invoker = true);
+grant select on erp.cash_moves to authenticated;
+
+-- 통장별 잔액(오늘까지): 기초 + 기초일 뒤 들어옴 − 나감. 통장 미지정 전표는 따로.
 create or replace view erp.cash_balances as
 select ca.id cash_account_id, ca.company_id, ca.name, ca.type, ca.opening_balance, ca.opening_date,
-       coalesce(ca.opening_balance, 0) + coalesce(sum(case v.kind when '입금' then v.amount when '출금' then -v.amount end), 0) balance
+       coalesce(ca.opening_balance, 0) + coalesce(sum(m.amt), 0) balance
 from erp.cash_accounts ca
-left join erp.vouchers v on v.cash_account_id = ca.id and v.status = 'active' and v.kind in ('입금', '출금')
-     and (ca.opening_date is null or v.date >= ca.opening_date)
+left join erp.cash_moves m on m.cash_account_id = ca.id and (ca.opening_date is null or m.date >= ca.opening_date)
 where ca.active
 group by ca.id;
 alter view erp.cash_balances set (security_invoker = true);
@@ -66,17 +83,16 @@ declare v_open numeric; v_od date;
 begin
   perform erp.assert_member(p_company);
   select coalesce(opening_balance, 0), opening_date into v_open, v_od from erp.cash_accounts where id = p_cash and company_id = p_company;
-  v_open := coalesce(v_open, 0) + coalesce((select sum(case v.kind when '입금' then v.amount else -v.amount end) from erp.vouchers v
-            where v.company_id = p_company and v.cash_account_id is not distinct from p_cash and v.status = 'active' and v.kind in ('입금', '출금')
-              and v.date < p_from and (v_od is null or v.date >= v_od)), 0);
+  v_open := coalesce(v_open, 0) + coalesce((select sum(m.amt) from erp.cash_moves m
+            where m.company_id = p_company and m.cash_account_id is not distinct from p_cash and m.date < p_from and (v_od is null or m.date >= v_od)), 0);
   return query
   select v.date, v.id, v.voucher_no, v.kind, v.memo, coalesce(pt.name, v.partner_name), v.account_code, erp.account_name(p_company, v.account_code),
-         case when v.kind = '입금' then v.amount else 0 end, case when v.kind = '출금' then v.amount else 0 end,
-         v_open + sum(case v.kind when '입금' then v.amount else -v.amount end) over (order by v.date, v.voucher_no, v.id),
+         greatest(m.amt, 0), greatest(-m.amt, 0),
+         v_open + sum(m.amt) over (order by v.date, v.voucher_no, v.id),
          v.legacy_collection <> 'app'
-  from erp.vouchers v left join erp.partners pt on pt.id = v.partner_id
-  where v.company_id = p_company and v.cash_account_id is not distinct from p_cash and v.status = 'active' and v.kind in ('입금', '출금')
-    and v.date between p_from and p_to and (v_od is null or v.date >= v_od)
+  from erp.cash_moves m join erp.vouchers v on v.id = m.voucher_id left join erp.partners pt on pt.id = v.partner_id
+  where m.company_id = p_company and m.cash_account_id is not distinct from p_cash
+    and m.date between p_from and p_to and (v_od is null or m.date >= v_od)
   order by v.date desc, v.voucher_no desc, v.id desc;
 end $$;
 
