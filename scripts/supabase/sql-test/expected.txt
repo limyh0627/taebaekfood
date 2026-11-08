@@ -423,5 +423,7 @@ lv-edit [{"update_my_leave":""}]
 lv-after [{"type":"오전반차","start_date":"<시각>","days_used":"0.5","reason":"병원","status":"pending"}]
 lv-other "ERR 내 휴가만 고칠 수 있습니다."
 lv-approved "ERR 승인 전(대기) 신청만 고칠 수 있습니다. 승인된 휴가는 변경 요청을 하세요."
+ssp [{"smartstore_price":"12000"}]
+ssp-keep [{"smartstore_price":"13000"}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0

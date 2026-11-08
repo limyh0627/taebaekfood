@@ -687,6 +687,12 @@ await log('lv-other', `select public.update_my_leave($1, '{"start_date":"2026-12
 await db.exec(`select public.set_leave_status('${myLv}','approved'); select set_config('t.uid','${U2}',false)`);
 await log('lv-approved', `select public.update_my_leave($1, '{"start_date":"2026-12-03","end_date":"2026-12-03","days":1}')`,[myLv]);
 await db.exec(`select set_config('t.uid','${U}',false)`);
+// 스마트스토어 판매가: 기존 앱 값으로 비어 있는 것만 채움, save_item으로 고침
+await db.exec(`update raw.docs set data = data || '{"smartStorePrice":12000}' where collection='items' and id='FG1'`);
+await db.exec(strip(copy('smartstore_price')));
+await log('ssp', `select smartstore_price from erp.items where id='FG1'`);
+await db.exec(`update erp.items set smartstore_price = 13000 where id='FG1'`); await db.exec(strip(copy('smartstore_price')));
+await log('ssp-keep', `select smartstore_price from erp.items where id='FG1'`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

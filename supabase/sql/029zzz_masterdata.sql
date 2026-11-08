@@ -2,6 +2,8 @@
 -- 모두 소속 회사 직원만. 지우지 않고 '안 씀(archived)'으로 숨긴다 — 옛 주문·전표가 가리키고 있을 수 있다.
 
 -- ---------- 품목 ----------
+-- 스마트스토어 판매가(기존 앱 items.smartStorePrice). 스마트스토어 주문 줄에 단가가 없을 때 매출을 이걸로 센다. 2026-11-08
+alter table erp.items add column if not exists smartstore_price numeric;
 -- p: {id?, company_id, name, type, unit, display_unit?, density?, cost?, min_stock?, procure_type?, is_bulk?, phantom?, archived?, account_code?}
 create or replace function public.save_item(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$
@@ -28,7 +30,8 @@ begin
     category = case when p ? 'category' then nullif(trim(p->>'category'), '') else category end,
     spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
     unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end,
-    account_code = case when p ? 'account_code' then nullif(trim(p->>'account_code'), '') else account_code end
+    account_code = case when p ? 'account_code' then nullif(trim(p->>'account_code'), '') else account_code end,
+    smartstore_price = case when p ? 'smartstore_price' then (p->>'smartstore_price')::numeric else smartstore_price end
   where id = v_id;
   return v_id;
 end $$;
