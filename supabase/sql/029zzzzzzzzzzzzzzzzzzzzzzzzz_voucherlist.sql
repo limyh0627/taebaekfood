@@ -61,7 +61,9 @@ begin
   select v.id, v.voucher_no, v.date, v.created_at, v.kind, v.partner_id, coalesce(p.name, v.partner_name),
          v.amount, v.supply, v.tax, v.memo, v.status, v.return_of, v.legacy_collection,
          coalesce(v.evidence, case v.kind when '매출' then '미발행' when '매입' then '미수취' end),
-         coalesce((select nm from people where email = v.created_by limit 1), v.created_by),
+         -- 작성자: 새 ERP 계정(이메일) → 이름, 옛 앱 기록(직원 id, emp_…) → 직원 이름, 둘 다 아니면 그대로
+         coalesce((select nm from people where email = v.created_by limit 1),
+                  (select e.name from erp.employees e where e.id = v.created_by and e.company_id = p_company limit 1), v.created_by),
          (select case when count(*) = 0 then v.memo
                       else (array_agg(l.name order by l.line_no))[1] || case when count(*) > 1 then ' 외 ' || (count(*) - 1) || '개' else '' end end
           from erp.voucher_lines l where l.voucher_id = v.id and l.side is null),
