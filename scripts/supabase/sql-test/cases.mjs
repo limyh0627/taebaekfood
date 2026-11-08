@@ -317,6 +317,7 @@ await log('need2', `select public.oem_need($1)`,[po3]);
 await log('send3', `select public.send_oem($1,'[{"item_id":"RAW1","qty":60},{"item_id":"CTN","qty":5}]')`,[po3]);
 await log('fs1', `select item_id,qty from erp.oem_stock_balances where partner_id='S1' and abs(qty)>0.0005 order by 1`);
 await log('need3', `select public.oem_need($1)`,[po3]);
+await log('prev-boxfee', `select public.oem_receive($1)->'fee'`,[JSON.stringify({po_id:po3,products:[{item_id:'OBX',qty:1}],preview:true})]);
 await log('t-obx', `select public.save_oem_term($1) is not null`,[JSON.stringify({company_id:'taebaek',partner_id:'S1',item_id:'OBX',kind:'processing',unit:'piece',price:5000})]);
 await log('prev3', `select public.oem_receive($1)`,[JSON.stringify({po_id:po3,products:[{item_id:'OBX',qty:4},{item_id:'OEMP',qty:3}],preview:true})]);
 const r3=(await one(`select public.oem_receive($1) r`,[JSON.stringify({po_id:po3,products:[{item_id:'OBX',qty:4},{item_id:'OEMP',qty:3}]})])).r;
@@ -332,6 +333,7 @@ await log('fs3', `select item_id,qty from erp.oem_stock_balances where partner_i
 await log('back', `select kind, qty from erp.stock_ledger where source_type='oem_back' order by item_id`);
 await log('unadj', `select public.cancel_oem_adjust((select id from erp.oem_stock where kind='손실' limit 1)), (select qty from erp.oem_stock_balances where partner_id='S1' and item_id='RAW1')`);
 const fv3=(await one(`select public.issue_oem_fee($1) r`,[r3.id])).r;
+
 await log('fee3', `select l.name,l.qty,l.price,l.account_code from erp.voucher_lines l where l.voucher_id=$1 order by l.line_no`,[fv3.voucher_id]);
 await db.exec(`select public.cancel_purchase_voucher('${fv3.voucher_id}')`);
 await log('unrc3', `select public.cancel_oem_receive($1)`,[r3.id]);

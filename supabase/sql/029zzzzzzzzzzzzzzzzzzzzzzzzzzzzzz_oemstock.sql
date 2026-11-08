@@ -70,7 +70,8 @@ create or replace function erp.oem_supplied(p_partner text) returns setof text l
 $$;
 
 -- BOM을 끝까지 편다: p_item p_qty개(벌크는 kg)를 만들 때 공장이 쓰는 것(우리가 보내는 원료·부자재). 결과는 pg_temp._oemuse.
--- 완제품·반제품(벌크 아님)·phantom은 BOM이 있으면 더 편다. 원료·벌크·부자재는 그대로 쓴다. 공장이 대는 부자재는 뺀다.
+-- 완제품·반제품·phantom은 BOM이 있으면 더 편다. 벌크는 공장에 그 벌크가 맡겨져 있으면 그대로 쓰고, 없으면(공장이 원료로 만듦) BOM으로 편다.
+-- 원료·부자재는 그대로 쓴다. 공장이 대는 부자재는 뺀다.
 create or replace function erp.oem_explode(p_partner text, p_item text, p_qty numeric, p_depth int default 0) returns void
 language plpgsql set search_path = '' as $$
 declare b record; c erp.items; v_need numeric;
@@ -82,7 +83,8 @@ begin
     if c.id is null or c.id in (select erp.oem_supplied(p_partner)) then continue; end if;
     v_need := p_qty * b.quantity;
     if exists (select 1 from erp.item_boms where parent_item_id = c.id)
-       and (c.phantom or (c.type in ('FINISHED', 'WIP') and not coalesce(c.is_bulk, false))) then
+       and (c.phantom or (c.type in ('FINISHED', 'WIP') and not coalesce(c.is_bulk, false))
+            or (coalesce(c.is_bulk, false) and coalesce((select sum(qty) from erp.oem_stock where partner_id = p_partner and item_id = c.id), 0) <= 0)) then
       perform erp.oem_explode(p_partner, c.id, v_need, p_depth + 1);
     else
       insert into pg_temp._oemuse (item_id, qty) values (c.id, v_need);
@@ -214,11 +216,14 @@ begin
     -- 공장 보관에서 뺄 것(BOM)
     if not exists (select 1 from erp.item_boms where parent_item_id = x.id) then v_nobom := v_nobom || x.name;
     else perform erp.oem_explode(po.partner_id, x.id, x.q); end if;
-    -- 가공비: 이 품목 계약 조건 → 없으면 박스 줄의 조건을 낱개로 나눠서
+    -- 가공비: 이 품목 계약 조건 → 없으면 박스 줄의 조건을 낱개로 나눠서 → 없으면(박스 품목) 낱개 조건 × 박스당 개수
     v_term_item := x.id; v_factor := 1;
-    if not exists (select 1 from erp.oem_terms where partner_id = po.partner_id and item_id = x.id) and v_per is not null
-       and exists (select 1 from erp.oem_terms where partner_id = po.partner_id and item_id = v_line.item_id) then
-      v_term_item := v_line.item_id; v_factor := 1 / v_per;
+    if not exists (select 1 from erp.oem_terms where partner_id = po.partner_id and item_id = x.id) then
+      if v_per is not null and exists (select 1 from erp.oem_terms where partner_id = po.partner_id and item_id = v_line.item_id) then
+        v_term_item := v_line.item_id; v_factor := 1 / v_per;
+      elsif exists (select 1 from erp.box_component(x.id) b join erp.oem_terms ot on ot.item_id = b.child_id and ot.partner_id = po.partner_id) then
+        select b.child_id, b.per into v_term_item, v_factor from erp.box_component(x.id) b;
+      end if;
     end if;
     if not exists (select 1 from erp.oem_terms where partner_id = po.partner_id and item_id = v_term_item) then
       v_missing := v_missing || x.name;
