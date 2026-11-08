@@ -675,6 +675,8 @@ await log('cut-old', `select id, status, accounting_excluded from erp.orders whe
 await log('cut-list', `select kind, ref_id, summary, amount, picked, cutoff from public.migration_list('taebaek') where ref_id like 'OLD%' order by ref_id`);
 await log('cut-pick', `select public.set_migration_pick('taebaek','unbilled',array['OLD2','nope'],true)`);
 await log('cut-orders', `select count(*) from erp.orders where company_id='taebaek' and accounting_excluded_reason like '이관 안 함%'`);
+// 마이페이지 내 급여: 직원 카드가 연결된 계정만, 급여 전표까지 낸 달만
+await log('myslip', `select count(*) from public.my_payslips('taebaek')`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

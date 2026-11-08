@@ -418,5 +418,6 @@ cut-old [{"id":"OLD1","status":"PENDING","accounting_excluded":false},{"id":"OLD
 cut-list [{"kind":"order","ref_id":"OLD1","summary":"참기름 5","amount":"5000","picked":true,"cutoff":"<시각>"},{"kind":"unbilled","ref_id":"OLD2","summary":"참기름 7","amount":"7000","picked":false,"cutoff":"<시각>"}]
 cut-pick [{"set_migration_pick":1}]
 cut-orders [{"count":1}]
+myslip [{"count":0}]
 030_checks.sql errors 0
 031_checks_more.sql errors 0
