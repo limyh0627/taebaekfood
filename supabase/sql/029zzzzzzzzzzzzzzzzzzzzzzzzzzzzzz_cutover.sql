@@ -165,7 +165,7 @@ begin
                                 case when v_bal > 0 then '기초 이월이익잉여금' else '기초 미지급금(이월)' end);
       else
         v_id := 'opening-cutover-' || c.company_id || '-' || r.account_code || '-' || coalesce(r.partner_id, '');
-        perform erp.put_opening(v_id, c.company_id, v_open, r.partner_id, '기초-' || replace(v_open::text, '-', '') || '-' || r.account_code,
+        perform erp.put_opening(v_id, c.company_id, v_open, r.partner_id, '기초-' || replace(v_open::text, '-', '') || '-' || r.account_code || coalesce('-' || r.partner_id, ''),
                                 '기초 ' || v_name || case when r.account_code in ('102', '103') then '(계좌 미지정 차이)' when exists (select 1 from _loan x where x.account_code = r.account_code) then '(계약 미지정 차이)' else '' end,
                                 abs(v_bal),
                                 case when v_bal > 0 then r.account_code else '375' end, case when v_bal > 0 then v_name else '기초 이월이익잉여금' end,

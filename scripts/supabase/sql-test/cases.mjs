@@ -655,12 +655,16 @@ await log('menus-mine', `select role, menus from public.my_companies()`);
 // 이관 기준일: 2026-10-15 전 전표는 보관, 그 전날 잔액을 기초 전표로. 기준일 전날까지 계정별 잔액(375 빼고)이 앞뒤로 같아야 한다.
 await db.exec(`update app.migration_settings set cutoff = date '2026-10-15', apply = true where company_id = 'taebaek'`);
 const tb=`select account_code, partner_id, round(sum(debit-credit)) b from erp.journal_lines where company_id='taebaek' and date < '2026-10-15' and account_code ~ '^[123]' and account_code <> '375' group by 1,2 having round(sum(debit-credit)) <> 0 order by 1,2`;
-const before=JSON.stringify((await db.query(tb)).rows);
 await db.exec(`insert into erp.orders (id, company_id, partner_id, partner_name, status, delivery_date, total_amount, created_at) values
   ('OLD1','taebaek','P1','모란식품','PENDING','2026-10-05',5000,'2026-10-04'), ('OLD2','taebaek','P1','모란식품','SHIPPED','2026-10-06',7000,'2026-10-05');
   update erp.orders set shipped_at = '2026-10-06' where id = 'OLD2';
   insert into erp.order_lines (order_id, line_no, item_id, name, qty, price) values ('OLD1',1,'FG1','참기름',5,1000), ('OLD2',1,'FG1','참기름',7,1000);
-  insert into app.migration_picks (company_id, kind, ref_id) values ('taebaek','order','OLD1');`);
+  insert into app.migration_picks (company_id, kind, ref_id) values ('taebaek','order','OLD1');
+  insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, amount, status, legacy_collection) values
+    ('X253a','taebaek','X-1','2026-10-10','비용','P1',1000,'active','app'), ('X253b','taebaek','X-2','2026-10-10','비용','S1',2000,'active','app');
+  insert into erp.voucher_lines (voucher_id, line_no, line_kind, name, amount, account_code, side) values
+    ('X253a',1,'account','a',1000,'830','차변'), ('X253a',2,'account','a',1000,'253','대변'), ('X253b',1,'account','b',2000,'830','차변'), ('X253b',2,'account','b',2000,'253','대변');`);
+const before=JSON.stringify((await db.query(tb)).rows);
 await db.exec(strip(copy('cutover')));
 await log('cut-cands', `select kind, count(*) from app.migration_candidates where company_id='taebaek' group by 1 order by 1`);
 out('cut-same', JSON.stringify((await db.query(tb)).rows) === before, before);
