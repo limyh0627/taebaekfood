@@ -20,6 +20,27 @@ alter table erp.orders add column if not exists accounting_excluded boolean not 
 alter table erp.orders add column if not exists accounting_excluded_reason text;
 alter table erp.production_runs add column if not exists line_no int;
 
+-- 계정 고르는 함수(purchasing.sql과 같은 내용 — 운영에 다시 적용할 때 여기서 바뀐다)
+create or replace function erp.purchase_account(p_partner text, p_item text) returns text
+language sql stable set search_path = '' as $$
+  select coalesce(
+    (select account_code from erp.partner_items where partner_id = p_partner and item_id = p_item
+       and coalesce(direction, 'in') = 'in' and account_code is not null limit 1),
+    (select account_code from erp.items where id = p_item),
+    (select case when type in ('SUB', 'PALLET') then '505' when type = 'GOODS' then '501' else '500' end from erp.items where id = p_item),
+    '500')
+$$;
+-- 매출 계정: 거래처-품목 연결에 적힌 계정 > 상품(GOODS) 401 상품매출 > 그 밖 404 제품매출 (2026-11-09)
+create or replace function erp.sales_account(p_partner text, p_item text) returns text
+language sql stable set search_path = '' as $$
+  select coalesce(
+    (select account_code from erp.partner_items where partner_id = p_partner and item_id = p_item
+       and coalesce(direction, 'out') = 'out' and account_code is not null limit 1),
+    (select case when type = 'GOODS' then '401' end from erp.items where id = p_item),
+    '404')
+$$;
+revoke all on function erp.sales_account(text, text) from public, anon, authenticated;
+
 -- 생산하는 품목인가(만드는 것) — 아니면 사 오는 것
 create or replace function erp.is_produced(i erp.items) returns boolean language sql immutable as $$
   select i.type in ('FINISHED', 'WIP') and not i.is_bulk and not i.phantom and coalesce(i.procure_type, '') not in ('완사입', '임가공')
@@ -309,7 +330,7 @@ begin
       insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, spec, qty, price, supply, tax, amount, account_code, tax_exempt, note)
       select v_id, n, 'item', nullif(r.x->>'item_id', ''), trim(r.x->>'name'), nullif(trim(coalesce(r.x->>'spec', '')), ''), (r.x->>'qty')::numeric,
              coalesce(nullif(r.x->>'price', '')::numeric, 0), a.supply, a.tax, a.gross,
-             coalesce(nullif(r.x->>'account_code', ''), coalesce((select x.account_code from erp.partner_items x where x.partner_id = v_partner and x.item_id = nullif(r.x->>'item_id', '') and x.account_code is not null limit 1), '404')), coalesce((r.x->>'tax_exempt')::boolean, false), nullif(trim(coalesce(r.x->>'note', '')), '')
+             coalesce(nullif(r.x->>'account_code', ''), erp.sales_account(v_partner, nullif(r.x->>'item_id', ''))), coalesce((r.x->>'tax_exempt')::boolean, false), nullif(trim(coalesce(r.x->>'note', '')), '')
       from erp.line_amount((r.x->>'qty')::numeric, coalesce(nullif(r.x->>'price', '')::numeric, 0), coalesce((r.x->>'tax_exempt')::boolean, false)) a;
     end loop;
   else
@@ -323,7 +344,7 @@ begin
     n := n + 1;
     insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, qty, price, supply, tax, amount, account_code, tax_exempt, note)
     select v_id, n, 'item', r.item_id, r.name, r.qty, r.price, a.supply, a.tax, a.gross,
-           coalesce((select x.account_code from erp.partner_items x where x.partner_id = v_partner and x.item_id = r.item_id and x.account_code is not null limit 1), '404'),
+           erp.sales_account(v_partner, r.item_id),
            coalesce(r.tax_exempt, false), r.card_no
     from erp.line_amount(r.qty, r.price, r.tax_exempt) a;
   end loop;
@@ -331,7 +352,7 @@ begin
     n := n + 1;
     insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, qty, price, supply, tax, amount, account_code, tax_exempt)
     select v_id, n, 'item', nullif(r.x->>'item_id', ''), r.x->>'name', (r.x->>'qty')::numeric, (r.x->>'price')::numeric, a.supply, a.tax, a.gross,
-           coalesce(nullif(r.x->>'account_code', ''), '404'), coalesce((r.x->>'tax_exempt')::boolean, false)
+           coalesce(nullif(r.x->>'account_code', ''), erp.sales_account(v_partner, nullif(r.x->>'item_id', ''))), coalesce((r.x->>'tax_exempt')::boolean, false)
     from erp.line_amount((r.x->>'qty')::numeric, (r.x->>'price')::numeric, coalesce((r.x->>'tax_exempt')::boolean, false)) a;
   end loop;
   end if;

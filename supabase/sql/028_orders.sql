@@ -211,8 +211,7 @@ begin
 
   insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, qty, price, supply, tax, amount, account_code, tax_exempt)
   select v_voucher, l.line_no, 'item', l.item_id, l.name, l.qty, l.price, a.supply, a.tax, a.gross,
-         coalesce((select x.account_code from erp.partner_items x
-                   where x.partner_id = o.partner_id and x.item_id = l.item_id and x.account_code is not null limit 1), '404'),
+         erp.sales_account(o.partner_id, l.item_id),
          coalesce(l.tax_exempt, false)
   from erp.order_lines l cross join lateral erp.line_amount(l.qty, l.price, l.tax_exempt) a
   where l.order_id = o.id;

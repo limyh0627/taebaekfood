@@ -3,7 +3,7 @@
 --
 -- 발주 저장: 단가·과세를 안 주면 거래처-품목 연결(매입, direction 'in')에서 가져온다.
 -- 입고: 받은 만큼 재고 +, 매입 명세서(줄별 공급가액·세액)를 만든다. 일부만 받아도 된다(남은 수량은 다음 입고).
--- 매입 계정: 거래처-품목 연결에 적힌 계정 > 품목 계정(용역) > 품목 종류(원료·반제품 500 원료매입, 부자재·파렛트 505 부자재매입, 그 밖 500).
+-- 매입 계정: 거래처-품목 연결에 적힌 계정 > 품목 계정(용역) > 품목 종류(원료·반제품 500 원료매입, 부자재·파렛트 505 부자재매입, 상품 501 상품매입, 그 밖 500).
 
 -- 용역(SERVICE) 품목의 기본 계정(택배비 → 운반비 등). 2026-11-08. 비어 있으면 지금까지 매입 전표에 가장 많이 쓴 계정으로 채운다.
 alter table erp.items add column if not exists account_code text;
@@ -20,9 +20,20 @@ language sql stable set search_path = '' as $$
     (select account_code from erp.partner_items where partner_id = p_partner and item_id = p_item
        and coalesce(direction, 'in') = 'in' and account_code is not null limit 1),
     (select account_code from erp.items where id = p_item),
-    (select case when type in ('SUB', 'PALLET') then '505' else '500' end from erp.items where id = p_item),
+    (select case when type in ('SUB', 'PALLET') then '505' when type = 'GOODS' then '501' else '500' end from erp.items where id = p_item),
     '500')
 $$;
+
+-- 매출 계정: 거래처-품목 연결에 적힌 계정 > 상품(GOODS) 401 상품매출 > 그 밖 404 제품매출 (2026-11-09)
+create or replace function erp.sales_account(p_partner text, p_item text) returns text
+language sql stable set search_path = '' as $$
+  select coalesce(
+    (select account_code from erp.partner_items where partner_id = p_partner and item_id = p_item
+       and coalesce(direction, 'out') = 'out' and account_code is not null limit 1),
+    (select case when type = 'GOODS' then '401' end from erp.items where id = p_item),
+    '404')
+$$;
+revoke all on function erp.sales_account(text, text) from public, anon, authenticated;
 
 -- p: {id?, company_id, partner_id, date, note, lines: [{item_id, qty, price?, tax_exempt?}]}
 create or replace function public.save_purchase_order(p jsonb) returns text
