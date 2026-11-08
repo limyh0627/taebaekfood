@@ -212,6 +212,16 @@ leaves [{"status":"canceled","days_used":"1"},{"status":"cancel_pending","days_u
 qt [{"save_quality_test":"bzp-<id>"}]
 proj [{"save_project":"proj-<id>"}]
 checks [{"kind":"분개 안 되는 전표","detail":"B-1 명세서 2026-10-10: 차변 ≠ 대변"},{"kind":"재고가 음수","detail":"택배박스 -4개"},{"kind":"원가 없는 제품","detail":"볶음참깨 1kg"},{"kind":"원가 없는 제품","detail":"참기름 300ml 박스(10)"},{"kind":"원가 없는 제품","detail":"참기름 18L 캔"},{"kind":"원가 없는 제품","detail":"볶음참깨 1kg 박스(10)"}]
+su-avail [{"staff_login_available":true}]
+su-co [{"id":"taebaek"}]
+su-reg [{"staff_signup_register":true}]
+su-again [{"staff_signup_register":false}]
+su-notstaff "ERR 방금 만든 계정을 찾지 못했습니다. 다시 해 보세요."
+su-list [{"login":"newbie","name":"신입","phone":"010-9","status":"pending"},{"login":"nope","name":"거절될사람","phone":null,"status":"pending"}]
+su-ok [{"decide_staff_signup":""}]
+su-after [{"role":"staff","name":"신입","phone":"010-9","confirmed":true}]
+su-no [{"decide_staff_signup":""}]
+su-list2 [{"login":"newbie","status":"approved"},{"login":"nope","status":"rejected"}]
 staffdeny "ERR 관리자만 할 수 있는 일입니다."
 staffleave "ERR 내 계정에 직원 카드가 연결돼 있지 않습니다. 관리자에게 연결을 부탁하세요."
 hrec [{"id":"haccp_cleaning:HC1","type":"cleaning","date":"<이달>","rows":{"areaRows":[],"machineRows":[{"machine":"착유기 1호"}]},"meta":{"month":"<이달>"}},{"id":"haccp_sanitation:HS1","type":"sanitation","date":"<이달>-03","rows":[{"note":"","result":"pass","inspector":"이"}],"meta":{"items":[{"item":"바닥","standard":"깨끗"}],"checkDate":"<이달>-03","checkTime":"08:30","createdBy":"이은경"}}]
@@ -241,7 +251,7 @@ staffreg "ERR 직원 계정으로는 거래처 가입을 할 수 없습니다."
 remap [{"participant_ids":["<id>","fbx"],"last_read":{"<id>":"2026-10-01"}}]
 msgsender [{"sender_id":"<id>"}]
 notice-old [{"content":"첫 줄\n[사진] https://x/y.png"}]
-people [{"name":"boss","role":"admin"},{"name":"정직원","role":"staff"}]
+people [{"name":"boss","role":"admin"},{"name":"신입","role":"admin"},{"name":"정직원","role":"staff"}]
 room-again [{"same":true}]
 send [{"send_chat":"MSG-<id>"}]
 roomrow [{"last_message":"출고 확인 부탁","n":2}]

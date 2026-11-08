@@ -349,6 +349,20 @@ await log('leaves', `select status,days_used from erp.leave_requests`);
 await log('qt', `select public.save_quality_test($1)`,[JSON.stringify({company_id:'taebaek',product_name:'참기름',result:'0.5',judgment:'적합'})]);
 await log('proj', `select public.save_project($1)`,[JSON.stringify({company_id:'taebaek',title:'HACCP 갱신',status:'doing'})]);
 await log('checks', `select kind,detail from public.data_checks('taebaek')`);
+// 직원 계정 신청(2026-11-09): 로그인 화면 가입 → 신청 → 관리자 승인(새 직원 카드)·거절
+await db.exec(`alter table auth.users add column if not exists created_at timestamptz default now(); alter table auth.users add column if not exists email_confirmed_at timestamptz;
+ insert into auth.users(id,email,raw_user_meta_data) values('00000000-0000-0000-0000-0000000051a1','newbie@erp.local','{"kind":"staff","name":"신입","phone":"010-9"}'),
+  ('00000000-0000-0000-0000-0000000051a2','nope@erp.local','{"kind":"staff","name":"거절될사람"}'), ('00000000-0000-0000-0000-0000000051a3','portal@erp.local','{"name":"포털"}');`);
+await log('su-avail', `select public.staff_login_available('newbie'), public.staff_login_available('nobody')`);
+await log('su-co', `select id from public.signup_companies()`);
+await log('su-reg', `select public.staff_signup_register('Newbie','taebaek'), public.staff_signup_register('nope','taebaek')`);
+await log('su-again', `select public.staff_signup_register('newbie','taebaek')`);
+await log('su-notstaff', `select public.staff_signup_register('portal','taebaek')`);
+await log('su-list', `select login,name,phone,status from public.staff_signups('taebaek')`);
+await log('su-ok', `select public.decide_staff_signup('taebaek','00000000-0000-0000-0000-0000000051a1','approved','staff',null,true)`);
+await log('su-after', `select m.role, e.name, e.phone, u.email_confirmed_at is not null confirmed from app.memberships m join auth.users u on u.id=m.user_id left join erp.employees e on e.auth_uid=m.user_id::text where m.user_id='00000000-0000-0000-0000-0000000051a1'`);
+await log('su-no', `select public.decide_staff_signup('taebaek','00000000-0000-0000-0000-0000000051a2','rejected')`);
+await log('su-list2', `select login,status from public.staff_signups('taebaek')`);
 await db.exec(`update app.memberships set role='staff'`);
 await log('staffdeny', `select public.set_partner_opening('taebaek','P1','108',1,'2026-01-01')`);
 await log('staffleave', `select public.request_leave($1)`,[JSON.stringify({company_id:'taebaek',type:'연차',start_date:'2026-11-10',end_date:'2026-11-10',days:1})]);
@@ -367,7 +381,7 @@ await log('stafftoday', `select public.save_haccp($1)`,[JSON.stringify({company_
 
 // ---- portal ----
 await db.exec(`update app.memberships set role='admin'`);
-const P='00000000-0000-0000-0000-0000000000a1', Q='00000000-0000-0000-0000-0000000000a2';
+const P='00000000-0000-0000-0000-00000000c0a1', Q='00000000-0000-0000-0000-00000000c0a2';
 await db.exec(`insert into auth.users(id,email) values('${P}','moran@x.com'),('${Q}','new@y.com')`);
 await log('avail-old-otheremail', `select public.portal_username_available('moran','z@z.com')`);
 await log('avail-old-sameemail', `select public.portal_username_available('moran','MORAN@x.com')`);
