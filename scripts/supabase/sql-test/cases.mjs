@@ -637,6 +637,9 @@ await log('jt-edit', `select public.save_journal_template($1) = $2 same`,[JSON.s
 await log('jt-after', `select kind, partner_id, memo, jsonb_array_length(lines) n from erp.journal_templates where id=$1`,[jt]);
 await log('jt-del', `select public.delete_journal_template($1)`,[jt]);
 await log('jt-left', `select count(*) from erp.journal_templates`);
+// 용역 품목: 기본 계정 저장 → 매입 계정으로 쓰인다(거래처 연결 계정이 있으면 그게 먼저)
+const svc=(await one(`select public.save_item('{"company_id":"taebaek","name":"택배비","type":"SERVICE","unit":"건","cost":3000,"account_code":"824"}') v`)).v;
+await log('svc-acc', `select type, account_code, erp.purchase_account('P1', $1) acc from erp.items where id=$1`,[svc]);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }

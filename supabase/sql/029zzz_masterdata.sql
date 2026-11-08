@@ -2,7 +2,7 @@
 -- 모두 소속 회사 직원만. 지우지 않고 '안 씀(archived)'으로 숨긴다 — 옛 주문·전표가 가리키고 있을 수 있다.
 
 -- ---------- 품목 ----------
--- p: {id?, company_id, name, type, unit, display_unit?, density?, cost?, min_stock?, procure_type?, is_bulk?, phantom?, archived?}
+-- p: {id?, company_id, name, type, unit, display_unit?, density?, cost?, min_stock?, procure_type?, is_bulk?, phantom?, archived?, account_code?}
 create or replace function public.save_item(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$
 declare v_company text := p->>'company_id'; v_id text := nullif(p->>'id', '');
@@ -27,7 +27,8 @@ begin
     archived = coalesce((p->>'archived')::boolean, false),
     category = case when p ? 'category' then nullif(trim(p->>'category'), '') else category end,
     spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
-    unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end
+    unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end,
+    account_code = case when p ? 'account_code' then nullif(trim(p->>'account_code'), '') else account_code end
   where id = v_id;
   return v_id;
 end $$;
