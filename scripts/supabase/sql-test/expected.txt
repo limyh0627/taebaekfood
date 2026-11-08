@@ -165,7 +165,7 @@ oem2 [{"send_oem":1}]
 rcv-oem "ERR 임가공 발주는 가공입고로 받습니다."
 kg [{"a":"1.000","b":"2.748","c":"0.275"}]
 prev [{"oem_receive":{"fee":[],"lines":[{"kg":40,"qty":40,"bulk":false,"name":"볶음참깨 1kg","unit":"개","item_id":"OEMP"},{"kg":50,"qty":50,"bulk":true,"name":"참기름 벌크","unit":"kg","item_id":"BULK1"}],"loss_kg":10,"missing":["볶음참깨 1kg","참기름 벌크"],"sent_kg":100,"fee_total":0,"received_kg":90}}]
-noterms "ERR 공장 조건(가공비 단가)이 없는 품목이 있습니다: 볶음참깨 1kg. 발주 카드의 공장 조건에서 넣으세요(없으면 0원)."
+noterms "ERR 공장 조건(가공비 단가)이 없는 품목이 있습니다: 볶음참깨 1kg. 구매 › 임가공의 공장 조건에서 넣으세요(없으면 0원)."
 t1 [{"?column?":true}]
 t2 [{"?column?":true}]
 t3 [{"?column?":true}]
