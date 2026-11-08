@@ -13,6 +13,7 @@
 alter table erp.order_lines add column if not exists made_on date;
 alter table erp.order_lines add column if not exists label_stage text;
 alter table erp.order_lines add column if not exists run_id text;
+alter table erp.order_lines add column if not exists picked_at timestamptz;   -- 출고 준비 체크리스트(물건 챙김). 생산·재고와 무관
 alter table erp.orders add column if not exists note_important boolean not null default false;
 alter table erp.orders add column if not exists invoice_stage text;
 alter table erp.orders add column if not exists accounting_excluded boolean not null default false;
@@ -170,7 +171,8 @@ begin
   if p ? 'label_stage' and coalesce(p->>'label_stage', '') not in ('', '대기', '날인', '부착') then raise exception '라벨은 대기·날인·부착입니다.'; end if;
   update erp.order_lines set
     made_on = case when p ? 'made_on' then (p->>'made_on')::date else made_on end,
-    label_stage = case when p ? 'label_stage' then nullif(p->>'label_stage', '') else label_stage end
+    label_stage = case when p ? 'label_stage' then nullif(p->>'label_stage', '') else label_stage end,
+    picked_at = case when p ? 'picked' then (case when (p->>'picked')::boolean then now() end) else picked_at end
   where order_id = p_order_id and line_no = p_line_no;
 end $$;
 
