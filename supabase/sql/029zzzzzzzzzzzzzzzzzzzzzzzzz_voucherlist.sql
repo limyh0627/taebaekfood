@@ -76,6 +76,7 @@ begin
   left join erp.partners p on p.id = v.partner_id
   left join run r on r.voucher_id = v.id
   where v.company_id = p_company and v.date between p_from and p_to
+    and v.status <> 'archived'   -- 이관 기준일 전 전표(보관)는 목록에 안 보인다
   order by v.date desc, v.created_at desc nulls last, v.id desc;
 end $$;
 

@@ -18,6 +18,9 @@ create schema storage; create table storage.buckets(id text primary key, name te
 create function storage.foldername(n text) returns text[] language sql as $$ select string_to_array(n,'/') $$;`);
 
 await db.exec(fs.readFileSync(dir+'000_raw.sql','utf8'));
+// 이관 기준일(cutover)은 아래 기능 시험이 끝난 뒤 따로 시험한다 — 처음에는 끈다(실제 이관 기본값은 2026-10-01에 켬)
+await db.exec(`create schema if not exists app; create table app.migration_settings (company_id text primary key, cutoff date not null default date '2026-10-01', apply boolean not null default true);
+insert into app.migration_settings values ('taebaek', date '2026-10-01', false), ('punghoe', date '2026-10-01', false);`);
 const docs=[
  ['partners','P1','taebaek',{name:'모란식품',partnerType:'매출처'}],
  ['partners','P7','taebaek',{name:'쿠팡',type:'택배',phone:'02-1',shipTos:[{id:'st1',name:'쿠팡 이천센터'},{id:'st2',name:'쿠팡 덕평',archived:true}],defaultShipMethod:'택배'}],
@@ -649,6 +652,25 @@ await log('menus-set', `select public.set_member_menus('taebaek', $1, array['/or
 await log('menus-list', `select login, menus from public.company_members('taebaek') where login='jung'`);
 await log('menus-reset', `select public.set_member_menus('taebaek', $1, null)`,[U2]);
 await log('menus-mine', `select role, menus from public.my_companies()`);
+// 이관 기준일: 2026-10-15 전 전표는 보관, 그 전날 잔액을 기초 전표로. 기준일 전날까지 계정별 잔액(375 빼고)이 앞뒤로 같아야 한다.
+await db.exec(`update app.migration_settings set cutoff = date '2026-10-15', apply = true where company_id = 'taebaek'`);
+const tb=`select account_code, partner_id, round(sum(debit-credit)) b from erp.journal_lines where company_id='taebaek' and date < '2026-10-15' and account_code ~ '^[123]' and account_code <> '375' group by 1,2 having round(sum(debit-credit)) <> 0 order by 1,2`;
+const before=JSON.stringify((await db.query(tb)).rows);
+await db.exec(`insert into erp.orders (id, company_id, partner_id, partner_name, status, delivery_date, total_amount, created_at) values
+  ('OLD1','taebaek','P1','모란식품','PENDING','2026-10-05',5000,'2026-10-04'), ('OLD2','taebaek','P1','모란식품','SHIPPED','2026-10-06',7000,'2026-10-05');
+  update erp.orders set shipped_at = '2026-10-06' where id = 'OLD2';
+  insert into erp.order_lines (order_id, line_no, item_id, name, qty, price) values ('OLD1',1,'FG1','참기름',5,1000), ('OLD2',1,'FG1','참기름',7,1000);
+  insert into app.migration_picks (company_id, kind, ref_id) values ('taebaek','order','OLD1');`);
+await db.exec(strip(copy('cutover')));
+await log('cut-cands', `select kind, count(*) from app.migration_candidates where company_id='taebaek' group by 1 order by 1`);
+out('cut-same', JSON.stringify((await db.query(tb)).rows) === before, before);
+await log('cut-archived', `select count(*) filter (where status='archived' and date < '2026-10-15') arch, count(*) filter (where status='active' and date < '2026-10-14') left_active from erp.vouchers where company_id='taebaek'`);
+await log('cut-openings', `select count(*) n, sum(amount) > 0 pos from erp.vouchers where company_id='taebaek' and kind='기초' and status='active' and date='2026-10-14'`);
+await log('cut-balanced', `select round(sum(debit)) = round(sum(credit)) ok from erp.journal_lines where company_id='taebaek'`);
+await log('cut-old', `select id, status, accounting_excluded from erp.orders where id in ('OLD1','OLD2') order by id`);
+await log('cut-list', `select kind, ref_id, summary, amount, picked, cutoff from public.migration_list('taebaek') where ref_id like 'OLD%' order by ref_id`);
+await log('cut-pick', `select public.set_migration_pick('taebaek','unbilled',array['OLD2','nope'],true)`);
+await log('cut-orders', `select count(*) from erp.orders where company_id='taebaek' and accounting_excluded_reason like '이관 안 함%'`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
