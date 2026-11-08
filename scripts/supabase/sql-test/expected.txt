@@ -217,9 +217,9 @@ su-co [{"id":"taebaek"}]
 su-reg [{"staff_signup_register":true}]
 su-again [{"staff_signup_register":false}]
 su-notstaff "ERR 방금 만든 계정을 찾지 못했습니다. 다시 해 보세요."
-su-list [{"login":"newbie","name":"신입","phone":"010-9","status":"pending"},{"login":"nope","name":"거절될사람","phone":null,"status":"pending"}]
+su-list [{"login":"newbie","name":"신입","phone":"010-9","birth_date":"<시각>","status":"pending"},{"login":"nope","name":"거절될사람","phone":null,"birth_date":null,"status":"pending"}]
 su-ok [{"decide_staff_signup":""}]
-su-after [{"role":"staff","name":"신입","phone":"010-9","confirmed":true}]
+su-after [{"role":"staff","name":"신입","phone":"010-9","birth_date":"<시각>","confirmed":true}]
 su-no [{"decide_staff_signup":""}]
 su-list2 [{"login":"newbie","status":"approved"},{"login":"nope","status":"rejected"}]
 staffdeny "ERR 관리자만 할 수 있는 일입니다."
