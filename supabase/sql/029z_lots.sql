@@ -44,6 +44,13 @@ returns void language plpgsql security definer set search_path = '' as $$
 declare v_unit text; v_need numeric; v_take numeric; v_lot record; v_lot_id text; v_seq int; v_supplier text;
 begin
   select unit into v_unit from erp.items where id = p_item;
+  -- 비재고(SERVICE: 용역·장갑 같은 소모품)는 발주·입고 기록만 남기고 재고 수량은 안 바꾼다(2026-11-08)
+  if exists (select 1 from erp.items where id = p_item and type = 'SERVICE') then
+    insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, source_id, partner_id,
+                                  reversal_of, effective_date, note)
+    values (p_id, p_company, p_item, p_qty, false, v_unit, p_kind, p_source_type, p_source_id, p_partner, p_reversal_of, p_date, p_note);
+    return;
+  end if;
   insert into erp.stock_ledger (id, company_id, item_id, qty, stock_effect, unit, kind, source_type, source_id, partner_id,
                                 reversal_of, effective_date, note)
   values (p_id, p_company, p_item, p_qty, true, v_unit, p_kind, p_source_type, p_source_id, p_partner,
