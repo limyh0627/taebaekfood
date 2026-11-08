@@ -261,3 +261,21 @@ grant execute on function public.confirm_purchase_order(text), public.cancel_pur
   public.cancel_receipt(text), public.create_purchase_voucher(jsonb), public.cancel_purchase_voucher(text),
   public.unpack_item(text, int, date, text), public.cancel_unpack(text) to authenticated;
 revoke all on function erp.box_component(text), erp.can_component(text) from public, anon;
+
+-- 바로 입고(2026-11-08): 발주 없이 들어온 물건 — 발주를 만들고 그 자리에서 발주확정·입고확정까지 한 번에.
+--  모든 입고가 발주 하나로 모여 입고 기록·매입 전표(발주 불러오기)·구매 현황에 같이 잡힌다. 로트·재고는 입고확정과 같다.
+--  p: {company_id, partner_id, date, note, lines: [{item_id, qty, price?, tax_exempt?}]}
+create or replace function public.quick_receive(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare v_po text; v_date date := coalesce(nullif(p->>'date', '')::date, (now() at time zone 'Asia/Seoul')::date);
+begin
+  perform erp.assert_member(p->>'company_id');
+  v_po := public.save_purchase_order(jsonb_build_object('company_id', p->>'company_id', 'partner_id', p->>'partner_id', 'date', v_date,
+            'note', coalesce(nullif(trim(coalesce(p->>'note', '')), ''), '바로 입고'), 'lines', p->'lines'));
+  perform public.confirm_purchase_order(v_po);
+  perform public.receive_purchase(v_po, null, v_date);
+  return jsonb_build_object('po_id', v_po, 'po_no', (select po_no from erp.purchase_orders where id = v_po));
+end $$;
+revoke all on function public.quick_receive(jsonb) from public, anon;
+grant execute on function public.quick_receive(jsonb) to authenticated;
+

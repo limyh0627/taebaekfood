@@ -534,6 +534,10 @@ await db.query(`select public.cancel_sales_voucher($1)`,[mv.voucher_id]);
 // 화면에서 고친 줄 그대로(lines): 품목·규격·면세·계정
 const lv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo2],lines:[{item_id:'FG1',name:'참기름 300ml',spec:'300ml',qty:2,price:5500,tax_exempt:false},{name:'택배비',qty:1,price:4000,tax_exempt:true,account_code:'404'}]})])).v;
 await log('vlines', `select name, spec, qty, supply, tax, amount, account_code, tax_exempt from erp.voucher_lines where voucher_id=$1 order by line_no`,[lv.voucher_id]);
+// 바로 입고: 발주를 만들고 확정·입고까지 한 번에 → 입고 끝 발주·로트·재고
+const qr=(await one(`select public.quick_receive($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'S1',date:'2026-11-05',lines:[{item_id:'RAW1',qty:30}]})])).v;
+await log('qr-po', `select status, note, (select sum(received_qty) from erp.purchase_order_lines where po_id=$1) got from erp.purchase_orders where id=$1`,[qr.po_id]);
+await log('qr-lot', `select count(*) from erp.purchase_receipts where po_id=$1 and canceled_at is null`,[qr.po_id]);
 await log('print-bal', `select public.voucher_print_balance($1)`,[lv.voucher_id]);
 await db.query(`select public.cancel_sales_voucher($1)`,[lv.voucher_id]);
 const pr=(await one(`select public.save_line_preset('{"company_id":"taebaek","name":"택배비","amount":4000,"tax":"과세"}') v`)).v;
