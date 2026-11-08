@@ -79,5 +79,35 @@ begin
   order by v.date desc, v.created_at desc nulls last, v.id desc;
 end $$;
 
+-- 빠른 추가 항목(기존 앱 '빠른 비용': 택배비·상차비…) — voucher_templates kind='expense-preset'. 이름·단가(세금 포함)·과세/면세·계정.
+create or replace function public.save_line_preset(p jsonb) returns text
+language plpgsql security definer set search_path = '' as $$
+declare v_company text := p->>'company_id'; v_id text := nullif(p->>'id', '');
+begin
+  perform erp.assert_member(v_company);
+  if trim(coalesce(p->>'name', '')) = '' then raise exception '항목 이름을 넣으세요.'; end if;
+  if v_id is null then
+    v_id := 'preset-' || gen_random_uuid();
+    insert into erp.voucher_templates (id, company_id, name, kind, active, legacy_collection) values (v_id, v_company, trim(p->>'name'), 'expense-preset', true, 'app');
+  elsif not exists (select 1 from erp.voucher_templates where id = v_id and company_id = v_company and kind = 'expense-preset') then
+    raise exception '항목을 찾을 수 없습니다.';
+  end if;
+  update erp.voucher_templates set name = trim(p->>'name'), amount = nullif(p->>'amount', '')::numeric,
+         note = case when p->>'tax' = '면세' then '면세' else '과세' end, account_code = nullif(p->>'account_code', '')
+  where id = v_id;
+  return v_id;
+end $$;
+create or replace function public.delete_line_preset(p_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_company text;
+begin
+  select company_id into v_company from erp.voucher_templates where id = p_id and kind = 'expense-preset';
+  if v_company is null then raise exception '항목을 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(v_company);
+  delete from erp.voucher_templates where id = p_id;
+end $$;
+revoke all on function public.save_line_preset(jsonb), public.delete_line_preset(text) from public, anon;
+grant execute on function public.save_line_preset(jsonb), public.delete_line_preset(text) to authenticated;
+
 revoke all on function public.set_voucher_evidence(text, text), public.voucher_list(text, date, date) from public, anon;
 grant execute on function public.set_voucher_evidence(text, text), public.voucher_list(text, date, date) to authenticated;

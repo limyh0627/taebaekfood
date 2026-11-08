@@ -117,7 +117,7 @@ begin
   perform erp.assert_member(v_company);
   if not exists (select 1 from erp.partners where id = v_partner and company_id = v_company) then raise exception '거래처를 고르세요.'; end if;
   select coalesce(array_agg(x), '{}') into v_pos from jsonb_array_elements_text(coalesce(p->'po_ids', '[]')) x;
-  if cardinality(v_pos) = 0 and coalesce(jsonb_array_length(p->'extra'), 0) = 0 then raise exception '발주나 품목을 고르세요.'; end if;
+  if cardinality(v_pos) = 0 and coalesce(jsonb_array_length(p->'extra'), 0) = 0 and coalesce(jsonb_array_length(case when jsonb_typeof(p->'lines') = 'array' then p->'lines' end), 0) = 0 then raise exception '발주나 품목을 고르세요.'; end if;
   if exists (select 1 from erp.purchase_orders o where o.id = any (v_pos)
              and (o.company_id <> v_company or o.partner_id is distinct from v_partner or o.status = 'cancelled'
                   or exists (select 1 from erp.vouchers v where v.id = o.voucher_id and v.status = 'active'))) then
@@ -127,6 +127,17 @@ begin
   insert into erp.vouchers (id, company_id, voucher_no, date, kind, partner_id, partner_name, po_id, memo, created_by, created_at, legacy_collection)
   values (v_id, v_company, v_no, v_date, '매입', v_partner, (select name from erp.partners where id = v_partner),
           case when cardinality(v_pos) = 1 then v_pos[1] end, nullif(p->>'memo', ''), erp.actor_name(), now(), 'app');
+  if jsonb_typeof(p->'lines') = 'array' then
+    -- 화면에서 고친 줄 그대로(기존 앱 전표 작성: 불러온 주문 줄도 여기서 고친다 — 원본 주문은 안 바뀜). 2026-11-08
+    for r in select x from jsonb_array_elements(p->'lines') x where coalesce(nullif(x->>'qty', '')::numeric, 0) <> 0 and coalesce(trim(x->>'name'), '') <> '' loop
+      n := n + 1;
+      insert into erp.voucher_lines (voucher_id, line_no, line_kind, item_id, name, spec, qty, price, supply, tax, amount, account_code, tax_exempt, note)
+      select v_id, n, 'item', nullif(r.x->>'item_id', ''), trim(r.x->>'name'), nullif(trim(coalesce(r.x->>'spec', '')), ''), (r.x->>'qty')::numeric,
+             coalesce(nullif(r.x->>'price', '')::numeric, 0), a.supply, a.tax, a.gross,
+             coalesce(nullif(r.x->>'account_code', ''), erp.purchase_account(v_partner, nullif(r.x->>'item_id', ''))), coalesce((r.x->>'tax_exempt')::boolean, false), nullif(trim(coalesce(r.x->>'note', '')), '')
+      from erp.line_amount((r.x->>'qty')::numeric, coalesce(nullif(r.x->>'price', '')::numeric, 0), coalesce((r.x->>'tax_exempt')::boolean, false)) a;
+    end loop;
+  else
   -- 여러 발주를 합치면 같은 품목·단가·과세(·임가공 여부)는 한 줄로 수량을 더한다(사장님 2026-11-08). 비고에 발주 번호들.
   for r in select x.item_id, x.name, sum(x.qty) as qty, x.unit_price, x.exempt, x.oem, string_agg(distinct x.po_no, ', ') as po_no
            from (select l.item_id, l.name, l.qty, o.po_no, o.created_at, l.line_no, o.po_type = 'oem' as oem,
@@ -152,6 +163,7 @@ begin
            coalesce(nullif(r.x->>'account_code', ''), erp.purchase_account(v_partner, nullif(r.x->>'item_id', ''))), coalesce((r.x->>'tax_exempt')::boolean, false)
     from erp.line_amount((r.x->>'qty')::numeric, (r.x->>'price')::numeric, coalesce((r.x->>'tax_exempt')::boolean, false)) a;
   end loop;
+  end if;
   update erp.vouchers v set supply = s.supply, tax = s.tax, amount = s.amount
   from (select sum(supply) supply, sum(tax) tax, sum(amount) amount from erp.voucher_lines where voucher_id = v_id) s where v.id = v_id;
   update erp.purchase_orders set voucher_id = v_id,

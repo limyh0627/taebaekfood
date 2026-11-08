@@ -531,6 +531,13 @@ const eo2=(await one(`select public.save_order('{"company_id":"taebaek","partner
 const mv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo,eo2]})])).v;
 await log('merge-lines', `select item_id, qty, (note like '%,%') two_orders from erp.voucher_lines where voucher_id=$1 order by line_no`,[mv.voucher_id]);
 await db.query(`select public.cancel_sales_voucher($1)`,[mv.voucher_id]);
+// 화면에서 고친 줄 그대로(lines): 품목·규격·면세·계정
+const lv=(await one(`select public.create_sales_voucher($1) v`,[JSON.stringify({company_id:'taebaek',partner_id:'P1',date:'2026-11-22',order_ids:[eo2],lines:[{item_id:'FG1',name:'참기름 300ml',spec:'300ml',qty:2,price:5500,tax_exempt:false},{name:'택배비',qty:1,price:4000,tax_exempt:true,account_code:'404'}]})])).v;
+await log('vlines', `select name, spec, qty, supply, tax, amount, account_code, tax_exempt from erp.voucher_lines where voucher_id=$1 order by line_no`,[lv.voucher_id]);
+await db.query(`select public.cancel_sales_voucher($1)`,[lv.voucher_id]);
+const pr=(await one(`select public.save_line_preset('{"company_id":"taebaek","name":"택배비","amount":4000,"tax":"과세"}') v`)).v;
+await log('preset', `select name, amount, note from erp.voucher_templates where id=$1`,[pr]);
+await log('preset-del', `select public.delete_line_preset($1)`,[pr]);
 await db.query(`select public.delete_order($1)`,[eo2]);
 await log('ed-lines', `select line_no,item_id,qty,checked_at is not null c,label_stage,made_on from erp.order_lines where order_id=$1 order by line_no`,[eo]);
 await log('ed-ship', `select ship_method from erp.orders where id=$1`,[eo]);
