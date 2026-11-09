@@ -251,7 +251,8 @@ begin
   end if;
   select coalesce(jsonb_agg(jsonb_build_object('item_id', u.item_id, 'name', i.name, 'unit', i.unit, 'qty', round(u.qty, 3),
            'at_factory', round(coalesce(f.qty, 0), 3), 'short', greatest(round(u.qty - coalesce(f.qty, 0), 3), 0)) order by i.type, i.name), '[]'::jsonb),
-         coalesce(sum(case when lower(coalesce(i.unit, '')) = 'kg' then u.qty else u.qty * coalesce(erp.item_kg(i.id), 0) end), 0)
+         -- 쓴 원료 kg: 원료·반제품만 센다(포장지·박스 같은 부자재는 이름에 1KG가 있어도 무게가 아니다)
+         coalesce(sum(case when i.type not in ('RAW', 'WIP') then 0 when lower(coalesce(i.unit, '')) = 'kg' then u.qty else u.qty * coalesce(erp.item_kg(i.id), 0) end), 0)
     into v_used, v_used_kg
   from (select item_id, sum(qty) qty from _oemuse group by item_id) u
   join erp.items i on i.id = u.item_id
