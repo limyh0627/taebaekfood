@@ -5,6 +5,8 @@
 -- ---------- 품목 ----------
 -- 스마트스토어 판매가(기존 앱 items.smartStorePrice). 스마트스토어 주문 줄에 단가가 없을 때 매출을 이걸로 센다. 2026-11-08
 alter table erp.items add column if not exists smartstore_price numeric;
+-- 서류용 품목명(원료수불부·생산판매기록부에 적는 이름, 기존 앱 items.품목). 비면 품목 이름을 쓴다.
+alter table erp.items add column if not exists doc_name text;
 -- p: {id?, company_id, name, type, unit, display_unit?, density?, cost?, min_stock?, procure_type?, is_bulk?, phantom?, archived?, account_code?}
 create or replace function public.save_item(p jsonb) returns text
 language plpgsql security definer set search_path = '' as $$
@@ -32,7 +34,8 @@ begin
     spec = case when p ? 'spec' then nullif(trim(p->>'spec'), '') else spec end,
     unpackable = case when p ? 'unpackable' then coalesce((p->>'unpackable')::boolean, false) else unpackable end,
     account_code = case when p ? 'account_code' then nullif(trim(p->>'account_code'), '') else account_code end,
-    smartstore_price = case when p ? 'smartstore_price' then (p->>'smartstore_price')::numeric else smartstore_price end
+    smartstore_price = case when p ? 'smartstore_price' then (p->>'smartstore_price')::numeric else smartstore_price end,
+    doc_name = case when p ? 'doc_name' then nullif(trim(p->>'doc_name'), '') else doc_name end
   where id = v_id;
   return v_id;
 end $$;
