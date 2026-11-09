@@ -308,3 +308,29 @@ begin
 end $$;
 revoke all on function public.link_purchase_voucher(text, text) from public, anon;
 grant execute on function public.link_purchase_voucher(text, text) to authenticated;
+
+-- ---------- 발주 매입처 바꾸기 (2026-11-09) ----------
+-- 매입처를 잘못 고른 발주(입고가 됐어도): 매입전표가 안 이어졌을 때만. 입고 원장의 거래처·로트 공급처도 같이 바꾼다. 재고 수량은 안 바뀐다.
+create or replace function public.change_po_partner(p_po_id text, p_partner_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare po erp.purchase_orders; v_name text;
+begin
+  select * into po from erp.purchase_orders where id = p_po_id for update;
+  if not found then raise exception '발주를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(po.company_id);
+  if po.status = 'cancelled' then raise exception '취소된 발주입니다.'; end if;
+  if exists (select 1 from erp.vouchers x where x.id = po.voucher_id and x.status = 'active') then raise exception '매입전표가 이어진 발주입니다. 전표 연결을 먼저 푸세요.'; end if;
+  select name into v_name from erp.partners where id = p_partner_id and company_id = po.company_id;
+  if v_name is null then raise exception '매입처를 고르세요.'; end if;
+  update erp.purchase_orders set partner_id = p_partner_id, partner_name = v_name where id = po.id;
+  update erp.stock_ledger s set partner_id = p_partner_id
+  where s.company_id = po.company_id and (s.id in (select ledger_id from erp.purchase_receipts where po_id = po.id and ledger_id is not null)
+        or (s.source_type = 'purchase' and s.source_id in (select batch_id from erp.purchase_receipts where po_id = po.id and batch_id is not null)));
+  update erp.lots l set supplier = v_name
+  where l.id in (select m.lot_id from erp.lot_moves m join erp.stock_ledger s on s.id = m.ledger_id
+                 where s.company_id = po.company_id and m.qty > 0
+                   and (s.id in (select ledger_id from erp.purchase_receipts where po_id = po.id and ledger_id is not null)
+                        or (s.source_type = 'purchase' and s.source_id in (select batch_id from erp.purchase_receipts where po_id = po.id and batch_id is not null))));
+end $$;
+revoke all on function public.change_po_partner(text, text) from public, anon;
+grant execute on function public.change_po_partner(text, text) to authenticated;
