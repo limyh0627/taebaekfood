@@ -231,7 +231,9 @@ begin
     accounting_excluded = case when p ? 'accounting_excluded' then coalesce((p->>'accounting_excluded')::boolean, false) else accounting_excluded end,
     accounting_excluded_reason = case when p ? 'accounting_excluded' then nullif(p->>'accounting_excluded_reason', '') else accounting_excluded_reason end,
     delivery_date = case when p ? 'delivery_date' then (p->>'delivery_date')::date else delivery_date end,
-    delivery_slot = case when p ? 'delivery_slot' then nullif(p->>'delivery_slot', '') else delivery_slot end
+    delivery_slot = case when p ? 'delivery_slot' then nullif(p->>'delivery_slot', '') else delivery_slot end,
+    -- 주문일자(주문 받은 날): 날짜만 바꾸고 시각은 그대로(한국 시각 기준)
+    created_at = case when p ? 'order_date' then (((p->>'order_date')::date + (o.created_at at time zone 'Asia/Seoul')::time) at time zone 'Asia/Seoul') else created_at end
   where id = o.id;
   if p ? 'hold' then
     if o.shipped_at is not null then raise exception '출고된 주문은 보류할 수 없습니다.'; end if;
