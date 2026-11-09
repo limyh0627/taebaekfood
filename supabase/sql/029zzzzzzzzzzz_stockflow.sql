@@ -278,3 +278,33 @@ end $$;
 revoke all on function public.quick_receive(jsonb) from public, anon;
 grant execute on function public.quick_receive(jsonb) to authenticated;
 
+
+-- ---------- 발주에 있는 매입전표 잇기 (2026-11-09) ----------
+-- 옛 앱에서 옮겨 오며 발주↔전표 연결이 빠진 것: 같은 매입처의 살아 있는 매입전표를 골라 발주에 잇는다. 전표 내용은 안 바뀐다.
+-- p_voucher_id = null 이면 연결만 푼다(전표는 그대로).
+create or replace function public.link_purchase_voucher(p_po_id text, p_voucher_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare po erp.purchase_orders; v erp.vouchers;
+begin
+  select * into po from erp.purchase_orders where id = p_po_id for update;
+  if not found then raise exception '발주를 찾을 수 없습니다.'; end if;
+  perform erp.assert_member(po.company_id);
+  if p_voucher_id is null then
+    update erp.purchase_orders set voucher_id = null where id = po.id;
+    update erp.vouchers set po_id = null where id = po.voucher_id and po_id = po.id;
+    return;
+  end if;
+  if po.status = 'cancelled' then raise exception '취소된 발주입니다.'; end if;
+  if exists (select 1 from erp.vouchers x where x.id = po.voucher_id and x.status = 'active') then raise exception '이미 매입전표가 이어진 발주입니다.'; end if;
+  select * into v from erp.vouchers where id = p_voucher_id;
+  if not found or v.company_id <> po.company_id or v.kind <> '매입' or v.return_of is not null then raise exception '매입전표가 아닙니다.'; end if;
+  if v.status <> 'active' then raise exception '취소된 전표입니다.'; end if;
+  if v.partner_id is distinct from po.partner_id then raise exception '다른 매입처 전표입니다.'; end if;
+  update erp.purchase_orders set voucher_id = v.id,
+         status = case when status = 'pending' then 'invoiced' else status end,
+         invoiced_at = case when status = 'pending' then now() else invoiced_at end
+  where id = po.id;
+  update erp.vouchers set po_id = coalesce(po_id, po.id) where id = v.id;
+end $$;
+revoke all on function public.link_purchase_voucher(text, text) from public, anon;
+grant execute on function public.link_purchase_voucher(text, text) to authenticated;
