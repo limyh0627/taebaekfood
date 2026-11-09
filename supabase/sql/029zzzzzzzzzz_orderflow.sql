@@ -248,7 +248,7 @@ end $$;
 drop function if exists public.ship_order(text, boolean, date);
 create or replace function public.ship_order(p_order_id text, p_ship_method text default null, p_date date default null, p_preview boolean default false)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare o erp.orders; v_date date := coalesce(p_date, (now() at time zone 'Asia/Seoul')::date); v_lines jsonb; r record;
+declare o erp.orders; v_date date := (now() at time zone 'Asia/Seoul')::date; v_lines jsonb; r record;   -- p_date는 안 쓴다(출고는 누른 날)
 begin
   select * into o from erp.orders where id = p_order_id for update;
   if not found then raise exception '주문을 찾을 수 없습니다.'; end if;
@@ -273,7 +273,9 @@ begin
     perform erp.post_stock('ship:' || o.id || ':' || r.line_no || ':' || left(gen_random_uuid()::text, 8),
                            o.company_id, r.item_id, -r.qty, '출고', 'order', o.id, o.partner_id, v_date, null);
   end loop;
-  update erp.orders set status = 'SHIPPED', shipped_at = now(), ship_method = coalesce(nullif(p_ship_method, ''), ship_method) where id = o.id;
+  -- 출고일자 = 실제로 출고를 누른 날(한국 날짜). 미리 잡아 둔 날과 다르면 고친다(2026-11-09).
+  update erp.orders set status = 'SHIPPED', shipped_at = now(), ship_method = coalesce(nullif(p_ship_method, ''), ship_method),
+         delivery_date = (now() at time zone 'Asia/Seoul')::date where id = o.id;
   insert into erp.order_history (id, company_id, order_id, kind, changes, by_name, at)
   values ('ship:' || gen_random_uuid(), o.company_id, o.id, 'ship', jsonb_build_object('ship_method', p_ship_method, 'lines', v_lines), erp.actor_name(), now());
   return jsonb_build_object('ok', true, 'lines', v_lines);
