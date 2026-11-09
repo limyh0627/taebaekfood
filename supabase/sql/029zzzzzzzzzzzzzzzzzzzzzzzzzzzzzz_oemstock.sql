@@ -269,7 +269,7 @@ begin
                    where l.po_id = po.id));
   end if;
   if cardinality(v_missing) > 0 then
-    raise exception '계약 조건(가공비 단가)이 없는 품목이 있습니다: %. 구매 › 임가공의 계약 조건에서 넣으세요(없으면 0원).', array_to_string(v_missing, ', ');
+    raise exception '계약 조건(가공비 단가)이 없는 품목이 있습니다: %. 구매 › 매입계약 › OEM에서 계약을 넣으세요(없으면 0원).', array_to_string(v_missing, ', ');
   end if;
   for x in select e from jsonb_array_elements(v_lines) e loop
     n := n + 1;

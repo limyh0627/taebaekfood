@@ -756,6 +756,11 @@ await db.exec(strip(copy('smartstore_price')));
 await log('ssp', `select smartstore_price from erp.items where id='FG1'`);
 await db.exec(`update erp.items set smartstore_price = 13000 where id='FG1'`); await db.exec(strip(copy('smartstore_price')));
 await log('ssp-keep', `select smartstore_price from erp.items where id='FG1'`);
+// 매입계약: OEM 계약 저장 → oem_terms(가공비·업체 부자재) 반영, 일반 계약 → 거래처 매입 단가
+await db.query(`select public.save_purchase_contract($1)`, [JSON.stringify({company_id:'taebaek',partner_id:'S1',kind:'OEM',title:'푸미 2026',loss_rate:3,items:[{item_id:'FG1',price:550,unit:'piece',supplied_price:1000,loss_rate:2}]})]);
+await log('pc-oem', `select (select count(*) from erp.purchase_contract_items i join erp.purchase_contracts c on c.id = i.contract_id where c.kind='OEM'), (select price from erp.oem_terms where partner_id='S1' and item_id='FG1' and kind='processing') fee, (select price from erp.oem_terms where partner_id='S1' and item_id='FG1' and kind='packaging') pack`);
+await db.query(`select public.save_purchase_contract($1)`, [JSON.stringify({company_id:'taebaek',partner_id:'S1',kind:'일반',items:[{item_id:'RAW1',price:7777,unit:'kg'}]})]);
+await log('pc-gen', `select price from erp.partner_items where partner_id='S1' and item_id='RAW1' and direction='in'`);
 for (const f of ['030_checks.sql','031_checks_more.sql']) {
   const qs=strip(fs.readFileSync(dir+f,'utf8')).split(/;\s*\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith('--') || s.includes('select'));
   let bad=0; for(const s of qs){ if(s.includes('pg_database_size')) continue; try{ await db.query(s);}catch(e){bad++; out('CHKERR',f,e.message.slice(0,120));} }
